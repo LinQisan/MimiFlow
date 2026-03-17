@@ -246,7 +246,7 @@ export default function AudioPlayer({ lesson }: Props) {
               `}>
               <span
                 className={`transition-all duration-500 flex-1 pr-4
-                  ${isBlindMode && !isActive ? 'blur-[8px] opacity-40 group-hover:blur-none group-hover:opacity-100' : ''}
+                  ${isBlindMode && !isActive ? 'blur-sm opacity-40 group-hover:blur-none group-hover:opacity-100' : ''}
                 `}>
                 {item.text}
               </span>
@@ -255,7 +255,7 @@ export default function AudioPlayer({ lesson }: Props) {
                 onClick={e => toggleLoop(e, item)}
                 title='单句复读'
                 className={`
-                  p-2.5 rounded-full transition-all duration-200 flex-shrink-0
+                  p-2.5 rounded-full transition-all duration-200 shrink-0
                   ${
                     isLooping
                       ? 'bg-white text-green-600 shadow-sm scale-110'
