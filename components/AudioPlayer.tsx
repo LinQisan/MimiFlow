@@ -4,10 +4,15 @@ import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
 import { Lesson, DialogueItem } from '../data'
 
+interface ExtendedLesson extends Lesson {
+  categoryId: string
+  groupId: string
+}
+
 interface Props {
-  lesson: Lesson
-  prevId: string | null // 新增
-  nextId: string | null // 新增
+  lesson: ExtendedLesson // 使用扩展后的类型
+  prevId: string | null
+  nextId: string | null
 }
 
 export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
@@ -67,7 +72,7 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
     setPlaybackRate(nextRate)
   }
 
-  // 4. 核心：音频时间轴同步与复读监听
+  // 4. 音频时间轴同步与复读监听
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
@@ -121,7 +126,7 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
     }
   }, [lesson.dialogue, loopId])
 
-  // 5. 核心：自动平滑滚动逻辑 (已修复并兼容吸顶头部)
+  // 5. 核心：自动平滑滚动逻辑
   useEffect(() => {
     if (activeId !== null) {
       const element = document.getElementById(`sentence-${activeId}`)
@@ -133,10 +138,8 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
   }, [activeId])
 
   return (
-    // 外层容器：去掉了多余的 mt-10，交给内部的吸顶容器去处理间距
     <div className='max-w-2xl mx-auto p-5 relative'>
       {/* ================= 吸顶头部区域 ================= */}
-      {/* 优化了背景为半透明模糊(backdrop-blur)，看起来更现代更高级 */}
       <div className='sticky top-0 z-20 bg-white/95 backdrop-blur-sm pt-6 pb-4 mb-6 border-b border-gray-100 shadow-sm -mx-5 px-5'>
         <div className='flex justify-between items-center mb-4'>
           <Link
@@ -218,45 +221,60 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
           </div>
         </div>
 
-        <div className='flex gap-2'>
-          {prevId && (
-            <Link
-              href={`/lesson/${prevId}`}
-              className='p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-green-100 hover:text-green-600 transition-colors'
-              title='上一题'>
-              <svg
-                className='w-5 h-5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M15 19l-7-7 7-7'
-                />
-              </svg>
-            </Link>
-          )}
-          {nextId && (
-            <Link
-              href={`/lesson/${nextId}`}
-              className='p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-green-100 hover:text-green-600 transition-colors'
-              title='下一题'>
-              <svg
-                className='w-5 h-5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M9 5l7 7-7 7'
-                />
-              </svg>
-            </Link>
-          )}
+        {/* 使用自定义网格: 左右固定宽度，中间撑开占满剩余空间 */}
+        <div className='grid grid-cols-[3rem_1fr_3rem] items-center gap-2 w-full'>
+          {/* 左侧区域（即使没有 prevId 也要保留这个空 div 来占位，以维持居中） */}
+          <div>
+            {prevId && (
+              <Link
+                href={`/lesson/${prevId}`}
+                className='inline-flex p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-green-100 hover:text-green-600 transition-colors'
+                title='上一题'
+                aria-label='上一题'>
+                <svg
+                  className='w-5 h-5'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M15 19l-7-7 7-7'
+                  />
+                </svg>
+              </Link>
+            )}
+          </div>
+
+          {/* 居中标题 */}
+          <h1 className='text-center font-semibold text-lg truncate min-w-0'>
+            {lesson.title}
+          </h1>
+
+          {/* 右侧区域（同样使用空 div 占位，并让内容靠右） */}
+          <div className='flex justify-end'>
+            {nextId && (
+              <Link
+                href={`/lesson/${nextId}`}
+                className='inline-flex p-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-green-100 hover:text-green-600 transition-colors'
+                title='下一题'
+                aria-label='下一题'>
+                <svg
+                  className='w-5 h-5'
+                  fill='none'
+                  stroke='currentColor'
+                  viewBox='0 0 24 24'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M9 5l7 7-7 7'
+                  />
+                </svg>
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 
@@ -266,8 +284,6 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
 
       {/* 句子列表 */}
       <div className='space-y-4 pb-64'>
-        {' '}
-        {/* 增加了底部留白 pb-64，确保最后一句也能滚到中间 */}
         {lesson.dialogue.map(item => {
           const isActive = activeId === item.id
           const isLooping = loopId === item.id
@@ -282,7 +298,7 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
                 scroll-mt-32 /* 确保锚点距离顶部有一定的外边距，防止被意外遮挡 */
                 ${
                   isActive
-                    ? 'bg-green-500 text-white scale-[1.02] shadow-lg shadow-green-200'
+                    ? 'bg-black text-white scale-[1.02] shadow-lg shadow-black-200'
                     : 'bg-white hover:bg-gray-50 border border-gray-100 text-gray-800 hover:shadow-md'
                 }
               `}>
@@ -322,51 +338,6 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
             </div>
           )
         })}
-        <div className='mt-8 pt-8 border-t border-gray-100 flex justify-between items-center pb-20'>
-          {prevId ? (
-            <Link
-              href={`/lesson/${prevId}`}
-              className='px-6 py-3 bg-white border border-gray-200 text-gray-600 rounded-xl hover:border-green-400 hover:text-green-600 transition-all font-medium flex items-center gap-2'>
-              <svg
-                className='w-5 h-5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M15 19l-7-7 7-7'
-                />
-              </svg>
-              上一题
-            </Link>
-          ) : (
-            <div></div>
-          )}{' '}
-          {/* 占位符保持布局居中 */}
-          {nextId ? (
-            <Link
-              href={`/lesson/${nextId}`}
-              className='px-8 py-3 bg-green-500 text-white rounded-xl shadow-md hover:bg-green-600 hover:shadow-lg hover:-translate-y-0.5 transition-all font-medium flex items-center gap-2'>
-              下一题
-              <svg
-                className='w-5 h-5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M9 5l7 7-7 7'
-                />
-              </svg>
-            </Link>
-          ) : (
-            <div className='text-gray-400 font-medium'>已经是最后一题啦 🎉</div>
-          )}
-        </div>
       </div>
     </div>
   )

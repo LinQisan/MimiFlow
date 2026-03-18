@@ -1,70 +1,74 @@
-// 文件路径：components/CategoryAccordion.tsx
 'use client'
 
-import React, { useState } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
-import { Lesson } from '../data'
+import { LessonGroup } from '../data'
 
-// 定义传入的数据类型 (附带从数组中映射出的 id)
-type LessonWithId = Lesson & { id: string }
+export default function CategoryAccordion({
+  lessonGroups,
+}: {
+  lessonGroups: LessonGroup[]
+}) {
+  // 记录哪些组处于展开状态（使用 groupId 作为 key）
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
 
-interface Props {
-  groupedLessons: Record<string, LessonWithId[]>
-}
-
-export default function CategoryAccordion({ groupedLessons }: Props) {
-  const groupNames = Object.keys(groupedLessons)
-
-  // 记录当前展开的是哪个分组。默认展开第一个分组。
-  const [openGroup, setOpenGroup] = useState<string | null>(
-    groupNames[0] || null,
-  )
-
-  const toggleGroup = (groupName: string) => {
-    // 如果点击的是当前已展开的，就收起（设为 null）；否则展开点击的这个
-    setOpenGroup(prev => (prev === groupName ? null : groupName))
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }))
   }
 
   return (
-    <div className='space-y-4'>
-      {groupNames.map(groupName => {
-        const lessons = groupedLessons[groupName]
-        const isOpen = openGroup === groupName
+    <div className='space-y-6'>
+      {lessonGroups.map(group => {
+        const isOpen = openGroups[group.categoryId]
 
         return (
           <div
-            key={groupName}
-            className='bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden transition-all duration-200'>
-            {/* 折叠面板头部 (点击区域) */}
-            <button
-              onClick={() => toggleGroup(groupName)}
-              className='w-full flex items-center justify-between p-5 bg-gray-50 hover:bg-gray-100 transition-colors'>
-              <div className='flex items-center gap-3'>
-                <h2 className='text-xl font-bold text-gray-800'>{groupName}</h2>
-                <span className='text-xs font-medium bg-white border border-gray-200 text-gray-500 px-3 py-1 rounded-full shadow-sm'>
-                  共 {lessons.length} 篇
-                </span>
+            key={group.categoryId}
+            className='flex flex-col gap-1 shadow-sm rounded-2xl'>
+            {/* 1. 头部区域（点击展开/收起） */}
+            <div
+              onClick={() => toggleGroup(group.categoryId)}
+              className={`bg-[#F8F9FA] p-6 cursor-pointer hover:bg-gray-100 transition-colors ${isOpen ? 'rounded-t-2xl' : 'rounded-2xl'}`}>
+              <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-3'>
+                  <h2 className='text-2xl font-bold text-gray-800'>
+                    {group.groupTitle}
+                  </h2>
+                  <span className='text-xs font-medium bg-white border border-gray-200 text-gray-500 px-3 py-1 rounded-full shadow-sm'>
+                    共 {group.lessons.length} 篇
+                  </span>
+                </div>
+                <button
+                  className='p-1.5 bg-white border border-gray-200 rounded-full text-gray-500 shadow-sm transition-transform duration-300'
+                  style={{
+                    transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  }}>
+                  <svg
+                    className='w-5 h-5'
+                    fill='none'
+                    stroke='currentColor'
+                    viewBox='0 0 24 24'>
+                    <path
+                      strokeLinecap='round'
+                      strokeLinejoin='round'
+                      strokeWidth={2}
+                      d='M5 15l7-7 7 7'
+                    />
+                  </svg>
+                </button>
               </div>
 
-              {/* 旋转的小箭头 */}
-              <div
-                className={`p-1 rounded-full bg-white shadow-sm transition-transform duration-300 ${isOpen ? '-rotate-180' : 'rotate-0'}`}>
-                <svg
-                  className='w-5 h-5 text-gray-500'
-                  fill='none'
-                  viewBox='0 0 24 24'
-                  stroke='currentColor'>
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M19 9l-7 7-7-7'
-                  />
-                </svg>
-              </div>
-            </button>
+              {/* 左对齐的说明文字 */}
+              {group.description && (
+                <div className='mt-4'>
+                  <p className='text-sm text-gray-600 leading-relaxed text-left'>
+                    {group.description}
+                  </p>
+                </div>
+              )}
+            </div>
 
-            {/* 折叠面板内容区域 (平滑展开动画) */}
+            {/* 2. 展开的课程列表区域（两列网格） */}
             <div
               className={`grid transition-all duration-300 ease-in-out ${
                 isOpen
@@ -73,7 +77,7 @@ export default function CategoryAccordion({ groupedLessons }: Props) {
               }`}>
               <div className='overflow-hidden'>
                 <div className='p-5 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white'>
-                  {lessons.map(lesson => (
+                  {group.lessons.map(lesson => (
                     <Link
                       key={lesson.id}
                       href={`/lesson/${lesson.id}`}

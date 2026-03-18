@@ -1,7 +1,6 @@
-// 文件路径：app/category/[categoryId]/page.tsx
 import Link from 'next/link'
-import { getCategoryById, getLessonsByCategory } from '../../../data'
-import CategoryAccordion from '../../../components/CategoryAccordion' // 引入新建的手风琴组件
+import { getCategoryById, getLessonGroupsByCategory } from '../../../data'
+import CategoryAccordion from '../../../components/CategoryAccordion'
 
 export default async function CategoryPage({
   params,
@@ -9,25 +8,13 @@ export default async function CategoryPage({
   params: Promise<{ categoryId: string }>
 }) {
   const { categoryId } = await params
+
   const category = getCategoryById(categoryId)
-  const lessons = getLessonsByCategory(categoryId)
+  const lessonGroups = getLessonGroupsByCategory(categoryId)
 
   if (!category) {
     return <div className='text-center mt-20 text-gray-500'>找不到该分类</div>
   }
-
-  // 核心逻辑：按 groupTitle 给题目分组
-  const groupedLessons = lessons.reduce(
-    (acc, lesson) => {
-      const groupName = lesson.groupTitle || '未分类练习'
-      if (!acc[groupName]) {
-        acc[groupName] = []
-      }
-      acc[groupName].push(lesson)
-      return acc
-    },
-    {} as Record<string, typeof lessons>,
-  )
 
   return (
     <main className='min-h-screen bg-gray-50 p-8 pb-20'>
@@ -60,8 +47,9 @@ export default async function CategoryPage({
         </p>
 
         {/* 渲染手风琴列表 */}
-        {Object.keys(groupedLessons).length > 0 ? (
-          <CategoryAccordion groupedLessons={groupedLessons} />
+        {lessonGroups.length > 0 ? (
+          // 4. 将数组直接传给手风琴组件（注意属性名改为了 lessonGroups）
+          <CategoryAccordion lessonGroups={lessonGroups} />
         ) : (
           <div className='text-center py-12 bg-white rounded-xl border border-gray-200 border-dashed text-gray-500'>
             该分类下暂时没有材料哦。

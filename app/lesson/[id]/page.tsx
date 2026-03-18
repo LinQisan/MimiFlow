@@ -1,5 +1,4 @@
-// 文件路径：app/lesson/[id]/page.tsx
-import { getLessonById, getLessonsByCategory } from '../../../data'
+import { getLessonById, getLessonGroupById } from '../../../data'
 import AudioPlayer from '../../../components/AudioPlayer'
 
 export default async function LessonPage({
@@ -11,21 +10,24 @@ export default async function LessonPage({
   const lesson = getLessonById(id)
 
   if (!lesson) {
-    return <div className='text-center mt-20 text-gray-500'>找不到该课程</div>
+    return <div className='text-center mt-20 text-gray-500'>找不到该课</div>
   }
 
-  // 1. 获取同分类下的所有题目
-  const allCategoryLessons = getLessonsByCategory(lesson.categoryId)
+  // 1. 获取该课程所属的整个 Unit/Group
+  // （假设你的 lesson.categoryId 对应的值就是 lessonData 里的外层键名/groupId）
+  const group = getLessonGroupById(lesson.groupId)
+
+  // 提取出同组的所有课程列表（做个兜底防空）
+  const allGroupLessons = group ? group.lessons : []
 
   // 2. 找到当前题目在数组里的索引位置
-  const currentIndex = allCategoryLessons.findIndex(l => l.id === id)
+  const currentIndex = allGroupLessons.findIndex(l => l.id === id)
 
-  // 3. 计算上一题和下一题的 ID（如果是第一题，上一题就是 null）
-  const prevId =
-    currentIndex > 0 ? allCategoryLessons[currentIndex - 1].id : null
+  // 3. 计算上一题和下一题的 ID
+  const prevId = currentIndex > 0 ? allGroupLessons[currentIndex - 1].id : null
   const nextId =
-    currentIndex < allCategoryLessons.length - 1
-      ? allCategoryLessons[currentIndex + 1].id
+    currentIndex >= 0 && currentIndex < allGroupLessons.length - 1
+      ? allGroupLessons[currentIndex + 1].id
       : null
 
   return (
