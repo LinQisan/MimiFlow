@@ -2,20 +2,21 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { Lesson, DialogueItem } from '../data'
-
-interface ExtendedLesson extends Lesson {
-  categoryId: string
-  groupId: string
-}
+import { Lesson, LessonGroup, DialogueItem } from '../data'
 
 interface Props {
-  lesson: ExtendedLesson // 使用扩展后的类型
+  lesson: Lesson // 使用扩展后的类型
+  lessonGroup: LessonGroup // 使用扩展后的类型
   prevId: string | null
   nextId: string | null
 }
 
-export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
+export default function AudioPlayer({
+  lesson,
+  lessonGroup,
+  prevId,
+  nextId,
+}: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const [activeId, setActiveId] = useState<number | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -143,7 +144,7 @@ export default function AudioPlayer({ lesson, prevId, nextId }: Props) {
       <div className='sticky top-0 z-20 bg-white/95 backdrop-blur-sm pt-6 pb-4 mb-6 border-b border-gray-100 shadow-sm -mx-5 px-5'>
         <div className='flex justify-between items-center mb-4'>
           <Link
-            href={`/category/${lesson.categoryId}`}
+            href={`/category/${lessonGroup.group}`}
             className='inline-flex items-center text-gray-500 hover:text-green-600 transition-colors font-medium'>
             <svg
               className='w-5 h-5 mr-1'

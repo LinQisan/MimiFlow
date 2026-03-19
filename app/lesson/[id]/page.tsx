@@ -14,11 +14,17 @@ export default async function LessonPage({
   }
 
   // 1. 获取该课程所属的整个 Unit/Group
-  // （假设你的 lesson.categoryId 对应的值就是 lessonData 里的外层键名/groupId）
   const group = getLessonGroupById(lesson.groupId)
 
-  // 提取出同组的所有课程列表（做个兜底防空）
-  const allGroupLessons = group ? group.lessons : []
+  // 【新增】：做一个兜底校验，确保传给子组件的 group 绝对不是 undefined
+  if (!group) {
+    return (
+      <div className='text-center mt-20 text-gray-500'>找不到所属的课程组</div>
+    )
+  }
+
+  // 因为上面已经拦截了空值，这里可以直接安全地取 lessons
+  const allGroupLessons = group.lessons
 
   // 2. 找到当前题目在数组里的索引位置
   const currentIndex = allGroupLessons.findIndex(l => l.id === id)
@@ -32,8 +38,13 @@ export default async function LessonPage({
 
   return (
     <main className='min-h-screen bg-white'>
-      {/* 把计算好的 id 传给播放器 */}
-      <AudioPlayer lesson={lesson} prevId={prevId} nextId={nextId} />
+      {/* 【修改】：把获取到的 group 作为 lessonGroup 参数传给播放器 */}
+      <AudioPlayer
+        lesson={lesson}
+        lessonGroup={group}
+        prevId={prevId}
+        nextId={nextId}
+      />
     </main>
   )
 }

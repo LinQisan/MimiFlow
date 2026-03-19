@@ -2,8 +2,8 @@ import { LessonGroup } from '../index'
 
 export const n1Lessons: Record<string, LessonGroup> = {
   N1_202507: {
-    groupTitle: '2025年7月 N1真题',
-    categoryId: 'n1',
+    group: 'n1',
+    categoryId: '2025年7月 N1真题',
     lessons: [
       {
         id: '1.1',

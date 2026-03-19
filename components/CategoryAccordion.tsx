@@ -32,7 +32,7 @@ export default function CategoryAccordion({
               <div className='flex items-center justify-between'>
                 <div className='flex items-center gap-3'>
                   <h2 className='text-2xl font-bold text-gray-800'>
-                    {group.groupTitle}
+                    {group.categoryId}
                   </h2>
                   <span className='text-xs font-medium bg-white border border-gray-200 text-gray-500 px-3 py-1 rounded-full shadow-sm'>
                     共 {group.lessons.length} 篇

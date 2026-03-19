@@ -31,7 +31,7 @@ export type Lesson = {
 
 export type LessonGroup = {
   categoryId: string
-  groupTitle: string
+  group: string
   description?: string
   lessons: Lesson[]
 }
@@ -55,7 +55,7 @@ export function getCategoryById(id: string): Category | null {
 // 用于渲染列表页（如 /category/n1），返回该分类下的所有 Unit
 export function getLessonGroupsByCategory(categoryId: string) {
   return Object.entries(lessonData)
-    .filter(([_, group]) => group.categoryId === categoryId)
+    .filter(([_, group]) => group.group === categoryId)
     .map(([id, group]) => ({ id, ...group })) // 这里的 id 是 groupId
 }
 
