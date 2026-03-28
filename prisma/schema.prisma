@@ -1,0 +1,48 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// --- 下面是你的业务数据模型 ---
+model Level {
+  id          String     @id // 例如 "n1"
+  title       String // 例如 "N1 听力"
+  description String? // 例如 "包含 N1 历年真题及模拟题"
+  categories  Category[] // 关联下面具体的试卷
+}
+
+// 🌟 2. 修改：具体试卷表 (如 25年7月真题)
+model Category {
+  id          String   @id // 例如 "N1_202507"
+  levelId     String // 记录它属于哪个大模块
+  level       Level    @relation(fields: [levelId], references: [id])
+  name        String // 例如 "2025年7月 N1真题"
+  description String? // 👈 试卷自己的单独描述！
+  lessons     Lesson[]
+}
+
+// 3. 课程和字幕表保持不变
+model Lesson {
+  id         String     @id @default(uuid())
+  lessonNum  String
+  title      String
+  audioFile  String
+  categoryId String
+  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  dialogues  Dialogue[]
+}
+
+model Dialogue {
+  id         Int    @id @default(autoincrement())
+  sequenceId Int
+  text       String
+  start      Float
+  end        Float
+  lessonId   String
+  lesson     Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}

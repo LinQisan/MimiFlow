@@ -1,18 +1,34 @@
 import Link from 'next/link'
-import { getCategoryById, getLessonGroupsByCategory } from '../../../data'
 import CategoryAccordion from '../../../components/CategoryAccordion'
+import { PrismaClient } from '@prisma/client'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
 
-export default async function CategoryPage({
+const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
+const prisma = new PrismaClient({ adapter })
+
+export default async function LevelPage({
   params,
 }: {
-  params: Promise<{ categoryId: string }>
+  params: Promise<{ id: string }>
 }) {
-  const { categoryId } = await params
+  const { id } = await params
 
-  const category = getCategoryById(categoryId)
-  const lessonGroups = getLessonGroupsByCategory(categoryId)
+  const levelData = await prisma.level.findUnique({
+    where: { id: id }, // 转小写防报错
+    include: {
+      categories: {
+        orderBy: { id: 'asc' }, // 试卷按最新导入排序
+        include: {
+          lessons: {
+            select: { id: true, title: true, lessonNum: true },
+            orderBy: { lessonNum: 'asc' }, // 题目按 1.1, 1.2 顺序排
+          },
+        },
+      },
+    },
+  })
 
-  if (!category) {
+  if (!levelData) {
     return <div className='text-center mt-20 text-gray-500'>找不到该分类</div>
   }
 
@@ -40,16 +56,16 @@ export default async function CategoryPage({
 
         {/* 标题区 */}
         <h1 className='text-3xl font-bold mb-2 text-gray-800'>
-          {category.title}
+          {levelData.title}
         </h1>
         <p className='text-gray-500 mb-10 pb-4 border-b border-gray-200'>
-          {category.description}
+          {levelData.description}
         </p>
 
         {/* 渲染手风琴列表 */}
-        {lessonGroups.length > 0 ? (
+        {levelData.categories.length > 0 ? (
           // 4. 将数组直接传给手风琴组件（注意属性名改为了 lessonGroups）
-          <CategoryAccordion lessonGroups={lessonGroups} />
+          <CategoryAccordion lessonGroups={levelData.categories as any} />
         ) : (
           <div className='text-center py-12 bg-white rounded-xl border border-gray-200 border-dashed text-gray-500'>
             该分类下暂时没有材料哦。

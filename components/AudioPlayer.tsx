@@ -2,11 +2,32 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
-import { Lesson, LessonGroup, DialogueItem } from '../data'
+
+type DialogueItem = {
+  id: number
+  text: string
+  start: number
+  end: number
+}
+
+type PlayerLesson = {
+  id: string
+  lessonNum: string
+  title: string
+  audioFile: string
+  dialogue: DialogueItem[]
+}
+
+type PlayerLessonGroup = {
+  id: string
+  name: string
+  description?: string | null
+  levelId: string
+}
 
 interface Props {
-  lesson: Lesson // 使用扩展后的类型
-  lessonGroup: LessonGroup // 使用扩展后的类型
+  lesson: PlayerLesson // 使用扩展后的类型
+  lessonGroup: PlayerLessonGroup // 使用扩展后的类型
   prevId: string | null
   nextId: string | null
 }
@@ -144,7 +165,7 @@ export default function AudioPlayer({
       <div className='sticky top-0 z-20 bg-white/95 backdrop-blur-sm pt-6 pb-4 mb-6 border-b border-gray-100 shadow-sm -mx-5 px-5'>
         <div className='flex justify-between items-center mb-4'>
           <Link
-            href={`/category/${lessonGroup.group}`}
+            href={`/level/${lessonGroup.levelId}`}
             className='inline-flex items-center text-gray-500 hover:text-green-600 transition-colors font-medium'>
             <svg
               className='w-5 h-5 mr-1'

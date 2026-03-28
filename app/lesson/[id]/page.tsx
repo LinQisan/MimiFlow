@@ -1,5 +1,9 @@
-import { getLessonById, getLessonGroupById } from '../../../data'
 import AudioPlayer from '../../../components/AudioPlayer'
+import { PrismaClient } from '@prisma/client'
+import { PrismaLibSql } from '@prisma/adapter-libsql'
+
+const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
+const prisma = new PrismaClient({ adapter })
 
 export default async function LessonPage({
   params,
@@ -7,41 +11,78 @@ export default async function LessonPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const lesson = getLessonById(id)
 
-  if (!lesson) {
+  const lessonData = await prisma.lesson.findUnique({
+    where: { id: id },
+    include: {
+      category: {
+        include: {
+          lessons: {
+            select: {
+              id: true,
+              lessonNum: true,
+              title: true,
+            },
+            orderBy: {
+              lessonNum: 'asc',
+            },
+          },
+        },
+      },
+      dialogues: {
+        orderBy: {
+          sequenceId: 'asc',
+        },
+      },
+    },
+  })
+
+  if (!lessonData) {
     return <div className='text-center mt-20 text-gray-500'>找不到该课</div>
   }
 
   // 1. 获取该课程所属的整个 Unit/Group
-  const group = getLessonGroupById(lesson.groupId)
+  const lessonIds = lessonData.category.lessons.map(item => item.id)
+  const currentIndex = lessonIds.findIndex(id => id === lessonData.id)
+
+  const prevId = currentIndex > 0 ? lessonIds[currentIndex - 1] : null
+  const nextId =
+    currentIndex < lessonIds.length - 1 ? lessonIds[currentIndex + 1] : null
+
+  // 把 Prisma 数据整理成 AudioPlayer 需要的形状
+  const lesson = {
+    id: lessonData.id,
+    lessonNum: lessonData.lessonNum,
+    title: lessonData.title,
+    audioFile: lessonData.audioFile,
+    dialogue: lessonData.dialogues.map(item => ({
+      id: item.id,
+      text: item.text,
+      start: item.start,
+      end: item.end,
+    })),
+  }
+
+  const lessonGroup = {
+    id: lessonData.category.id,
+    name: lessonData.category.name,
+    description: lessonData.category.description,
+    levelId: lessonData.category.levelId,
+  }
 
   // 【新增】：做一个兜底校验，确保传给子组件的 group 绝对不是 undefined
-  if (!group) {
+  if (!lesson) {
     return (
       <div className='text-center mt-20 text-gray-500'>找不到所属的课程组</div>
     )
   }
-
-  // 因为上面已经拦截了空值，这里可以直接安全地取 lessons
-  const allGroupLessons = group.lessons
-
-  // 2. 找到当前题目在数组里的索引位置
-  const currentIndex = allGroupLessons.findIndex(l => l.id === id)
-
-  // 3. 计算上一题和下一题的 ID
-  const prevId = currentIndex > 0 ? allGroupLessons[currentIndex - 1].id : null
-  const nextId =
-    currentIndex >= 0 && currentIndex < allGroupLessons.length - 1
-      ? allGroupLessons[currentIndex + 1].id
-      : null
 
   return (
     <main className='min-h-screen bg-white'>
       {/* 【修改】：把获取到的 group 作为 lessonGroup 参数传给播放器 */}
       <AudioPlayer
         lesson={lesson}
-        lessonGroup={group}
+        lessonGroup={lessonGroup}
         prevId={prevId}
         nextId={nextId}
       />

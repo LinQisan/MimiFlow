@@ -9,7 +9,7 @@ const notoSansJP = Noto_Sans_JP({
 })
 
 export const metadata = {
-  title: '我的听力库',
+  title: 'MimiFlow',
   description: '日语听力跟读系统',
 }
 
