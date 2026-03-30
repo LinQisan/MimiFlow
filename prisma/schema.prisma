@@ -38,11 +38,23 @@ model Lesson {
 }
 
 model Dialogue {
-  id         Int    @id @default(autoincrement())
-  sequenceId Int
-  text       String
-  start      Float
-  end        Float
-  lessonId   String
-  lesson     Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id           Int          @id @default(autoincrement())
+  sequenceId   Int
+  text         String
+  start        Float
+  end          Float
+  lessonId     String
+  lesson       Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  vocabularies Vocabulary[]
+}
+
+model Vocabulary {
+  id   String @id @default(cuid())
+  word String // 选中的生词，例如 "コミュニケーション"
+
+  // 🌟 核心：直接关联到具体的句子
+  dialogueId Int
+  dialogue   Dialogue @relation(fields: [dialogueId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 }

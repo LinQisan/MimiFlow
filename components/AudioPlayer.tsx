@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import Link from 'next/link'
+import { saveVocabulary } from '@/app/actions/vocabulary'
 
 type DialogueItem = {
   id: number
@@ -46,8 +47,27 @@ export default function AudioPlayer({
   const [isBlindMode, setIsBlindMode] = useState(false)
   const [loopId, setLoopId] = useState<number | null>(null)
 
+  // 🌟 新增：生词划词相关的状态
+  const [selectedWord, setSelectedWord] = useState('')
+  const [selectedDialogueId, setSelectedDialogueId] = useState<number | null>(
+    null,
+  )
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0, isTop: true })
+  const [isSaving, setIsSaving] = useState(false)
+
   // 1. 处理点击句子主体
   const handleSentenceClick = (item: DialogueItem) => {
+    const selection = window.getSelection()
+    if (selection && selection.toString().trim().length > 0) {
+      return
+    }
+
+    // 如果悬浮窗开着，点击空白处或句子关掉它
+    if (selectedWord) {
+      setSelectedWord('')
+      return
+    }
+
     const audio = audioRef.current
     if (!audio) return
 
@@ -63,6 +83,64 @@ export default function AudioPlayer({
     }
   }
 
+  // 🌟 新增：处理划词动作
+  const handleTextSelection = (
+    e: React.MouseEvent | React.TouchEvent,
+    item: DialogueItem,
+  ) => {
+    setTimeout(() => {
+      const selection = window.getSelection()
+      const text = selection?.toString().trim()
+
+      if (text && text.length > 0) {
+        const range = selection!.getRangeAt(0)
+        const rect = range.getBoundingClientRect()
+
+        let x = rect.left + rect.width / 2
+        let y = rect.top - 10
+        let isTop = true
+
+        // 🛡️ 边界检测 1：防止左右溢出 (假设气泡最宽大概 200px，一半就是 100px)
+        const screenWidth = window.innerWidth
+        if (x < 110) x = 110 // 如果太靠左，强制卡在 110px 的位置
+        if (x > screenWidth - 110) x = screenWidth - 110 // 如果太靠右，强制往左挤
+
+        // 🛡️ 边界检测 2：防止顶部溢出 (如果文字距离屏幕顶部小于 60px，气泡改到文字下方显示)
+        if (rect.top < 60) {
+          y = rect.bottom + window.scrollY + 10
+          isTop = false
+        }
+
+        setSelectedWord(text)
+        setSelectedDialogueId(item.id)
+        setTooltipPos({ x, y, isTop }) // 把计算好的安全坐标存起来
+      } else {
+        setSelectedWord('')
+      }
+    }, 50)
+  }
+
+  // 🌟 新增：保存生词的模拟逻辑
+  const handleSaveWord = async () => {
+    if (!selectedWord || !selectedDialogueId) return
+    setIsSaving(true)
+
+    try {
+      // 🌟 发起真实的数据库请求
+      const res = await saveVocabulary(selectedWord, selectedDialogueId)
+
+      // 成功后清除高亮和浮窗
+      setSelectedWord('')
+      window.getSelection()?.removeAllRanges()
+
+      // 弹出后端的真实提示（成功或查重拦截）
+      alert(res.message)
+    } catch (error) {
+      alert('网络请求失败，请稍后重试！')
+    } finally {
+      setIsSaving(false)
+    }
+  }
   // 2. 处理单句复读
   const toggleLoop = (e: React.MouseEvent, item: DialogueItem) => {
     e.stopPropagation()
@@ -161,6 +239,37 @@ export default function AudioPlayer({
 
   return (
     <div className='max-w-2xl mx-auto p-5 relative'>
+      {/* 🌟 新增：划词操作悬浮气泡 (Tooltip) */}
+      {selectedWord && (
+        <div
+          className={`fixed z-50 flex flex-col items-center pointer-events-auto transform -translate-x-1/2 transition-all duration-200 ${
+            tooltipPos.isTop ? '-translate-y-full' : ''
+          }`}
+          style={{ left: tooltipPos.x, top: tooltipPos.y }}>
+          {/* 如果气泡在文字下方，小箭头朝上 */}
+          {!tooltipPos.isTop && (
+            <div className='w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[6px] border-b-gray-900'></div>
+          )}
+
+          <div className='bg-gray-900 text-white px-3 py-2 rounded-xl shadow-xl flex items-center gap-3'>
+            <span className='font-medium max-w-37.5 truncate'>
+              {selectedWord}
+            </span>
+            <div className='w-px h-4 bg-gray-600'></div>
+            <button
+              onClick={handleSaveWord}
+              disabled={isSaving}
+              className='text-yellow-400 hover:text-yellow-300 font-medium text-sm whitespace-nowrap flex items-center gap-1'>
+              {isSaving ? '保存中...' : '收藏'}
+            </button>
+          </div>
+
+          {/* 如果气泡在文字上方，小箭头朝下 */}
+          {tooltipPos.isTop && (
+            <div className='w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900'></div>
+          )}
+        </div>
+      )}
       {/* ================= 吸顶头部区域 ================= */}
       <div className='sticky top-0 z-20 bg-white/95 backdrop-blur-sm pt-6 pb-4 mb-6 border-b border-gray-100 shadow-sm -mx-5 px-5'>
         <div className='flex justify-between items-center mb-4'>
@@ -271,7 +380,7 @@ export default function AudioPlayer({
 
           {/* 居中标题 */}
           <h1 className='text-center font-semibold text-lg truncate min-w-0'>
-            {lesson.title}
+            {lessonGroup.name} {lesson.title}
           </h1>
 
           {/* 右侧区域（同样使用空 div 占位，并让内容靠右） */}
@@ -315,6 +424,9 @@ export default function AudioPlayer({
               key={item.id}
               id={`sentence-${item.id}`} // 这是自动滚动寻找的锚点ID
               onClick={() => handleSentenceClick(item)}
+              // 🌟 新增：绑定鼠标和触摸的松开事件，触发划词检测
+              onMouseUp={e => handleTextSelection(e, item)}
+              onTouchEnd={e => handleTextSelection(e, item)}
               className={`
                 group p-5 rounded-2xl cursor-pointer transition-all duration-300 shadow-sm text-xl leading-relaxed select-none flex justify-between items-center
                 scroll-mt-32 /* 确保锚点距离顶部有一定的外边距，防止被意外遮挡 */

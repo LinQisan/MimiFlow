@@ -19,9 +19,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang='ja'>
+    <html lang='ja' suppressHydrationWarning>
       {/* 全局应用该日语字体 */}
-      <body className={notoSansJP.className}>{children}</body>
+      <body className={notoSansJP.className} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   )
 }

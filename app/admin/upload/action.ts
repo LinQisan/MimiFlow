@@ -4,7 +4,7 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 
-const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL!  })
+const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
 const prisma = new PrismaClient({ adapter })
 
 // ================== 核心解析逻辑 (保持不变) ==================
@@ -88,53 +88,57 @@ function applySmartPadding(
 }
 
 // ================== 暴露给前端的 Server Action ==================
-
 export async function uploadAssAndSaveData(formData: FormData) {
   try {
-    // 1. 从表单中提取所有字段
-    const categoryId = formData.get('categoryId') as string 
-    const level = formData.get('level') as string 
-    const categoryName = formData.get('categoryName') as string 
-    const lessonNum = formData.get('lessonNum') as string 
-    const title = formData.get('title') as string 
-    const audioFile = formData.get('audioFile') as string 
-    
-    // 🌟 新增：提取前端可能传过来的试卷描述
-    const description = formData.get('description') as string 
+    // 🌟 新增：判断用户选的是“已有”还是“新建”
+    const uploadMode = formData.get('uploadMode') as string // 'existing' | 'new'
+    const categoryId = formData.get('categoryId') as string
+
+    // 课程核心信息
+    const lessonNum = formData.get('lessonNum') as string
+    const title = formData.get('title') as string
+    const audioFile = formData.get('audioFile') as string
     const file = formData.get('assFile') as File
 
     if (!file) throw new Error('没有检测到上传的文件')
 
-    // 2. 读取 ASS 文件内容并解析
+    // 解析 ASS 文件内容
     const fileContent = await file.text()
     const rawSubs = parseAssToRawSubs(fileContent)
     if (rawSubs.length === 0) throw new Error('未能从文件中解析出字幕对话！')
 
     const processedSubs = applySmartPadding(rawSubs, 0.1, 0.3, 0.05)
 
-    // 3. 写入数据库
-    // 🌟 核心修改：适配新的 Category 表结构
-    await prisma.category.upsert({
-      where: { id: categoryId },
-      update: {
-        // 如果再次上传同属于这个 categoryId 的新题目，顺便更新描述
-        description: description || null,
-      },
-      create: {
-        id: categoryId,
-        levelId: level.toLowerCase(), // 🌟 变成外键 levelId，并转小写匹配 Level 表
-        name: categoryName,
-        description: description || null, // 🌟 存入描述
-      },
-    })
+    // 🌟 核心分流处理
+    if (uploadMode === 'new') {
+      const level = formData.get('level') as string
+      const categoryName = formData.get('categoryName') as string
+      const description = formData.get('description') as string
 
-    // 插入课程及字幕数据 (保持不变)
+      // 如果是新分类，就执行完整的创建
+      await prisma.category.create({
+        data: {
+          id: categoryId,
+          levelId: level.toLowerCase(),
+          name: categoryName,
+          description: description || null,
+        },
+      })
+    } else {
+      // 如果是沿用已有分类，先查一下以防万一
+      const existing = await prisma.category.findUnique({
+        where: { id: categoryId },
+      })
+      if (!existing) throw new Error('选中的试卷组不存在，请刷新页面重试！')
+    }
+
+    // 插入课程及字幕数据
     await prisma.lesson.create({
       data: {
         lessonNum: lessonNum,
         title: title,
         audioFile: audioFile,
-        categoryId: categoryId, 
+        categoryId: categoryId,
         dialogues: {
           create: processedSubs.map(sub => ({
             sequenceId: sub.id,
@@ -148,7 +152,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
     return {
       success: true,
-      message: `✅ 成功解析并导入 ${processedSubs.length} 条字幕！`,
+      message: `✅ 成功导入 ${processedSubs.length} 条字幕至 [${categoryId}]！`,
     }
   } catch (error: any) {
     console.error('处理失败:', error)
