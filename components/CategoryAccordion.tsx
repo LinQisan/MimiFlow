@@ -95,9 +95,9 @@ export default function CategoryAccordion({
                     <Link
                       key={lesson.id}
                       href={`/lesson/${lesson.id}`} // 🌟 数据库生成的 uuid 完美契合这里的路由
-                      className='flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-xl hover:bg-green-50 hover:border-green-200 transition-all duration-200 group'>
+                      className='flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-xl hover:bg-blue-50 hover:border-blue-200 transition-all duration-200 group'>
                       <div className='flex items-center gap-3'>
-                        <div className='bg-white text-gray-400 p-2 rounded-full shadow-sm group-hover:text-green-500 transition-colors'>
+                        <div className='bg-white text-gray-400 p-2 rounded-full shadow-sm group-hover:text-blue-500 transition-colors'>
                           <svg
                             className='w-4 h-4'
                             fill='currentColor'
@@ -109,7 +109,7 @@ export default function CategoryAccordion({
                             />
                           </svg>
                         </div>
-                        <h3 className='text-md font-medium text-gray-700 group-hover:text-green-700 transition-colors'>
+                        <h3 className='text-md font-medium text-gray-700 group-hover:text-blue-700 transition-colors'>
                           {lesson.title}
                         </h3>
                       </div>

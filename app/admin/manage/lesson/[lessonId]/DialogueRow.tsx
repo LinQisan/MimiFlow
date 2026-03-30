@@ -42,7 +42,7 @@ export default function DialogueRow({ dialogue }: { dialogue: DialogueProps }) {
 
   if (isEditing) {
     return (
-      <div className='flex gap-2 items-center bg-indigo-50 p-2 rounded-lg border border-indigo-200'>
+      <div className='flex gap-2 items-center bg-blue-50 p-2 rounded-lg border border-blue-200'>
         <input
           type='number'
           step='0.01'
@@ -69,7 +69,7 @@ export default function DialogueRow({ dialogue }: { dialogue: DialogueProps }) {
         <button
           onClick={handleSave}
           disabled={loading}
-          className='px-3 py-1 bg-green-500 text-white rounded text-sm hover:bg-green-600'>
+          className='px-3 py-1 bg-blue-500 text-white rounded text-sm hover:bg-blue-600'>
           保存
         </button>
         <button
@@ -90,7 +90,7 @@ export default function DialogueRow({ dialogue }: { dialogue: DialogueProps }) {
       <div className='opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 shrink-0'>
         <button
           onClick={() => setIsEditing(true)}
-          className='text-xs text-indigo-500 hover:text-indigo-700'>
+          className='text-xs text-blue-500 hover:text-blue-700'>
           编辑
         </button>
         <button

@@ -58,7 +58,7 @@ export default function AdminSearchPanel() {
   return (
     <div className='space-y-6 md:space-y-8 mb-10'>
       {/* 模块 1：全局搜索 */}
-      <section className='bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-indigo-100'>
+      <section className='bg-white p-4 md:p-6 rounded-2xl shadow-sm border border-blue-100'>
         <h2 className='text-lg md:text-xl font-bold text-gray-800 mb-4 flex items-center gap-2'>
           <span>🔍</span> 全站语料搜索
         </h2>
@@ -68,12 +68,12 @@ export default function AdminSearchPanel() {
             placeholder='输入想查询的词汇、短语...'
             value={keyword}
             onChange={e => setKeyword(e.target.value)}
-            className='flex-1 p-2 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm md:text-base'
+            className='flex-1 p-2 md:p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm md:text-base'
           />
           <button
             disabled={isSearching}
             type='submit'
-            className='px-4 md:px-6 py-2 md:py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition text-sm md:text-base whitespace-nowrap'>
+            className='px-4 md:px-6 py-2 md:py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition text-sm md:text-base whitespace-nowrap'>
             {isSearching ? '检索中...' : '搜索'}
           </button>
         </form>
@@ -83,7 +83,7 @@ export default function AdminSearchPanel() {
             {searchResults.map(dialogue => (
               <div
                 key={dialogue.id}
-                className='p-3 bg-gray-50 border border-gray-200 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 hover:border-indigo-300'>
+                className='p-3 bg-gray-50 border border-gray-200 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-3 hover:border-blue-300'>
                 <div className='flex-1'>
                   <p className='text-gray-800 text-sm md:text-base mb-1'>
                     {dialogue.text}
@@ -106,7 +106,7 @@ export default function AdminSearchPanel() {
                 </div>
                 <button
                   onClick={() => handleAddVocab(dialogue.id)}
-                  className='shrink-0 text-xs bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded hover:bg-indigo-100 self-end md:self-auto'>
+                  className='shrink-0 text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded hover:bg-blue-100 self-end md:self-auto'>
                   + 添加生词
                 </button>
               </div>

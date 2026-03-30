@@ -38,14 +38,15 @@ model Lesson {
 }
 
 model Dialogue {
-  id           Int          @id @default(autoincrement())
-  sequenceId   Int
-  text         String
-  start        Float
-  end          Float
-  lessonId     String
-  lesson       Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  vocabularies Vocabulary[]
+  id             Int             @id @default(autoincrement())
+  sequenceId     Int
+  text           String
+  start          Float
+  end            Float
+  lessonId       String
+  lesson         Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  vocabularies   Vocabulary[]
+  sentenceReview SentenceReview?
 }
 
 model Vocabulary {
@@ -57,4 +58,24 @@ model Vocabulary {
   dialogue   Dialogue @relation(fields: [dialogueId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+}
+
+model SentenceReview {
+  id         String   @id @default(cuid())
+  dialogueId Int      @unique
+  dialogue   Dialogue @relation(fields: [dialogueId], references: [id], onDelete: Cascade)
+
+  // FSRS 核心算法字段 (必须完全对齐 ts-fsrs 的 Card 类型)
+  due            DateTime  @default(now())
+  state          Int       @default(0)
+  stability      Float     @default(0)
+  difficulty     Float     @default(0)
+  elapsed_days   Int       @default(0)
+  scheduled_days Int       @default(0)
+  reps           Int       @default(0)
+  lapses         Int       @default(0)
+  learning_steps Int       @default(0) // 记录当前处于短时记忆的第几步
+  last_review    DateTime? // 记录上一次复习的精确时间
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

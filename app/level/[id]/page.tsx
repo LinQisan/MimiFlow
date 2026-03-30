@@ -38,7 +38,7 @@ export default async function LevelPage({
         {/* 面包屑导航 */}
         <Link
           href='/'
-          className='inline-flex items-center text-gray-500 hover:text-indigo-600 mb-6 transition-colors font-medium'>
+          className='inline-flex items-center text-gray-500 hover:text-blue-600 mb-6 transition-colors font-medium'>
           <svg
             className='w-5 h-5 mr-1'
             fill='none'

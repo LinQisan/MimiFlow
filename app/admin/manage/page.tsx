@@ -46,7 +46,7 @@ export default async function ManagePage() {
           <div>
             <Link
               href='/'
-              className='text-sm text-indigo-500 hover:text-indigo-700 mb-2 inline-block'>
+              className='text-sm text-blue-500 hover:text-blue-700 mb-2 inline-block'>
               &larr; 返回前台主页
             </Link>
             <h1 className='text-2xl md:text-3xl font-bold text-gray-800'>
@@ -55,7 +55,7 @@ export default async function ManagePage() {
           </div>
           <Link
             href='/admin/upload'
-            className='px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors shadow-sm font-medium text-sm md:text-base whitespace-nowrap'>
+            className='px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium text-sm md:text-base whitespace-nowrap'>
             + 上传新题库
           </Link>
         </div>
@@ -113,10 +113,10 @@ export default async function ManagePage() {
                         // 🌟 优化5：最关键的一层。手机端上下排列内容和按钮，平板以上左右排列
                         <div
                           key={lesson.id}
-                          className='flex flex-col xl:flex-row items-start xl:items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm hover:border-indigo-200 gap-3'>
+                          className='flex flex-col xl:flex-row items-start xl:items-center justify-between bg-white p-3 rounded-lg border border-gray-100 shadow-sm hover:border-blue-200 gap-3'>
                           {/* 左侧：题号与标题 */}
                           <div className='text-sm font-medium text-gray-700 flex items-center flex-wrap gap-2'>
-                            <span className='text-indigo-500 font-bold'>
+                            <span className='text-blue-500 font-bold'>
                               {lesson.lessonNum}
                             </span>
                             <EditLessonNumButton
@@ -132,7 +132,7 @@ export default async function ManagePage() {
                           <div className='flex flex-wrap items-center gap-2 w-full xl:w-auto xl:justify-end'>
                             <Link
                               href={`/admin/manage/lesson/${lesson.id}`}
-                              className='text-xs px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100 transition-colors whitespace-nowrap'>
+                              className='text-xs px-3 py-1.5 bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition-colors whitespace-nowrap'>
                               ✏️ 编辑字幕
                             </Link>
                             <DeleteLessonButton
