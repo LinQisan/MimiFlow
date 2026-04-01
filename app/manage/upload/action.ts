@@ -254,9 +254,6 @@ function pickAudioByStem(
 async function ensureTargetCategory(formData: FormData) {
   const uploadMode = formData.get('uploadMode') as string
   const categoryId = (formData.get('categoryId') as string)?.trim()
-  if (!categoryId) {
-    throw new Error('分类信息缺失，请重新选择分类。')
-  }
 
   if (uploadMode === 'new') {
     const level = (formData.get('level') as string)?.trim()
@@ -266,20 +263,28 @@ async function ensureTargetCategory(formData: FormData) {
       throw new Error('请填写新分类名称并选择所属等级。')
     }
 
-    const existed = await prisma.category.findUnique({ where: { id: categoryId } })
+    const generatedId = `${level.toLowerCase()}_${Date.now()}`
+    const targetCategoryId = categoryId || generatedId
+
+    const existed = await prisma.category.findUnique({
+      where: { id: targetCategoryId },
+    })
     if (!existed) {
       await prisma.category.create({
         data: {
-          id: categoryId,
+          id: targetCategoryId,
           levelId: level.toLowerCase(),
           name: categoryName,
           description: description || null,
         },
       })
     }
-    return categoryId
+    return targetCategoryId
   }
 
+  if (!categoryId) {
+    throw new Error('分类信息缺失，请重新选择分类。')
+  }
   const existing = await prisma.category.findUnique({ where: { id: categoryId } })
   if (!existing) throw new Error('选中的试卷组不存在，请刷新页面重试。')
   return categoryId
@@ -381,7 +386,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
     const isBatch = uniqueFiles.length > 1
     let baseAudioFile = ensureAudioWebPath(audioFileFromInput)
-    let uploadedAudioByStem = new Map<string, string[]>()
+    const uploadedAudioByStem = new Map<string, string[]>()
     if (audioSourceType === 'upload') {
       if (!isBatch) {
         const singleAudio = uniqueAudioUploadFiles[0] || audioUploadFile

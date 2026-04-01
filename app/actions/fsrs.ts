@@ -124,8 +124,8 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
         scheduled_days: nextCard.scheduled_days,
         reps: nextCard.reps,
         lapses: nextCard.lapses,
-        // @ts-ignore (兜底兼容某些包含此字段的老版本)
-        learning_steps: (nextCard as any).learning_steps || 0,
+        learning_steps:
+          (nextCard as { learning_steps?: number }).learning_steps ?? 0,
         last_review: nextCard.last_review || null,
       },
     })

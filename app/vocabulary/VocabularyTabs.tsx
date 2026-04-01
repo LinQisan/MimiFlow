@@ -733,33 +733,6 @@ export default function VocabularyTabs({
     }
   }
 
-  if (allExistingGroups.length === 0)
-    return <div className='text-center py-20 text-gray-500'>生词本空空如也</div>
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 安全拦截：如果用户正在输入框里打字（比如新建分组），屏蔽快捷键翻页
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
-        return
-      }
-
-      // 只有在闪卡模式下，且有卡片时才触发
-      if (viewMode === 'flashcard' && visibleList.length > 0) {
-        if (e.key === 'ArrowLeft') {
-          goPrevCard()
-        } else if (e.key === 'ArrowRight') {
-          goNextCard()
-        }
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [viewMode, visibleList.length, currentIndex, cardTransitionState]) // 依赖项：当模式或列表长度变化时更新监听
-
   const runCardTransition = (targetIndex: number, direction: 'next' | 'prev') => {
     if (targetIndex < 0 || targetIndex >= visibleList.length) return
     if (targetIndex === currentIndex) return
@@ -789,6 +762,27 @@ export default function VocabularyTabs({
   const goNextCard = () => {
     runCardTransition(currentIndex + 1, 'next')
   }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return
+      }
+      if (viewMode === 'flashcard' && visibleList.length > 0) {
+        if (e.key === 'ArrowLeft') goPrevCard()
+        if (e.key === 'ArrowRight') goNextCard()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [goNextCard, goPrevCard, viewMode, visibleList.length])
+
+  if (allExistingGroups.length === 0)
+    return <div className='text-center py-20 text-gray-500'>生词本空空如也</div>
 
   const canStartSwipeFromTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false

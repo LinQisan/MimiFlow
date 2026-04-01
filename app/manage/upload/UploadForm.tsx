@@ -534,12 +534,6 @@ export default function UploadForm({ levels, categories }: Props) {
           </div>
         ) : (
           <div className='flex flex-col gap-4 md:gap-5'>
-            <input
-              type='hidden'
-              name='categoryId'
-              value={`auto_${Date.now()}`}
-            />
-
             <div className='z-20 flex flex-col gap-4 md:flex-row md:gap-5'>
               <input
                 required

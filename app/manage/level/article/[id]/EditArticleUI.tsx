@@ -197,7 +197,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
           className='fixed z-[100] flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-2.5 text-white shadow-2xl shadow-indigo-500/10 animate-in zoom-in-95 duration-200'
           style={{ top: selection.y - 65, left: selection.x - 50 }}>
           <span className='text-sm font-bold max-w-30 truncate text-indigo-100'>
-            "{selection.text}"
+            &quot;{selection.text}&quot;
           </span>
           <div className='w-px h-5 bg-gray-700'></div>
           <button
