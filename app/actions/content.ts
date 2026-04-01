@@ -930,6 +930,14 @@ export async function updateSortOrder(model: SortableModel, orderedIds: string[]
 
     await prisma.$transaction(updatePromises)
 
+    // Keep manage/public pages in sync after drag-sort persistence.
+    revalidatePath('/manage')
+    revalidatePath('/manage/level/[id]', 'page')
+    revalidatePath('/level/[id]', 'page')
+    revalidatePath('/lessons/[id]', 'page')
+    revalidatePath('/articles')
+    revalidatePath('/quizzes')
+
     return { success: true }
   } catch (error) {
     console.error(`更新 ${model} 排序失败:`, error)

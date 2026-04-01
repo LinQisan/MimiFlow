@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect, createContext, useContext } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   DndContext,
   closestCenter,
@@ -30,6 +31,7 @@ export function SortableList({
   children: React.ReactNode
   className?: string
 }) {
+  const router = useRouter()
   const [orderedIds, setOrderedIds] = useState(items.map(i => i.id))
 
   // 监听服务器数据的变化
@@ -47,12 +49,24 @@ export function SortableList({
     if (over && active.id !== over.id) {
       const oldIndex = orderedIds.indexOf(active.id as string)
       const newIndex = orderedIds.indexOf(over.id as string)
+      if (oldIndex < 0 || newIndex < 0) return
+
       const newOrder = arrayMove(orderedIds, oldIndex, newIndex)
+      const previousOrder = orderedIds
 
       // 1. 瞬间乐观更新 UI
       setOrderedIds(newOrder)
-      // 2. 后台默默发送给数据库保存
-      await action(newOrder)
+      // 2. 后台保存，失败则回滚
+      try {
+        const result = await action(newOrder)
+        if (!result?.success) {
+          setOrderedIds(previousOrder)
+          return
+        }
+        router.refresh()
+      } catch {
+        setOrderedIds(previousOrder)
+      }
     }
   }
 
