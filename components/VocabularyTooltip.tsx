@@ -131,6 +131,7 @@ interface VocabularyTooltipProps {
   onSaveWithMeaningChange?: (value: boolean) => void
   partOfSpeechValue?: string
   onPartOfSpeechChange?: (value: string) => void
+  partOfSpeechOptions?: string[]
 }
 
 export default function VocabularyTooltip({
@@ -151,8 +152,19 @@ export default function VocabularyTooltip({
   onSaveWithMeaningChange,
   partOfSpeechValue = '',
   onPartOfSpeechChange,
+  partOfSpeechOptions = [],
 }: VocabularyTooltipProps) {
   const { t } = useI18n()
+  const selectedPos = (
+    partOfSpeechValue
+      .split(/[\n,，；;]+/)
+      .map(item => item.trim())
+      .find(Boolean) || ''
+  ).trim()
+
+  const togglePosOption = (pos: string) => {
+    onPartOfSpeechChange?.(selectedPos === pos ? '' : pos)
+  }
 
   const saveBtnConfig = useMemo(() => {
     switch (saveState) {
@@ -254,8 +266,28 @@ export default function VocabularyTooltip({
         <div className='space-y-1'>
           <div className='flex items-center justify-between'>
             <p className='text-[11px] font-semibold text-gray-600'>词性</p>
-            <p className='text-[10px] text-gray-400'>多个</p>
+            <p className='text-[10px] text-gray-400'>单个</p>
           </div>
+          {partOfSpeechOptions.length > 0 && (
+            <div className='flex flex-wrap gap-1.5'>
+              {partOfSpeechOptions.map(option => {
+                const active = selectedPos === option
+                return (
+                  <button
+                    key={`pos-option-${option}`}
+                    type='button'
+                    onClick={() => togglePosOption(option)}
+                    className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                      active
+                        ? 'border-amber-300 bg-amber-100 text-amber-800'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    }`}>
+                    {option}
+                  </button>
+                )
+              })}
+            </div>
+          )}
           <textarea
             value={partOfSpeechValue}
             onChange={e => onPartOfSpeechChange?.(e.currentTarget.value)}

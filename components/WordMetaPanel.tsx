@@ -1,6 +1,7 @@
 'use client'
 
 import WordPronunciation from '@/components/WordPronunciation'
+import { inferContextualPos, posBadgeClass } from '@/utils/posTagger'
 
 export type WordMetaEntry = {
   word: string
@@ -17,6 +18,7 @@ export default function WordMetaPanel({
   enableMeaningMatch = false,
   matchedMeaningMap = {},
   onMatchedMeaningChange,
+  contextSentence = '',
   className = '',
 }: {
   entries: WordMetaEntry[]
@@ -25,13 +27,23 @@ export default function WordMetaPanel({
   enableMeaningMatch?: boolean
   matchedMeaningMap?: Record<string, number>
   onMatchedMeaningChange?: (word: string, meaningIndex: number) => void
+  contextSentence?: string
   className?: string
 }) {
-  if ((!showPronunciation && !showMeaning) || entries.length === 0) return null
+  const hasAnyPos = entries.some(entry => (entry.partsOfSpeech || []).length > 0)
+  if ((!showPronunciation && !showMeaning && !hasAnyPos) || entries.length === 0) {
+    return null
+  }
 
   return (
     <div className={`space-y-2 ${className}`}>
-      {entries.map(entry => (
+      {entries.map(entry => {
+        const contextualPos = inferContextualPos(
+          entry.word,
+          contextSentence,
+          entry.partsOfSpeech || [],
+        )
+        return (
         <div
           key={`meta-${entry.word}`}
           className='rounded-xl border border-gray-200 bg-gray-50 px-3 py-2'>
@@ -56,10 +68,10 @@ export default function WordMetaPanel({
                     {pron}
                   </span>
                 ))}
-            {(entry.partsOfSpeech || []).map(pos => (
+            {contextualPos.map(pos => (
               <span
                 key={`meta-${entry.word}-pos-${pos}`}
-                className='rounded-md bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700'>
+                className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${posBadgeClass(pos)}`}>
                 {pos}
               </span>
             ))}
@@ -96,7 +108,7 @@ export default function WordMetaPanel({
             </div>
           )}
         </div>
-      ))}
+      )})}
     </div>
   )
 }

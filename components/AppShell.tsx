@@ -70,7 +70,7 @@ export default function AppShell({
       </aside>
 
       <div className='flex-1 min-w-0 flex flex-col h-screen bg-white'>
-        <header className='h-16 shrink-0 flex items-center justify-between px-4 border-b border-gray-100 bg-white/90 backdrop-blur-md'>
+        <header className='relative z-[90] h-16 shrink-0 flex items-center justify-between overflow-visible px-4 border-b border-gray-100 bg-white/90 backdrop-blur-md'>
           <button
             onClick={toggleSidebar}
             className='p-2 rounded-xl hover:bg-gray-100 text-gray-500 transition-colors active:scale-95'
@@ -88,7 +88,7 @@ export default function AppShell({
               />
             </svg>
           </button>
-          <div ref={settingsRef} className='relative shrink-0'>
+          <div ref={settingsRef} className='relative z-[100] shrink-0'>
             <button
               onClick={() => setSettingsOpen(prev => !prev)}
               aria-label={t('settings.title')}
@@ -114,7 +114,7 @@ export default function AppShell({
             </button>
 
             {settingsOpen && (
-              <div className='absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 z-50'>
+              <div className='absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-2xl shadow-xl p-2 z-[120]'>
                 <div className='text-[11px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
                   {t('settings.language')}
                 </div>

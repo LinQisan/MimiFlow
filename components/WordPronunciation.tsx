@@ -6,6 +6,7 @@ import { buildJapaneseRubyHtml } from '@/utils/japaneseRuby'
 export default function WordPronunciation({
   word,
   pronunciation,
+  pronunciations = [],
   showPronunciation = true,
   meanings = [],
   showMeaning = false,
@@ -15,6 +16,7 @@ export default function WordPronunciation({
 }: {
   word: string
   pronunciation?: string
+  pronunciations?: string[]
   showPronunciation?: boolean
   meanings?: string[]
   showMeaning?: boolean
@@ -23,12 +25,17 @@ export default function WordPronunciation({
   meaningClassName?: string
 }) {
   const lang = guessLanguageCode(word)
-  const pron = pronunciation?.trim() || ''
+  const pron =
+    (pronunciation || '').trim() ||
+    pronunciations.map(item => item.trim()).find(Boolean) ||
+    ''
   const shouldShowHint = showPronunciation && !!pron
+  const hasKanji = /[\u4e00-\u9fff]/.test(word)
   const parsedMeanings = meanings.map(item => item.trim()).filter(Boolean)
   const shouldShowMeaning = showMeaning && parsedMeanings.length > 0
 
-  if (lang === 'ja') {
+  // 只要词中含汉字且有注音，就强制使用 ruby，避免“纯汉字词被识别为 zh 时不显示注音”。
+  if (hasKanji) {
     if (!shouldShowHint) {
       return <div className={wordClassName}>{word}</div>
     }

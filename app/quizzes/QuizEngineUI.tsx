@@ -17,6 +17,7 @@ import {
   useShowMeaning,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
+import { getPosOptions, inferContextualPos } from '@/utils/posTagger'
 
 type QuizMode = 'scroll' | 'random' | 'sequential'
 
@@ -481,8 +482,13 @@ export default function QuizEngineUI({
         })
         const existing =
           localVocabularyMetaMapByQuestion[questionId]?.[text] || null
+        const inferredPos = inferContextualPos(
+          text,
+          contextSentence,
+          existing?.partsOfSpeech || [],
+        )
         setTooltipPronunciation((existing?.pronunciations || []).join('\n'))
-        setTooltipPartOfSpeech((existing?.partsOfSpeech || []).join('\n'))
+        setTooltipPartOfSpeech(inferredPos.join('\n'))
         setTooltipMeaning((existing?.meanings || []).join('\n'))
         setSaveWithPronunciation(true)
         setSaveWithMeaning(true)
@@ -738,6 +744,11 @@ export default function QuizEngineUI({
           onSaveWithPronunciationChange={setSaveWithPronunciation}
           partOfSpeechValue={tooltipPartOfSpeech}
           onPartOfSpeechChange={setTooltipPartOfSpeech}
+          partOfSpeechOptions={
+            activeTooltip
+              ? getPosOptions(activeTooltip.word, activeTooltip.contextSentence)
+              : []
+          }
           meaningValue={tooltipMeaning}
           saveWithMeaning={saveWithMeaning}
           onMeaningChange={setTooltipMeaning}
@@ -817,12 +828,13 @@ export default function QuizEngineUI({
                       meanings: meta.meanings,
                     }))
                   return (
-                    showMeaning ? (
+                    entries.length > 0 ? (
                       <WordMetaPanel
                         className='mb-4'
                         entries={entries}
                         showPronunciation={showPronunciation}
                         showMeaning={showMeaning}
+                        contextSentence={q.contextSentence}
                       />
                     ) : null
                   )

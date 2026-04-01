@@ -27,7 +27,7 @@ export default {
     dueSentences: 'due',
     enterFlow: 'Enter Flow',
     sentenceLib: 'Sentence Library',
-    sentenceDesc: 'Manage shadowing materials',
+    sentenceDesc: 'Manage training sentences and review queue',
     totalSentences: 'total sentences',
     vocabBook: 'Vocabulary',
     vocabDesc: 'Memorize with original context',

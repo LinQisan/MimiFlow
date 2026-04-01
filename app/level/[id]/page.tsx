@@ -12,11 +12,11 @@ export default async function LevelPage({
     where: { id: id }, // 转小写防报错
     include: {
       categories: {
-        orderBy: { id: 'asc' }, // 试卷按最新导入排序
+        orderBy: { sortOrder: 'asc' },
         include: {
           lessons: {
-            select: { id: true, title: true, lessonNum: true },
-            orderBy: { lessonNum: 'asc' }, // 题目按 1.1, 1.2 顺序排
+            select: { id: true, title: true },
+            orderBy: { sortOrder: 'asc' },
           },
         },
       },

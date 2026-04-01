@@ -41,7 +41,6 @@ export default function RouteMenu({
         label: t('nav.learn') || '学习',
         children: [
           { href: '/', label: t('nav.home'), shortLabel: '首' },
-          { href: '/review', label: t('nav.review'), shortLabel: '复' },
           {
             href: '/sentences',
             label: t('nav.sentences'),
@@ -68,13 +67,14 @@ export default function RouteMenu({
         ],
       },
       {
-        id: 'admin',
-        label: t('nav.admin') || '后台',
+        id: 'manage',
+        label: '管理',
         children: [
-          { href: '/admin', label: '后台首页', shortLabel: '首' },
-          { href: '/admin/level', label: '分类管理', shortLabel: '类' },
-          { href: '/admin/upload', label: '语料录入', shortLabel: '录' },
-          { href: '/admin/vocabulary', label: '词库管理', shortLabel: '词' },
+          { href: '/manage', label: '管理首页', shortLabel: '首' },
+          { href: '/manage/level', label: '分类管理', shortLabel: '类' },
+          { href: '/manage/upload', label: '语料录入', shortLabel: '录' },
+          { href: '/manage/audio', label: '录音管理', shortLabel: '音' },
+          { href: '/manage/vocabulary', label: '词库管理', shortLabel: '词' },
         ],
       },
     ],
@@ -104,7 +104,7 @@ export default function RouteMenu({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     learn: true,
     listening: true,
-    admin: true,
+    manage: true,
   })
 
   useEffect(() => {

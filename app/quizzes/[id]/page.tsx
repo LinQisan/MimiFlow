@@ -2,17 +2,7 @@
 import { notFound } from 'next/navigation'
 import QuizEngineUI from '../QuizEngineUI'
 import prisma from '@/lib/prisma'
-
-const parseList = (value?: string | null): string[] => {
-  if (!value) return []
-  try {
-    const parsed = JSON.parse(value)
-    if (!Array.isArray(parsed)) return []
-    return parsed.map(item => String(item).trim()).filter(Boolean)
-  } catch {
-    return []
-  }
-}
+import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabularyMeta'
 
 export default async function QuizTakingPage({
   params,
@@ -27,7 +17,7 @@ export default async function QuizTakingPage({
       questions: {
         include: {
           options: true,
-          // 🌟 核心：把这道题的全服做题记录拉出来（只需要 isCorrect 字段来算正确率）
+          // 用于前端统计正确率
           attempts: { select: { isCorrect: true } },
         },
       },
@@ -39,34 +29,41 @@ export default async function QuizTakingPage({
   const questionIds = quiz.questions.map(q => q.id)
   const relatedVocab = await prisma.vocabulary.findMany({
     where: {
-      sourceType: 'QUIZ_QUESTION',
-      sourceId: { in: questionIds },
+      sentenceLinks: {
+        some: {
+          sentence: {
+            sourceType: 'QUIZ_QUESTION',
+            sourceId: { in: questionIds },
+          },
+        },
+      },
     },
     select: {
       word: true,
-      sourceId: true,
-      pronunciation: true,
       pronunciations: true,
-      partOfSpeech: true,
       partsOfSpeech: true,
       meanings: true,
+      sentenceLinks: {
+        where: {
+          sentence: {
+            sourceType: 'QUIZ_QUESTION',
+            sourceId: { in: questionIds },
+          },
+        },
+        include: { sentence: true },
+      },
     },
   })
   const vocabularyMetaMapByQuestion = relatedVocab.reduce<
-    Record<string, Record<string, { pronunciations: string[]; partsOfSpeech: string[]; meanings: string[] }>>
+    Record<string, Record<string, VocabularyMeta>>
   >((acc, item) => {
-    if (!acc[item.sourceId]) acc[item.sourceId] = {}
-    const pronunciations = parseList(item.pronunciations)
-    const fallback = item.pronunciation?.trim()
-    if (fallback && !pronunciations.includes(fallback)) pronunciations.unshift(fallback)
-    const partsOfSpeech = parseList(item.partsOfSpeech)
-    const fallbackPos = item.partOfSpeech?.trim()
-    if (fallbackPos && !partsOfSpeech.includes(fallbackPos)) partsOfSpeech.unshift(fallbackPos)
-    acc[item.sourceId][item.word] = {
-      pronunciations,
-      partsOfSpeech,
-      meanings: parseList(item.meanings),
-    }
+    const meta = toVocabularyMeta(item)
+    item.sentenceLinks.forEach(link => {
+      const sourceId = link.sentence.sourceId || ''
+      if (!sourceId) return
+      if (!acc[sourceId]) acc[sourceId] = {}
+      acc[sourceId][item.word] = meta
+    })
     return acc
   }, {})
 

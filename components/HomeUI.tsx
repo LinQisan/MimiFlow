@@ -54,9 +54,9 @@ export default function HomeUI({
               {t('home.dashboard') || '学习总览'}
             </h2>
             <Link
-              href='/admin'
+              href='/manage'
               className='rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-50'>
-              后台
+              管理
             </Link>
           </div>
           <div className='grid grid-cols-2 gap-3 md:grid-cols-6'>

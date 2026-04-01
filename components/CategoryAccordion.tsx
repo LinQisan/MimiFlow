@@ -5,7 +5,6 @@ import Link from 'next/link'
 type DB_Lesson = {
   id: string
   title: string
-  lessonNum?: string | null
 }
 
 type DB_Category = {
@@ -43,14 +42,14 @@ export default function CategoryAccordion({
             )}
 
             <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 md:gap-4'>
-              {group.lessons.map(lesson => (
+              {group.lessons.map((lesson, index) => (
                 <Link
                   key={lesson.id}
                   href={`/lessons/${lesson.id}`}
                   className='group flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:bg-indigo-50 hover:border-indigo-200 transition-all'>
                   <div className='min-w-0'>
                     <p className='text-sm font-bold text-indigo-500 mb-1'>
-                      {lesson.lessonNum || '课时'}
+                      第 {index + 1} 课
                     </p>
                     <h3 className='text-base font-bold text-gray-800 group-hover:text-indigo-700 truncate'>
                       {lesson.title}

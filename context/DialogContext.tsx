@@ -4,11 +4,13 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react'
 
-type DialogKind = 'alert' | 'confirm' | 'prompt'
+type DialogKind = 'confirm' | 'prompt'
+type ToastTone = 'info' | 'success' | 'error'
 
 type DialogRequest = {
   kind: DialogKind
@@ -21,11 +23,18 @@ type DialogRequest = {
   resolve: (value: boolean | string | null) => void
 }
 
+type ToastItem = {
+  id: number
+  message: string
+  tone: ToastTone
+}
+
 type DialogContextType = {
   alert: (
     message: string,
     options?: { title?: string; confirmText?: string; danger?: boolean },
   ) => Promise<void>
+  toast: (message: string, options?: { tone?: ToastTone }) => void
   confirm: (
     message: string,
     options?: {
@@ -51,7 +60,9 @@ const DialogContext = createContext<DialogContextType | null>(null)
 
 export function DialogProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<DialogRequest[]>([])
+  const [toasts, setToasts] = useState<ToastItem[]>([])
   const [promptValue, setPromptValue] = useState('')
+  const [toastSeed, setToastSeed] = useState(1)
 
   const current = queue[0] || null
 
@@ -64,19 +75,36 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
     setPromptValue('')
   }, [])
 
+  const pushToast = useCallback((message: string, tone: ToastTone = 'info') => {
+    setToastSeed(prev => {
+      const id = prev
+      setToasts(items => [...items, { id, message, tone }])
+      return prev + 1
+    })
+  }, [])
+
+  const removeToast = useCallback((id: number) => {
+    setToasts(items => items.filter(item => item.id !== id))
+  }, [])
+
+  useEffect(() => {
+    if (toasts.length === 0) return
+    const timers = toasts.map(item =>
+      window.setTimeout(() => removeToast(item.id), 2600),
+    )
+    return () => timers.forEach(timer => window.clearTimeout(timer))
+  }, [toasts, removeToast])
+
   const api = useMemo<DialogContextType>(
     () => ({
       alert: (message, options) =>
         new Promise<void>(resolve => {
-          push({
-            kind: 'alert',
-            title: options?.title || '提示',
-            message,
-            confirmText: options?.confirmText || '知道了',
-            danger: options?.danger || false,
-            resolve: () => resolve(),
-          })
+          pushToast(message, options?.danger ? 'error' : 'info')
+          resolve()
         }),
+      toast: (message, options) => {
+        pushToast(message, options?.tone || 'info')
+      },
       confirm: (message, options) =>
         new Promise<boolean>(resolve => {
           push({
@@ -103,10 +131,10 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
           })
         }),
     }),
-    [push],
+    [push, pushToast],
   )
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (current?.kind === 'prompt') {
       setPromptValue(current.defaultValue || '')
     }
@@ -114,19 +142,13 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
 
   const handleCancel = () => {
     if (!current) return
-    if (current.kind === 'confirm' || current.kind === 'prompt') {
-      current.resolve(null)
-    } else {
-      current.resolve(false)
-    }
+    current.resolve(null)
     closeCurrent()
   }
 
   const handleConfirm = () => {
     if (!current) return
-    if (current.kind === 'alert') {
-      current.resolve(true)
-    } else if (current.kind === 'confirm') {
+    if (current.kind === 'confirm') {
       current.resolve(true)
     } else {
       current.resolve(promptValue.trim() ? promptValue : '')
@@ -137,17 +159,28 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   return (
     <DialogContext.Provider value={api}>
       {children}
-      {current && (
-        <div className='fixed inset-0 z-1000 flex items-center justify-center p-4'>
+      <div className='fixed top-4 right-4 z-1000 flex w-[min(90vw,22rem)] flex-col gap-2 pointer-events-none'>
+        {toasts.map(toast => (
           <div
-            className='absolute inset-0 bg-gray-900/40 backdrop-blur-sm'
-            onClick={handleCancel}
-          />
-          <div className='relative w-full max-w-sm bg-white rounded-2xl border border-gray-100 shadow-2xl p-5'>
-            <h3 className='text-lg font-bold text-gray-900 mb-2'>
+            key={toast.id}
+            className={`pointer-events-auto rounded-xl border px-3 py-2 text-sm font-medium shadow-lg backdrop-blur-sm ${
+              toast.tone === 'success'
+                ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700'
+                : toast.tone === 'error'
+                  ? 'border-rose-200 bg-rose-50/95 text-rose-700'
+                  : 'border-gray-200 bg-white/95 text-gray-700'
+            }`}>
+            {toast.message}
+          </div>
+        ))}
+      </div>
+      {current && (
+        <div className='fixed top-4 right-4 z-1000 w-[min(92vw,24rem)]'>
+          <div className='rounded-2xl border border-gray-200 bg-white shadow-xl p-4'>
+            <h3 className='text-base font-bold text-gray-900 mb-1.5'>
               {current.title}
             </h3>
-            <p className='text-sm text-gray-600 leading-relaxed whitespace-pre-wrap mb-4'>
+            <p className='text-sm text-gray-600 leading-relaxed whitespace-pre-wrap mb-3'>
               {current.message}
             </p>
 
@@ -165,16 +198,14 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
             )}
 
             <div className='flex justify-end gap-2'>
-              {current.kind !== 'alert' && (
-                <button
-                  onClick={handleCancel}
-                  className='px-4 py-2 rounded-xl bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors'>
-                  {current.cancelText || '取消'}
-                </button>
-              )}
+              <button
+                onClick={handleCancel}
+                className='px-3.5 py-1.5 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors'>
+                {current.cancelText || '取消'}
+              </button>
               <button
                 onClick={handleConfirm}
-                className={`px-4 py-2 rounded-xl text-white text-sm font-medium transition-colors ${
+                className={`px-3.5 py-1.5 rounded-lg text-white text-sm font-medium transition-colors ${
                   current.danger
                     ? 'bg-red-600 hover:bg-red-700'
                     : 'bg-indigo-600 hover:bg-indigo-700'

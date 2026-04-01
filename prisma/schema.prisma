@@ -32,7 +32,6 @@ model Category {
 // 3. 课程和字幕表保持不变
 model Lesson {
   id         String     @id @default(uuid())
-  lessonNum  String
   title      String
   audioFile  String
   categoryId String
@@ -72,17 +71,51 @@ model Vocabulary {
   id   String @id @default(cuid())
   word String // 选中的生词，例如 "コミュニケーション"
 
-  // 🌟 1. 核心解耦字段：请务必加上这三个，并且带上 `?` (可选)
-  sourceType      SourceType
-  sourceId        String
-  contextSentence String
-  groupName       String?
-  pronunciation   String?
-  pronunciations  String?
-  partOfSpeech    String?
-  partsOfSpeech   String?
-  meanings        String?
-  createdAt       DateTime   @default(now())
+  // 🌟 核心来源字段：记录该词最初收录时的来源
+  sourceType     SourceType
+  sourceId       String
+  groupName      String?
+  pronunciations String?
+  partsOfSpeech  String?
+  meanings       String?
+  folderId       String?
+  folder         VocabularyFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  createdAt      DateTime   @default(now())
+  sentenceLinks  VocabularySentenceLink[]
+}
+
+model VocabularyFolder {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  vocabularies Vocabulary[]
+}
+
+model VocabularySentence {
+  id             String                  @id @default(cuid())
+  text           String
+  normalizedText String
+  source         String
+  sourceUrl      String
+  sourceType     SourceType?
+  sourceId       String?
+  createdAt      DateTime                @default(now())
+  links          VocabularySentenceLink[]
+
+  @@unique([normalizedText, sourceUrl])
+}
+
+model VocabularySentenceLink {
+  id           String             @id @default(cuid())
+  vocabularyId String
+  sentenceId   String
+  meaningIndex Int?
+  posTags      String?
+  createdAt    DateTime           @default(now())
+  vocabulary   Vocabulary         @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  sentence     VocabularySentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+
+  @@unique([vocabularyId, sentenceId])
 }
 
 model SentenceReview {

@@ -19,6 +19,7 @@ import {
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/japaneseRuby'
+import { getPosOptions, inferContextualPos } from '@/utils/posTagger'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -30,7 +31,6 @@ type DialogueItem = {
 
 type PlayerLesson = {
   id: string
-  lessonNum: string
   title: string
   audioFile: string
   dialogue: DialogueItem[]
@@ -252,8 +252,13 @@ export default function AudioPlayer({
           isTop,
         })
         const existingMeta = localVocabularyMetaMap[text]
+        const inferredPos = inferContextualPos(
+          text,
+          item.text,
+          existingMeta?.partsOfSpeech || [],
+        )
         setTooltipPronunciation((existingMeta?.pronunciations || []).join('\n'))
-        setTooltipPartOfSpeech((existingMeta?.partsOfSpeech || []).join('\n'))
+        setTooltipPartOfSpeech(inferredPos.join('\n'))
         setTooltipMeaning((existingMeta?.meanings || []).join('\n'))
         setSaveWithPronunciation(true)
         setSaveWithMeaning(true)
@@ -472,6 +477,11 @@ export default function AudioPlayer({
           onSaveWithPronunciationChange={setSaveWithPronunciation}
           partOfSpeechValue={tooltipPartOfSpeech}
           onPartOfSpeechChange={setTooltipPartOfSpeech}
+          partOfSpeechOptions={
+            activeTooltip
+              ? getPosOptions(activeTooltip.word, activeTooltip.contextSentence)
+              : []
+          }
           meaningValue={tooltipMeaning}
           saveWithMeaning={saveWithMeaning}
           onMeaningChange={setTooltipMeaning}
@@ -570,37 +580,36 @@ export default function AudioPlayer({
       </div>
 
       <div className='mx-auto w-full max-w-5xl px-4 py-4 md:px-6 md:py-5'>
-        {showMeaning && (
+        {activeSentenceEntries.length > 0 && (
           <div className='mb-4 rounded-2xl border border-gray-200 bg-white p-3 md:p-4 shadow-sm'>
             <div className='mb-2 flex items-center justify-between'>
               <h2 className='text-sm font-bold text-gray-800'>
-                词条释义匹配区
+                词条区
               </h2>
               <span className='text-[11px] text-gray-400'>
                 {activeId ? `当前句：${activeSentenceNo}` : '先点击句子'}
               </span>
             </div>
-            {activeSentenceEntries.length > 0 ? (
-              <WordMetaPanel
-                entries={activeSentenceEntries}
-                showPronunciation={showPronunciation}
-                showMeaning={showMeaning}
-                enableMeaningMatch
-                matchedMeaningMap={meaningMatchBySentence[activeId || 0] || {}}
-                onMatchedMeaningChange={(word, meaningIndex) => {
-                  if (!activeId) return
-                  setMeaningMatchBySentence(prev => ({
-                    ...prev,
-                    [activeId]: {
-                      ...(prev[activeId] || {}),
-                      [word]: meaningIndex,
-                    },
-                  }))
-                }}
-              />
-            ) : (
-              <p className='text-xs text-gray-400'>该句暂无带释义词条。</p>
-            )}
+            <WordMetaPanel
+              entries={activeSentenceEntries}
+              showPronunciation={showPronunciation}
+              showMeaning={showMeaning}
+              contextSentence={
+                lesson.dialogue.find(item => item.id === activeId)?.text || ''
+              }
+              enableMeaningMatch={showMeaning}
+              matchedMeaningMap={meaningMatchBySentence[activeId || 0] || {}}
+              onMatchedMeaningChange={(word, meaningIndex) => {
+                if (!activeId) return
+                setMeaningMatchBySentence(prev => ({
+                  ...prev,
+                  [activeId]: {
+                    ...(prev[activeId] || {}),
+                    [word]: meaningIndex,
+                  },
+                }))
+              }}
+            />
           </div>
         )}
         <div className='space-y-3 pb-44 md:pb-52'>

@@ -15,6 +15,8 @@ import {
   useShowMeaning,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
+import { inferContextualPos } from '@/utils/posTagger'
+import { getPosOptions } from '@/utils/posTagger'
 
 const MOBILE_COLLAPSED_HEIGHT = 72
 const MOBILE_MIN_PANEL_HEIGHT = 22
@@ -275,7 +277,11 @@ export default function ArticleReaderUI({
       })
       const existingMeta = localVocabularyMetaMap[text]
       const pronList = existingMeta?.pronunciations || []
-      const partOfSpeechList = existingMeta?.partsOfSpeech || []
+      const partOfSpeechList = inferContextualPos(
+        text,
+        pureContextSentence,
+        existingMeta?.partsOfSpeech || [],
+      )
       const meaningList = existingMeta?.meanings || []
       setTooltipPronunciation(pronList.join('\n'))
       setTooltipPartOfSpeech(partOfSpeechList.join('\n'))
@@ -502,6 +508,11 @@ export default function ArticleReaderUI({
             onSaveWithPronunciationChange={setSaveWithPronunciation}
             partOfSpeechValue={tooltipPartOfSpeech}
             onPartOfSpeechChange={setTooltipPartOfSpeech}
+            partOfSpeechOptions={
+              activeTooltip
+                ? getPosOptions(activeTooltip.word, activeTooltip.contextSentence)
+                : []
+            }
             meaningValue={tooltipMeaning}
             saveWithMeaning={saveWithMeaning}
             onMeaningChange={setTooltipMeaning}
@@ -535,6 +546,11 @@ export default function ArticleReaderUI({
           onSaveWithPronunciationChange={setSaveWithPronunciation}
           partOfSpeechValue={tooltipPartOfSpeech}
           onPartOfSpeechChange={setTooltipPartOfSpeech}
+          partOfSpeechOptions={
+            activeTooltip
+              ? getPosOptions(activeTooltip.word, activeTooltip.contextSentence)
+              : []
+          }
           meaningValue={tooltipMeaning}
           saveWithMeaning={saveWithMeaning}
           onMeaningChange={setTooltipMeaning}

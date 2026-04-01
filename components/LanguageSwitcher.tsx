@@ -41,7 +41,7 @@ export default function LanguageSwitcher() {
 
   return (
     // 🌟 核心：改成 relative inline-block，让它规规矩矩地待在正常的布局流中！
-    <div className='relative inline-block' ref={dropdownRef}>
+    <div className='relative z-[100] inline-block' ref={dropdownRef}>
       {/* 主按钮：去掉了厚重的毛玻璃背景，改为极简的悬停变色，完美融入 Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -65,7 +65,7 @@ export default function LanguageSwitcher() {
 
       {/* 🌟 下拉菜单：绝对定位在按钮正下方，自带优雅进入动画 */}
       {isOpen && (
-        <div className='absolute right-0 top-full mt-2 w-36 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200'>
+        <div className='absolute right-0 top-full mt-2 w-36 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-[120] animate-in fade-in slide-in-from-top-2 duration-200'>
           <div className='flex flex-col gap-1'>
             {languages.map(l => (
               <button
