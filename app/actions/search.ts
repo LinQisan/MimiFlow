@@ -1,13 +1,7 @@
 // app/actions/search.ts
 'use server'
 
-import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
-
-const adapter = new PrismaLibSql({
-  url: process.env.DATABASE_URL || 'file:./prisma/dev.db',
-})
-const prisma = new PrismaClient({ adapter })
+import prisma from '@/lib/prisma'
 
 export async function getMoreExamples(word: string, excludeDialogueId: number) {
   try {

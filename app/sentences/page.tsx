@@ -7,9 +7,26 @@ import {
   getAllReviewSentences,
   removeSentenceFromReview,
 } from '@/app/actions/fsrs'
+import { useDialog } from '@/context/DialogContext'
+
+type SentenceItem = {
+  id: string
+  reps: number
+  stability: number
+  dialogue?: {
+    text: string
+    start: number
+    end: number
+    lesson: {
+      title: string
+      audioFile: string
+    }
+  }
+}
 
 export default function SentencesManagePage() {
-  const [sentences, setSentences] = useState<any[]>([])
+  const dialog = useDialog()
+  const [sentences, setSentences] = useState<SentenceItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -26,9 +43,10 @@ export default function SentencesManagePage() {
     fetchAll()
   }, [])
 
-  const handlePlay = (item: any) => {
+  const handlePlay = (item: SentenceItem) => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !item.dialogue) return
+    const dialogue = item.dialogue
 
     if (playingId === item.id) {
       audio.pause()
@@ -36,13 +54,13 @@ export default function SentencesManagePage() {
       return
     }
 
-    audio.src = item.dialogue.lesson.audioFile
-    audio.currentTime = item.dialogue.start
+    audio.src = dialogue.lesson.audioFile
+    audio.currentTime = dialogue.start
     audio.play()
     setPlayingId(item.id)
 
     const handleTimeUpdate = () => {
-      if (audio.currentTime >= item.dialogue.end) {
+      if (audio.currentTime >= dialogue.end) {
         audio.pause()
         setPlayingId(null)
         audio.removeEventListener('timeupdate', handleTimeUpdate)
@@ -58,7 +76,7 @@ export default function SentencesManagePage() {
     if (res.success) {
       setSentences(prev => prev.filter(s => s.id !== id))
     } else {
-      alert('移除失败')
+      await dialog.alert('移除失败')
     }
 
     setDeletingId(null)
@@ -99,12 +117,6 @@ export default function SentencesManagePage() {
     <main className='min-h-screen bg-gray-50 p-4 md:p-8'>
       <audio ref={audioRef} />
       <div className='max-w-4xl mx-auto mt-6'>
-        <Link
-          href='/'
-          className='inline-flex items-center text-sm text-gray-500 hover:text-indigo-600 transition-colors mb-6'>
-          &larr; 返回控制台
-        </Link>
-
         <div className='mb-8 flex justify-between items-end'>
           <div>
             <h1 className='text-3xl font-bold text-gray-800 tracking-tight'>
@@ -165,11 +177,11 @@ export default function SentencesManagePage() {
                 {/* 🌟 2. 加上 min-w-0 防止 flex 撑破布局 */}
                 <div className='flex-1 min-w-0'>
                   <h3 className='text-lg font-medium text-gray-800 leading-relaxed mb-2'>
-                    {item.dialogue.text}
+                    {item.dialogue?.text || '原句内容缺失'}
                   </h3>
                   <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-400'>
                     <div className='truncate max-w-50'>
-                      来源: {item.dialogue.lesson.title}
+                      来源: {item.dialogue?.lesson.title || '未知来源'}
                     </div>
 
                     {/* 右侧：流利度指示器 */}

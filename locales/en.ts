@@ -1,5 +1,24 @@
 // locales/en.ts
 export default {
+  nav: {
+    home: 'Home',
+    articles: 'Reading',
+    quizzes: 'Quiz',
+    review: 'Review',
+    sentences: 'Sentences',
+    vocabulary: 'Vocab',
+    admin: 'Admin',
+    settings: 'Settings',
+    menu: 'Menu',
+    learn: 'Learn',
+    system: 'System',
+  },
+  settings: {
+    title: 'Settings',
+    language: 'Language',
+    languageDesc: 'Choose UI language',
+    saved: 'Saved',
+  },
   home: {
     admin: 'Admin Panel',
     dashboard: 'Learning Dashboard',
@@ -14,6 +33,7 @@ export default {
     vocabDesc: 'Memorize with original context',
     totalVocab: 'saved words',
     materials: 'Listening & Shadowing Materials',
+    skillsZone: 'Focus',
   },
   player: {
     blindMode: 'Blind Mode',

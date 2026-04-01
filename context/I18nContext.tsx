@@ -8,7 +8,7 @@ import ja from '@/locales/ja'
 // 聚合字典
 const dictionaries: Record<string, any> = { zh, en, ja }
 
-type Language = 'zh' | 'en' | 'ja'
+export type Language = 'zh' | 'en' | 'ja'
 
 interface I18nContextType {
   lang: Language

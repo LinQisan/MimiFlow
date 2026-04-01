@@ -1,10 +1,29 @@
 // locales/zh.ts
 export default {
+  nav: {
+    home: '主页',
+    articles: '阅读',
+    quizzes: '刷题',
+    review: '复习',
+    sentences: '句库',
+    vocabulary: '生词',
+    admin: '后台',
+    settings: '设置',
+    menu: '菜单',
+    learn: '学习',
+    system: '系统',
+  },
+  settings: {
+    title: '设置',
+    language: '语言',
+    languageDesc: '选择界面显示语言',
+    saved: '已保存',
+  },
   home: {
     admin: '管理后台',
     dashboard: '学习仪表盘',
     startReview: '开始今日跟读',
-    fsrsDesc: 'FSRS 肌肉记忆算法驱动 · 沉浸式口语训练',
+    fsrsDesc: 'FSRS 算法驱动沉浸式口语训练',
     dueSentences: '句待练',
     enterFlow: '进入心流',
     sentenceLib: '智能句库',
@@ -14,12 +33,14 @@ export default {
     vocabDesc: '结合原声语境记忆',
     totalVocab: '个已存生词',
     materials: '听力与跟读教材',
+    skillsZone: '专项',
   },
   player: {
     blindMode: '盲听模式',
-    saveWord: '生词',
     saving: '保存中',
     saved: '已收藏',
     loop: '单句复读',
+    saveWord: '收藏',
+    already_exists: '已在生词本',
   },
 }

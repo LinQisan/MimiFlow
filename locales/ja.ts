@@ -1,4 +1,23 @@
 export default {
+  nav: {
+    home: 'ホーム',
+    articles: '読解',
+    quizzes: '問題',
+    review: '復習',
+    sentences: '文庫',
+    vocabulary: '単語',
+    admin: '管理',
+    settings: '設定',
+    menu: 'メニュー',
+    learn: '学習',
+    system: 'システム',
+  },
+  settings: {
+    title: '設定',
+    language: '言語',
+    languageDesc: '表示言語を選択',
+    saved: '保存済み',
+  },
   home: {
     admin: '管理画面',
     dashboard: '学習ダッシュボード',
@@ -13,5 +32,6 @@ export default {
     vocabDesc: 'ネイティブの音声コンテキストで記憶',
     totalVocab: '保存済み単語',
     materials: 'リスニング＆シャドーイング教材',
+    skillsZone: '強化',
   },
 }

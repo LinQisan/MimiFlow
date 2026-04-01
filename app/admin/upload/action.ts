@@ -1,11 +1,7 @@
 // app/admin/upload/actions.ts
 'use server'
 
-import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
-
-const adapter = new PrismaLibSql({ url: process.env.DATABASE_URL! })
-const prisma = new PrismaClient({ adapter })
+import prisma from '@/lib/prisma'
 
 // ================== 核心解析逻辑 (保持不变) ==================
 

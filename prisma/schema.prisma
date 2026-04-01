@@ -18,12 +18,15 @@ model Level {
 
 // 🌟 2. 修改：具体试卷表 (如 25年7月真题)
 model Category {
-  id          String   @id // 例如 "N1_202507"
+  id          String    @id // 例如 "N1_202507"
   levelId     String // 记录它属于哪个大模块
-  level       Level    @relation(fields: [levelId], references: [id])
+  level       Level     @relation(fields: [levelId], references: [id])
   name        String // 例如 "2025年7月 N1真题"
   description String? // 👈 试卷自己的单独描述！
   lessons     Lesson[]
+  articles    Article[]
+  quizzes     Quiz[]
+  sortOrder   Int       @default(0)
 }
 
 // 3. 课程和字幕表保持不变
@@ -35,47 +38,155 @@ model Lesson {
   categoryId String
   category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   dialogues  Dialogue[]
+  sortOrder  Int        @default(0)
 }
 
 model Dialogue {
-  id             Int             @id @default(autoincrement())
-  sequenceId     Int
-  text           String
-  start          Float
-  end            Float
-  lessonId       String
-  lesson         Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  vocabularies   Vocabulary[]
-  sentenceReview SentenceReview?
+  id         Int    @id @default(autoincrement())
+  sequenceId Int
+  text       String
+  start      Float
+  end        Float
+  lessonId   String
+  lesson     Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+}
+
+// 🌟 核心枚举：定义语料的来源类型
+enum SourceType {
+  AUDIO_DIALOGUE // 来自听力跟读
+  ARTICLE_TEXT // 来自阅读文章
+  QUIZ_QUESTION // 来自选择题
+}
+
+// 题目类型枚举
+enum QuestionType {
+  PRONUNCIATION // 读音题 (例如：汉字选假名)
+  FILL_BLANK // 填空题 (例如：选词填空)
+  GRAMMAR // 语法题
+  TRANSLATION // 翻译题
+  SORTING
+  READING_COMPREHENSION
 }
 
 model Vocabulary {
   id   String @id @default(cuid())
   word String // 选中的生词，例如 "コミュニケーション"
 
-  // 🌟 核心：直接关联到具体的句子
-  dialogueId Int
-  dialogue   Dialogue @relation(fields: [dialogueId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
+  // 🌟 1. 核心解耦字段：请务必加上这三个，并且带上 `?` (可选)
+  sourceType      SourceType
+  sourceId        String
+  contextSentence String
+  groupName       String?
+  pronunciation   String?
+  pronunciations  String?
+  partOfSpeech    String?
+  partsOfSpeech   String?
+  meanings        String?
+  createdAt       DateTime   @default(now())
 }
 
 model SentenceReview {
-  id         String   @id @default(cuid())
-  dialogueId Int      @unique
-  dialogue   Dialogue @relation(fields: [dialogueId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
 
+  text           String
+  sourceType     SourceType
+  sourceId       String
   // FSRS 核心算法字段 (必须完全对齐 ts-fsrs 的 Card 类型)
-  due            DateTime  @default(now())
-  state          Int       @default(0)
-  stability      Float     @default(0)
-  difficulty     Float     @default(0)
-  elapsed_days   Int       @default(0)
-  scheduled_days Int       @default(0)
-  reps           Int       @default(0)
-  lapses         Int       @default(0)
-  learning_steps Int       @default(0) // 记录当前处于短时记忆的第几步
+  due            DateTime   @default(now())
+  state          Int        @default(0)
+  stability      Float      @default(0)
+  difficulty     Float      @default(0)
+  elapsed_days   Int        @default(0)
+  scheduled_days Int        @default(0)
+  reps           Int        @default(0)
+  lapses         Int        @default(0)
+  learning_steps Int        @default(0) // 记录当前处于短时记忆的第几步
   last_review    DateTime? // 记录上一次复习的精确时间
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+// 📖 文章主表
+model Article {
+  id          String  @id @default(cuid())
+  title       String
+  description String? // 文章简介或背景
+
+  // 🌟 核心优化：直接用一个长文本字段存整篇文章！
+  content String // 如果你用的是 MySQL/PostgreSQL，建议加上 @db.Text 防止超长截断
+
+  categoryId String
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  questions Question[]
+  createdAt DateTime   @default(now())
+  sortOrder Int        @default(0)
+}
+
+// 📝 题库集 (例如："N1真题 2023年7月 词汇部分")
+model Quiz {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  categoryId String
+  category   Category? @relation(fields: [categoryId], references: [id])
+
+  createdAt DateTime   @default(now())
+  questions Question[]
+  sortOrder Int        @default(0)
+}
+
+// 📝 独立题目表
+model Question {
+  id     String  @id @default(cuid())
+  quizId String?
+  quiz   Quiz?   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+
+  questionType QuestionType // 题型：读音、填空等
+
+  // 💡 核心设计：题目的完整语境句子 (用户可以直接收藏这整句话)
+  contextSentence String
+
+  // 特殊字段：如果是读音题，这里存那个被画线的词 (例如 "合宿")
+  targetWord String?
+
+  // 题干提示 (例如："划线部分的读音是？"，可以为空)
+  prompt String?
+
+  options QuestionOption[] // 选项
+
+  // 💡 绝佳体验：题目解析 (用户做完题后展示，里面也可以点词成金！)
+  explanation String?
+
+  order    Int // 题目序号
+  attempts QuestionAttempt[]
+
+  article   Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  articleId String?
+}
+
+// 📝 题目选项表
+model QuestionOption {
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  text      String // 选项文本
+  isCorrect Boolean @default(false) // 是否为正确答案
+}
+
+model QuestionAttempt {
+  id         String   @id @default(uuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  isCorrect   Boolean // 用户是否做对
+  timeSpentMs Int // 这道题思考/停留的耗时（毫秒）
+
+  createdAt DateTime @default(now())
+
+  // 💡 未来如果你加了用户登录系统，可以把下面两行取消注释，绑定到具体用户
+  // userId      String?
+  // user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

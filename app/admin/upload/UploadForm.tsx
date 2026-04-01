@@ -1,8 +1,94 @@
-// app/admin/upload/UploadForm.tsx
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { uploadAssAndSaveData } from './action'
+import { useDialog } from '@/context/DialogContext'
+
+// ==========================================
+// 🌟 核心：手写的高级自定义下拉菜单组件
+// ==========================================
+function CustomDropdown({
+  value,
+  onChange,
+  options,
+  placeholder,
+  icon,
+}: {
+  value: string
+  onChange: (val: string) => void
+  options: { value: string; label: string }[]
+  placeholder: string
+  icon?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // 点击外部自动关闭
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setIsOpen(false)
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const selectedLabel =
+    options.find(o => o.value === value)?.label || placeholder
+
+  return (
+    <div className='relative w-full' ref={ref}>
+      <div
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full p-4 bg-gray-50 border rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all cursor-pointer flex justify-between items-center
+          ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-400/20 bg-white' : 'border-gray-200 hover:bg-white'}
+        `}>
+        <span
+          className={value ? 'text-gray-800 truncate pr-4' : 'text-gray-400'}>
+          {icon && <span className='mr-2'>{icon}</span>}
+          {selectedLabel}
+        </span>
+        <svg
+          className={`w-5 h-5 text-gray-400 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`}
+          fill='none'
+          stroke='currentColor'
+          viewBox='0 0 24 24'>
+          <path
+            strokeLinecap='round'
+            strokeLinejoin='round'
+            strokeWidth={2.5}
+            d='M19 9l-7 7-7-7'
+          />
+        </svg>
+      </div>
+
+      {isOpen && (
+        <div className='absolute z-50 w-full mt-2 bg-white border border-gray-100 rounded-2xl shadow-xl max-h-64 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 py-2'>
+          {options.length === 0 ? (
+            <div className='px-4 py-3 text-sm text-gray-400 text-center'>
+              暂无选项
+            </div>
+          ) : (
+            options.map(opt => (
+              <div
+                key={opt.value}
+                onClick={() => {
+                  onChange(opt.value)
+                  setIsOpen(false)
+                }}
+                className={`px-4 py-3 text-sm font-bold cursor-pointer transition-colors truncate
+                  ${value === opt.value ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600'}
+                `}>
+                {opt.label}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type Props = {
   levels: { id: string; title: string }[]
@@ -10,7 +96,6 @@ type Props = {
     id: string
     name: string
     level: { title: string }
-    // 🌟 1. 新增：接收从后端传来的最新题目完整信息
     lessons: {
       lessonNum: string
       title: string
@@ -19,27 +104,67 @@ type Props = {
   }[]
 }
 
+const autoIncrementString = (str: string) => {
+  if (!str) return ''
+  return str.replace(/(\d+)(?!.*\d)/, match => {
+    const num = parseInt(match, 10) + 1
+    return num.toString().padStart(match.length, '0')
+  })
+}
+
 export default function UploadForm({ levels, categories }: Props) {
+  const dialog = useDialog()
+  const router = useRouter()
+
   const [mode, setMode] = useState<'existing' | 'new'>(
     categories.length > 0 ? 'existing' : 'new',
   )
-  // 🌟 2. 新增状态：记录用户当前在下拉框里选了哪个旧分类
   const [selectedCategoryId, setSelectedCategoryId] = useState('')
+  const [selectedLevelId, setSelectedLevelId] = useState('') // 🌟 新增：记录大专区的选择
 
   const [status, setStatus] = useState<{
     type: 'idle' | 'loading' | 'success' | 'error'
     message: string
   }>({ type: 'idle', message: '' })
 
-  // 🌟 拖拽上传所需的新状态和引用
+  const [lessonNum, setLessonNum] = useState('')
+  const [title, setTitle] = useState('')
+  const [audioFile, setAudioFile] = useState('')
+  const [categoryName, setCategoryName] = useState('')
+  const [description, setDescription] = useState('')
+
   const [isDragging, setIsDragging] = useState(false)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    if (mode === 'existing' && selectedCategoryId) {
+      const targetCategory = categories.find(c => c.id === selectedCategoryId)
+      if (targetCategory && targetCategory.lessons.length > 0) {
+        const latest = targetCategory.lessons[0]
+        setLessonNum(autoIncrementString(latest.lessonNum))
+        setTitle(autoIncrementString(latest.title))
+        setAudioFile(autoIncrementString(latest.audioFile))
+      } else {
+        setLessonNum('1')
+        setTitle('')
+        setAudioFile('/audios/')
+      }
+    }
+  }, [mode, selectedCategoryId, categories])
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const formElement = event.currentTarget
 
+    // 🌟 手动拦截：因为我们把原生的 select 换成了自定义组件（隐藏的 input 不会自动触发浏览器的必填提示）
+    if (mode === 'existing' && !selectedCategoryId) {
+      setStatus({ type: 'error', message: '❌ 请选择要添加内容的试卷包！' })
+      return
+    }
+    if (mode === 'new' && !selectedLevelId) {
+      setStatus({ type: 'error', message: '❌ 请选择所属的大专区！' })
+      return
+    }
     if (!fileInputRef.current?.files?.length) {
       setStatus({ type: 'error', message: '❌ 请先选择或拖拽上传 .ass 文件！' })
       return
@@ -54,42 +179,40 @@ export default function UploadForm({ levels, categories }: Props) {
       type: result.success ? 'success' : 'error',
       message: result.message,
     })
+
     if (result.success) {
-      formElement.reset()
       setSelectedFileName(null)
-      // 提交成功后不要清空 selectedCategoryId，方便用户继续传下一集
+      if (mode === 'new') {
+        setCategoryName('')
+        setDescription('')
+      }
+      router.refresh()
     }
   }
-  // 🌟 拖拽事件处理函数
+
+  // ================= 拖拽逻辑 =================
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(true)
   }
-
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
   }
-
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
-
     const files = e.dataTransfer.files
     if (files && files.length > 0) {
       const droppedFile = files[0]
-      // 简单校验后缀名
       if (!droppedFile.name.endsWith('.ass')) {
-        alert('只能上传 .ass 格式的字幕文件哦！')
+        void dialog.alert('只能上传 .ass 格式的字幕文件。')
         return
       }
-
       setSelectedFileName(droppedFile.name)
-
-      // 🌟 核心魔法：把拖进来的文件，伪装成点击选择的文件，赋值给隐藏的 input
       if (fileInputRef.current) {
         const dataTransfer = new DataTransfer()
         dataTransfer.items.add(droppedFile)
@@ -97,82 +220,41 @@ export default function UploadForm({ levels, categories }: Props) {
       }
     }
   }
-
-  // 处理点击选择文件的变化
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFileName(e.target.files[0].name)
-    } else {
-      setSelectedFileName(null)
-    }
+    setSelectedFileName(
+      e.target.files && e.target.files.length > 0
+        ? e.target.files[0].name
+        : null,
+    )
   }
+  const handleZoneClick = () => fileInputRef.current?.click()
 
-  // 触发隐藏的输入框
-  const handleZoneClick = () => {
-    fileInputRef.current?.click()
-  }
-  // 🌟 3. 核心计算逻辑：动态生成 Placeholder
-  let dynamicLessonNumPlaceholder = '例: 1.1'
-  let dynamicTitlePlaceholder = '题目标题 (例: 問題1-01)' // 🌟 默认值
-  let dynamicAudioFilePlaceholder = '音频路径 (例: /audios/N2-01.mp3)' // 🌟 默认值
-
-  let lessonNumHint = ''
-
-  if (mode === 'existing' && selectedCategoryId) {
-    const targetCategory = categories.find(c => c.id === selectedCategoryId)
-    if (targetCategory && targetCategory.lessons.length > 0) {
-      const latestLesson = targetCategory.lessons[0] // 获取最新一条题目的完整对象
-      const {
-        lessonNum: latestNum,
-        title: latestTitle,
-        audioFile: latestAudio,
-      } = latestLesson
-
-      // 针对 LessonNum 的提示
-      dynamicLessonNumPlaceholder = `当前最新为: ${latestNum}，请顺延填写`
-      lessonNumHint = `(该组最新一题是: ${latestNum})`
-
-      // 🌟 针对 Title 的提示
-      dynamicTitlePlaceholder = `当前最新为: ${latestTitle}，建议沿用格式`
-
-      // 🌟 针对 AudioFile 的提示
-      // 对于音频路径，我们通常提示它所在的目录，方便用户快速定位
-      const audioDir = latestAudio.substring(
-        0,
-        latestAudio.lastIndexOf('/') + 1,
-      )
-      dynamicAudioFilePlaceholder = `当前最新为: ${latestAudio}，建议沿用目录 ${audioDir}`
-    } else {
-      dynamicLessonNumPlaceholder = '当前组为空，可填: 1.1'
-      // 如果为空，Title 和 AudioFile 保持默认
-    }
-  }
+  // 构建下拉菜单的数据选项
+  const categoryOptions = categories.map(c => ({
+    value: c.id,
+    label: `[${c.level.title}] ${c.name}`,
+  }))
+  const levelOptions = levels.map(l => ({ value: l.id, label: l.title }))
 
   return (
     <form
       onSubmit={handleSubmit}
-      style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+      className='flex flex-col gap-6 w-full max-w-4xl mx-auto pb-20 animate-in fade-in'>
       <input type='hidden' name='uploadMode' value={mode} />
 
-      <fieldset
-        style={{
-          border: '1px solid #ddd',
-          padding: '15px',
-          borderRadius: '8px',
-          backgroundColor: '#fafafa',
-        }}>
-        <legend style={{ fontWeight: 'bold' }}>1. 分类归属 (Category)</legend>
+      {/* ================= 1. 分类归属 ================= */}
+      <fieldset className='bg-white p-6 md:p-8 rounded-[32px] shadow-sm border border-gray-100 relative overflow-visible'>
+        <div className='absolute top-0 left-0 w-2 h-full bg-indigo-500 rounded-l-3xl'></div>
+        <legend className='text-xl font-black text-gray-800 mb-6 px-4 tracking-wide flex items-center gap-2'>
+          <span>📁</span> 分类归属 (Category)
+        </legend>
 
-        <div style={{ display: 'flex', gap: '20px', marginBottom: '15px' }}>
+        <div className='flex flex-wrap gap-4 mb-6 bg-gray-50/80 p-2.5 rounded-2xl border border-gray-100/50'>
           <label
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-            }}>
+            className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all ${mode === 'existing' ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:bg-gray-100'} ${categories.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>
             <input
               type='radio'
+              className='hidden'
               checked={mode === 'existing'}
               onChange={() => setMode('existing')}
               disabled={categories.length === 0}
@@ -180,135 +262,136 @@ export default function UploadForm({ levels, categories }: Props) {
             添加到已有试卷/单元组
           </label>
           <label
-            style={{
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-            }}>
+            className={`flex-1 cursor-pointer flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold transition-all ${mode === 'new' ? 'bg-white text-indigo-600 shadow-sm border border-gray-200/50' : 'text-gray-500 hover:bg-gray-100'}`}>
             <input
               type='radio'
+              className='hidden'
               checked={mode === 'new'}
               onChange={() => setMode('new')}
             />
-            创建全新的试卷/单元组
+            创建全新的试卷包
           </label>
         </div>
 
         {mode === 'existing' ? (
           <div>
-            <select
-              required
-              name='categoryId'
+            {/* 🌟 使用自定义下拉菜单 */}
+            <input type='hidden' name='categoryId' value={selectedCategoryId} />
+            <CustomDropdown
+              options={categoryOptions}
               value={selectedCategoryId}
-              onChange={e => setSelectedCategoryId(e.target.value)} // 🌟 监听用户选择
-              style={{ ...inputStyle, width: '100%' }}>
-              <option value='' disabled>
-                -- 请选择要添加题目的分类 --
-              </option>
-              {categories.map(c => (
-                <option key={c.id} value={c.id}>
-                  [{c.level.title}] {c.name} (ID: {c.id})
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedCategoryId}
+              placeholder='👇 请选择要将内容添加到哪个试卷包'
+              icon='📂'
+            />
           </div>
         ) : (
-          <div
-            style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', gap: '10px' }}>
+          <div className='flex flex-col gap-5'>
+            <input
+              type='hidden'
+              name='categoryId'
+              value={`auto_${Date.now()}`}
+            />
+
+            <div className='flex flex-col md:flex-row gap-5 z-20'>
               <input
                 required
-                name='categoryId'
-                placeholder='新ID (例: en_nce_1_u01)'
-                style={{ ...inputStyle, flex: 1 }}
+                name='categoryName'
+                value={categoryName}
+                onChange={e => setCategoryName(e.target.value)}
+                placeholder='试卷包名称 (例: N1听力 2023年7月)'
+                className='flex-[2] p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all'
               />
-              <select required name='level' style={inputStyle}>
-                <option value=''>- 选择大模块 -</option>
-                {levels.map(lvl => (
-                  <option key={lvl.id} value={lvl.id}>
-                    {lvl.title}
-                  </option>
-                ))}
-              </select>
+
+              {/* 🌟 使用自定义下拉菜单 */}
+              <div className='flex-[1]'>
+                <input type='hidden' name='level' value={selectedLevelId} />
+                <CustomDropdown
+                  options={levelOptions}
+                  value={selectedLevelId}
+                  onChange={setSelectedLevelId}
+                  placeholder='- 选择大专区 -'
+                  icon='🏷️'
+                />
+              </div>
             </div>
-            <input
-              required
-              name='categoryName'
-              placeholder='分类名称 (例: 新概念一册 单元1)'
-              style={{ ...inputStyle, width: '100%' }}
-            />
             <textarea
               name='description'
-              placeholder='分类描述 (选填)'
-              style={{ ...inputStyle, width: '100%', minHeight: '60px' }}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder='试卷包简介描述 (选填)'
+              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none transition-all min-h-[100px] resize-y custom-scrollbar'
             />
           </div>
         )}
       </fieldset>
 
-      <fieldset
-        style={{
-          border: '1px solid #ddd',
-          padding: '15px',
-          borderRadius: '8px',
-        }}>
-        <legend style={{ fontWeight: 'bold' }}>2. 题目信息 (Lesson)</legend>
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-          <div style={{ flex: '0 0 40%' }}>
+      {/* ================= 2. 题目信息 (带智能预填) ================= */}
+      <fieldset className='bg-white p-6 md:p-8 rounded-[32px] shadow-sm border border-gray-100 relative overflow-hidden'>
+        <div className='absolute top-0 left-0 w-2 h-full bg-emerald-400 rounded-l-3xl'></div>
+        <div className='flex justify-between items-center mb-6 px-4'>
+          <legend className='text-xl font-black text-gray-800 tracking-wide flex items-center gap-2'>
+            <span>🎧</span> 语料基础信息 (Lesson)
+          </legend>
+          {mode === 'existing' && selectedCategoryId && (
+            <span className='text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 flex items-center gap-1.5'>
+              <span className='animate-pulse'>✨</span> 已根据上集开启智能填充
+            </span>
+          )}
+        </div>
+
+        <div className='flex flex-col md:flex-row gap-5 mb-5 pl-2'>
+          <div className='w-full md:w-1/3 relative'>
+            <label className='text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 block'>
+              序号 (可不填/自动顺延)
+            </label>
+            {/* 🌟 核心修改：去掉了 required 属性，序号变为彻底选填 */}
+            <input
+              name='lessonNum'
+              value={lessonNum}
+              onChange={e => setLessonNum(e.target.value)}
+              placeholder='例: 1.1'
+              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
+            />
+          </div>
+          <div className='w-full md:w-2/3'>
+            <label className='text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 block'>
+              题目标题
+            </label>
             <input
               required
-              name='lessonNum'
-              placeholder={dynamicLessonNumPlaceholder}
-              style={{ ...inputStyle, width: '100%' }}
+              name='title'
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder='例: 問題1-01'
+              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
             />
-            {lessonNumHint && (
-              <div
-                style={{
-                  fontSize: '12px',
-                  color: '#666',
-                  marginTop: '4px',
-                  paddingLeft: '4px',
-                }}>
-                {lessonNumHint}
-              </div>
-            )}
           </div>
+        </div>
+
+        <div className='pl-2'>
+          <label className='text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 block'>
+            绑定的音频路径
+          </label>
           <input
             required
-            name='title'
-            placeholder={dynamicTitlePlaceholder} // 🌟 动态替换：应用智能提示
-            style={{ ...inputStyle, flex: 1, alignSelf: 'flex-start' }}
+            name='audioFile'
+            value={audioFile}
+            onChange={e => setAudioFile(e.target.value)}
+            placeholder='例: /audios/N2-01.mp3'
+            className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
           />
         </div>
-        <input
-          required
-          name='audioFile'
-          placeholder={dynamicAudioFilePlaceholder} // 🌟 动态替换：应用智能提示
-          style={{ ...inputStyle, width: '100%' }}
-        />
       </fieldset>
 
-      {/* 🌟 3. 全新的拖拽文件上传区 */}
+      {/* ================= 3. 拖拽上传区 ================= */}
       <div
         onClick={handleZoneClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        style={{
-          border: `2px dashed ${isDragging ? '#2563eb' : selectedFileName ? '#10b981' : '#ccc'}`,
-          padding: '30px 20px',
-          borderRadius: '8px',
-          textAlign: 'center',
-          backgroundColor: isDragging
-            ? '#eff6ff'
-            : selectedFileName
-              ? '#ecfdf5'
-              : '#fafafa',
-          cursor: 'pointer',
-          transition: 'all 0.2s ease',
-        }}>
-        {/* 隐藏真正的文件选择框 */}
+        className={`relative overflow-hidden flex flex-col items-center justify-center p-14 rounded-[32px] border-2 transition-all cursor-pointer 
+          ${isDragging ? 'border-indigo-400 bg-indigo-50/80 scale-[1.02]' : selectedFileName ? 'border-emerald-400 bg-emerald-50/80' : 'border-dashed border-gray-300 bg-white hover:bg-gray-50 hover:border-indigo-300'}`}>
         <input
           required
           type='file'
@@ -316,85 +399,86 @@ export default function UploadForm({ levels, categories }: Props) {
           accept='.ass'
           ref={fileInputRef}
           onChange={handleFileChange}
-          style={{ display: 'none' }}
+          className='hidden'
         />
 
         {selectedFileName ? (
-          <div style={{ color: '#059669', fontWeight: 'bold' }}>
-            <span
-              style={{
-                fontSize: '24px',
-                display: 'block',
-                marginBottom: '8px',
-              }}>
+          <div className='text-center animate-in zoom-in-95 duration-300'>
+            <div className='w-20 h-20 mx-auto mb-4 bg-white text-emerald-500 rounded-full flex items-center justify-center text-4xl shadow-md border border-emerald-100'>
               📄
-            </span>
-            已就绪: {selectedFileName}
-            <p
-              style={{
-                fontSize: '12px',
-                color: '#6b7280',
-                marginTop: '8px',
-                fontWeight: 'normal',
-              }}>
-              点击或拖拽可更换文件
-            </p>
+            </div>
+            <div className='text-emerald-700 font-black text-xl mb-1.5'>
+              字幕文件已就绪
+            </div>
+            <div className='text-sm font-bold text-emerald-600/70 mb-4'>
+              {selectedFileName}
+            </div>
+            <div className='text-xs text-emerald-500/60 font-bold bg-emerald-100/50 px-3 py-1 rounded-full inline-block'>
+              点击或拖拽可重新选择
+            </div>
           </div>
         ) : (
-          <div style={{ color: isDragging ? '#2563eb' : '#6b7280' }}>
-            <span
-              style={{
-                fontSize: '24px',
-                display: 'block',
-                marginBottom: '8px',
-              }}>
+          <div className='text-center'>
+            <div
+              className={`w-20 h-20 mx-auto mb-5 rounded-full flex items-center justify-center text-4xl shadow-sm transition-colors border ${isDragging ? 'bg-indigo-100 text-indigo-600 border-indigo-200' : 'bg-gray-50 text-gray-400 border-gray-100'}`}>
               ⬇️
-            </span>
-            <span
-              style={{
-                fontWeight: 'bold',
-                fontSize: '16px',
-                display: 'block',
-              }}>
+            </div>
+            <div
+              className={`font-black text-xl mb-2 transition-colors ${isDragging ? 'text-indigo-600' : 'text-gray-800'}`}>
               {isDragging
-                ? '松开鼠标即可放入'
+                ? '松开鼠标即可放入文件'
                 : '点击选择 或 将 .ass 文件拖拽到此处'}
-            </span>
+            </div>
+            <div className='text-sm font-bold text-gray-400'>
+              仅支持 Aegisub 生成的 .ass 格式
+            </div>
           </div>
         )}
       </div>
+
+      {/* ================= 4. 提交按钮与状态 ================= */}
       <button
         type='submit'
         disabled={status.type === 'loading'}
-        style={{
-          padding: '12px',
-          backgroundColor: status.type === 'loading' ? '#ccc' : '#0070f3',
-          color: 'white',
-          border: 'none',
-          borderRadius: '5px',
-          cursor: 'pointer',
-        }}>
-        {status.type === 'loading' ? '⏳ 处理中...' : '💾 解析并保存到数据库'}
+        className={`w-full py-5 rounded-2xl font-black text-xl transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3 mt-4
+          ${status.type === 'loading' ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-xl'}
+        `}>
+        {status.type === 'loading' ? (
+          <>
+            <svg
+              className='animate-spin h-6 w-6 text-gray-500'
+              viewBox='0 0 24 24'>
+              <circle
+                className='opacity-25'
+                cx='12'
+                cy='12'
+                r='10'
+                stroke='currentColor'
+                strokeWidth='4'
+                fill='none'></circle>
+              <path
+                className='opacity-75'
+                fill='currentColor'
+                d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
+            </svg>{' '}
+            正在深度解析并写入数据库...
+          </>
+        ) : (
+          '🚀 立即解析并上传'
+        )}
       </button>
 
       {status.message && (
         <div
-          style={{
-            marginTop: '10px',
-            padding: '15px',
-            borderRadius: '5px',
-            backgroundColor: status.type === 'success' ? '#e6fffa' : '#fff5f5',
-            color: status.type === 'success' ? '#2f855a' : '#c53030',
-          }}>
+          className={`p-5 rounded-2xl font-bold text-sm animate-in slide-in-from-bottom-4 flex items-center gap-3
+          ${status.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}
+        `}>
+          <span className='text-2xl'>
+            {status.type === 'success' ? '🎉' : '❌'}
+          </span>
           {status.message}
         </div>
       )}
     </form>
   )
-}
-
-const inputStyle = {
-  padding: '8px',
-  border: '1px solid #ccc',
-  borderRadius: '4px',
 }

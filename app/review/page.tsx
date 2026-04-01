@@ -1,17 +1,37 @@
 // app/review/page.tsx
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Rating } from 'ts-fsrs'
 import {
   getDueSentences,
   rateSentenceFluency,
   removeSentenceFromReview,
 } from '@/app/actions/fsrs'
+import { useDialog } from '@/context/DialogContext'
+
+type ReviewQueueItem = {
+  id: string
+  reps: number
+  dialogue?: {
+    text: string
+    start: number
+    end: number
+    lesson: {
+      audioFile: string
+    }
+  }
+  context?: {
+    prev: string | null
+    next: string | null
+    playStart: number
+    playEnd: number
+  }
+}
 
 export default function ReviewPage() {
-  const [queue, setQueue] = useState<any[]>([])
+  const dialog = useDialog()
+  const [queue, setQueue] = useState<ReviewQueueItem[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [isEvaluating, setIsEvaluating] = useState(false)
@@ -39,8 +59,9 @@ export default function ReviewPage() {
 
   const currentItem = queue[currentIndex]
 
-  const playAudio = async () => {
-    if (!audioRef.current || !currentItem) return
+  const playAudio = useCallback(async () => {
+    if (!audioRef.current || !currentItem?.dialogue || !currentItem.context)
+      return
     const audio = audioRef.current
 
     const targetSrc = currentItem.dialogue.lesson.audioFile
@@ -57,10 +78,10 @@ export default function ReviewPage() {
     try {
       await audio.play()
       setAutoplayFailed(false) // 播放成功，隐藏提示
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.warn('播放被浏览器拦截:', error)
       // 如果报错是 NotAllowedError，说明手机浏览器依然不给面子
-      if (error.name === 'NotAllowedError') {
+      if (error instanceof DOMException && error.name === 'NotAllowedError') {
         setAutoplayFailed(true)
       }
       return
@@ -74,7 +95,7 @@ export default function ReviewPage() {
     }
     audio.removeEventListener('timeupdate', handleTimeUpdate)
     audio.addEventListener('timeupdate', handleTimeUpdate)
-  }
+  }, [currentItem])
 
   // 🌟 新增 2：用户首次点击，解锁音频引擎
   const handleStartSession = () => {
@@ -89,7 +110,7 @@ export default function ReviewPage() {
       timer = setTimeout(playAudio, 300)
     }
     return () => clearTimeout(timer)
-  }, [currentItem, sessionStarted])
+  }, [currentItem, playAudio, sessionStarted])
 
   const handleRate = async (rating: Rating) => {
     if (isEvaluating) return
@@ -102,19 +123,24 @@ export default function ReviewPage() {
         setIsEvaluating(false)
       }, 300)
     } else {
-      alert('打分提交失败')
+      await dialog.alert('打分提交失败')
       setIsEvaluating(false)
     }
   }
 
   const handleRemove = async () => {
-    if (!confirm('确定要把这句话从复习库中移除吗？')) return
+    const shouldDelete = await dialog.confirm('确定要把这句话从复习库中移除吗？', {
+      title: '移除确认',
+      danger: true,
+      confirmText: '移除',
+    })
+    if (!shouldDelete) return
     setIsEvaluating(true)
     const res = await removeSentenceFromReview(currentItem.id)
     if (res.success) {
       setCurrentIndex(prev => prev + 1)
     } else {
-      alert('移除失败')
+      await dialog.alert('移除失败')
     }
     setIsEvaluating(false)
   }
@@ -136,11 +162,6 @@ export default function ReviewPage() {
         <p className='text-gray-500 mb-8'>
           你的口腔肌肉已经形成了新的记忆痕迹。
         </p>
-        <Link
-          href='/'
-          className='px-6 py-3 bg-indigo-600 text-white rounded-full font-medium hover:bg-indigo-700 transition shadow-lg'>
-          返回控制台
-        </Link>
       </div>
     )
   }
@@ -164,9 +185,6 @@ export default function ReviewPage() {
           </svg>
           点击开始训练
         </button>
-        <Link href='/' className='mt-8 text-gray-500 hover:text-gray-300'>
-          稍后再练
-        </Link>
         {/* 隐藏的 audio 标签，等待被唤醒 */}
         <audio ref={audioRef} playsInline />
       </div>
@@ -179,12 +197,7 @@ export default function ReviewPage() {
       <audio ref={audioRef} playsInline />{' '}
       {/* 加上 playsInline 防止 iOS 自动全屏弹出视频播放器 */}
       <div className='max-w-4xl mx-auto w-full flex justify-between items-center mb-8'>
-        <Link
-          href='/'
-          className='text-gray-400 hover:text-white transition-colors'>
-          &larr; 退出训练
-        </Link>
-        <div className='flex items-center gap-4'>
+        <div className='w-full flex justify-end items-center gap-4'>
           <div className='text-sm font-medium bg-gray-800 px-4 py-1.5 rounded-full text-indigo-300'>
             进度: {currentIndex + 1} / {queue.length}
           </div>
@@ -239,7 +252,7 @@ export default function ReviewPage() {
           )}
 
           <div className='flex flex-col gap-6 items-center'>
-            {currentItem.context.prev && (
+            {currentItem.context?.prev && (
               <p className='text-xl md:text-2xl text-gray-500 font-medium opacity-60'>
                 {currentItem.context.prev}
               </p>
@@ -247,10 +260,10 @@ export default function ReviewPage() {
 
             <h2
               className={`text-3xl md:text-5xl font-bold leading-tight md:leading-snug drop-shadow-md transition-colors ${autoplayFailed ? 'text-gray-400' : 'text-indigo-100'}`}>
-              {currentItem.dialogue.text}
+              {currentItem.dialogue?.text || '该句子数据缺失'}
             </h2>
 
-            {currentItem.context.next && (
+            {currentItem.context?.next && (
               <p className='text-xl md:text-2xl text-gray-500 font-medium opacity-60'>
                 {currentItem.context.next}
               </p>
