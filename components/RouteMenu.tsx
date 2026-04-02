@@ -41,6 +41,10 @@ export default function RouteMenu({
         label: t('nav.learn') || '学习',
         children: [
           { href: '/', label: t('nav.home'), shortLabel: '首' },
+          { href: '/game#today', label: '今日任务', shortLabel: '今' },
+          { href: '/game', label: t('nav.game') || '游戏', shortLabel: '游' },
+          { href: '/game/diaries', label: t('nav.diaries') || '日记', shortLabel: '记' },
+          { href: '/search', label: '搜索', shortLabel: '搜' },
           {
             href: '/sentences',
             label: t('nav.sentences'),
@@ -53,6 +57,8 @@ export default function RouteMenu({
           },
           { href: '/articles', label: t('nav.articles'), shortLabel: '读' },
           { href: '/quizzes', label: t('nav.quizzes'), shortLabel: '题' },
+          { href: '/review', label: t('nav.review') || '复习', shortLabel: '复' },
+          { href: '/retry', label: '错题回流', shortLabel: '错' },
         ],
       },
       {
@@ -73,8 +79,10 @@ export default function RouteMenu({
           { href: '/manage', label: '管理首页', shortLabel: '首' },
           { href: '/manage/level', label: '分类管理', shortLabel: '类' },
           { href: '/manage/upload', label: '语料录入', shortLabel: '录' },
+          { href: '/manage/import/anki', label: 'Anki导入', shortLabel: '导' },
           { href: '/manage/audio', label: '录音管理', shortLabel: '音' },
           { href: '/manage/vocabulary', label: '词库管理', shortLabel: '词' },
+          { href: '/manage/fsrs', label: 'FSRS面板', shortLabel: '算' },
         ],
       },
     ],

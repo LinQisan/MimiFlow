@@ -1,0 +1,3 @@
+ALTER TABLE "FSRSProfile" ADD COLUMN "lastEngineMode" TEXT NOT NULL DEFAULT 'custom';
+ALTER TABLE "FSRSProfile" ADD COLUMN "lastFallbackReason" TEXT;
+ALTER TABLE "FSRSProfile" ADD COLUMN "lastFallbackAt" DATETIME;

@@ -10,7 +10,7 @@ import {
   DragHandle,
   ActionInterceptor,
 } from '@/app/manage/level/DndSystem'
-import { updateSortOrder } from '@/app/actions/content'
+import { updateArticleWithQuestions, updateSortOrder } from '@/app/actions/content'
 import { useDialog } from '@/context/DialogContext'
 
 const splitIntoSentences = (text: string) => {
@@ -34,6 +34,7 @@ type ArticleQuestion = {
 }
 
 type EditableArticle = {
+  id?: string
   title?: string | null
   content?: string | null
   questions?: ArticleQuestion[]
@@ -184,10 +185,29 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
 
   const handleSaveArticle = async () => {
     setIsSaving(true)
-    setTimeout(() => {
+    const result = await updateArticleWithQuestions({
+      articleId: article.id || '',
+      title,
+      content,
+      questions: questions.map(question => ({
+        id: question.id,
+        questionType: question.questionType,
+        prompt: question.prompt,
+        contextSentence: question.contextSentence || question.prompt || '',
+        options: question.options.map(option => ({
+          id: option.id,
+          text: option.text,
+          isCorrect: option.isCorrect,
+        })),
+      })),
+    })
+    if (result.success) {
       dialog.toast('文章与题目已保存', { tone: 'success' })
-      setIsSaving(false)
-    }, 800)
+      router.refresh()
+    } else {
+      dialog.toast(result.message || '保存失败', { tone: 'error' })
+    }
+    setIsSaving(false)
   }
 
   return (

@@ -54,7 +54,7 @@ export default function ConfirmModal({
 
       {/* 弹窗主体 (带缩放弹出动画) */}
       <div
-        className={`bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden z-10 transform transition-all duration-300 ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
+        className={`ui-pop bg-white w-full max-w-sm overflow-hidden z-10 transform transition-all duration-300 ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
         <div className='p-6'>
           <div className='flex items-center gap-3 mb-4'>
             {/* 图标 */}
@@ -99,13 +99,13 @@ export default function ConfirmModal({
             <button
               onClick={onCancel}
               disabled={isLoading}
-              className='px-4 py-2 text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium transition-colors disabled:opacity-50'>
+              className='ui-btn disabled:opacity-50'>
               {cancelText}
             </button>
             <button
               onClick={onConfirm}
               disabled={isLoading}
-              className={`px-4 py-2 rounded-xl font-medium text-white flex items-center gap-2 transition-all shadow-sm ${
+              className={`ui-btn font-medium text-white ${
                 isDanger
                   ? 'bg-red-500 hover:bg-red-600 focus:ring-4 focus:ring-red-500/20'
                   : 'bg-indigo-600 hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-600/20'

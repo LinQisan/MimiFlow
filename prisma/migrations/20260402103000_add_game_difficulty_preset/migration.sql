@@ -1,0 +1,1 @@
+ALTER TABLE "GameProfile" ADD COLUMN "difficultyPreset" TEXT NOT NULL DEFAULT 'STANDARD';

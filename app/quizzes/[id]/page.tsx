@@ -57,7 +57,7 @@ export default async function QuizTakingPage({
   const vocabularyMetaMapByQuestion = relatedVocab.reduce<
     Record<string, Record<string, VocabularyMeta>>
   >((acc, item) => {
-    const meta = toVocabularyMeta(item)
+    const meta = toVocabularyMeta({ ...item, word: item.word })
     item.sentenceLinks.forEach(link => {
       const sourceId = link.sentence.sourceId || ''
       if (!sourceId) return

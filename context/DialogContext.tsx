@@ -6,6 +6,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 
@@ -62,7 +63,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<DialogRequest[]>([])
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [promptValue, setPromptValue] = useState('')
-  const [toastSeed, setToastSeed] = useState(1)
+  const toastSeedRef = useRef(1)
 
   const current = queue[0] || null
 
@@ -76,11 +77,9 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const pushToast = useCallback((message: string, tone: ToastTone = 'info') => {
-    setToastSeed(prev => {
-      const id = prev
-      setToasts(items => [...items, { id, message, tone }])
-      return prev + 1
-    })
+    const id = toastSeedRef.current
+    toastSeedRef.current += 1
+    setToasts(items => [...items, { id, message, tone }])
   }, [])
 
   const removeToast = useCallback((id: number) => {

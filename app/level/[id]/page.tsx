@@ -30,8 +30,8 @@ export default async function LevelPage({
   return (
     <main className='min-h-screen bg-gray-50 px-4 md:px-8 xl:px-10 py-6 md:py-8'>
       <div className='w-full max-w-7xl mx-auto'>
-        <header className='mb-8 md:mb-10'>
-          <h1 className='text-3xl md:text-4xl font-black mb-2 text-gray-900 tracking-tight'>
+        <header className='mb-8 border-b border-gray-200 pb-3 md:mb-10 md:pb-4'>
+          <h1 className='text-3xl md:text-4xl font-bold mb-2 text-gray-900 tracking-tight'>
             {levelData.title}
           </h1>
           {levelData.description && (
@@ -42,7 +42,7 @@ export default async function LevelPage({
         {levelData.categories.length > 0 ? (
           <CategoryAccordion lessonGroups={levelData.categories} />
         ) : (
-          <div className='text-center py-16 bg-white rounded-3xl border border-dashed border-gray-300 text-gray-500'>
+          <div className='text-center py-16 border-b border-dashed border-gray-300 text-gray-500'>
             该分类下暂时没有材料
           </div>
         )}

@@ -43,7 +43,7 @@ export default function DeleteArticleButton({
       triggerLabel='移除文章'
       pendingLabel='移除中...'
       confirmLabel='确认移除'
-      triggerClassName='whitespace-nowrap rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 hover:text-red-700 disabled:opacity-50'
+      triggerClassName='whitespace-nowrap border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 hover:text-red-700 disabled:opacity-50'
     />
   )
 }

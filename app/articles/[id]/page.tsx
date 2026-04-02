@@ -51,7 +51,7 @@ export default async function ArticlePage({
   const vocabularyMetaMap = vocabularyRows.reduce<
     Record<string, VocabularyMeta>
   >((acc, item) => {
-    const meta = toVocabularyMeta(item)
+    const meta = toVocabularyMeta({ ...item, word: item.word })
     acc[item.word] = meta
     if (meta.pronunciations[0]) pronunciationMap[item.word] = meta.pronunciations[0]
     return acc

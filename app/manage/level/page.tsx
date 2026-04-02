@@ -10,8 +10,8 @@ export default async function AdminLevelIndexPage() {
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl'>
-        <div className='mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:mb-6 md:p-6'>
-          <h1 className='text-xl font-black text-gray-900 md:text-3xl'>分类管理</h1>
+        <div className='mb-4 border-b border-gray-200 pb-4 md:mb-6 md:pb-6'>
+          <h1 className='text-2xl font-bold text-gray-900 md:text-3xl'>分类管理</h1>
           <p className='mt-2 text-xs text-gray-500 md:text-sm'>
             选择一个分类进入详情页，管理听力、阅读与题库内容。
           </p>
@@ -22,8 +22,8 @@ export default async function AdminLevelIndexPage() {
             <Link
               key={level.id}
               href={`/manage/level/${level.id}`}
-              className='block rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md md:p-5'>
-              <h2 className='text-lg font-bold text-gray-800'>{level.title}</h2>
+              className='block border-b border-gray-200 px-2 py-4 transition-colors hover:bg-gray-50 md:py-5'>
+              <h2 className='text-lg font-semibold text-gray-800'>{level.title}</h2>
               {level.description && (
                 <p className='text-sm text-gray-500 mt-2 line-clamp-2'>
                   {level.description}

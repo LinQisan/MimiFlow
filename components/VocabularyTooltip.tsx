@@ -205,7 +205,7 @@ export default function VocabularyTooltip({
         left: x,
         transform: isTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)',
       }}
-      className={`fixed z-100 w-[min(82vw,22rem)] rounded-xl border border-gray-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-300`}>
+      className={`fixed z-100 w-[min(82vw,22rem)] border border-gray-200 bg-white animate-in fade-in zoom-in-95 duration-300`}>
       <div className='border-b border-gray-100 px-3 py-2.5'>
         <div className='flex items-center justify-between gap-2'>
           <span className='max-w-[60%] truncate text-sm font-bold text-gray-900'>
@@ -221,7 +221,7 @@ export default function VocabularyTooltip({
         <button
           onClick={() => !saveBtnConfig.disabled && onSaveWord(word)}
           disabled={saveBtnConfig.disabled}
-          className={`flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold transition-colors duration-200 ${saveBtnConfig.bg}`}>
+          className={`flex w-full items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold transition-colors duration-200 ${saveBtnConfig.bg}`}>
           <SaveStatusIcon state={saveState} className='w-4 h-4' />
           {saveBtnConfig.text}
         </button>
@@ -256,10 +256,13 @@ export default function VocabularyTooltip({
             <textarea
               value={pronunciationValue}
               onChange={e => onPronunciationChange?.(e.currentTarget.value)}
-              placeholder='例如: にほんご\nˈlæŋɡwɪdʒ'
+              placeholder='例如: にん げん（或 にん|げん）\nˈlæŋɡwɪdʒ'
               rows={1}
               className='w-full resize-none rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100'
             />
+            <p className='text-[10px] text-gray-400'>
+              日语可用空格或 | 拆分读音（人間: にん げん），外来语一般整词填写
+            </p>
           </div>
         )}
 

@@ -1,4 +1,5 @@
 import { parseJsonStringList } from '@/utils/jsonList'
+import { sanitizePronunciations } from '@/utils/pronunciation'
 
 export type VocabularyMeta = {
   pronunciations: string[]
@@ -7,13 +8,17 @@ export type VocabularyMeta = {
 }
 
 type VocabularyMetaRow = {
+  word?: string | null
   pronunciations?: string | null
   partsOfSpeech?: string | null
   meanings?: string | null
 }
 
 export const toVocabularyMeta = (row: VocabularyMetaRow): VocabularyMeta => ({
-  pronunciations: parseJsonStringList(row.pronunciations),
+  pronunciations: sanitizePronunciations(
+    row.word || '',
+    parseJsonStringList(row.pronunciations),
+  ),
   partsOfSpeech: parseJsonStringList(row.partsOfSpeech),
   meanings: parseJsonStringList(row.meanings),
 })

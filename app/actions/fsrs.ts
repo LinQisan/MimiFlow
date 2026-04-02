@@ -1,20 +1,318 @@
-// app/actions/fsrs.ts
 'use server'
 
-import { fsrs, Rating, createEmptyCard, Card, State } from 'ts-fsrs'
+import {
+  Card,
+  Rating,
+  State,
+  checkParameters,
+  createEmptyCard,
+  default_w,
+  fsrs,
+} from 'ts-fsrs'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 
-const f = fsrs()
+const PROFILE_ID = 'default'
+const DAY_MS = 24 * 60 * 60 * 1000
+const FIT_INTERVAL_MS = 12 * 60 * 60 * 1000
+const FIT_LOOKBACK_DAYS = 180
+const FIT_MIN_EVENTS = 60
+const FIT_MIN_NEW_EVENTS = 24
 
-// ==========================================
-// 1. 获取今天需要复习的所有句子
-// ==========================================
+type FsrsParamSet = {
+  request_retention: number
+  maximum_interval: number
+  w: number[]
+}
+
+type ReviewFitEvent = {
+  rating: number
+  deltaDays: number
+  scheduledDays: number
+  wasOverdue: boolean
+  wasRecallSuccess: boolean
+  stabilityBefore: number
+  stabilityAfter: number
+  difficultyBefore: number
+  difficultyAfter: number
+}
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value))
+
+const parseWeights = (raw: string): number[] | null => {
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    const nums = parsed.map(item => Number(item)).filter(item => Number.isFinite(item))
+    if (nums.length !== default_w.length) return null
+    return nums
+  } catch {
+    return null
+  }
+}
+
+const defaultParamSet = (): FsrsParamSet => ({
+  request_retention: 0.9,
+  maximum_interval: 36500,
+  w: [...default_w],
+})
+
+const ensureGameProfile = async () =>
+  prisma.gameProfile.upsert({
+    where: { id: PROFILE_ID },
+    create: { id: PROFILE_ID },
+    update: {},
+  })
+
+const ensureFsrsProfile = async () => {
+  await ensureGameProfile()
+  return prisma.fSRSProfile.upsert({
+    where: { profileId: PROFILE_ID },
+    create: {
+      profileId: PROFILE_ID,
+      requestRetention: 0.9,
+      maximumInterval: 36500,
+      weights: JSON.stringify([...default_w]),
+      fitVersion: 1,
+      enabled: true,
+    },
+    update: {},
+  })
+}
+
+const toEngineParams = (profile: {
+  requestRetention: number
+  maximumInterval: number
+  weights: string
+  enabled: boolean
+}): FsrsParamSet | null => {
+  if (!profile.enabled) return null
+  const parsedWeights = parseWeights(profile.weights)
+  if (!parsedWeights) return null
+
+  try {
+    const checkedWeights = checkParameters(parsedWeights)
+    return {
+      request_retention: clamp(profile.requestRetention, 0.8, 0.97),
+      maximum_interval: Math.round(clamp(profile.maximumInterval, 30, 36500)),
+      w: [...checkedWeights] as number[],
+    }
+  } catch {
+    return null
+  }
+}
+
+const buildEngine = (params: FsrsParamSet | null) => {
+  if (!params) return fsrs()
+  try {
+    return fsrs(params)
+  } catch {
+    return fsrs()
+  }
+}
+
+const fitParamsFromEvents = (events: ReviewFitEvent[]): FsrsParamSet | null => {
+  if (events.length < FIT_MIN_EVENTS) return null
+
+  const total = events.length
+  const againCount = events.filter(item => item.rating === Rating.Again).length
+  const hardCount = events.filter(item => item.rating === Rating.Hard).length
+  const easyCount = events.filter(item => item.rating === Rating.Easy).length
+  const successCount = events.filter(item => item.wasRecallSuccess).length
+  const onTimeCount = events.filter(item => !item.wasOverdue).length
+
+  const againRate = againCount / total
+  const hardRate = hardCount / total
+  const easyRate = easyCount / total
+  const successRate = successCount / total
+  const onTimeRate = onTimeCount / total
+
+  const overdueSeverity =
+    events.reduce((sum, item) => {
+      const overflow = Math.max(0, item.deltaDays - item.scheduledDays)
+      return sum + overflow / Math.max(1, item.scheduledDays)
+    }, 0) / total
+
+  const stabilityGain =
+    events.reduce((sum, item) => {
+      return sum + (item.stabilityAfter - item.stabilityBefore) / Math.max(0.1, item.stabilityBefore)
+    }, 0) / total
+
+  const difficultyShift =
+    events.reduce((sum, item) => sum + (item.difficultyAfter - item.difficultyBefore), 0) /
+    total
+
+  const strengthScore = clamp(
+    0.55 * successRate +
+      0.2 * onTimeRate +
+      0.12 * (1 - againRate) +
+      0.08 * easyRate +
+      0.05 * Math.max(0, stabilityGain),
+    0,
+    1,
+  )
+
+  const requestRetention = clamp(
+    0.94 - (strengthScore - 0.5) * 0.08 + overdueSeverity * 0.035,
+    0.84,
+    0.95,
+  )
+
+  const maximumInterval = Math.round(
+    clamp(36500 * (0.55 + strengthScore * 0.55), 120, 36500),
+  )
+
+  const tuned = [...default_w]
+
+  const initStabilityScale = clamp(0.92 + strengthScore * 0.2, 0.9, 1.12)
+  tuned[0] *= initStabilityScale
+  tuned[1] *= initStabilityScale
+  tuned[2] *= initStabilityScale
+  tuned[3] *= initStabilityScale
+
+  const growthScale = clamp(0.95 + strengthScore * 0.15 - overdueSeverity * 0.05, 0.9, 1.1)
+  tuned[8] *= growthScale
+  tuned[9] *= growthScale
+
+  const difficultyScale = clamp(
+    1.07 - strengthScore * 0.14 - difficultyShift * 0.01 + hardRate * 0.02,
+    0.9,
+    1.1,
+  )
+  tuned[4] *= difficultyScale
+
+  try {
+    const checkedWeights = checkParameters(tuned)
+    return {
+      request_retention: requestRetention,
+      maximum_interval: maximumInterval,
+      w: [...checkedWeights] as number[],
+    }
+  } catch {
+    return {
+      ...defaultParamSet(),
+      request_retention: requestRetention,
+      maximum_interval: maximumInterval,
+    }
+  }
+}
+
+const maybeRefitFsrsProfile = async () => {
+  const profile = await ensureFsrsProfile()
+  const now = new Date()
+
+  const lastFittedAt = profile.lastFittedAt
+  const isStale = !lastFittedAt || now.getTime() - lastFittedAt.getTime() >= FIT_INTERVAL_MS
+  if (!isStale) return profile
+
+  const lookbackStart = new Date(now.getTime() - FIT_LOOKBACK_DAYS * DAY_MS)
+
+  const totalInWindow = await prisma.reviewEvent.count({
+    where: {
+      profileId: PROFILE_ID,
+      reviewedAt: { gte: lookbackStart },
+    },
+  })
+
+  if (totalInWindow < FIT_MIN_EVENTS) return profile
+
+  if (lastFittedAt) {
+    const newEvents = await prisma.reviewEvent.count({
+      where: {
+        profileId: PROFILE_ID,
+        reviewedAt: { gt: lastFittedAt },
+      },
+    })
+    if (newEvents < FIT_MIN_NEW_EVENTS) return profile
+  }
+
+  const events = await prisma.reviewEvent.findMany({
+    where: {
+      profileId: PROFILE_ID,
+      reviewedAt: { gte: lookbackStart },
+    },
+    orderBy: { reviewedAt: 'desc' },
+    take: 1200,
+    select: {
+      rating: true,
+      deltaDays: true,
+      scheduledDays: true,
+      wasOverdue: true,
+      wasRecallSuccess: true,
+      stabilityBefore: true,
+      stabilityAfter: true,
+      difficultyBefore: true,
+      difficultyAfter: true,
+    },
+  })
+
+  const fitted = fitParamsFromEvents(events)
+  if (!fitted) return profile
+
+  await prisma.fSRSProfile.update({
+    where: { profileId: PROFILE_ID },
+    data: {
+      requestRetention: fitted.request_retention,
+      maximumInterval: fitted.maximum_interval,
+      weights: JSON.stringify(fitted.w),
+      sampleSize: events.length,
+      lastFittedAt: now,
+      enabled: true,
+      fitVersion: profile.fitVersion + 1,
+    },
+  })
+
+  return prisma.fSRSProfile.findUnique({ where: { profileId: PROFILE_ID } })
+}
+
+const getEngineWithAutoFit = async () => {
+  const profile = await maybeRefitFsrsProfile()
+  const finalProfile = profile || (await ensureFsrsProfile())
+  const custom = toEngineParams(finalProfile)
+  const now = new Date()
+
+  if (!custom) {
+    await prisma.fSRSProfile.update({
+      where: { profileId: PROFILE_ID },
+      data: {
+        lastEngineMode: 'fallback',
+        lastFallbackReason: 'invalid_or_disabled_profile_params',
+        lastFallbackAt: now,
+      },
+    })
+    return {
+      engine: buildEngine(null),
+      profile: {
+        ...finalProfile,
+        lastEngineMode: 'fallback',
+        lastFallbackReason: 'invalid_or_disabled_profile_params',
+        lastFallbackAt: now,
+      },
+      usingFallback: true,
+    }
+  }
+
+  if (finalProfile.lastEngineMode !== 'custom') {
+    await prisma.fSRSProfile.update({
+      where: { profileId: PROFILE_ID },
+      data: {
+        lastEngineMode: 'custom',
+      },
+    })
+  }
+
+  return {
+    engine: buildEngine(custom),
+    profile: finalProfile,
+    usingFallback: false,
+  }
+}
+
 export async function getDueSentences() {
   const now = new Date()
 
   try {
-    // 1. 获取到期的复习卡片
     const reviews = await prisma.sentenceReview.findMany({
       where: { due: { lte: now } },
       orderBy: { due: 'asc' },
@@ -22,12 +320,10 @@ export async function getDueSentences() {
 
     if (reviews.length === 0) return []
 
-    // 2. 拿到需要复习的听力句子 ID
     const dialogueIds = reviews
       .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
       .map(r => Number(r.sourceId))
 
-    // 3. 查出这些句子，顺藤摸瓜查出整篇文章的所有句子（为了算上一句和下一句）
     const dialoguesWithContext = await prisma.dialogue.findMany({
       where: { id: { in: dialogueIds } },
       include: {
@@ -42,43 +338,33 @@ export async function getDueSentences() {
       },
     })
 
-    // 4. 组装数据并计算上下文时间轴
     return reviews.map(review => {
       if (review.sourceType === 'AUDIO_DIALOGUE') {
         const currentDialogue = dialoguesWithContext.find(
           d => d.id === Number(review.sourceId),
         )
 
-        if (!currentDialogue) return review // 兜底防止意外脏数据
+        if (!currentDialogue) return review
 
         const allDialogues = currentDialogue.lesson.dialogues
-        const currentIndex = allDialogues.findIndex(
-          d => d.id === currentDialogue.id,
-        )
+        const currentIndex = allDialogues.findIndex(d => d.id === currentDialogue.id)
 
-        const prevDialogue =
-          currentIndex > 0 ? allDialogues[currentIndex - 1] : null
+        const prevDialogue = currentIndex > 0 ? allDialogues[currentIndex - 1] : null
         const nextDialogue =
-          currentIndex < allDialogues.length - 1
-            ? allDialogues[currentIndex + 1]
-            : null
+          currentIndex < allDialogues.length - 1 ? allDialogues[currentIndex + 1] : null
 
         return {
           ...review,
-          dialogue: currentDialogue, // 继续伪装成旧结构交给前台
+          dialogue: currentDialogue,
           context: {
             prev: prevDialogue?.text || null,
             next: nextDialogue?.text || null,
-            // 核心算法：如果存在上一句，音频就从上一句开始；如果存在下一句，音频就到下一句结束
-            playStart: prevDialogue
-              ? prevDialogue.start
-              : currentDialogue.start,
+            playStart: prevDialogue ? prevDialogue.start : currentDialogue.start,
             playEnd: nextDialogue ? nextDialogue.end : currentDialogue.end,
           },
         }
       }
 
-      // 💡 如果以后你加入了“阅读句子”的复习，在这里写 if (review.sourceType === 'ARTICLE_TEXT') 即可扩展
       return review
     })
   } catch (error) {
@@ -86,15 +372,15 @@ export async function getDueSentences() {
     return []
   }
 }
-// ==========================================
-// 2. 核心：提交流利度评分
-// ==========================================
+
 export async function rateSentenceFluency(reviewId: string, rating: Rating) {
   try {
     const record = await prisma.sentenceReview.findUnique({
       where: { id: reviewId },
     })
     if (!record) throw new Error('找不到复习记录')
+
+    const { engine, usingFallback } = await getEngineWithAutoFit()
 
     const currentCard: Card = {
       ...createEmptyCard(),
@@ -106,42 +392,75 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
       scheduled_days: record.scheduled_days,
       reps: record.reps,
       lapses: record.lapses,
-      last_review: record.last_review || undefined, // 兼容 Prisma 的 null
+      last_review: record.last_review || undefined,
     }
 
-    const schedulingCards = f.repeat(currentCard, new Date())
+    const now = new Date()
+    const schedulingCards = engine.repeat(currentCard, now)
     const validRating = rating as 1 | 2 | 3 | 4
     const nextCard = schedulingCards[validRating].card
 
-    await prisma.sentenceReview.update({
-      where: { id: reviewId },
-      data: {
-        due: nextCard.due,
-        state: nextCard.state,
-        stability: nextCard.stability,
-        difficulty: nextCard.difficulty,
-        elapsed_days: nextCard.elapsed_days,
-        scheduled_days: nextCard.scheduled_days,
-        reps: nextCard.reps,
-        lapses: nextCard.lapses,
-        learning_steps:
-          (nextCard as { learning_steps?: number }).learning_steps ?? 0,
-        last_review: nextCard.last_review || null,
-      },
+    const deltaDays = record.last_review
+      ? Math.max(0, Math.round((now.getTime() - record.last_review.getTime()) / DAY_MS))
+      : 0
+    const wasOverdue = now.getTime() > record.due.getTime()
+    const wasRecallSuccess = rating >= Rating.Hard
+
+    await prisma.$transaction(async tx => {
+      await tx.sentenceReview.update({
+        where: { id: reviewId },
+        data: {
+          due: nextCard.due,
+          state: nextCard.state,
+          stability: nextCard.stability,
+          difficulty: nextCard.difficulty,
+          elapsed_days: nextCard.elapsed_days,
+          scheduled_days: nextCard.scheduled_days,
+          reps: nextCard.reps,
+          lapses: nextCard.lapses,
+          learning_steps: (nextCard as { learning_steps?: number }).learning_steps ?? 0,
+          last_review: nextCard.last_review || null,
+        },
+      })
+
+      await tx.reviewEvent.create({
+        data: {
+          profileId: PROFILE_ID,
+          reviewId,
+          sourceType: record.sourceType,
+          sourceId: record.sourceId,
+          rating,
+          deltaDays,
+          scheduledDays: Math.max(0, record.scheduled_days),
+          stateBefore: record.state,
+          stateAfter: nextCard.state,
+          stabilityBefore: record.stability,
+          stabilityAfter: nextCard.stability,
+          difficultyBefore: record.difficulty,
+          difficultyAfter: nextCard.difficulty,
+          dueAt: record.due,
+          reviewedAt: now,
+          wasOverdue,
+          wasRecallSuccess,
+        },
+      })
+
+      await tx.fSRSProfile.update({
+        where: { profileId: PROFILE_ID },
+        data: { lastEventAt: now },
+      })
     })
 
-    // 重新验证复习页面缓存
     revalidatePath('/review')
     revalidatePath('/')
-    return { success: true }
-  } catch (error: any) {
-    return { success: false, message: error.message }
+
+    return { success: true, usingFallback }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '评分失败'
+    return { success: false, message }
   }
 }
 
-// ==========================================
-// 3. 加入句库接口 (彻底修复报错与不显示问题)
-// ==========================================
 export async function addSentenceToReview(dialogueId: number) {
   try {
     const dialogue = await prisma.dialogue.findUnique({
@@ -157,13 +476,9 @@ export async function addSentenceToReview(dialogueId: number) {
 
     await prisma.sentenceReview.create({
       data: {
-        // 🌟 1. 终极修复：使用 connect 语法，彻底消除 "dialogueId 不在类型中" 的 TS 报错！
         sourceId: String(dialogueId),
-
-        // 🌟 2. 补齐丢失的 text 字段
         text: dialogue.text,
         sourceType: 'AUDIO_DIALOGUE',
-        // FSRS 算法数据
         due: emptyCard.due,
         state: emptyCard.state,
         stability: emptyCard.stability,
@@ -176,8 +491,6 @@ export async function addSentenceToReview(dialogueId: number) {
       },
     })
 
-    // 🌟 3. 核心大招：强行清空前台页面缓存！
-    // 只有加了这几行，你去 "/sentences" 或 首页 才能立刻看到新增加的句子数字！
     revalidatePath('/sentences')
     revalidatePath('/review')
     revalidatePath('/')
@@ -198,57 +511,267 @@ export async function addSentenceToReview(dialogueId: number) {
   }
 }
 
-// ==========================================
-// 4. 从句库中移除
-// ==========================================
+const ensureVocabularyReviewCard = async (vocabularyId: string) => {
+  const existing = await prisma.vocabularyReview.findUnique({
+    where: { vocabularyId },
+  })
+  if (existing) return existing
+
+  const vocabulary = await prisma.vocabulary.findUnique({
+    where: { id: vocabularyId },
+    select: { id: true },
+  })
+  if (!vocabulary) throw new Error('找不到单词记录')
+
+  const emptyCard = createEmptyCard()
+  return prisma.vocabularyReview.create({
+    data: {
+      vocabularyId,
+      due: emptyCard.due,
+      state: emptyCard.state,
+      stability: emptyCard.stability,
+      difficulty: emptyCard.difficulty,
+      elapsed_days: emptyCard.elapsed_days,
+      scheduled_days: emptyCard.scheduled_days,
+      reps: emptyCard.reps,
+      lapses: emptyCard.lapses,
+      learning_steps: 0,
+      last_review: emptyCard.last_review || null,
+    },
+  })
+}
+
+export async function rateVocabularyMemory(vocabularyId: string, rating: Rating) {
+  try {
+    const vocabulary = await prisma.vocabulary.findUnique({
+      where: { id: vocabularyId },
+      select: { id: true, sourceType: true },
+    })
+    if (!vocabulary) throw new Error('找不到单词记录')
+
+    const record = await ensureVocabularyReviewCard(vocabularyId)
+    const { engine, usingFallback } = await getEngineWithAutoFit()
+    const now = new Date()
+
+    const currentCard: Card = {
+      ...createEmptyCard(),
+      due: record.due,
+      state: record.state as State,
+      stability: record.stability,
+      difficulty: record.difficulty,
+      elapsed_days: record.elapsed_days,
+      scheduled_days: record.scheduled_days,
+      reps: record.reps,
+      lapses: record.lapses,
+      last_review: record.last_review || undefined,
+    }
+    const schedulingCards = engine.repeat(currentCard, now)
+    const validRating = rating as 1 | 2 | 3 | 4
+    const nextCard = schedulingCards[validRating].card
+
+    const deltaDays = record.last_review
+      ? Math.max(0, Math.round((now.getTime() - record.last_review.getTime()) / DAY_MS))
+      : 0
+    const wasOverdue = now.getTime() > record.due.getTime()
+    const wasRecallSuccess = rating >= Rating.Hard
+
+    await prisma.$transaction(async tx => {
+      await tx.vocabularyReview.update({
+        where: { id: record.id },
+        data: {
+          due: nextCard.due,
+          state: nextCard.state,
+          stability: nextCard.stability,
+          difficulty: nextCard.difficulty,
+          elapsed_days: nextCard.elapsed_days,
+          scheduled_days: nextCard.scheduled_days,
+          reps: nextCard.reps,
+          lapses: nextCard.lapses,
+          learning_steps: (nextCard as { learning_steps?: number }).learning_steps ?? 0,
+          last_review: nextCard.last_review || null,
+        },
+      })
+
+      await tx.reviewEvent.create({
+        data: {
+          profileId: PROFILE_ID,
+          reviewId: record.id,
+          sourceType: vocabulary.sourceType,
+          sourceId: vocabulary.id,
+          rating,
+          deltaDays,
+          scheduledDays: Math.max(0, record.scheduled_days),
+          stateBefore: record.state,
+          stateAfter: nextCard.state,
+          stabilityBefore: record.stability,
+          stabilityAfter: nextCard.stability,
+          difficultyBefore: record.difficulty,
+          difficultyAfter: nextCard.difficulty,
+          dueAt: record.due,
+          reviewedAt: now,
+          wasOverdue,
+          wasRecallSuccess,
+        },
+      })
+
+      await tx.fSRSProfile.update({
+        where: { profileId: PROFILE_ID },
+        data: { lastEventAt: now },
+      })
+    })
+
+    revalidatePath('/vocabulary')
+    revalidatePath('/')
+
+    return {
+      success: true,
+      usingFallback,
+      review: {
+        due: nextCard.due,
+        state: nextCard.state,
+        stability: nextCard.stability,
+        difficulty: nextCard.difficulty,
+        elapsed_days: nextCard.elapsed_days,
+        scheduled_days: nextCard.scheduled_days,
+        reps: nextCard.reps,
+        lapses: nextCard.lapses,
+        learning_steps: (nextCard as { learning_steps?: number }).learning_steps ?? 0,
+        last_review: nextCard.last_review || null,
+      },
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '评分失败'
+    return { success: false, message }
+  }
+}
+
 export async function removeSentenceFromReview(reviewId: string) {
   try {
     await prisma.sentenceReview.delete({ where: { id: reviewId } })
 
-    // 🌟 删除数据后同样需要清空缓存，否则前台依然会显示旧数据
     revalidatePath('/sentences')
     revalidatePath('/review')
     revalidatePath('/')
 
     return { success: true }
-  } catch (error: any) {
+  } catch {
     return { success: false, message: '移除失败' }
   }
 }
 
-// ==========================================
-// 5. 获取所有复习句子
-// ==========================================
 export async function getAllReviewSentences() {
-  // 1. 先查出所有的复习卡片
   const reviews = await prisma.sentenceReview.findMany({
     orderBy: { id: 'desc' },
   })
 
-  // 2. 收集属于“听力跟读”的句子 ID
   const dialogueIds = reviews
     .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
-    .map(r => Number(r.sourceId)) // 因为 sourceId 是字符串，强转为数字去匹配 Dialogue 表
+    .map(r => Number(r.sourceId))
 
   if (dialogueIds.length === 0) return reviews
 
-  // 3. 去 Dialogue 表里批量捞出对应的听力文本和 Lesson 标题
   const dialogues = await prisma.dialogue.findMany({
     where: { id: { in: dialogueIds } },
     include: { lesson: { select: { title: true, audioFile: true } } },
   })
 
-  // 4. 将查出来的对话信息，拼接到 review 数据上返回给前端
   return reviews.map(review => {
     if (review.sourceType === 'AUDIO_DIALOGUE') {
-      const matchingDialogue = dialogues.find(
-        d => d.id === Number(review.sourceId),
-      )
+      const matchingDialogue = dialogues.find(d => d.id === Number(review.sourceId))
       return {
         ...review,
-        dialogue: matchingDialogue, // 伪装成旧结构，前端不用改代码！
+        dialogue: matchingDialogue,
       }
     }
     return review
   })
+}
+
+export async function getFsrsProfileSnapshot() {
+  const profile = await ensureFsrsProfile()
+  const parsedWeights = parseWeights(profile.weights) || [...default_w]
+  return {
+    requestRetention: profile.requestRetention,
+    maximumInterval: profile.maximumInterval,
+    weights: parsedWeights,
+    sampleSize: profile.sampleSize,
+    fitVersion: profile.fitVersion,
+    enabled: profile.enabled,
+    lastEngineMode: profile.lastEngineMode,
+    lastFallbackReason: profile.lastFallbackReason,
+    lastFallbackAt: profile.lastFallbackAt,
+    lastFittedAt: profile.lastFittedAt,
+    lastEventAt: profile.lastEventAt,
+  }
+}
+
+const toDateKey = (date: Date) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+
+export async function getFsrsAdminDashboard() {
+  const profile = await getFsrsProfileSnapshot()
+  const now = new Date()
+  const recent = await prisma.reviewEvent.findMany({
+    where: { profileId: PROFILE_ID },
+    orderBy: { reviewedAt: 'desc' },
+    take: 500,
+    select: {
+      rating: true,
+      reviewedAt: true,
+      wasOverdue: true,
+      wasRecallSuccess: true,
+    },
+  })
+
+  const in7d = recent.filter(item => now.getTime() - item.reviewedAt.getTime() <= 7 * DAY_MS)
+  const in30d = recent.filter(
+    item => now.getTime() - item.reviewedAt.getTime() <= 30 * DAY_MS,
+  )
+
+  const successRate7d = in7d.length
+    ? Math.round((in7d.filter(item => item.wasRecallSuccess).length / in7d.length) * 100)
+    : 0
+  const overdueRate7d = in7d.length
+    ? Math.round((in7d.filter(item => item.wasOverdue).length / in7d.length) * 100)
+    : 0
+
+  const ratingDist = [Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].map(rating => ({
+    rating,
+    count: in30d.filter(item => item.rating === rating).length,
+  }))
+
+  const trendMap = new Map<string, { dateKey: string; total: number; success: number }>()
+  in30d.forEach(item => {
+    const dateKey = toDateKey(item.reviewedAt)
+    const bucket = trendMap.get(dateKey) || { dateKey, total: 0, success: 0 }
+    bucket.total += 1
+    if (item.wasRecallSuccess) bucket.success += 1
+    trendMap.set(dateKey, bucket)
+  })
+
+  const trend = Array.from(trendMap.values())
+    .sort((a, b) => a.dateKey.localeCompare(b.dateKey))
+    .slice(-14)
+    .map(item => ({
+      ...item,
+      successRate: item.total ? Math.round((item.success / item.total) * 100) : 0,
+    }))
+
+  return {
+    profile,
+    stats: {
+      eventCount7d: in7d.length,
+      eventCount30d: in30d.length,
+      successRate7d,
+      overdueRate7d,
+      usingFallback: profile.lastEngineMode !== 'custom',
+    },
+    ratingDist,
+    trend,
+  }
 }

@@ -20,17 +20,17 @@ export default function CategoryAccordion({
   lessonGroups: DB_Category[]
 }) {
   return (
-    <div className='space-y-8'>
+    <div className='space-y-6'>
       {lessonGroups.map(group => {
         return (
           <section
             key={group.id}
-            className='bg-white border border-gray-100 rounded-3xl p-5 md:p-6 shadow-sm'>
+            className='border-b border-gray-200 pb-5 md:pb-6'>
             <div className='flex items-center justify-between gap-3 mb-4'>
-              <h2 className='text-xl md:text-2xl font-black text-gray-800'>
+              <h2 className='text-xl md:text-2xl font-semibold text-gray-800'>
                 {group.name}
               </h2>
-              <span className='text-xs font-bold bg-gray-100 border border-gray-200 text-gray-500 px-3 py-1 rounded-full'>
+              <span className='text-xs font-semibold text-gray-500 px-1 py-1'>
                 {group.lessons.length} 篇
               </span>
             </div>
@@ -46,12 +46,12 @@ export default function CategoryAccordion({
                 <Link
                   key={lesson.id}
                   href={`/lessons/${lesson.id}`}
-                  className='group flex items-center justify-between p-4 bg-gray-50 border border-gray-100 rounded-2xl hover:bg-indigo-50 hover:border-indigo-200 transition-all'>
+                  className='group flex items-center justify-between border-b border-gray-200 p-3 hover:bg-gray-50 transition-colors'>
                   <div className='min-w-0'>
-                    <p className='text-sm font-bold text-indigo-500 mb-1'>
+                    <p className='text-sm font-semibold text-indigo-500 mb-1'>
                       第 {index + 1} 课
                     </p>
-                    <h3 className='text-base font-bold text-gray-800 group-hover:text-indigo-700 truncate'>
+                    <h3 className='text-base font-semibold text-gray-800 group-hover:text-indigo-700 truncate'>
                       {lesson.title}
                     </h3>
                   </div>
@@ -63,7 +63,7 @@ export default function CategoryAccordion({
             </div>
 
             {group.lessons.length === 0 && (
-              <div className='text-sm text-gray-400 py-6 text-center border border-dashed border-gray-200 rounded-2xl bg-gray-50/80'>
+              <div className='text-sm text-gray-400 py-6 text-center border-b border-dashed border-gray-200 bg-gray-50/80'>
                 当前分组暂无课程
               </div>
             )}

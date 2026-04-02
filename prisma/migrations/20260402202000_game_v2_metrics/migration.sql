@@ -1,0 +1,44 @@
+-- Game v2: quantitative metrics + diary + next-morning recall
+ALTER TABLE "Lesson" ADD COLUMN "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Question" ADD COLUMN "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+
+CREATE TABLE IF NOT EXISTS "StudyTimeDaily" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "dateKey" TEXT NOT NULL,
+  "kind" TEXT NOT NULL,
+  "seconds" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "StudyTimeDaily_dateKey_kind_key"
+ON "StudyTimeDaily"("dateKey", "kind");
+
+CREATE INDEX IF NOT EXISTS "StudyTimeDaily_dateKey_idx"
+ON "StudyTimeDaily"("dateKey");
+
+CREATE TABLE IF NOT EXISTS "LearningDiary" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "dateKey" TEXT NOT NULL,
+  "content" TEXT NOT NULL,
+  "wordCount" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "LearningDiary_dateKey_key"
+ON "LearningDiary"("dateKey");
+
+CREATE TABLE IF NOT EXISTS "MorningRecall" (
+  "id" TEXT NOT NULL PRIMARY KEY,
+  "dateKey" TEXT NOT NULL,
+  "sourceDateKey" TEXT NOT NULL,
+  "prompt" TEXT NOT NULL,
+  "content" TEXT NOT NULL,
+  "wordCount" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS "MorningRecall_dateKey_key"
+ON "MorningRecall"("dateKey");

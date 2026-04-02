@@ -118,7 +118,7 @@ export default function AdminSearchPanel() {
 
       {/* 🌟 核心：绝对定位的悬浮搜索结果面板 */}
       {isOpen && searchResults.length > 0 && (
-        <div className='absolute top-full mt-3 left-0 right-0 bg-white shadow-2xl shadow-indigo-500/10 border border-gray-100 rounded-2xl z-50 overflow-hidden animate-in fade-in slide-in-from-top-2'>
+        <div className='absolute top-full mt-3 left-0 right-0 bg-white shadow-indigo-500/10 border border-gray-100 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2'>
           <div className='p-3 bg-gray-50/50 border-b border-gray-100 text-xs font-bold text-gray-500 flex justify-between'>
             <span>搜索结果 ({searchResults.length})</span>
             <button
@@ -131,7 +131,7 @@ export default function AdminSearchPanel() {
             {searchResults.map(item => (
               <div
                 key={`${item.type}-${item.id}`}
-                className='p-3 bg-white hover:bg-gray-50 rounded-xl flex flex-col md:flex-row justify-between items-start gap-3 transition-colors border border-transparent hover:border-gray-100'>
+                className='p-3 bg-white hover:bg-gray-50 flex flex-col md:flex-row justify-between items-start gap-3 transition-colors border border-transparent hover:border-gray-100'>
                 <div className='flex-1'>
                   <div className='flex items-center flex-wrap gap-2 mb-1.5'>
                     <SourceBadge type={item.type} />
@@ -148,7 +148,7 @@ export default function AdminSearchPanel() {
                 </div>
                 <button
                   onClick={() => handleAddVocab(item)}
-                  className='shrink-0 text-xs font-bold bg-white border border-indigo-200 text-indigo-600 px-3 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors'>
+                  className='shrink-0 text-xs font-bold bg-white border border-indigo-200 text-indigo-600 px-3 py-1.5 hover:bg-indigo-50 transition-colors'>
                   + 提取
                 </button>
               </div>

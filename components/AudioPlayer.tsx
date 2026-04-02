@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import Link from 'next/link'
+import { StudyTimeKind } from '@prisma/client'
 
 import { saveVocabulary } from '@/app/actions/content'
 import { addSentenceToReview } from '@/app/actions/fsrs'
@@ -20,6 +21,7 @@ import {
 } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/japaneseRuby'
 import { getPosOptions, inferContextualPos } from '@/utils/posTagger'
+import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -80,6 +82,7 @@ export default function AudioPlayer({
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [isBlindMode, setIsBlindMode] = useState(false)
+  const [isTrackLoop, setIsTrackLoop] = useState(false)
   const [loopId, setLoopId] = useState<number | null>(null)
 
   const [activeTooltip, setActiveTooltip] = useState<{
@@ -104,6 +107,11 @@ export default function AudioPlayer({
   const [tooltipPronunciation, setTooltipPronunciation] = useState('')
   const [tooltipPartOfSpeech, setTooltipPartOfSpeech] = useState('')
   const [tooltipMeaning, setTooltipMeaning] = useState('')
+  useStudyTimeHeartbeat({
+    enabled: isPlaying,
+    kind: StudyTimeKind.LESSON_SPEAKING,
+    intervalMs: 45000,
+  })
   const [meaningMatchBySentence, setMeaningMatchBySentence] = useState<
     Record<number, Record<string, number>>
   >({})
@@ -111,6 +119,10 @@ export default function AudioPlayer({
     activeId === null
       ? 0
       : lesson.dialogue.findIndex(item => item.id === activeId) + 1
+  const activeSentenceIndex =
+    activeId === null ? -1 : lesson.dialogue.findIndex(item => item.id === activeId)
+  const previousSentenceId =
+    activeSentenceIndex > 0 ? lesson.dialogue[activeSentenceIndex - 1]?.id ?? null : null
   const sentenceMetaMap = useMemo(() => {
     const entries = Object.entries(localVocabularyMetaMap).filter(
       ([, meta]) =>
@@ -182,6 +194,14 @@ export default function AudioPlayer({
             : 1
     audio.playbackRate = nextRate
     setPlaybackRate(nextRate)
+  }
+
+  const toggleTrackLoop = () => {
+    const audio = audioRef.current
+    if (!audio) return
+    const nextLoop = !isTrackLoop
+    audio.loop = nextLoop
+    setIsTrackLoop(nextLoop)
   }
 
   const handleSentenceClick = (item: DialogueItem) => {
@@ -370,6 +390,12 @@ export default function AudioPlayer({
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
+    audio.loop = isTrackLoop
+  }, [isTrackLoop])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
     let animationFrameId: number
 
     const syncHighlight = () => {
@@ -408,12 +434,12 @@ export default function AudioPlayer({
   }, [lesson.dialogue, loopId])
 
   useEffect(() => {
-    if (activeId !== null) {
-      const element = document.getElementById(`sentence-${activeId}`)
-      if (element)
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [activeId])
+    if (activeId === null) return
+    const targetId =
+      isBlindMode && previousSentenceId !== null ? previousSentenceId : activeId
+    const element = document.getElementById(`sentence-${targetId}`)
+    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [activeId, isBlindMode, previousSentenceId])
 
   // 🌟 新增：高级键盘事件监听
   useEffect(() => {
@@ -489,19 +515,38 @@ export default function AudioPlayer({
         />
       )}
 
-      <div className='sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/75 backdrop-blur-xl'>
-        <div className='mx-auto w-full max-w-5xl px-4 py-2.5 md:px-6 md:py-3'>
-          <div className='flex items-center justify-between gap-3'>
-            <div className='min-w-0'>
-              <p className='truncate text-[11px] font-semibold uppercase tracking-wide text-indigo-500'>
+      <div className='sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/80 backdrop-blur-xl'>
+        <div className='mx-auto w-full max-w-5xl px-4 py-3 md:px-6 md:py-4'>
+          <div className='space-y-3'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <p className='truncate text-[11px] font-semibold uppercase tracking-wide text-indigo-500 md:text-xs'>
                 {lessonGroup.name}
-              </p>
-              <h1 className='truncate text-sm font-semibold text-gray-900 md:text-base'>
-                {lesson.title}
-              </h1>
+                </p>
+                <h1 className='truncate text-[28px] font-semibold leading-none text-gray-900 md:text-3xl'>
+                  {lesson.title}
+                </h1>
+              </div>
+
+              <button
+                onClick={togglePlaybackRate}
+                className='shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 md:px-3.5 md:py-2'>
+                {playbackRate}x
+              </button>
+              <button
+                onClick={toggleTrackLoop}
+                aria-pressed={isTrackLoop}
+                title='整段循环播放'
+                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors md:px-3.5 md:py-2 ${
+                  isTrackLoop
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100'
+                }`}>
+                全曲循环
+              </button>
             </div>
 
-            <div className='flex shrink-0 items-center gap-2'>
+            <div className='flex flex-wrap items-center gap-2'>
               <ToggleSwitch
                 label='注音'
                 checked={showPronunciation}
@@ -517,63 +562,58 @@ export default function AudioPlayer({
                 checked={isBlindMode}
                 onChange={setIsBlindMode}
               />
-              <button
-                onClick={togglePlaybackRate}
-                className='rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100'>
-                {playbackRate}x
-              </button>
-            </div>
-          </div>
-
-          <div className='mt-2.5 grid grid-cols-[2.25rem_1fr_2.25rem] items-center gap-2 md:grid-cols-[2.5rem_1fr_2.5rem]'>
-            <div>
-              {prevId && (
-                <Link
-                  href={`/lessons/${prevId}`}
-                  className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-10 md:w-10'>
-                  <svg
-                    className='h-4 w-4 md:h-5 md:w-5'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'>
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M15 19l-7-7 7-7'
-                    />
-                  </svg>
-                </Link>
-              )}
             </div>
 
-            <div className='flex items-center justify-center'>
-              <span className='rounded-full border border-indigo-100 bg-white px-3 py-1 text-xs font-semibold text-gray-600'>
-                {activeSentenceNo > 0
-                  ? `句子 ${activeSentenceNo}/${lesson.dialogue.length}`
-                  : `共 ${lesson.dialogue.length} 句`}
-              </span>
-            </div>
+            <div className='grid grid-cols-[2.5rem_1fr_2.5rem] items-center gap-2 md:grid-cols-[2.75rem_1fr_2.75rem]'>
+              <div>
+                {prevId && (
+                  <Link
+                    href={`/lessons/${prevId}`}
+                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-11 md:w-11'>
+                    <svg
+                      className='h-4 w-4 md:h-5 md:w-5'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'>
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M15 19l-7-7 7-7'
+                      />
+                    </svg>
+                  </Link>
+                )}
+              </div>
 
-            <div className='flex justify-end'>
-              {nextId && (
-                <Link
-                  href={`/lessons/${nextId}`}
-                  className='inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-10 md:w-10'>
-                  <svg
-                    className='h-4 w-4 md:h-5 md:w-5'
-                    fill='none'
-                    stroke='currentColor'
-                    viewBox='0 0 24 24'>
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M9 5l7 7-7 7'
-                    />
-                  </svg>
-                </Link>
-              )}
+              <div className='flex items-center justify-center'>
+                <span className='rounded-full border border-indigo-100 bg-white px-3 py-1 text-sm font-semibold text-gray-600 md:text-[15px]'>
+                  {activeSentenceNo > 0
+                    ? `句子 ${activeSentenceNo}/${lesson.dialogue.length}`
+                    : `共 ${lesson.dialogue.length} 句`}
+                </span>
+              </div>
+
+              <div className='flex justify-end'>
+                {nextId && (
+                  <Link
+                    href={`/lessons/${nextId}`}
+                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-11 md:w-11'>
+                    <svg
+                      className='h-4 w-4 md:h-5 md:w-5'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'>
+                      <path
+                        strokeLinecap='round'
+                        strokeLinejoin='round'
+                        strokeWidth={2}
+                        d='M9 5l7 7-7 7'
+                      />
+                    </svg>
+                  </Link>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -581,7 +621,7 @@ export default function AudioPlayer({
 
       <div className='mx-auto w-full max-w-5xl px-4 py-4 md:px-6 md:py-5'>
         {activeSentenceEntries.length > 0 && (
-          <div className='mb-4 rounded-2xl border border-gray-200 bg-white p-3 md:p-4 shadow-sm'>
+          <div className='mb-4 border border-gray-200 bg-white p-3 md:p-4 '>
             <div className='mb-2 flex items-center justify-between'>
               <h2 className='text-sm font-bold text-gray-800'>
                 词条区
@@ -620,6 +660,13 @@ export default function AudioPlayer({
               isActive={activeId === item.id}
               isLooping={loopId === item.id}
               isBlindMode={isBlindMode}
+              blindState={
+                !isBlindMode
+                  ? 'normal'
+                  : item.id === previousSentenceId
+                    ? 'clear'
+                    : 'blur'
+              }
               savingDialogueId={savingDialogueId}
               dialogueSaveState={dialogueSaveState}
               renderedText={annotateSentence(item.text)}
@@ -642,6 +689,7 @@ interface SentenceRowProps {
   isActive: boolean
   isLooping: boolean
   isBlindMode: boolean
+  blindState: 'normal' | 'clear' | 'blur'
   savingDialogueId: number | null
   dialogueSaveState: TooltipSaveState
   renderedText: React.ReactNode
@@ -657,6 +705,7 @@ function SentenceRow({
   isActive,
   isLooping,
   isBlindMode,
+  blindState,
   savingDialogueId,
   dialogueSaveState,
   renderedText,
@@ -671,6 +720,7 @@ function SentenceRow({
     currentState === 'idle'
       ? 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
       : SAVE_BG_COLORS[currentState]
+  const blurClass = blindState === 'blur' ? 'blur-sm opacity-50' : ''
 
   return (
     <div
@@ -681,11 +731,15 @@ function SentenceRow({
         onClick={onClick}
         onMouseUp={onMouseUp}
         onTouchEnd={onMouseUp}
-        className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed shadow-sm transition-all duration-300 select-text break-words md:p-5 md:text-xl
-          ${isActive ? 'scale-[1.01] border-indigo-200 bg-indigo-50 text-indigo-700 font-bold shadow-lg shadow-indigo-100/70' : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-100 hover:bg-indigo-50/30 hover:shadow-md'}
+        className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-all duration-300 select-text break-words md:p-5 md:text-xl
+          ${
+            isActive
+              ? 'scale-[1.01] border-indigo-200 bg-indigo-50 text-indigo-700 font-bold shadow-sm'
+              : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-100 hover:bg-indigo-50/30'
+          }
+          ${isBlindMode && blindState === 'clear' ? 'border-indigo-200/80 bg-white text-gray-900' : ''}
         `}>
-        <div
-          className={`transition-all duration-500 min-w-0 ${isBlindMode && !isActive ? 'blur-sm opacity-40 group-hover:blur-none group-hover:opacity-100' : ''}`}>
+        <div className={`min-w-0 transition-all duration-300 ${blurClass}`}>
           {renderedText}
         </div>
       </div>
@@ -696,7 +750,7 @@ function SentenceRow({
           onClick={onAddToReview}
           title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
           disabled={savingDialogueId === item.id || !canAddToReview}
-          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 shadow-sm md:h-10 md:w-10
+          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 md:h-10 md:w-10
             ${isActive && currentState === 'idle' ? 'scale-110 bg-indigo-600 text-white hover:bg-indigo-700' : currentBgClass}
             ${isActive || currentState !== 'idle' ? 'ring-2 ring-indigo-100' : ''}
           `}>
@@ -709,7 +763,7 @@ function SentenceRow({
         <button
           onClick={onToggleLoop}
           title='单句复读'
-          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 shadow-sm md:h-10 md:w-10
+          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 md:h-10 md:w-10
             ${isLooping ? 'scale-110 bg-indigo-600 text-white ring-2 ring-indigo-200' : isActive ? 'scale-105 bg-indigo-500 text-white hover:bg-indigo-600' : 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}
           `}>
           <svg

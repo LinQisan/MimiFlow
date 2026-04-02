@@ -10,7 +10,7 @@ import {
   DragHandle,
   ActionInterceptor,
 } from '@/app/manage/level/DndSystem'
-import { updateSortOrder } from '@/app/actions/content'
+import { updateQuizWithQuestions, updateSortOrder } from '@/app/actions/content'
 import { useDialog } from '@/context/DialogContext'
 
 // 题型样式映射字典
@@ -25,6 +25,16 @@ const getTypeConfig = (type: string) => {
       return {
         label: '填空题',
         color: 'bg-indigo-50 text-indigo-700 border-indigo-100',
+      }
+    case 'GRAMMAR':
+      return {
+        label: '语法题',
+        color: 'bg-sky-50 text-sky-700 border-sky-100',
+      }
+    case 'WORD_DISTINCTION':
+      return {
+        label: '单词辨析',
+        color: 'bg-teal-50 text-teal-700 border-teal-100',
       }
     case 'SORTING':
       return {
@@ -65,10 +75,19 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
   ]
 
   const handleAddNewQuestion = (
-    type: 'PRONUNCIATION' | 'FILL_BLANK' | 'SORTING' | 'READING_COMPREHENSION',
+    type:
+      | 'PRONUNCIATION'
+      | 'WORD_DISTINCTION'
+      | 'GRAMMAR'
+      | 'FILL_BLANK'
+      | 'SORTING'
+      | 'READING_COMPREHENSION',
   ) => {
     let defaultPrompt = '请选择正确的答案'
     if (type === 'PRONUNCIATION') defaultPrompt = '划线部分的读音是？'
+    if (type === 'WORD_DISTINCTION')
+      defaultPrompt = '请选择符合该词用法的句子'
+    if (type === 'GRAMMAR') defaultPrompt = '请选择最符合语法规则的答案'
     if (type === 'SORTING')
       defaultPrompt = '请将下列选项排序，选出星号(★)处的词。'
 
@@ -137,10 +156,35 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
 
   const handleSaveQuiz = async () => {
     setIsSaving(true)
-    setTimeout(() => {
+    try {
+      const payload = {
+        quizId: quiz.id,
+        title,
+        questions: questions.map((q: any) => ({
+          id: q.id,
+          questionType: q.questionType,
+          contextSentence: q.contextSentence || '',
+          targetWord: q.targetWord || '',
+          prompt: q.prompt || '',
+          explanation: q.explanation || '',
+          options: (q.options || []).map((opt: any) => ({
+            id: opt.id,
+            text: opt.text || '',
+            isCorrect: Boolean(opt.isCorrect),
+          })),
+        })),
+      }
+
+      const res = await updateQuizWithQuestions(payload)
+      if (!res.success) {
+        await dialog.alert(res.message || '保存失败，请稍后再试。')
+        setIsSaving(false)
+        return
+      }
       dialog.toast('题库与题目已保存', { tone: 'success' })
+    } finally {
       setIsSaving(false)
-    }, 800)
+    }
   }
 
   return (
@@ -240,6 +284,16 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
                     读音题
                   </button>
                   <button
+                    onClick={() => handleAddNewQuestion('WORD_DISTINCTION')}
+                    className='w-full text-left px-3 py-2.5 hover:bg-teal-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
+                    单词辨析题
+                  </button>
+                  <button
+                    onClick={() => handleAddNewQuestion('GRAMMAR')}
+                    className='w-full text-left px-3 py-2.5 hover:bg-sky-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
+                    语法题
+                  </button>
+                  <button
                     onClick={() => handleAddNewQuestion('FILL_BLANK')}
                     className='w-full text-left px-3 py-2.5 hover:bg-indigo-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
                     填空题
@@ -313,7 +367,8 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
                           </div>
 
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
-                            {q.questionType === 'PRONUNCIATION' && (
+                            {(q.questionType === 'PRONUNCIATION' ||
+                              q.questionType === 'WORD_DISTINCTION') && (
                               <div>
                                 <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
                                   目标词
@@ -336,7 +391,8 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
 
                             <div
                               className={
-                                q.questionType !== 'PRONUNCIATION'
+                                q.questionType !== 'PRONUNCIATION' &&
+                                q.questionType !== 'WORD_DISTINCTION'
                                   ? 'md:col-span-2'
                                   : ''
                               }>

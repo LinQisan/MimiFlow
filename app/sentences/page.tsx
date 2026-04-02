@@ -116,10 +116,10 @@ export default function SentencesManagePage() {
     <main className='min-h-screen bg-gray-50 p-3 md:p-8'>
       <audio ref={audioRef} />
       <div className='mx-auto mt-2 w-full max-w-5xl md:mt-6'>
-        <div className='mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm md:mb-8 md:p-6'>
+        <div className='mb-5 border-b border-gray-200 pb-4 md:mb-8 md:pb-6'>
           <div className='flex flex-col gap-4 md:flex-row md:items-end md:justify-between'>
           <div>
-            <h1 className='text-2xl font-bold text-gray-800 tracking-tight md:text-3xl'>
+            <h1 className='text-2xl font-semibold text-gray-800 tracking-tight md:text-3xl'>
               句库管理
             </h1>
             <p className='mt-2 text-sm text-gray-500 md:text-base'>
@@ -128,7 +128,7 @@ export default function SentencesManagePage() {
           </div>
           <Link
             href='/review'
-              className='inline-flex w-full items-center justify-center rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 md:w-auto'>
+              className='ui-btn ui-btn-primary w-full md:w-auto'>
             进入复习训练
           </Link>
         </div>
@@ -137,7 +137,7 @@ export default function SentencesManagePage() {
         {isLoading ? (
           <div className='text-center py-20 text-gray-400'>加载中...</div>
         ) : sentences.length === 0 ? (
-          <div className='text-center py-20 bg-white rounded-2xl border border-gray-100 shadow-sm'>
+          <div className='text-center py-20 border-b border-dashed border-gray-300'>
             <span className='text-4xl mb-4 block'>📭</span>
             <h3 className='text-lg font-medium text-gray-700'>句库暂无训练句</h3>
             <p className='text-gray-400 mt-2'>
@@ -149,13 +149,13 @@ export default function SentencesManagePage() {
             {sentences.map(item => (
               <div
                 key={item.id}
-                className='rounded-2xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-md md:p-5'>
+                className='border-b border-gray-200 px-1 py-4 transition-colors hover:bg-gray-50 md:py-5'>
                 <div className='flex items-start gap-3 md:gap-4'>
                 <button
                   onClick={() => handlePlay(item)}
-                    className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-all ${
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center border border-gray-200 transition-all ${
                     playingId === item.id
-                      ? 'bg-indigo-600 text-white shadow-md ring-4 ring-indigo-500/20'
+                      ? 'bg-indigo-600 text-white'
                       : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'
                   }`}>
                   {playingId === item.id ? (
@@ -176,7 +176,7 @@ export default function SentencesManagePage() {
                 </button>
 
                 <div className='flex-1 min-w-0'>
-                    <h3 className='mb-2 text-base font-medium leading-relaxed text-gray-800 md:text-lg'>
+                    <h3 className='mb-2 text-[17px] font-medium leading-relaxed text-gray-800 md:text-lg'>
                     {item.dialogue?.text || '原句内容缺失'}
                   </h3>
                     <div className='flex flex-col gap-2 text-xs text-gray-400 sm:flex-row sm:items-center sm:justify-between'>
@@ -197,7 +197,7 @@ export default function SentencesManagePage() {
                           <div
                             className='flex items-center gap-1.5 cursor-help'
                             title={`FSRS 算法稳定度: ${item.stability.toFixed(2)}`}>
-                            <div className='w-10 h-1.5 bg-gray-100 rounded-full overflow-hidden'>
+                            <div className='w-10 h-1.5 bg-gray-100 overflow-hidden'>
                               <div
                                 className={`h-full ${fluency.barBg} ${fluency.barW} transition-all duration-500`}></div>
                             </div>
@@ -220,7 +220,7 @@ export default function SentencesManagePage() {
                     triggerLabel='移除'
                     pendingLabel={deletingId === item.id ? '移除中...' : '处理中...'}
                     confirmLabel='确认移除'
-                    triggerClassName='rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-100'
+                    triggerClassName='ui-btn ui-btn-sm ui-btn-danger'
                   />
                 </div>
               </div>

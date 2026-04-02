@@ -45,8 +45,8 @@ export default function LanguageSwitcher() {
       {/* 主按钮：去掉了厚重的毛玻璃背景，改为极简的悬停变色，完美融入 Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-2 rounded-full transition-colors duration-200 flex items-center justify-center
-          ${isOpen ? 'bg-indigo-50 text-indigo-600' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}
+        className={`ui-btn ui-btn-sm w-9 px-0 transition-colors duration-200
+          ${isOpen ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'}
         `}
         title='切换语言 / Language'>
         <svg
@@ -65,16 +65,16 @@ export default function LanguageSwitcher() {
 
       {/* 🌟 下拉菜单：绝对定位在按钮正下方，自带优雅进入动画 */}
       {isOpen && (
-        <div className='absolute right-0 top-full mt-2 w-36 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-[120] animate-in fade-in slide-in-from-top-2 duration-200'>
+        <div className='ui-pop absolute right-0 top-full mt-2 w-36 bg-white border border-gray-100 p-2 z-[120] animate-in fade-in slide-in-from-top-2 duration-200'>
           <div className='flex flex-col gap-1'>
             {languages.map(l => (
-              <button
-                key={l.code}
-                onClick={() => {
-                  setLang(l.code as Language)
-                  setIsOpen(false)
-                }}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl transition-colors duration-150 w-full
+                <button
+                  key={l.code}
+                  onClick={() => {
+                    setLang(l.code as Language)
+                    setIsOpen(false)
+                  }}
+                  className={`flex items-center gap-3 px-3 ui-mobile-py-sm transition-colors duration-150 w-full
                   ${
                     lang === l.code
                       ? 'bg-indigo-50 text-indigo-700'

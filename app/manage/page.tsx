@@ -83,8 +83,8 @@ export default async function ManageIndexPage() {
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-4 md:space-y-6'>
-        <section className='rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:p-8'>
-          <h1 className='text-xl font-black text-gray-900 md:text-3xl'>管理中心</h1>
+        <section className='border-b border-gray-200 pb-4 md:pb-8'>
+          <h1 className='text-2xl font-bold text-gray-900 md:text-3xl'>管理中心</h1>
           <p className='mt-2 text-xs text-gray-500 md:text-sm'>
             统一管理语料、词库与题库。移动端建议优先使用下方快捷入口。
           </p>
@@ -92,7 +92,7 @@ export default async function ManageIndexPage() {
             {statCards.map(card => (
               <div
                 key={card.label}
-                className={`rounded-2xl border p-3 md:p-4 ${card.tone}`}>
+                className={`border ui-mobile-py-sm px-3 md:px-4 ${card.tone}`}>
                 <p className='text-[11px] font-bold md:text-xs'>{card.label}</p>
                 <p className='mt-1 text-xl font-black md:text-2xl'>{card.value}</p>
               </div>
@@ -100,25 +100,25 @@ export default async function ManageIndexPage() {
           </div>
         </section>
 
-        <section className='rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:p-8'>
+        <section className='border-b border-gray-200 pb-4 md:pb-8'>
           <div className='flex items-center justify-between mb-4'>
-            <h2 className='text-lg font-black text-gray-900'>快捷入口</h2>
+            <h2 className='text-lg font-semibold text-gray-900'>快捷入口</h2>
           </div>
           <div className='grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-4 md:gap-3'>
             {quickLinks.map(item => (
               <Link
                 key={item.href}
                 href={item.href}
-                className='rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 transition-colors hover:border-indigo-200 hover:bg-indigo-50'>
-                <p className='font-bold text-gray-800'>{item.title}</p>
+                className='border-b border-gray-200 px-1 ui-mobile-py-sm transition-colors hover:bg-gray-50'>
+                <p className='font-semibold text-gray-800'>{item.title}</p>
                 <p className='mt-1 text-xs text-gray-500'>{item.desc}</p>
               </Link>
             ))}
           </div>
         </section>
 
-        <section className='rounded-3xl border border-gray-200 bg-white p-4 shadow-sm md:p-8'>
-          <h2 className='text-lg font-black text-gray-900 mb-4'>分类导航</h2>
+        <section className='border-b border-gray-200 pb-4 md:pb-8'>
+          <h2 className='text-lg font-semibold text-gray-900 mb-4'>分类导航</h2>
           {recentLevels.length === 0 ? (
             <p className='text-sm text-gray-500'>
               暂无分类数据，请先在“分类管理”中创建。
@@ -129,8 +129,8 @@ export default async function ManageIndexPage() {
                 <Link
                   key={level.id}
                   href={`/manage/level/${level.id}`}
-                  className='rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 transition-colors hover:border-indigo-200 hover:bg-indigo-50'>
-                  <p className='font-bold text-gray-900'>{level.title}</p>
+                  className='border-b border-gray-200 px-1 ui-mobile-py-sm transition-colors hover:bg-gray-50'>
+                  <p className='font-semibold text-gray-900'>{level.title}</p>
                   <p className='mt-1 text-xs text-gray-500 line-clamp-2'>
                     {level.description || '未填写分类说明'}
                   </p>

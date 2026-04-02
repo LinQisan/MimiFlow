@@ -17,7 +17,12 @@ import {
   useShowMeaning,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
-import { getPosOptions, inferContextualPos } from '@/utils/posTagger'
+import {
+  getPosOptions,
+  inferContextualPos,
+  posWordHighlightClass,
+} from '@/utils/posTagger'
+import { guessLanguageCode } from '@/utils/langDetector'
 
 type QuizMode = 'scroll' | 'random' | 'sequential'
 
@@ -36,6 +41,7 @@ type QuizQuestion = {
   questionType: string
   prompt?: string | null
   contextSentence: string
+  targetWord?: string | null
   options: QuestionOption[]
   attempts?: QuestionAttempt[]
   explanation?: string | null
@@ -45,6 +51,8 @@ type QuizQuestion = {
 type QuizData = {
   questions: QuizQuestion[]
 }
+
+export type QuizAnswerMap = Record<string, string | null>
 
 type TooltipState = {
   word: string
@@ -61,7 +69,20 @@ type VocabularyMeta = {
   meanings: string[]
 }
 
+type PosHighlightToken = {
+  word: string
+  className: string
+}
+
 const SLOT_REGEX = /[＿_]{2,}|[★＊]/
+
+const getReadingFontClass = (text: string) => {
+  const sample = text.trim()
+  if (!sample) return ''
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(sample)) return 'font-reading-ja'
+  if (guessLanguageCode(sample) === 'en' || /[A-Za-z]/.test(sample)) return 'font-reading-en'
+  return ''
+}
 
 const shuffleArray = <T,>(array: T[]) => {
   const newArr = [...array]
@@ -80,19 +101,19 @@ const getDifficultyBadge = (attempts?: QuestionAttempt[]) => {
   const accuracy = correctCount / attempts.length
 
   if (accuracy <= 0.3)
-    return { label: '地狱难度', style: 'bg-red-50 text-red-600 border-red-200' }
+    return { label: '高难', style: 'bg-red-50 text-red-600 border-red-200' }
   if (accuracy <= 0.6)
     return {
-      label: '极具挑战',
+      label: '偏难',
       style: 'bg-orange-50 text-orange-600 border-orange-200',
     }
   if (accuracy <= 0.8)
     return {
-      label: '难度适中',
+      label: '中等',
       style: 'bg-blue-50 text-blue-600 border-blue-200',
     }
   return {
-    label: '轻松拿捏',
+    label: '较易',
     style: 'bg-green-50 text-green-600 border-green-200',
   }
 }
@@ -103,6 +124,16 @@ const getTypeLabel = (type: string) => {
       return {
         label: '读音题',
         style: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+      }
+    case 'WORD_DISTINCTION':
+      return {
+        label: '单词辨析题',
+        style: 'bg-teal-50 text-teal-600 border-teal-200',
+      }
+    case 'GRAMMAR':
+      return {
+        label: '语法题',
+        style: 'bg-sky-50 text-sky-600 border-sky-200',
       }
     case 'FILL_BLANK':
       return {
@@ -127,15 +158,160 @@ const getTypeLabel = (type: string) => {
   }
 }
 
+const buildAiSolvePrompt = ({
+  question,
+  realIndex,
+  userAnswerId,
+  graded,
+}: {
+  question: QuizQuestion
+  realIndex: number
+  userAnswerId?: string | null
+  graded: boolean
+}) => {
+  const typeConfig = getTypeLabel(question.questionType)
+  const userAnswer = question.options.find(opt => opt.id === userAnswerId) || null
+  const correctAnswer = question.options.find(opt => opt.isCorrect) || null
+  const optionsText = question.options
+    .map((opt, idx) => `${String.fromCharCode(65 + idx)}. ${opt.text}`)
+    .join('\n')
+
+  return [
+    '你是一位日语考试与阅读理解教练。请对下面这道题做专业讲解。',
+    '',
+    '输出要求：',
+    '1) 先直接给出正确答案；',
+    '2) 逐项排除错误选项（语法/语义/搭配/语境）；',
+    '3) 解释题干与语境中的关键表达；',
+    '4) 给出通用解题思路与易错点；',
+    '5) 最后给一个可复用的“同类题判断模板”。',
+    '',
+    '请使用简洁中文，必要时标注日文原文与假名。',
+    '',
+    `题号: Q${realIndex}`,
+    `题型: ${typeConfig.label}`,
+    `题干: ${(question.prompt || '').trim() || '（无独立题干）'}`,
+    `语境句: ${question.contextSentence}`,
+    '选项:',
+    optionsText,
+    `我的作答: ${userAnswer ? userAnswer.text : '未作答'}`,
+    `标准答案: ${correctAnswer ? correctAnswer.text : '未知'}`,
+    `是否已批改: ${graded ? '是' : '否'}`,
+    question.explanation
+      ? `题目已有笔记/解析: ${question.explanation}`
+      : '题目已有笔记/解析: 无',
+    '',
+    '请开始讲解：',
+  ].join('\n')
+}
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const renderTextWithPosHighlights = (
+  text: string,
+  tokens: PosHighlightToken[],
+  enabled: boolean,
+) => {
+  if (!enabled || !text || tokens.length === 0) return text
+  const sorted = [...tokens].sort((a, b) => b.word.length - a.word.length)
+  let nodes: React.ReactNode[] = [text]
+  let keySeed = 0
+
+  sorted.forEach(token => {
+    const regex = new RegExp(`(${escapeRegExp(token.word)})`, 'g')
+    const next: React.ReactNode[] = []
+    nodes.forEach(node => {
+      if (typeof node !== 'string') {
+        next.push(node)
+        return
+      }
+      const parts = node.split(regex)
+      if (parts.length === 1) {
+        next.push(node)
+        return
+      }
+      parts.forEach(part => {
+        if (!part) return
+        if (part === token.word) {
+          keySeed += 1
+          next.push(
+            <span
+              key={`pos-hl-${token.word}-${keySeed}`}
+              className={`rounded px-1 py-0.5 ${token.className}`}>
+              {part}
+            </span>,
+          )
+          return
+        }
+        next.push(part)
+      })
+    })
+    nodes = next
+  })
+
+  return nodes
+}
+
+const renderTextWithUnderlineTarget = (
+  text: string,
+  targetWord?: string | null,
+  className = 'border-b-2 border-indigo-500 pb-0.5 text-indigo-700 font-semibold',
+) => {
+  if (!text || !targetWord || !text.includes(targetWord)) return text
+  const index = text.indexOf(targetWord)
+  const before = text.slice(0, index)
+  const after = text.slice(index + targetWord.length)
+  return (
+    <>
+      {before}
+      <u className={className}>{targetWord}</u>
+      {after}
+    </>
+  )
+}
+
+const buildPosHighlightTokens = (
+  sentence: string,
+  metaMap: Record<string, VocabularyMeta>,
+): PosHighlightToken[] =>
+  Object.entries(metaMap)
+    .filter(([word, meta]) => {
+      if (!sentence.includes(word)) return false
+      return (meta.partsOfSpeech || []).length > 0
+    })
+    .map(([word, meta]) => {
+      const contextualPos = inferContextualPos(word, sentence, meta.partsOfSpeech || [])
+      const primaryPos = contextualPos[0]
+      if (!primaryPos) return null
+      return {
+        word,
+        className: posWordHighlightClass(primaryPos),
+      }
+    })
+    .filter((item): item is PosHighlightToken => item !== null)
+
 const HighlightedContext = ({
   prompt,
   contextSentence,
+  posHighlights = [],
+  enablePosHighlight = false,
 }: {
   prompt: string
   contextSentence: string
+  posHighlights?: PosHighlightToken[]
+  enablePosHighlight?: boolean
 }) => {
   if (!prompt || prompt === contextSentence)
-    return <span>{contextSentence}</span>
+    return (
+      <span>
+        {renderTextWithPosHighlights(
+          contextSentence,
+          posHighlights,
+          enablePosHighlight,
+        )}
+      </span>
+    )
   const blankRegex =
     /([（(][\s　]*[）)]|__{2,}|～|[＿_★＊][＿_★＊\s　]+[＿_★＊]|[★＊])/
   const parts = prompt.split(blankRegex)
@@ -152,15 +328,27 @@ const HighlightedContext = ({
       )
     return (
       <span>
-        {prefix}
+        {renderTextWithPosHighlights(prefix, posHighlights, enablePosHighlight)}
         <span className='border-b-[3px] border-indigo-500 text-indigo-700 font-bold mx-1 px-1 pb-0.5 relative'>
-          {insertedText || '???'}
+          {renderTextWithPosHighlights(
+            insertedText || '???',
+            posHighlights,
+            enablePosHighlight,
+          )}
         </span>
-        {suffix}
+        {renderTextWithPosHighlights(suffix, posHighlights, enablePosHighlight)}
       </span>
     )
   }
-  return <span>{contextSentence}</span>
+  return (
+    <span>
+      {renderTextWithPosHighlights(
+        contextSentence,
+        posHighlights,
+        enablePosHighlight,
+      )}
+    </span>
+  )
 }
 
 const SortingBoard = ({
@@ -168,11 +356,13 @@ const SortingBoard = ({
   userAnswerId,
   onAnswerSelected,
   isGraded,
+  textFontClass,
 }: {
   question: QuizQuestion
   userAnswerId?: string | null
   onAnswerSelected: (optionId: string | null) => void
   isGraded: boolean
+  textFontClass: string
 }) => {
   const [slots, setSlots] = useState<(QuestionOption | null)[]>([])
   const [pool, setPool] = useState<QuestionOption[]>([])
@@ -264,7 +454,7 @@ const SortingBoard = ({
 
   return (
     <div className='my-6'>
-      <div className='text-lg md:text-xl text-gray-800 font-medium leading-12 mb-8 p-6 bg-orange-50/50 rounded-3xl border border-orange-100'>
+      <div className={`text-base md:text-lg text-gray-800 font-medium leading-10 mb-6 border-b border-orange-200 pb-4 ${textFontClass}`}>
         {(() => {
           let currentSlot = 0
           return segments.map((seg: string, i: number) => {
@@ -281,8 +471,8 @@ const SortingBoard = ({
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => handleDropToSlot(e, idx)}
                   onClick={() => filledOpt && moveToPool(filledOpt, idx)}
-                  className={`inline-flex items-center justify-center min-w-20 h-12 mx-1 px-3 align-middle rounded-xl border-b-4 transition-all duration-300 cursor-pointer shadow-sm relative
-                    ${filledOpt ? 'bg-white border-orange-400 -translate-y-1 shadow-md' : 'bg-gray-100/50 border-gray-300 border-dashed'}
+                  className={`inline-flex items-center justify-center min-w-20 h-12 mx-1 px-3 align-middle border-b-2 transition-all duration-300 cursor-pointer relative
+                    ${filledOpt ? 'bg-white border-orange-400' : 'bg-gray-100/50 border-gray-300 border-dashed'}
                     ${isCorrectStar ? 'bg-green-100 border-green-500 text-green-800' : ''}
                     ${isWrongStar ? 'bg-red-100 border-red-500 text-red-800' : ''}
                     ${isGraded ? 'cursor-default' : 'hover:border-orange-500'}
@@ -293,7 +483,7 @@ const SortingBoard = ({
                     </span>
                   )}
                   {filledOpt && (
-                    <span className='text-base font-bold whitespace-nowrap text-gray-800'>
+                    <span className={`text-base font-bold whitespace-nowrap text-gray-800 ${textFontClass}`}>
                       {filledOpt.text}
                     </span>
                   )}
@@ -301,7 +491,7 @@ const SortingBoard = ({
               )
             }
             return (
-              <span key={i} className='align-middle'>
+              <span key={i} className={`align-middle ${textFontClass}`}>
                 {seg}
               </span>
             )
@@ -309,7 +499,7 @@ const SortingBoard = ({
         })()}
       </div>
 
-      <div className='bg-gray-50 p-6 rounded-2xl border border-gray-200 min-h-24'>
+      <div className='bg-gray-50 p-6 border-b border-gray-200 min-h-24'>
         {!isGraded && (
           <div className='text-xs font-bold text-gray-400 mb-5 text-center'>
             👇 点击或拖拽选项填入上方空缺处
@@ -322,10 +512,10 @@ const SortingBoard = ({
               draggable={!isGraded}
               onDragStart={e => handleDragStart(e, opt)}
               onClick={() => moveToSlot(opt)}
-              className={`px-6 py-3 bg-white rounded-xl shadow-sm border-2 border-orange-100 text-orange-700 font-bold transition-all select-none
-                ${isGraded ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-orange-400 hover:shadow-md hover:-translate-y-1 active:scale-95'}
+              className={`px-6 py-3 bg-white border border-orange-200 text-orange-700 font-semibold transition-all select-none
+                ${isGraded ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-orange-400 active:scale-95'}
               `}>
-              {opt.text}
+              <span className={textFontClass}>{opt.text}</span>
             </div>
           ))}
           {pool.length === 0 && (
@@ -337,11 +527,11 @@ const SortingBoard = ({
       </div>
 
       {isGraded && (
-        <div className='mt-6 p-6 md:p-8 bg-indigo-50/50 rounded-3xl border border-indigo-100 animate-in slide-in-from-top-4'>
-          <div className='text-sm font-black text-indigo-400 mb-4 flex items-center gap-2'>
-            💡 正确完整语境
+        <div className='mt-6 border-b border-indigo-200 bg-indigo-50/40 px-4 py-5 md:px-6 md:py-6 animate-in slide-in-from-top-4'>
+          <div className='text-sm font-black text-indigo-400 mb-4'>
+            正确语境
           </div>
-          <div className='text-xl md:text-2xl text-indigo-900 font-medium leading-relaxed'>
+          <div className='text-lg md:text-xl text-indigo-900 font-medium leading-relaxed'>
             <HighlightedContext
               prompt={question.prompt || question.contextSentence}
               contextSentence={question.contextSentence}
@@ -368,7 +558,7 @@ export default function QuizEngineUI({
   quiz: QuizData
   backUrl?: string
   onFinish?: () => void
-  onAnswerChange?: (answers: Record<string, string | null>) => void
+  onAnswerChange?: React.Dispatch<React.SetStateAction<QuizAnswerMap>>
   isArticleMode?: boolean
   onGradedChange?: (gradedMap: Record<string, boolean>) => void
   vocabularyMetaMapByQuestion?: Record<string, Record<string, VocabularyMeta>>
@@ -382,7 +572,7 @@ export default function QuizEngineUI({
   const isScrollMode = mode === 'scroll'
 
   const [questions, setQuestions] = useState<QuizQuestion[]>([])
-  const [answers, setAnswers] = useState<Record<string, string | null>>({})
+  const [answers, setAnswers] = useState<QuizAnswerMap>({})
   const [isGraded, setIsGraded] = useState<Record<string, boolean>>({})
   const [timeLogs, setTimeLogs] = useState<Record<string, number>>({})
 
@@ -404,6 +594,7 @@ export default function QuizEngineUI({
   const [editingExpId, setEditingExpId] = useState<string | null>(null)
   const [expDraft, setExpDraft] = useState('')
   const [isSavingExp, setIsSavingExp] = useState(false)
+  const [copiedQuestionId, setCopiedQuestionId] = useState<string | null>(null)
   const [localVocabularyMetaMapByQuestion, setLocalVocabularyMetaMapByQuestion] =
     useState(vocabularyMetaMapByQuestion)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
@@ -677,36 +868,67 @@ export default function QuizEngineUI({
     setIsSavingExp(false)
   }
 
+  const copyQuestionForAi = async (
+    question: QuizQuestion,
+    realIndex: number,
+    userAnswerId?: string | null,
+    graded = false,
+  ) => {
+    const text = buildAiSolvePrompt({
+      question,
+      realIndex,
+      userAnswerId,
+      graded,
+    })
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.setAttribute('readonly', '')
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    setCopiedQuestionId(question.id)
+    window.setTimeout(() => {
+      setCopiedQuestionId(prev => (prev === question.id ? null : prev))
+    }, 1400)
+  }
+
   if (questions.length === 0)
-    return <div className='p-12 text-center text-gray-500'>加载题库中...</div>
+    return <div className='p-12 text-center text-gray-500'>正在加载题目...</div>
 
   // 结算页面
   if (isFinished && !isScrollMode && !isArticleMode) {
     const accuracy = Math.round((score / questions.length) * 100)
     const avgSec = (totalTimeSpent / questions.length / 1000).toFixed(1)
-    let title = '稳扎稳打 🐢'
-    if (accuracy >= 80 && parseFloat(avgSec) <= 15) title = '闪电神算 ⚡'
-    else if (accuracy >= 80) title = '学霸附体 🎓'
-    else if (parseFloat(avgSec) <= 10) title = '蒙题大师 🎲'
+    let title = '继续练习'
+    if (accuracy >= 80 && parseFloat(avgSec) <= 15) title = '状态很好'
+    else if (accuracy >= 80) title = '掌握不错'
+    else if (parseFloat(avgSec) <= 10) title = '速度很快'
 
     return (
       <div className='min-h-screen bg-gray-50 flex items-center justify-center p-6'>
-        <div className='bg-white p-8 md:p-12 rounded-3xl shadow-sm max-w-lg w-full'>
+        <div className='bg-white p-8 md:p-12 border-b border-gray-200 max-w-lg w-full'>
           <div className='text-center mb-10'>
             <span className='inline-block px-4 py-1.5 rounded-full bg-indigo-50 text-indigo-600 font-bold text-sm mb-4 border border-indigo-100'>
               {title}
             </span>
-            <h2 className='text-3xl font-black text-gray-900'>测验完成</h2>
+            <h2 className='text-3xl font-bold text-gray-900'>测验完成</h2>
           </div>
           <div className='grid grid-cols-2 gap-4 mb-10'>
-            <div className='bg-blue-50 p-6 rounded-2xl border border-blue-100 text-center'>
+            <div className='bg-blue-50 p-6 border border-blue-100 text-center'>
               <div className='text-xs font-bold text-blue-500 mb-2'>正确率</div>
               <div className='text-4xl font-black text-blue-700'>
                 {accuracy}
                 <span className='text-xl'>%</span>
               </div>
             </div>
-            <div className='bg-orange-50 p-6 rounded-2xl border border-orange-100 text-center'>
+            <div className='bg-orange-50 p-6 border border-orange-100 text-center'>
               <div className='text-xs font-bold text-orange-500 mb-2'>
                 平均单题耗时
               </div>
@@ -718,7 +940,7 @@ export default function QuizEngineUI({
           </div>
           <Link
             href={backUrl}
-            className='bg-gray-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-gray-800 transition-colors block text-center shadow-xl shadow-gray-200'>
+            className='bg-gray-900 text-white px-8 py-4 border border-gray-900 font-semibold hover:bg-gray-800 transition-colors block text-center'>
             {backUrl === '/articles' ? '返回阅读' : '返回题库'}
           </Link>
         </div>
@@ -730,7 +952,7 @@ export default function QuizEngineUI({
 
   return (
     <div
-      className='min-h-screen bg-gray-50 p-6 md:p-12 relative pb-32'
+      className='relative min-h-screen bg-gray-50 px-4 pb-32 pt-4 md:px-8 md:pt-8'
       onClick={() => setActiveTooltip(null)}>
       {activeTooltip && (
         <VocabularyTooltip
@@ -756,15 +978,16 @@ export default function QuizEngineUI({
         />
       )}
 
-      <div className='max-w-3xl mx-auto'>
+      <div className='mx-auto max-w-4xl'>
         {isArticleMode ? null : (
-          <div className='flex justify-between items-center mb-6 sticky top-4 z-10 bg-gray-50/90 backdrop-blur-md py-3 px-2 rounded-2xl'>
+          <div className='sticky top-0 z-10 mb-4 border-b border-gray-200 bg-gray-50/95 py-3 backdrop-blur-md'>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
             <Link
               href={backUrl}
-              className='text-gray-400 hover:text-gray-600 font-bold text-sm'>
-              &larr; 退出测验
+              className='ui-btn'>
+              返回
             </Link>
-            <div className='flex items-center gap-3'>
+            <div className='flex flex-wrap items-center gap-2 md:gap-3'>
               <ToggleSwitch
                 label='注音'
                 checked={showPronunciation}
@@ -775,29 +998,51 @@ export default function QuizEngineUI({
                 checked={showMeaning}
                 onChange={setShowMeaning}
               />
-              <span className='text-xs font-bold text-gray-400 bg-white px-3 py-1.5 rounded-full shadow-sm'>
+              <span className='ui-tag ui-tag-muted'>
                 {mode === 'scroll'
-                  ? '📜 全卷展示'
+                  ? '全卷模式'
                   : mode === 'random'
-                    ? '🔀 随机乱序'
-                    : '🎯 逐题通关'}
+                    ? '随机模式'
+                    : '逐题模式'}
               </span>
               {!isScrollMode && (
-                <span className='text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full'>
+                <span className='ui-tag ui-tag-info'>
                   {currentIndex + 1} / {questions.length}
                 </span>
               )}
             </div>
+            </div>
           </div>
         )}
 
-        <div className='space-y-8'>
+        <div className='space-y-0'>
           {visibleQuestions.map((q, idx) => {
             const graded = isGraded[q.id]
             const userAnswerId = answers[q.id]
             const difficulty = getDifficultyBadge(q.attempts)
             const realIndex = isScrollMode ? idx + 1 : currentIndex + 1
             const typeConfig = getTypeLabel(q.questionType) // 获取题型样式
+            const questionFontClass = getReadingFontClass(
+              `${q.prompt || ''}\n${q.contextSentence}\n${q.options
+                .map(option => option.text)
+                .join(' ')}`,
+            )
+            const promptText = (q.prompt || '').trim()
+            const hasPrompt = promptText.length > 0
+            const displayPrompt =
+              q.questionType === 'FILL_BLANK'
+                ? q.prompt || q.contextSentence
+                : hasPrompt
+                  ? promptText
+                  : q.contextSentence
+            const posHighlightTokens = buildPosHighlightTokens(
+              q.contextSentence,
+              localVocabularyMetaMapByQuestion[q.id] || {},
+            )
+
+            const cardShellClass = isArticleMode
+              ? 'bg-white px-2 py-6 md:px-3 md:py-8 border-b border-gray-200 select-text'
+              : 'bg-transparent px-1 py-6 md:px-2 md:py-8 border-b border-gray-200 select-text'
 
             return (
               <div
@@ -806,7 +1051,7 @@ export default function QuizEngineUI({
                 onTouchEnd={e =>
                   handleTextSelection(e, q.id, q.contextSentence)
                 }
-                className='bg-white p-6 md:p-10 rounded-4xl shadow-sm border border-gray-100 select-text'>
+                className={cardShellClass}>
                 {(() => {
                   const entries = Object.entries(
                     localVocabularyMetaMapByQuestion[q.id] || {},
@@ -828,7 +1073,7 @@ export default function QuizEngineUI({
                       meanings: meta.meanings,
                     }))
                   return (
-                    entries.length > 0 ? (
+                    !isArticleMode && entries.length > 0 ? (
                       <WordMetaPanel
                         className='mb-4'
                         entries={entries}
@@ -842,24 +1087,41 @@ export default function QuizEngineUI({
                 {/* 🌟 1. 顶部题号与徽章 (完美复刻设计图) */}
                 <div className='flex justify-between items-center mb-6'>
                   <div className='flex items-center gap-3'>
-                    <span className='bg-gray-900 text-white px-3 py-1 rounded-lg font-black text-sm'>
+                    <span className='ui-tag bg-gray-900 text-white border-gray-900'>
                       Q{realIndex}
                     </span>
                     <span
-                      className={`px-2.5 py-1 rounded-lg border text-xs font-bold ${typeConfig.style}`}>
+                      className={`ui-tag ${typeConfig.style}`}>
                       {typeConfig.label}
                     </span>
                   </div>
 
                   <div className='flex items-center gap-2'>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        void copyQuestionForAi(
+                          q,
+                          realIndex,
+                          userAnswerId,
+                          graded,
+                        )
+                      }
+                      className={`ui-btn ui-btn-sm ${
+                        copiedQuestionId === q.id
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : ''
+                      }`}>
+                      {copiedQuestionId === q.id ? '已复制' : '复制给AI'}
+                    </button>
                     {graded && timeLogs[q.id] && (
                       <span
-                        className={`text-xs font-bold px-2 py-1 rounded-md ${timeLogs[q.id] > 30000 ? 'bg-orange-50 text-orange-500' : 'bg-green-50 text-green-500'}`}>
+                        className={`ui-tag ${timeLogs[q.id] > 30000 ? 'bg-orange-50 text-orange-500 border-orange-200' : 'bg-green-50 text-green-500 border-green-200'}`}>
                         {(timeLogs[q.id] / 1000).toFixed(1)}s
                       </span>
                     )}
                     <span
-                      className={`text-xs font-bold px-2.5 py-1 rounded-md border ${difficulty.style}`}>
+                      className={`ui-tag ${difficulty.style}`}>
                       {difficulty.label}
                     </span>
                   </div>
@@ -874,52 +1136,87 @@ export default function QuizEngineUI({
                       handleSelectOption(q.id, optId)
                     }
                     isGraded={graded}
+                    textFontClass={questionFontClass}
                   />
                 ) : (
                   <>
                     {q.questionType === 'FILL_BLANK' && isArticleMode ? null : (
-                      <div className='mb-8'>
-                        <div className='text-2xl md:text-3xl text-gray-900 font-black leading-snug mb-3 tracking-wide'>
-                          {graded &&
-                          q.prompt ? (
-                            <HighlightedContext
-                              prompt={q.prompt}
-                              contextSentence={q.contextSentence}
-                            />
-                          ) : (
-                            q.prompt || q.contextSentence
-                          )}
-                        </div>
+                      <div className='mb-6'>
+                        {q.questionType === 'WORD_DISTINCTION' ? (
+                          <div className='mb-2 border-b border-gray-200 pb-4 text-center'>
+                            <div className='text-xs font-bold uppercase tracking-[0.2em] text-gray-400'>
+                              单词辨析
+                            </div>
+                            <div
+                              className={`mt-2 text-4xl font-black text-gray-900 md:text-5xl ${questionFontClass}`}>
+                              {q.targetWord || displayPrompt}
+                            </div>
+                          </div>
+                        ) : hasPrompt || !isArticleMode ? (
+                          <div className={`text-xl md:text-2xl text-gray-900 font-semibold leading-snug mb-2 tracking-wide ${questionFontClass}`}>
+                            {graded &&
+                            q.prompt &&
+                            q.questionType === 'FILL_BLANK' ? (
+                              <HighlightedContext
+                                prompt={q.prompt}
+                                contextSentence={q.contextSentence}
+                                posHighlights={posHighlightTokens}
+                                enablePosHighlight={showMeaning}
+                              />
+                            ) : q.questionType === 'PRONUNCIATION' && q.targetWord ? (
+                              renderTextWithUnderlineTarget(displayPrompt, q.targetWord)
+                            ) : (
+                              renderTextWithPosHighlights(
+                                displayPrompt,
+                                posHighlightTokens,
+                                showMeaning,
+                              )
+                            )}
+                          </div>
+                        ) : null}
                         {/* 补充语境展示 (当 Prompt 与语境不同时展示，贴合你的设计图) */}
-                        {q.contextSentence &&
-                          q.prompt !== q.contextSentence && (
-                            <div className='text-base md:text-lg font-bold text-gray-400 mt-2'>
-                              {q.contextSentence}
+                        {q.questionType !== 'FILL_BLANK' &&
+                          q.questionType !== 'WORD_DISTINCTION' &&
+                          q.contextSentence &&
+                          (!hasPrompt || q.prompt !== q.contextSentence) && (
+                            <div className={`text-base md:text-lg font-medium text-gray-400 mt-2 ${questionFontClass}`}>
+                              {q.questionType === 'PRONUNCIATION' && q.targetWord
+                                ? renderTextWithUnderlineTarget(
+                                    q.contextSentence,
+                                    q.targetWord,
+                                    'border-b border-indigo-400 pb-[1px] text-gray-500 font-semibold',
+                                  )
+                                : renderTextWithPosHighlights(
+                                    q.contextSentence,
+                                    posHighlightTokens,
+                                    showMeaning,
+                                  )}
                             </div>
                           )}
                       </div>
                     )}
 
                     {/* 🌟 3. 选项渲染区域 (使用字母 A, B, C) */}
-                    <div className='space-y-4 mb-8'>
+                    <div
+                      className='mb-8 divide-y divide-gray-200 border-y border-gray-200'>
                       {q.options.map((opt, index: number) => {
                         const isSelected = userAnswerId === opt.id
                         let optionStyle =
-                          'border-gray-100 bg-gray-50/50 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer'
+                          'border-transparent bg-transparent hover:bg-gray-50 cursor-pointer'
 
                         if (graded) {
                           if (opt.isCorrect)
                             optionStyle =
-                              'border-green-500 bg-green-50 ring-2 ring-green-500/20 cursor-default shadow-sm'
+                              'border-transparent bg-emerald-50/40 cursor-default'
                           else if (isSelected && !opt.isCorrect)
                             optionStyle =
-                              'border-red-500 bg-red-50 cursor-default'
+                              'border-transparent bg-rose-50/40 cursor-default'
                           else
                             optionStyle =
-                              'border-gray-100 bg-gray-50/30 opacity-50 cursor-default'
+                              'border-transparent bg-transparent opacity-45 cursor-default'
                         } else if (isSelected) {
                           optionStyle =
-                            'border-indigo-500 bg-indigo-50 ring-2 ring-indigo-500/20 cursor-pointer shadow-sm'
+                            'border-transparent bg-indigo-50/50 cursor-pointer'
                         }
 
                         return (
@@ -927,15 +1224,27 @@ export default function QuizEngineUI({
                             key={opt.id}
                             disabled={graded}
                             onClick={() => handleSelectOption(q.id, opt.id)}
-                            className={`w-full text-left px-5 py-4 rounded-2xl border-2 transition-all duration-200 ${optionStyle}`}>
+                            className={`w-full border-l-2 px-2 py-3 text-left transition-all duration-200 ${optionStyle} ${
+                              isSelected
+                                ? 'border-l-indigo-500'
+                                : graded && opt.isCorrect
+                                  ? 'border-l-emerald-500'
+                                  : graded && isSelected && !opt.isCorrect
+                                    ? 'border-l-rose-500'
+                                    : 'border-l-transparent'
+                            }`}>
                             <div className='flex items-center'>
                               <span
                                 className={`font-black mr-4 text-xl ${isSelected || (graded && opt.isCorrect) ? (opt.isCorrect && graded ? 'text-green-600' : graded && !opt.isCorrect ? 'text-red-600' : 'text-indigo-600') : 'text-gray-400'}`}>
                                 {String.fromCharCode(65 + index)}.
                               </span>
                               <span
-                                className={`text-lg font-bold ${isSelected || (graded && opt.isCorrect) ? (opt.isCorrect && graded ? 'text-green-800' : graded && !opt.isCorrect ? 'text-red-800' : 'text-indigo-900') : 'text-gray-700'}`}>
-                                {opt.text}
+                                className={`text-[17px] md:text-lg font-semibold ${questionFontClass} ${isSelected || (graded && opt.isCorrect) ? (opt.isCorrect && graded ? 'text-green-800' : graded && !opt.isCorrect ? 'text-red-800' : 'text-indigo-900') : 'text-gray-700'}`}>
+                                {renderTextWithPosHighlights(
+                                  opt.text,
+                                  posHighlightTokens,
+                                  showMeaning,
+                                )}
                               </span>
                             </div>
                           </button>
@@ -949,7 +1258,7 @@ export default function QuizEngineUI({
                 {graded && (
                   <div className='mb-6'>
                     {q.explanation || editingExpId === q.id ? (
-                      <div className='p-5 bg-blue-50/50 rounded-2xl border border-blue-100 animate-in slide-in-from-top-4 duration-500'>
+                      <div className='p-5 bg-blue-50/40 border-b border-blue-200 animate-in slide-in-from-top-4 duration-500'>
                         <div className='flex justify-between items-center mb-3'>
                           <h4 className='text-sm font-black text-blue-800 flex items-center gap-2'>
                             💡 题目解析 / 笔记
@@ -985,7 +1294,7 @@ export default function QuizEngineUI({
                               <button
                                 onClick={() => handleSaveExplanation(q.id)}
                                 disabled={isSavingExp}
-                                className='text-sm font-bold bg-blue-600 text-white px-5 py-2 rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-200'>
+                              className='ui-btn ui-btn-primary disabled:opacity-50'>
                                 {isSavingExp ? '保存中...' : '保存笔记'}
                               </button>
                             </div>
@@ -1002,8 +1311,8 @@ export default function QuizEngineUI({
                           setEditingExpId(q.id)
                           setExpDraft('')
                         }}
-                        className='text-sm font-bold text-blue-500 hover:text-blue-700 flex items-center gap-1.5 px-3 py-2 bg-blue-50/50 rounded-xl transition-colors'>
-                        ➕ 添加错题笔记
+                        className='ui-btn text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'>
+                        添加错题笔记
                       </button>
                     )}
                   </div>
@@ -1017,21 +1326,21 @@ export default function QuizEngineUI({
                         <button
                           onClick={handlePrev}
                           disabled={currentIndex === 0}
-                          className='flex-1 font-black py-4 rounded-2xl transition-all bg-white border border-gray-200 text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50'>
+                          className='ui-btn flex-1 disabled:opacity-40 disabled:cursor-not-allowed'>
                           上一题
                         </button>
                         {!isFinished ? (
                           <button
                             onClick={handleNext}
-                            className='flex-1 font-black py-4 rounded-2xl transition-all shadow-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'>
+                            className='ui-btn ui-btn-primary flex-1'>
                             {currentIndex === questions.length - 1
-                              ? '提交答案'
+                              ? '提交'
                               : '下一题'}
                           </button>
                         ) : (
                           <button
                             disabled
-                            className='flex-1 font-black py-4 rounded-2xl transition-all bg-green-50 text-green-700 border border-green-200 cursor-default'>
+                            className='ui-btn flex-1 bg-green-50 text-green-700 border-green-200 cursor-default'>
                             已提交
                           </button>
                         )}
@@ -1040,16 +1349,16 @@ export default function QuizEngineUI({
                       <div className='flex gap-3'>
                         <button
                           onClick={handleGradeSingle}
-                          className={`flex-1 font-black py-4 rounded-2xl transition-all shadow-lg ${userAnswerId ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 shadow-none'}`}>
-                          {userAnswerId ? '确认答案' : '不会，直接跳过'}
+                          className={`ui-btn flex-1 ${userAnswerId ? 'ui-btn-primary' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                          {userAnswerId ? '确认答案' : '跳过本题'}
                         </button>
                       </div>
                     ) : (
                       <button
                         onClick={handleNext}
-                        className='w-full bg-gray-900 text-white font-black py-4 rounded-2xl hover:bg-gray-800 transition-colors shadow-lg shadow-gray-200'>
+                        className='ui-btn w-full bg-gray-900 text-white border-gray-900 hover:bg-gray-800'>
                         {currentIndex === questions.length - 1
-                          ? '查看结算'
+                          ? '查看结果'
                           : '下一题'}
                       </button>
                     )}
@@ -1064,18 +1373,17 @@ export default function QuizEngineUI({
               {!isFinished ? (
                 <button
                   onClick={finishQuiz}
-                  className='w-full bg-indigo-600 text-white font-black py-5 rounded-3xl text-lg hover:bg-indigo-700 shadow-xl shadow-indigo-200'>
-                  📤 提交全卷
+                  className='ui-btn ui-btn-primary w-full text-base'>
+                  提交全卷
                 </button>
               ) : (
                 <div className='bg-green-50 border border-green-200 p-8 rounded-3xl text-center'>
-                  <div className='text-4xl mb-4'>🎉</div>
                   <h3 className='text-2xl font-black text-green-800 mb-2'>
-                    交卷成功！
+                    提交成功
                   </h3>
                   <Link
                     href={backUrl}
-                    className='inline-block bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 transition-colors'>
+                    className='ui-btn bg-green-600 text-white border-green-600 hover:bg-green-700'>
                     {backUrl === '/articles' ? '返回阅读' : '返回题库'}
                   </Link>
                 </div>

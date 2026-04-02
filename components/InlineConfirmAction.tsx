@@ -66,7 +66,7 @@ export default function InlineConfirmAction({
       {open && !pending && (
         <div
           onClick={event => event.stopPropagation()}
-          className='absolute right-0 bottom-full mb-2 w-56 rounded-xl border border-gray-200 bg-white p-3 shadow-xl z-60 animate-in fade-in zoom-in-95 duration-150'>
+          className='ui-pop absolute right-0 bottom-full mb-2 w-56 border border-gray-200 bg-white p-3 z-60 animate-in fade-in zoom-in-95 duration-150'>
           <p className='text-xs leading-relaxed text-gray-600 mb-2.5'>{message}</p>
           <div className='flex items-center justify-end gap-2'>
             <button
@@ -75,7 +75,7 @@ export default function InlineConfirmAction({
                 event.stopPropagation()
                 setOpen(false)
               }}
-              className='rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200'>
+              className='ui-btn ui-btn-sm'>
               {cancelLabel}
             </button>
             <button
@@ -84,7 +84,7 @@ export default function InlineConfirmAction({
                 event.stopPropagation()
                 void handleConfirm()
               }}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white ${
+              className={`ui-btn ui-btn-sm text-white ${
                 danger
                   ? 'bg-red-600 hover:bg-red-700'
                   : 'bg-indigo-600 hover:bg-indigo-700'

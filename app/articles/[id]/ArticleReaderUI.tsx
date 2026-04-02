@@ -2,7 +2,9 @@
 'use client'
 
 import React, { useMemo, useState, useEffect, useRef } from 'react'
+import { StudyTimeKind } from '@prisma/client'
 import QuizEngineUI from '@/app/quizzes/QuizEngineUI'
+import type { QuizAnswerMap } from '@/app/quizzes/QuizEngineUI'
 import VocabularyTooltip, {
   TooltipSaveState,
 } from '@/components/VocabularyTooltip'
@@ -15,8 +17,10 @@ import {
   useShowMeaning,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
-import { inferContextualPos } from '@/utils/posTagger'
+import { inferContextualPos, posWordHighlightClass } from '@/utils/posTagger'
 import { getPosOptions } from '@/utils/posTagger'
+import { guessLanguageCode } from '@/utils/langDetector'
+import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 
 const MOBILE_COLLAPSED_HEIGHT = 72
 const MOBILE_MIN_PANEL_HEIGHT = 22
@@ -50,6 +54,11 @@ type VocabularyMeta = {
   meanings: string[]
 }
 
+type PosHighlightToken = {
+  word: string
+  className: string
+}
+
 const splitListInput = (value: string) =>
   Array.from(
     new Set(
@@ -59,6 +68,50 @@ const splitListInput = (value: string) =>
         .filter(Boolean),
     ),
   )
+
+const getReadingFontClass = (text: string) => {
+  const sample = text.trim()
+  if (!sample) return ''
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(sample)) return 'font-reading-ja'
+  if (guessLanguageCode(sample) === 'en' || /[A-Za-z]/.test(sample)) return 'font-reading-en'
+  return ''
+}
+
+const getReadingBodyFontClass = (text: string) => {
+  const sample = text.trim()
+  if (!sample) return ''
+  if (/[\u3040-\u30ff\u4e00-\u9fff]/.test(sample)) return 'font-reading-body-ja'
+  if (guessLanguageCode(sample) === 'en' || /[A-Za-z]/.test(sample))
+    return 'font-reading-body-en'
+  return ''
+}
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const applyPosHighlightsToHtml = (
+  html: string,
+  tokens: PosHighlightToken[],
+  enabled: boolean,
+) => {
+  if (!enabled || tokens.length === 0 || !html) return html
+  const sorted = [...tokens].sort((a, b) => b.word.length - a.word.length)
+  const chunks = html.split(/(<[^>]+>)/g)
+  return chunks
+    .map(chunk => {
+      if (!chunk || (chunk.startsWith('<') && chunk.endsWith('>'))) return chunk
+      let nextChunk = chunk
+      sorted.forEach(token => {
+        const regex = new RegExp(`(${escapeRegExp(token.word)})`, 'g')
+        nextChunk = nextChunk.replace(
+          regex,
+          `<span class="rounded px-1 py-0.5 ${token.className}">$1</span>`,
+        )
+      })
+      return nextChunk
+    })
+    .join('')
+}
 
 export default function ArticleReaderUI({
   article,
@@ -71,8 +124,21 @@ export default function ArticleReaderUI({
 }) {
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
+  useStudyTimeHeartbeat({
+    enabled: true,
+    kind: StudyTimeKind.ARTICLE_READING,
+    intervalMs: 60000,
+  })
   const [localPronunciationMap, setLocalPronunciationMap] = useState(pronunciationMap)
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] = useState(vocabularyMetaMap)
+  const articleTitleFontClass = useMemo(
+    () => getReadingFontClass(`${article.title}\n${article.content}`),
+    [article.title, article.content],
+  )
+  const articleBodyFontClass = useMemo(
+    () => getReadingBodyFontClass(article.content),
+    [article.content],
+  )
   const articleWordEntries = useMemo(
     () =>
       Object.entries(localVocabularyMetaMap)
@@ -108,9 +174,7 @@ export default function ArticleReaderUI({
   )
   const hasQuestions = article.questions && article.questions.length > 0
   const [isQuizFinished, setIsQuizFinished] = useState(false)
-  const [currentAnswers, setCurrentAnswers] = useState<
-    Record<string, string | null>
-  >({}) // 🌟 新增：记录实时答题状态
+  const [currentAnswers, setCurrentAnswers] = useState<QuizAnswerMap>({}) // 🌟 新增：记录实时答题状态
   const [gradedMap, setGradedMap] = useState<Record<string, boolean>>({})
   const [isMobile, setIsMobile] = useState(false)
 
@@ -394,31 +458,48 @@ export default function ArticleReaderUI({
           ) {
             let processedSentence = anchorSentence
 
+            const placeholderToken =
+              (q.prompt || '').match(
+                /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』/,
+              )?.[0] || ''
+            const replaceInSentence = (replacementHtml: string) => {
+              const autoNumberToken =
+                processedSentence.match(
+                  /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』/,
+                )?.[0] || ''
+              const targetToken = placeholderToken || autoNumberToken
+
+              if (targetToken && processedSentence.includes(targetToken)) {
+                processedSentence = processedSentence.replace(
+                  targetToken,
+                  replacementHtml,
+                )
+                return
+              }
+              if (correctOption.text && processedSentence.includes(correctOption.text)) {
+                processedSentence = processedSentence.replace(
+                  correctOption.text,
+                  replacementHtml,
+                )
+              }
+            }
+
             if (!isThisQuestionGraded) {
               // 【没批改时】：显示用户的动态填词，或者灰色留空
               const selectedOptId = currentAnswers[q.id]
               const selectedOpt = q.options?.find(o => o.id === selectedOptId)
 
               if (selectedOpt) {
-                const filledHtml = `<span class="inline-block px-2 py-0 mx-1 bg-indigo-50 border-b-2 border-indigo-500 text-indigo-700 font-bold rounded-t-sm transition-all duration-300">${selectedOpt.text}</span>`
-                processedSentence = anchorSentence.replace(
-                  correctOption.text,
-                  filledHtml,
-                )
+                const filledHtml = `<span class="inline-block mx-1 border-b-2 border-indigo-500 px-1 py-0 text-indigo-700 font-semibold align-baseline transition-all duration-300">${selectedOpt.text}</span>`
+                replaceInSentence(filledHtml)
               } else {
-                const blankHtml = `<span class="inline-block px-4 py-0.5 mx-1 bg-gray-100 border-b-2 border-gray-400 text-gray-500 font-bold rounded-t-md select-none tracking-widest">( ${counter} )</span>`
-                processedSentence = anchorSentence.replace(
-                  correctOption.text,
-                  blankHtml,
-                )
+                const blankHtml = `<span class="inline-block mx-1 border-b-2 border-gray-400 px-3 py-0 text-gray-400 font-semibold select-none tracking-wide align-baseline">(${counter})</span>`
+                replaceInSentence(blankHtml)
               }
             } else {
               // 🌟 【批改后】：无论用户选对还是选错，左侧文章强制显示翠绿色的正确答案！方便通读复习。
-              const highlightHtml = `<u class="text-emerald-600 font-bold underline decoration-2 underline-offset-4 decoration-emerald-400 bg-emerald-50 px-1.5 py-0.5 rounded-md mx-1">${correctOption.text}</u>`
-              processedSentence = anchorSentence.replace(
-                correctOption.text,
-                highlightHtml,
-              )
+              const highlightHtml = `<u class="mx-1 border-b-2 border-emerald-500 px-1 py-0 text-emerald-700 font-semibold no-underline">${correctOption.text}</u>`
+              replaceInSentence(highlightHtml)
             }
 
             htmlContent = htmlContent.replaceAll(
@@ -430,21 +511,47 @@ export default function ArticleReaderUI({
         }
       })
     }
-    const renderedHtml = annotateJapaneseHtml(
+    const posHighlightTokens: PosHighlightToken[] = Object.entries(
+      localVocabularyMetaMap,
+    )
+      .filter(([word, meta]) => {
+        if (!showMeaning) return false
+        if (!htmlContent.includes(word)) return false
+        return (meta.partsOfSpeech || []).length > 0
+      })
+      .map(([word, meta]) => {
+        const contextualPos = inferContextualPos(
+          word,
+          article.content || '',
+          meta.partsOfSpeech || [],
+        )
+        const primaryPos = contextualPos[0]
+        if (!primaryPos) return null
+        return {
+          word,
+          className: posWordHighlightClass(primaryPos),
+        }
+      })
+      .filter((item): item is PosHighlightToken => item !== null)
+    const highlightedHtml = applyPosHighlightsToHtml(
       htmlContent,
+      posHighlightTokens,
+      showMeaning,
+    )
+    const renderedHtml = annotateJapaneseHtml(
+      highlightedHtml,
       localPronunciationMap,
       showPronunciation,
     )
 
     return (
       <div className='w-full'>
-        {/* 顶部信息 */}
-        <div className='mb-8 pb-8 border-b border-gray-100'>
-          <div className='flex items-center justify-between gap-3 mb-4'>
-            <span className='text-xs font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg'>
+        <div className='mb-4 border-b border-gray-200 pb-3 md:mb-6'>
+          <div className='mb-3 flex flex-wrap items-center justify-between gap-3'>
+            <span className='text-xs font-semibold text-gray-500'>
               {article.category?.name || '未分类'}
             </span>
-            <div className='flex items-center gap-2'>
+            <div className='flex flex-wrap items-center gap-2'>
               <ToggleSwitch
                 label='注音'
                 checked={showPronunciation}
@@ -457,12 +564,12 @@ export default function ArticleReaderUI({
               />
             </div>
           </div>
-          <h1 className='text-3xl md:text-4xl font-black text-gray-900 leading-snug'>
+          <h1 className={`text-3xl font-black leading-snug text-gray-900 md:text-4xl ${articleTitleFontClass}`}>
             {article.title}
           </h1>
           {showMeaning && articleWordEntries.length > 0 && (
             <WordMetaPanel
-              className='mt-5 grid grid-cols-1 gap-2 md:grid-cols-2'
+              className='mt-4 grid grid-cols-1 gap-2 md:grid-cols-2'
               entries={articleWordEntries.map(([word, meta]) => ({
                 word,
                 pronunciation: meta.pronunciations[0] || '',
@@ -480,8 +587,9 @@ export default function ArticleReaderUI({
         <div
           onMouseUp={handleTextSelection}
           onTouchEnd={handleTextSelection}
-          className='text-lg md:text-xl text-gray-800 leading-[2.2] md:leading-[2.5] whitespace-pre-wrap select-text
-                     [&_u]:text-indigo-600 [&_u]:font-bold [&_u]:underline [&_u]:decoration-2 [&_u]:underline-offset-4 [&_u]:decoration-indigo-400 [&_u]:bg-indigo-50 [&_u]:px-1.5 [&_u]:py-0.5 [&_u]:rounded-md [&_rt]:text-[10px] [&_rt]:font-bold [&_rt]:text-indigo-500'
+          className={`border-b border-gray-200 pb-6 text-lg leading-[2.1] text-gray-800 whitespace-pre-wrap select-text md:text-xl md:leading-[2.4] ${articleBodyFontClass}
+                     [&_u]:text-indigo-600 [&_u]:font-bold [&_u]:underline [&_u]:decoration-2 [&_u]:underline-offset-4 [&_u]:decoration-indigo-400 [&_u]:bg-indigo-50 [&_u]:px-1.5 [&_u]:py-0.5 [&_u]:rounded-md [&_rt]:text-[10px] [&_rt]:font-bold [&_rt]:text-indigo-500
+          `}
           dangerouslySetInnerHTML={{ __html: renderedHtml }}
         />
       </div>
@@ -494,7 +602,7 @@ export default function ArticleReaderUI({
   if (!hasQuestions) {
     return (
       <div
-        className='min-h-screen bg-gray-50 p-4 md:p-12 pb-24 md:pb-32'
+        className='min-h-screen bg-gray-50 px-4 pb-24 pt-4 md:px-8 md:pb-32 md:pt-8'
         onClick={() => setActiveTooltip(null)}>
         {activeTooltip && (
           <VocabularyTooltip
@@ -520,10 +628,8 @@ export default function ArticleReaderUI({
           />
         )}
 
-        <div className='max-w-3xl mx-auto'>
-          <div className='bg-white p-5 md:p-14 rounded-3xl shadow-sm border border-gray-100'>
-            <ArticleContent />
-          </div>
+        <div className='mx-auto max-w-4xl px-1 md:px-2'>
+          <ArticleContent />
         </div>
       </div>
     )
@@ -532,7 +638,7 @@ export default function ArticleReaderUI({
   // 模式 B：阅读理解模式 (桌面分屏，移动端堆叠)
   return (
     <div
-      className='h-full bg-gray-50 flex flex-col md:flex-row overflow-hidden'
+      className='min-h-screen bg-gray-50 flex flex-col md:flex-row'
       onClick={() => setActiveTooltip(null)}>
       {activeTooltip && (
         <VocabularyTooltip
@@ -560,7 +666,7 @@ export default function ArticleReaderUI({
 
       {/* 👈 左半屏：文章阅读区 (独立滚动) */}
       <div
-        className='flex-1 overflow-y-auto bg-white relative transition-all duration-300'
+        className='relative flex-1 overflow-y-auto bg-gray-50 transition-all duration-300 md:h-screen'
         // 移动端根据 bottomPanelHeight 动态计算高度，PC端占满高度
         style={{
           paddingBottom:
@@ -570,7 +676,7 @@ export default function ArticleReaderUI({
                 ? `calc(${MOBILE_COLLAPSED_HEIGHT}px + env(safe-area-inset-bottom))`
                 : '0px',
         }}>
-        <div className='max-w-2xl mx-auto px-4 md:px-0 pt-4 md:pt-8'>
+        <div className='mx-auto max-w-4xl px-4 pb-6 pt-4 md:px-6 md:pt-8'>
           <ArticleContent />
           {/* 底部占位，防止文字被遮挡 */}
           <div className='h-24 lg:h-32'></div>
@@ -581,7 +687,7 @@ export default function ArticleReaderUI({
       {hasQuestions && (
         <div
           className={`flex flex-col bg-gray-50 border-gray-200 transition-all duration-300 ease-out z-30
-            ${isMobile ? 'fixed bottom-0 left-0 right-0 border-t shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] rounded-t-3xl' : 'w-full md:w-112.5 lg:w-137.5 border-l h-full'}
+            ${isMobile ? 'fixed bottom-0 left-0 right-0 border-t shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] rounded-t-3xl' : 'w-full md:w-112.5 lg:w-137.5 border-l md:sticky md:top-0 md:h-screen'}
           `}
           // 移动端根据状态设置面板高度，展开状态应用拖拽高度，收缩状态给 60px
           style={
@@ -654,7 +760,7 @@ export default function ArticleReaderUI({
                   quiz={{ questions: article.questions }}
                   backUrl='/articles'
                   onFinish={() => setIsQuizFinished(true)}
-                  onAnswerChange={answers => setCurrentAnswers(answers)}
+                  onAnswerChange={setCurrentAnswers}
                   onGradedChange={map => setGradedMap(map)}
                   isArticleMode={true}
                   vocabularyMetaMapByQuestion={quizVocabularyMetaMapByQuestion}

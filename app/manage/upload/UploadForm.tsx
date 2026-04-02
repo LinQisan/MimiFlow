@@ -39,7 +39,7 @@ function CustomDropdown({
     <div className='relative w-full' ref={ref}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full p-4 bg-gray-50 border rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all cursor-pointer flex justify-between items-center
+        className={`w-full p-4 bg-gray-50 border text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all cursor-pointer flex justify-between items-center
           ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-400/20 bg-white' : 'border-gray-200 hover:bg-white'}
         `}>
         <span className={value ? 'text-gray-800 truncate pr-4' : 'text-gray-400'}>
@@ -60,7 +60,7 @@ function CustomDropdown({
       </div>
 
       {isOpen && (
-        <div className='absolute z-[80] mt-2 w-full max-h-[26rem] overflow-y-auto rounded-2xl border border-gray-100 bg-white py-2 shadow-xl custom-scrollbar animate-in fade-in slide-in-from-top-2'>
+        <div className='absolute z-[80] mt-2 w-full max-h-[26rem] overflow-y-auto border border-gray-100 bg-white py-2 custom-scrollbar animate-in fade-in slide-in-from-top-2'>
           {options.length === 0 ? (
             <div className='px-4 py-3 text-sm text-gray-400 text-center'>
               暂无选项
@@ -491,15 +491,15 @@ export default function UploadForm({ levels, categories }: Props) {
       />
 
       {/* ================= 1. 分类归属 ================= */}
-      <fieldset className='relative overflow-visible rounded-3xl border border-gray-100 bg-white p-4 shadow-sm md:p-8'>
+      <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
         <div className='absolute top-0 left-0 w-2 h-full bg-indigo-500 rounded-l-3xl'></div>
         <legend className='mb-4 flex items-center gap-2 px-2 text-lg font-black tracking-wide text-gray-800 md:mb-6 md:px-4 md:text-xl'>
           分类归属
         </legend>
 
-        <div className='mb-5 grid grid-cols-1 gap-2 rounded-2xl border border-gray-100/50 bg-gray-50/80 p-2 sm:grid-cols-2 md:mb-6 md:gap-4 md:p-2.5'>
+        <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-100/50 bg-gray-50/80 p-2 sm:grid-cols-2 md:mb-6 md:gap-4 md:p-2.5'>
           <label
-            className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'existing' ? 'border border-gray-200/50 bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:bg-gray-100'} ${categories.length === 0 ? 'cursor-not-allowed opacity-50' : ''}`}>
+            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'existing' ? 'border border-gray-200/50 bg-white text-indigo-600 ' : 'text-gray-500 hover:bg-gray-100'} ${categories.length === 0 ? 'cursor-not-allowed opacity-50' : ''}`}>
             <input
               type='radio'
               className='hidden'
@@ -510,7 +510,7 @@ export default function UploadForm({ levels, categories }: Props) {
             添加到已有分类
           </label>
           <label
-            className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'new' ? 'border border-gray-200/50 bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:bg-gray-100'}`}>
+            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'new' ? 'border border-gray-200/50 bg-white text-indigo-600 ' : 'text-gray-500 hover:bg-gray-100'}`}>
             <input
               type='radio'
               className='hidden'
@@ -541,7 +541,7 @@ export default function UploadForm({ levels, categories }: Props) {
                 value={categoryName}
                 onChange={e => setCategoryName(e.target.value)}
                 placeholder='分类名称（例：N1 听力 2023-07）'
-                className='flex-[2] p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all'
+                className='flex-[2] p-4 bg-gray-50 border border-gray-200 text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all'
               />
 
               {/* 🌟 使用自定义下拉菜单 */}
@@ -560,21 +560,21 @@ export default function UploadForm({ levels, categories }: Props) {
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder='分类说明（可选）'
-              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none transition-all min-h-[100px] resize-y custom-scrollbar'
+              className='w-full p-4 bg-gray-50 border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none transition-all min-h-[100px] resize-y custom-scrollbar'
             />
           </div>
         )}
       </fieldset>
 
       {/* ================= 2. 题目信息 (带智能预填) ================= */}
-      <fieldset className='relative overflow-visible rounded-3xl border border-gray-100 bg-white p-4 shadow-sm md:p-8'>
+      <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
         <div className='absolute top-0 left-0 w-2 h-full bg-emerald-400 rounded-l-3xl'></div>
         <div className='mb-4 flex flex-col gap-2 px-2 md:mb-6 md:flex-row md:items-center md:justify-between md:px-4'>
           <legend className='flex items-center gap-2 text-lg font-black tracking-wide text-gray-800 md:text-xl'>
             语料基本信息
           </legend>
           {mode === 'existing' && selectedCategoryId && (
-            <span className='text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 flex items-center gap-1.5'>
+            <span className='text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 border border-emerald-100 flex items-center gap-1.5'>
               <span className='animate-pulse'>✨</span> 已根据上条记录自动填充
             </span>
           )}
@@ -594,7 +594,7 @@ export default function UploadForm({ levels, categories }: Props) {
                   ? '例：N1 听力（留空则直接用字幕文件名）'
                 : '例：问题 1-01（可留空，不填则用字幕文件名）'
               }
-              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
+              className='w-full p-4 bg-gray-50 border border-gray-200 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
             />
             {isBatchAss && !title.trim() && (
               <p className='mt-1 text-xs font-semibold text-amber-600'>
@@ -605,7 +605,7 @@ export default function UploadForm({ levels, categories }: Props) {
         </div>
 
         {isBatchAss && (
-          <div className='mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs text-emerald-800 md:mb-5'>
+          <div className='mb-4 border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs text-emerald-800 md:mb-5'>
             <p className='font-black'>批量录入说明</p>
             <p className='mt-1'>
               已进入批量模式。只需选择目标分类并上传多个字幕，系统会自动按顺序创建多条听力语料并分配排序。
@@ -621,7 +621,7 @@ export default function UploadForm({ levels, categories }: Props) {
             <button
               type='button'
               onClick={() => setAudioSourceType('manual')}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
+              className={`border px-3 py-2.5 text-sm font-bold transition ${
                 audioSourceType === 'manual'
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                   : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
@@ -631,7 +631,7 @@ export default function UploadForm({ levels, categories }: Props) {
             <button
               type='button'
               onClick={() => setAudioSourceType('existing')}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
+              className={`border px-3 py-2.5 text-sm font-bold transition ${
                 audioSourceType === 'existing'
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                   : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
@@ -641,7 +641,7 @@ export default function UploadForm({ levels, categories }: Props) {
             <button
               type='button'
               onClick={() => setAudioSourceType('upload')}
-              className={`rounded-xl border px-3 py-2.5 text-sm font-bold transition ${
+              className={`border px-3 py-2.5 text-sm font-bold transition ${
                 audioSourceType === 'upload'
                   ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                   : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
@@ -658,7 +658,7 @@ export default function UploadForm({ levels, categories }: Props) {
                   value={audioFile}
                   onChange={e => setAudioFile(e.target.value)}
                   placeholder='例：/audios/Shadowing/N2-01.mp3'
-                  className='w-full rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-all focus:ring-2 focus:ring-emerald-400'
+                  className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-all focus:ring-2 focus:ring-emerald-400'
                 />
               ) : (
                 <div className='space-y-2'>
@@ -685,7 +685,7 @@ export default function UploadForm({ levels, categories }: Props) {
                       />
                     </div>
                     {isBatchAss ? (
-                      <div className='md:col-span-3 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-3 text-xs font-medium text-emerald-700'>
+                      <div className='md:col-span-3 border border-emerald-100 bg-emerald-50/60 p-3 text-xs font-medium text-emerald-700'>
                         将按字幕文件名优先在当前文件夹匹配同名音频，匹配不到时自动回退到全站同名音频。
                         <input
                           type='hidden'
@@ -731,7 +731,7 @@ export default function UploadForm({ levels, categories }: Props) {
               onDragOver={handleAudioDragOver}
               onDragLeave={handleAudioDragLeave}
               onDrop={handleAudioDrop}
-              className={`rounded-2xl border p-3 transition ${
+              className={`border p-3 transition ${
                 isAudioDragging
                   ? 'border-emerald-300 bg-emerald-50'
                   : 'border-gray-200 bg-gray-50'
@@ -762,7 +762,7 @@ export default function UploadForm({ levels, categories }: Props) {
                 <button
                   type='button'
                   onClick={handleAudioPick}
-                  className='rounded-xl border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50'>
+                  className='border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50'>
                   选择录音文件
                 </button>
                 <span className='text-xs font-medium text-gray-500'>
@@ -776,7 +776,7 @@ export default function UploadForm({ levels, categories }: Props) {
                 </span>
               </div>
               {audioUploadFileNames.length > 1 && (
-                <div className='mt-2 max-h-24 overflow-y-auto rounded-xl border border-emerald-100 bg-white/70 p-2 text-xs text-emerald-700'>
+                <div className='mt-2 max-h-24 overflow-y-auto border border-emerald-100 bg-white/70 p-2 text-xs text-emerald-700'>
                   {audioUploadFileNames.slice(0, 10).map((name, index) => (
                     <div key={`${name}-${index}`} className='truncate'>
                       {name}
@@ -803,7 +803,7 @@ export default function UploadForm({ levels, categories }: Props) {
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-3xl border-2 p-8 transition-all md:p-14
+        className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-8 transition-all md:p-14
           ${isDragging ? 'border-indigo-400 bg-indigo-50/80 scale-[1.02]' : selectedFileNames.length > 0 ? 'border-emerald-400 bg-emerald-50/80' : 'border-dashed border-gray-300 bg-white hover:bg-gray-50 hover:border-indigo-300'}`}>
         <input
           required
@@ -821,7 +821,7 @@ export default function UploadForm({ levels, categories }: Props) {
             <div className='mb-1.5 text-lg font-black text-emerald-700 md:text-xl'>
               字幕文件已就绪（{selectedFileNames.length}）
             </div>
-            <div className='mb-4 max-h-28 overflow-y-auto rounded-xl border border-emerald-200 bg-white/70 p-2 text-left text-xs font-bold text-emerald-700/80 md:text-sm'>
+            <div className='mb-4 max-h-28 overflow-y-auto border border-emerald-200 bg-white/70 p-2 text-left text-xs font-bold text-emerald-700/80 md:text-sm'>
               {selectedFileNames.slice(0, 8).map((name, index) => (
                 <div key={`${name}-${index}`} className='truncate'>
                   {name}
@@ -857,7 +857,7 @@ export default function UploadForm({ levels, categories }: Props) {
       </p>
 
       {previewRows.length > 0 && (
-        <section className='rounded-3xl border border-indigo-100 bg-indigo-50/30 p-4 md:p-6'>
+        <section className='border border-indigo-100 bg-indigo-50/30 p-4 md:p-6'>
           <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
             <h3 className='text-sm font-black text-indigo-900 md:text-base'>
               {isBatchAss ? '多音频题目录入预览' : '音频配对预览'}
@@ -882,7 +882,7 @@ export default function UploadForm({ levels, categories }: Props) {
               return (
                 <div
                   key={row.key}
-                  className='rounded-2xl border border-indigo-100 bg-white p-3'>
+                  className='border border-indigo-100 bg-white p-3'>
                   <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
                     <p className='truncate text-xs font-bold text-gray-700 md:text-sm'>
                       {row.name}
@@ -932,7 +932,7 @@ export default function UploadForm({ levels, categories }: Props) {
                       }))
                     }
                     placeholder='可手动填写 /audios/xxx.mp3 或 upload://词干'
-                    className='w-full rounded-xl border border-indigo-200 bg-indigo-50/40 px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
+                    className='w-full border border-indigo-200 bg-indigo-50/40 px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
                   />
                 </div>
               )
@@ -945,8 +945,8 @@ export default function UploadForm({ levels, categories }: Props) {
       <button
         type='submit'
         disabled={status.type === 'loading'}
-        className={`mt-2 flex w-full items-center justify-center gap-3 rounded-2xl py-4 text-base font-black transition-all shadow-lg active:scale-95 md:mt-4 md:py-5 md:text-xl
-          ${status.type === 'loading' ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:shadow-xl'}
+        className={`mt-2 flex w-full items-center justify-center gap-3 py-4 text-base font-black transition-all shadow-lg active:scale-95 md:mt-4 md:py-5 md:text-xl
+          ${status.type === 'loading' ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:'}
         `}>
         {status.type === 'loading' ? (
           <>
@@ -975,7 +975,7 @@ export default function UploadForm({ levels, categories }: Props) {
 
       {status.message && (
         <div
-          className={`p-5 rounded-2xl font-bold text-sm animate-in slide-in-from-bottom-4 flex items-center gap-3
+          className={`p-5 font-bold text-sm animate-in slide-in-from-bottom-4 flex items-center gap-3
           ${status.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}
         `}>
           {status.message}

@@ -46,7 +46,7 @@ export default function WordMetaPanel({
         return (
         <div
           key={`meta-${entry.word}`}
-          className='rounded-xl border border-gray-200 bg-gray-50 px-3 py-2'>
+          className='border border-gray-200 bg-gray-50 px-3 py-2'>
           <div className='flex flex-wrap items-center gap-2'>
             <WordPronunciation
               word={entry.word}

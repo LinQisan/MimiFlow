@@ -27,78 +27,76 @@ export default async function QuizzesIndexPage() {
   }, [])
 
   return (
-    <div className='min-h-screen bg-gray-50 p-6 md:p-12'>
-      <div className='max-w-7xl mx-auto'>
-        <div className='mb-10'>
-          <h1 className='text-3xl md:text-4xl font-black text-gray-900 tracking-tight mb-3'>
-            📝 刷题
-          </h1>
-          <p className='text-gray-500'>
-            选择适合你的刷题模式。系统将自动统计正确率与答题耗时，智能评估题目难度。
-          </p>
-        </div>
+    <div className='min-h-screen bg-gray-50 px-4 pb-20 pt-4 md:px-8 md:pt-8'>
+      <div className='mx-auto max-w-7xl'>
+        <section className='mb-8 border-b border-gray-200 pb-4 md:pb-5'>
+          <div className='flex flex-wrap items-end justify-between gap-4'>
+            <div>
+              <h1 className='text-3xl font-bold tracking-tight text-gray-900 md:text-4xl'>
+                题库练习
+              </h1>
+              <p className='mt-2 text-sm font-medium text-gray-500 md:text-base'>
+                选择一套题并开始作答，系统会记录正确率与答题耗时。
+              </p>
+            </div>
+            <div className='ui-tag ui-tag-info md:text-sm'>
+              共 {quizzes.length} 套
+            </div>
+          </div>
+        </section>
 
-        <div className='space-y-8'>
+        <div className='space-y-6'>
           {groupedQuizzes.map(group => (
             <section
               key={group.categoryName}
-              className='bg-white border border-gray-100 rounded-3xl p-5 md:p-6 shadow-sm'>
-              <div className='flex items-center justify-between mb-5'>
-                <h2 className='text-xl font-black text-gray-800'>
+              className='border-b border-gray-200 pb-4 md:pb-6'>
+              <div className='mb-5 flex items-center justify-between'>
+                <h2 className='text-lg font-black text-gray-800 md:text-xl'>
                   {group.categoryName}
                 </h2>
-                <span className='text-xs font-bold bg-gray-100 text-gray-500 px-3 py-1 rounded-full'>
+                <span className='ui-tag ui-tag-muted'>
                   {group.items.length} 套
                 </span>
               </div>
 
-              <div className='grid grid-cols-1 xl:grid-cols-2 gap-5'>
+              <div className='grid grid-cols-1 gap-4 xl:grid-cols-2'>
                 {group.items.map(quiz => (
                   <div
                     key={quiz.id}
-                    className='bg-gray-50 p-6 rounded-3xl border border-gray-100 hover:shadow-lg transition-all duration-300 flex flex-col justify-between'>
+                    className='flex flex-col justify-between border-b border-gray-200 px-1 py-4 transition-colors hover:bg-gray-50'>
                     <div>
-                      <h3 className='text-xl font-bold text-gray-800 mb-2 leading-snug'>
+                      <h3 className='mb-2 text-lg font-semibold leading-snug text-gray-900 md:text-xl'>
                         {quiz.title}
                       </h3>
                       {quiz.description && (
-                        <p className='text-sm text-gray-500 line-clamp-2'>
+                        <p className='line-clamp-2 text-sm text-gray-500'>
                           {quiz.description}
                         </p>
                       )}
                     </div>
 
-                    <div className='mt-6 pt-5 border-t border-gray-100'>
-                      <div className='text-xs text-gray-400 font-bold mb-4 text-center'>
+                    <div className='mt-4 pt-2'>
+                      <div className='mb-3 text-xs font-semibold text-gray-400'>
                         共 {quiz._count.questions} 道题
                       </div>
 
-                      <div className='grid grid-cols-3 gap-2 md:gap-3'>
+                      <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                         <Link
                           href={`/quizzes/${quiz.id}?mode=scroll`}
-                          className='flex flex-col items-center justify-center py-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-100 hover:-translate-y-1 transition-all group'>
-                          <span className='text-xl mb-1 group-hover:scale-110 transition-transform'>
-                            📜
-                          </span>
-                          <span className='text-xs font-bold'>展开全卷</span>
+                          className='ui-btn ui-btn-sm border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'>
+                          全卷模式
                         </Link>
 
                         <Link
                           href={`/quizzes/${quiz.id}?mode=random`}
-                          className='flex flex-col items-center justify-center py-3 bg-purple-50 text-purple-600 rounded-2xl hover:bg-purple-100 hover:-translate-y-1 transition-all group'>
-                          <span className='text-xl mb-1 group-hover:scale-110 transition-transform'>
-                            🔀
-                          </span>
-                          <span className='text-xs font-bold'>随机乱序</span>
+                          className='ui-btn ui-btn-sm border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'>
+                          随机模式
                         </Link>
 
                         <Link
                           href={`/quizzes/${quiz.id}?mode=sequential`}
-                          className='flex flex-col items-center justify-center py-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-100 hover:-translate-y-1 transition-all group'>
-                          <span className='text-xl mb-1 group-hover:scale-110 transition-transform'>
-                            🎯
-                          </span>
-                          <span className='text-xs font-bold'>逐题通关</span>
+                          className='ui-btn ui-btn-sm border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'>
+                          逐题模式
                         </Link>
                       </div>
                     </div>
@@ -109,8 +107,8 @@ export default async function QuizzesIndexPage() {
           ))}
 
           {quizzes.length === 0 && (
-            <div className='col-span-full py-20 text-center text-gray-400'>
-              暂时没有题库，请前往后台录入。
+            <div className='border-b border-dashed border-gray-300 py-16 text-center text-sm font-semibold text-gray-500'>
+              当前暂无题库，请先在管理端录入。
             </div>
           )}
         </div>

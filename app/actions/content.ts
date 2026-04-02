@@ -1,10 +1,16 @@
 // app/actions/content.ts
 'use server'
 
-import { SourceType } from '@prisma/client'
+import { QuestionType, SourceType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/jsonList'
+import {
+  buildVocabularyCanonicalKeys,
+  normalizeVocabularyHeadword,
+} from '@/utils/vocabularyCanonical'
+import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
+import { sanitizePronunciation, sanitizePronunciations } from '@/utils/pronunciation'
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(new Set((list || []).map(item => item.trim()).filter(Boolean))).slice(
@@ -16,6 +22,9 @@ type VocabularySentenceRecord = {
   text: string
   source: string
   sourceUrl: string
+  translation?: string | null
+  audioFile?: string | null
+  sourceType?: SourceType | null
   meaningIndex?: number | null
   posTags?: string[] | null
 }
@@ -35,6 +44,8 @@ const upsertVocabularySentenceLink = async (
     text: string
     source: string
     sourceUrl: string
+    translation?: string | null
+    audioFile?: string | null
     sourceType?: SourceType
     sourceId?: string
     meaningIndex?: number | null
@@ -56,6 +67,8 @@ const upsertVocabularySentenceLink = async (
     },
     update: {
       text,
+      translation: (sentence.translation || '').trim() || null,
+      audioFile: (sentence.audioFile || '').trim() || null,
       source: sentence.source.trim() || '未知来源',
       sourceType: sentence.sourceType,
       sourceId: sentence.sourceId || null,
@@ -63,6 +76,8 @@ const upsertVocabularySentenceLink = async (
     create: {
       text,
       normalizedText,
+      translation: (sentence.translation || '').trim() || null,
+      audioFile: (sentence.audioFile || '').trim() || null,
       source: sentence.source.trim() || '未知来源',
       sourceUrl,
       sourceType: sentence.sourceType,
@@ -206,20 +221,24 @@ const listVocabularySentenceRecords = async (
     include: { sentence: true },
     orderBy: { createdAt: 'asc' },
   })
-  return links.map(link => ({
-    text: link.sentence.text,
-    source: link.sentence.source,
-    sourceUrl: link.sentence.sourceUrl,
-    meaningIndex: link.meaningIndex ?? null,
-    posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
-  }))
+  return dedupeAndRankSentences(
+    links.map(link => ({
+      text: link.sentence.text,
+      source: link.sentence.source,
+      sourceUrl: link.sentence.sourceUrl,
+      translation: link.sentence.translation || null,
+      audioFile: link.sentence.audioFile || null,
+      sourceType: link.sentence.sourceType,
+      meaningIndex: link.meaningIndex ?? null,
+      posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
+    })),
+    16,
+  )
 }
 
 export async function createArticle(data: any) {
   try {
-    const trimmedTitle = (data.title || '').trim()
-    const fallbackTitle = `阅读_${new Date().toISOString().slice(0, 10)}`
-    const articleTitle = trimmedTitle || fallbackTitle
+    const articleTitle = (data.title || '').trim()
 
     await prisma.article.create({
       data: {
@@ -327,6 +346,334 @@ export async function createQuizQuestion(data: any) {
   }
 }
 
+type EditableArticleOptionInput = {
+  id?: string
+  text?: string
+  isCorrect?: boolean
+}
+
+type EditableArticleQuestionInput = {
+  id?: string
+  questionType?: string
+  prompt?: string | null
+  contextSentence?: string | null
+  options?: EditableArticleOptionInput[]
+}
+
+type UpdateArticlePayload = {
+  articleId: string
+  title: string
+  content: string
+  questions: EditableArticleQuestionInput[]
+}
+
+export async function updateArticleWithQuestions(payload: UpdateArticlePayload) {
+  try {
+    const title = payload.title.trim()
+    const content = payload.content.trim()
+    if (!payload.articleId) {
+      return { success: false, message: '文章 ID 缺失。' }
+    }
+    if (!content) {
+      return { success: false, message: '请填写文章正文。' }
+    }
+
+    await prisma.$transaction(async tx => {
+      const existingQuestions = await tx.question.findMany({
+        where: { articleId: payload.articleId },
+        include: { options: { select: { id: true } } },
+      })
+      const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
+      const existingOptionIdsByQuestion = new Map(
+        existingQuestions.map(q => [q.id, new Set(q.options.map(o => o.id))]),
+      )
+
+      await tx.article.update({
+        where: { id: payload.articleId },
+        data: { title, content },
+      })
+
+      const keepQuestionIds: string[] = []
+
+      for (let index = 0; index < payload.questions.length; index++) {
+        const question = payload.questions[index]
+        const promptText = (question.prompt || '').trim()
+        const contextText = (question.contextSentence || '').trim()
+        const questionType = (question.questionType ||
+          'READING_COMPREHENSION') as QuestionType
+        const normalizedContext = contextText || promptText || '（未填写语境句）'
+
+        const rawOptions = Array.isArray(question.options) ? question.options : []
+        const normalizedOptions =
+          rawOptions.length > 0
+            ? rawOptions.map((option, optionIndex) => ({
+                id: option.id,
+                text: (option.text || '').trim() || `选项 ${optionIndex + 1}`,
+                isCorrect: Boolean(option.isCorrect),
+              }))
+            : [
+                { id: '', text: '选项 1', isCorrect: true },
+                { id: '', text: '选项 2', isCorrect: false },
+              ]
+
+        if (!normalizedOptions.some(option => option.isCorrect)) {
+          normalizedOptions[0].isCorrect = true
+        }
+
+        const incomingQuestionId = (question.id || '').trim()
+        if (incomingQuestionId && existingQuestionIdSet.has(incomingQuestionId)) {
+          keepQuestionIds.push(incomingQuestionId)
+
+          await tx.question.update({
+            where: { id: incomingQuestionId },
+            data: {
+              questionType,
+              prompt: promptText || null,
+              contextSentence: normalizedContext,
+              order: index + 1,
+            },
+          })
+
+          const existingOptionIdSet =
+            existingOptionIdsByQuestion.get(incomingQuestionId) || new Set<string>()
+          const keepOptionIds: string[] = []
+
+          for (const option of normalizedOptions) {
+            const optionId = (option.id || '').trim()
+            if (optionId && existingOptionIdSet.has(optionId)) {
+              keepOptionIds.push(optionId)
+              await tx.questionOption.update({
+                where: { id: optionId },
+                data: { text: option.text, isCorrect: option.isCorrect },
+              })
+            } else {
+              const createdOption = await tx.questionOption.create({
+                data: {
+                  questionId: incomingQuestionId,
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                },
+                select: { id: true },
+              })
+              keepOptionIds.push(createdOption.id)
+            }
+          }
+
+          await tx.questionOption.deleteMany({
+            where: {
+              questionId: incomingQuestionId,
+              id: { notIn: keepOptionIds },
+            },
+          })
+        } else {
+          const createdQuestion = await tx.question.create({
+            data: {
+              articleId: payload.articleId,
+              questionType,
+              prompt: promptText || null,
+              contextSentence: normalizedContext,
+              order: index + 1,
+              options: {
+                create: normalizedOptions.map(option => ({
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                })),
+              },
+            },
+            select: { id: true },
+          })
+          keepQuestionIds.push(createdQuestion.id)
+        }
+      }
+
+      await tx.question.deleteMany({
+        where: {
+          articleId: payload.articleId,
+          id: { notIn: keepQuestionIds },
+        },
+      })
+    })
+
+    revalidatePath('/manage')
+    revalidatePath('/manage/level/article/[id]', 'page')
+    revalidatePath('/articles')
+    revalidatePath('/articles/[id]', 'page')
+
+    return { success: true }
+  } catch (error) {
+    console.error('updateArticleWithQuestions failed:', error)
+    return { success: false, message: '保存失败，请稍后重试。' }
+  }
+}
+
+type EditableQuizOptionInput = {
+  id?: string
+  text?: string
+  isCorrect?: boolean
+}
+
+type EditableQuizQuestionInput = {
+  id?: string
+  questionType?: string
+  prompt?: string | null
+  contextSentence?: string | null
+  targetWord?: string | null
+  explanation?: string | null
+  options?: EditableQuizOptionInput[]
+}
+
+type UpdateQuizPayload = {
+  quizId: string
+  title: string
+  questions: EditableQuizQuestionInput[]
+}
+
+export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
+  try {
+    const title = payload.title.trim()
+    if (!payload.quizId) {
+      return { success: false, message: '题库 ID 缺失。' }
+    }
+    if (!title) {
+      return { success: false, message: '题库名称不能为空。' }
+    }
+
+    await prisma.$transaction(async tx => {
+      const existingQuestions = await tx.question.findMany({
+        where: { quizId: payload.quizId },
+        include: { options: { select: { id: true } } },
+      })
+      const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
+      const existingOptionIdsByQuestion = new Map(
+        existingQuestions.map(q => [q.id, new Set(q.options.map(o => o.id))]),
+      )
+
+      await tx.quiz.update({
+        where: { id: payload.quizId },
+        data: { title },
+      })
+
+      const keepQuestionIds: string[] = []
+
+      for (let index = 0; index < payload.questions.length; index += 1) {
+        const question = payload.questions[index]
+        const promptText = (question.prompt || '').trim()
+        const contextText = (question.contextSentence || '').trim()
+        const questionType = (question.questionType || 'PRONUNCIATION') as QuestionType
+        const normalizedContext = contextText || promptText || '（未填写语境句）'
+        const targetWord = (question.targetWord || '').trim() || null
+        const explanation = (question.explanation || '').trim() || null
+
+        const rawOptions = Array.isArray(question.options) ? question.options : []
+        const normalizedOptions =
+          rawOptions.length > 0
+            ? rawOptions.map((option, optionIndex) => ({
+                id: option.id,
+                text: (option.text || '').trim() || `选项 ${optionIndex + 1}`,
+                isCorrect: Boolean(option.isCorrect),
+              }))
+            : [
+                { id: '', text: '选项 1', isCorrect: true },
+                { id: '', text: '选项 2', isCorrect: false },
+                { id: '', text: '选项 3', isCorrect: false },
+                { id: '', text: '选项 4', isCorrect: false },
+              ]
+
+        if (!normalizedOptions.some(option => option.isCorrect)) {
+          normalizedOptions[0].isCorrect = true
+        }
+
+        const incomingQuestionId = (question.id || '').trim()
+        if (incomingQuestionId && existingQuestionIdSet.has(incomingQuestionId)) {
+          keepQuestionIds.push(incomingQuestionId)
+
+          await tx.question.update({
+            where: { id: incomingQuestionId },
+            data: {
+              questionType,
+              prompt: promptText || null,
+              contextSentence: normalizedContext,
+              targetWord,
+              explanation,
+              order: index + 1,
+            },
+          })
+
+          const existingOptionIdSet =
+            existingOptionIdsByQuestion.get(incomingQuestionId) || new Set<string>()
+          const keepOptionIds: string[] = []
+
+          for (const option of normalizedOptions) {
+            const optionId = (option.id || '').trim()
+            if (optionId && existingOptionIdSet.has(optionId)) {
+              keepOptionIds.push(optionId)
+              await tx.questionOption.update({
+                where: { id: optionId },
+                data: { text: option.text, isCorrect: option.isCorrect },
+              })
+            } else {
+              const createdOption = await tx.questionOption.create({
+                data: {
+                  questionId: incomingQuestionId,
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                },
+                select: { id: true },
+              })
+              keepOptionIds.push(createdOption.id)
+            }
+          }
+
+          await tx.questionOption.deleteMany({
+            where: {
+              questionId: incomingQuestionId,
+              id: { notIn: keepOptionIds },
+            },
+          })
+        } else {
+          const createdQuestion = await tx.question.create({
+            data: {
+              quizId: payload.quizId,
+              questionType,
+              prompt: promptText || null,
+              contextSentence: normalizedContext,
+              targetWord,
+              explanation,
+              order: index + 1,
+              options: {
+                create: normalizedOptions.map(option => ({
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                })),
+              },
+            },
+            select: { id: true },
+          })
+          keepQuestionIds.push(createdQuestion.id)
+        }
+      }
+
+      await tx.question.deleteMany({
+        where: {
+          quizId: payload.quizId,
+          id: { notIn: keepQuestionIds },
+        },
+      })
+    })
+
+    revalidatePath('/manage')
+    revalidatePath('/manage/level/[id]', 'page')
+    revalidatePath('/manage/level/quiz/[id]', 'page')
+    revalidatePath('/quizzes')
+    revalidatePath('/quizzes/[id]', 'page')
+
+    return { success: true }
+  } catch (error) {
+    console.error('updateQuizWithQuestions failed:', error)
+    return { success: false, message: '保存失败，请稍后重试。' }
+  }
+}
+
 export async function createCategory(data: { levelId: string; name: string }) {
   try {
     // Category.id 为手动字符串，后端统一生成
@@ -371,12 +718,13 @@ export async function saveVocabulary(
     )
     const sourceMeta = await resolveVocabularySourceMeta(sourceType, sourceId)
 
-    const normalizedPronunciations = Array.from(
-      new Set(
-        (pronunciations || [])
-          .map(item => item.trim())
-          .filter(Boolean),
-      ),
+    const normalizedPronunciations = sanitizePronunciations(
+      trimmedWord,
+      pronunciations || [],
+    )
+    const normalizedPrimaryPronunciation = sanitizePronunciation(
+      trimmedWord,
+      pronunciation || '',
     )
     const normalizedPartsOfSpeech = Array.from(
       new Set(
@@ -384,6 +732,10 @@ export async function saveVocabulary(
           .map(item => item.trim())
           .filter(Boolean),
       ),
+    )
+    const normalizedWord = normalizeVocabularyHeadword(
+      trimmedWord,
+      normalizedPartsOfSpeech,
     )
     const normalizedMeanings = Array.from(
       new Set(
@@ -393,15 +745,48 @@ export async function saveVocabulary(
       ),
     )
 
-    const exists = await prisma.vocabulary.findFirst({
-      where: { word: trimmedWord },
+    let exists = await prisma.vocabulary.findFirst({
+      where: { word: normalizedWord },
     })
+
+    if (!exists) {
+      const targetKeys = new Set(buildVocabularyCanonicalKeys(normalizedWord))
+      if (targetKeys.size > 0) {
+        const candidates = await prisma.vocabulary.findMany()
+
+        let bestCandidate: (typeof candidates)[number] | null = null
+        let bestScore = -1
+        for (const candidate of candidates) {
+          const candidateKeys = buildVocabularyCanonicalKeys(candidate.word)
+          const intersectCount = candidateKeys.filter(key =>
+            targetKeys.has(key),
+          ).length
+          if (intersectCount === 0) continue
+          const lengthScore = Math.max(
+            0,
+            6 - Math.abs(candidate.word.length - normalizedWord.length),
+          )
+          const score = intersectCount * 10 + lengthScore
+          if (!bestCandidate || score > bestScore) {
+            bestCandidate = candidate
+            bestScore = score
+          }
+        }
+
+        if (bestCandidate) {
+          exists = bestCandidate
+        }
+      }
+    }
 
     if (exists) {
       const mergedPronunciations = toJsonStringList([
-        pronunciation?.trim() || '',
+        normalizedPrimaryPronunciation,
         ...normalizedPronunciations,
-        ...parseJsonStringList(exists.pronunciations),
+        ...sanitizePronunciations(
+          trimmedWord,
+          parseJsonStringList(exists.pronunciations),
+        ),
       ])
       const mergedMeanings = toJsonStringList([
         ...normalizedMeanings,
@@ -460,11 +845,11 @@ export async function saveVocabulary(
 
     const created = await prisma.vocabulary.create({
       data: {
-        word: trimmedWord,
+        word: normalizedWord,
         sourceType: sourceType,
         sourceId: sourceId,
         pronunciations: toJsonStringList([
-          pronunciation?.trim() || '',
+          normalizedPrimaryPronunciation,
           ...normalizedPronunciations,
         ]),
         partsOfSpeech: toJsonStringList(normalizedPartsOfSpeech),
@@ -495,7 +880,12 @@ export async function updateVocabularyPronunciationById(
   pronunciation: string,
 ) {
   try {
-    const nextPron = pronunciation.trim()
+    const target = await prisma.vocabulary.findUnique({
+      where: { id },
+      select: { word: true },
+    })
+    if (!target) return { success: false }
+    const nextPron = sanitizePronunciation(target.word, pronunciation)
     await prisma.vocabulary.update({
       where: { id },
       data: {
@@ -599,9 +989,36 @@ export async function submitQuizAttempts(
   }[],
 ) {
   try {
-    await prisma.questionAttempt.createMany({
-      data: attempts,
+    await prisma.$transaction(async tx => {
+      await tx.questionAttempt.createMany({
+        data: attempts,
+      })
+
+      const now = new Date()
+      const firstRetryDueAt = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+      const wrongAttempts = attempts.filter(item => !item.isCorrect)
+
+      for (const item of wrongAttempts) {
+        await tx.questionRetry.upsert({
+          where: { questionId: item.questionId },
+          create: {
+            questionId: item.questionId,
+            stage: 0,
+            dueAt: firstRetryDueAt,
+            wrongCount: 1,
+          },
+          update: {
+            stage: 0,
+            dueAt: firstRetryDueAt,
+            wrongCount: { increment: 1 },
+          },
+        })
+      }
     })
+
+    revalidatePath('/retry')
+    revalidatePath('/today')
+    revalidatePath('/')
 
     return { success: true, message: '做题数据已永久保存入库！' }
   } catch (error: any) {
@@ -653,21 +1070,24 @@ export async function searchSentencesForWord(word: string) {
       },
     })
 
-    const results: { text: string; source: string; sourceUrl: string }[] = []
-    const seen = new Set<string>()
-
+    const results: {
+      text: string
+      source: string
+      sourceUrl: string
+      sourceType?: SourceType
+    }[] = []
     articles.forEach(a => {
       const parts = a.content.match(/[^。！？.!\?\n]+[。！？.!\?\n]*/g) || [
         a.content,
       ]
       parts.forEach(p => {
         const t = p.trim()
-        if (t.includes(word) && t.length > 5 && !seen.has(t)) {
-          seen.add(t)
+        if (t.includes(word) && t.length > 5) {
           results.push({
             text: t,
             source: `📄 阅读：${a.title}`,
             sourceUrl: `/articles/${a.id}`,
+            sourceType: 'ARTICLE_TEXT',
           })
         }
       })
@@ -675,17 +1095,17 @@ export async function searchSentencesForWord(word: string) {
 
     questions.forEach(q => {
       const t = (q.contextSentence || q.prompt || '').trim()
-      if (t.includes(word) && t.length > 5 && !seen.has(t)) {
-        seen.add(t)
+      if (t.includes(word) && t.length > 5) {
         results.push({
           text: t,
           source: `📝 题目：${q.quiz?.title || '练习题'}`,
           sourceUrl: `/quizzes/${q.quizId}`,
+          sourceType: 'QUIZ_QUESTION',
         })
       }
     })
 
-    return { success: true, data: results.slice(0, 5) }
+    return { success: true, data: dedupeAndRankSentences(results, 12) }
   } catch (error) {
     return { success: false, data: [] }
   }
@@ -846,9 +1266,25 @@ export async function updateVocabularySentencePosTags(
     )
     const link = await findSentenceLinkByText(id, targetText)
     if (link) {
-      await prisma.vocabularySentenceLink.update({
-        where: { id: link.id },
-        data: { posTags: toJsonStringList(normalized) },
+      await prisma.$transaction(async tx => {
+        await tx.vocabularySentenceLink.update({
+          where: { id: link.id },
+          data: { posTags: toJsonStringList(normalized) },
+        })
+        if (normalized.length > 0) {
+          const merged = Array.from(
+            new Set([
+              ...parseJsonStringList(vocab.partsOfSpeech),
+              ...normalized,
+            ]),
+          )
+          await tx.vocabulary.update({
+            where: { id },
+            data: {
+              partsOfSpeech: toJsonStringList(merged),
+            },
+          })
+        }
       })
     } else {
       return { success: false, message: '未找到该句子' }

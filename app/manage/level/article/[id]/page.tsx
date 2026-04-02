@@ -17,7 +17,7 @@ export default async function EditArticlePage({
     include: {
       category: { select: { levelId: true } },
       questions: {
-        orderBy: { id: 'asc' }, // 保证题目顺序固定
+        orderBy: { order: 'asc' },
         include: { options: true },
       },
     },

@@ -14,15 +14,25 @@ export default function ToggleSwitch({
   disabled = false,
 }: ToggleSwitchProps) {
   return (
-    <button
-      type='button'
+    <span
       role='switch'
       aria-checked={checked}
-      disabled={disabled}
-      onClick={() => onChange(!checked)}
+      aria-disabled={disabled}
+      tabIndex={disabled ? -1 : 0}
+      onClick={() => {
+        if (disabled) return
+        onChange(!checked)
+      }}
+      onKeyDown={event => {
+        if (disabled) return
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault()
+          onChange(!checked)
+        }
+      }}
       className={`inline-flex items-center gap-2 rounded-full px-2 py-1 text-xs font-medium transition-colors ${
         checked ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+      } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
       <span>{label}</span>
       <span
         className={`relative h-5 w-10 overflow-hidden rounded-full transition-colors ${
@@ -34,6 +44,6 @@ export default function ToggleSwitch({
           }`}
         />
       </span>
-    </button>
+    </span>
   )
 }

@@ -168,29 +168,19 @@ export const inferContextualPos = (
 }
 
 export const posBadgeClass = (pos: string) => {
-  const key = pos.toLowerCase()
-  if (key.includes('v') || pos.includes('動詞')) return 'bg-rose-100 text-rose-700 border-rose-200'
-  if (key.includes('n') || pos.includes('名詞')) return 'bg-sky-100 text-sky-700 border-sky-200'
-  if (key.includes('adj') || pos.includes('形容')) return 'bg-amber-100 text-amber-700 border-amber-200'
-  if (key.includes('adv') || pos.includes('副詞')) return 'bg-violet-100 text-violet-700 border-violet-200'
-  if (key.includes('prep') || pos.includes('助詞')) return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-  if (key.includes('pron')) return 'bg-cyan-100 text-cyan-700 border-cyan-200'
-  if (key.includes('det') || pos.includes('連体詞')) return 'bg-lime-100 text-lime-700 border-lime-200'
-  if (key.includes('conj') || pos.includes('接続')) return 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200'
-  if (key.includes('interj') || pos.includes('感動')) return 'bg-orange-100 text-orange-700 border-orange-200'
-  return 'bg-gray-100 text-gray-700 border-gray-200'
+  return 'bg-slate-50 text-slate-600 border-slate-200'
 }
 
 export const posWordHighlightClass = (pos: string) => {
   const key = pos.toLowerCase()
-  if (key.includes('v') || pos.includes('動詞')) return 'text-rose-700 bg-rose-50'
-  if (key.includes('n') || pos.includes('名詞')) return 'text-sky-700 bg-sky-50'
-  if (key.includes('adj') || pos.includes('形容')) return 'text-amber-700 bg-amber-50'
-  if (key.includes('adv') || pos.includes('副詞')) return 'text-violet-700 bg-violet-50'
-  if (key.includes('prep') || pos.includes('助詞')) return 'text-emerald-700 bg-emerald-50'
-  if (key.includes('pron')) return 'text-cyan-700 bg-cyan-50'
-  if (key.includes('det') || pos.includes('連体詞')) return 'text-lime-700 bg-lime-50'
-  if (key.includes('conj') || pos.includes('接続')) return 'text-fuchsia-700 bg-fuchsia-50'
-  if (key.includes('interj') || pos.includes('感動')) return 'text-orange-700 bg-orange-50'
-  return 'text-gray-700 bg-gray-100'
+  if (key.includes('v') || pos.includes('動詞')) return 'text-rose-700 bg-rose-100/70'
+  if (key.includes('n') || pos.includes('名詞')) return 'text-sky-700 bg-sky-100/70'
+  if (key.includes('adj') || pos.includes('形容')) return 'text-amber-700 bg-amber-100/70'
+  if (key.includes('adv') || pos.includes('副詞')) return 'text-violet-700 bg-violet-100/70'
+  if (key.includes('prep') || pos.includes('助詞')) return 'text-emerald-700 bg-emerald-100/70'
+  if (key.includes('pron')) return 'text-cyan-700 bg-cyan-100/70'
+  if (key.includes('det') || pos.includes('連体詞')) return 'text-lime-700 bg-lime-100/70'
+  if (key.includes('conj') || pos.includes('接続')) return 'text-fuchsia-700 bg-fuchsia-100/70'
+  if (key.includes('interj') || pos.includes('感動')) return 'text-orange-700 bg-orange-100/70'
+  return 'text-slate-700 bg-slate-200/70'
 }

@@ -1,41 +1,51 @@
 # MimiFlow
 
-MimiFlow is a language-learning web app built around a complete study loop:
-**listening -> reading -> quizzes -> vocabulary -> review**.
-It provides a unified menu system, multilingual UI, and a management workspace for content operations.
+MimiFlow is a language-learning web app built as one continuous acquisition loop:
+**input -> retrieval -> interleaving -> output -> spaced review**.
 
-## Core Features
+The project supports listening, reading, quizzes, vocabulary, FSRS review, and an automated game/task system with AI-assisted output evaluation.
 
-- Listening (`/lessons/[id]`)
-- Sentence-level audio playback and loop training
-- Tap-to-save words from sentence context
-- Inline word panel with pronunciation, meanings, and POS metadata
+## Product Highlights
 
-- Reading (`/articles/[id]`)
-- Integrated reading + question workflow
-- Word selection with source back-links
-- Toggle switches for pronunciation and meanings
+- Unified navigation and multilingual interface (`zh`, `ja`, `en`)
+- Listening and reading workflows with inline vocabulary capture
+- Quiz engine with article cloze integration and answer-state rendering
+- Vocabulary notebook with pronunciation, meanings, POS, sentence links, and flashcards
+- Retry queue for wrong answers (`24h -> 72h -> 7d`)
+- FSRS profile + review event logging + admin snapshot panel
+- AI output loop:
+  - prompt 1: generate daily writing mission
+  - prompt 2: evaluate learner output in strict JSON
+  - system parses scores and auto-quantifies progress
 
-- Quizzes (`/quizzes/[id]`)
-- Multiple quiz modes and final submission workflow
-- Word capture from question context
+## Core Routes
 
-- Vocabulary (`/vocabulary`)
-- Language/folder organization
-- List view and flashcard view
-- Multi-value metadata support:
-  - `pronunciations`
-  - `partsOfSpeech`
-  - `meanings`
-- Example sentence links with source navigation
+- Study
+  - `/lessons/[id]` listening and shadowing
+  - `/articles/[id]` reading + embedded questions
+  - `/quizzes/[id]` standalone quiz practice
+  - `/review` FSRS review
+  - `/retry` wrong-answer return queue
+  - `/vocabulary` vocabulary notebook
+  - `/game` game dashboard and automated daily loop
+  - `/today` auto-arranged daily study plan
+- Management
+  - `/manage` operations entry
+  - `/manage/upload` unified upload center
+  - `/manage/audio` site audio file manager
+  - `/manage/level/*` level/category/content maintenance
+  - `/manage/import/anki` Anki importer with preview
+  - `/manage/fsrs` FSRS profile monitor panel
 
-- Review (`/review`)
-- FSRS-based sentence review scheduling
+## SLA-Oriented Acquisition Design
 
-- Management (`/manage/*`)
-- Upload and maintain listening/reading/quiz content
-- Audio file management (move/rename/bulk actions)
-- Vocabulary maintenance
+- Morning: comprehensible input + retrieval cycle
+- Afternoon: interleaving (review + quizzes + listening/reading)
+- Evening: output with AI coaching and quantified feedback
+- Night: lightweight replay
+- Next morning: delayed recall dictation
+
+All key tasks are auto-submitted or quantifiable from telemetry/data logs to reduce manual burden.
 
 ## Tech Stack
 
@@ -43,9 +53,9 @@ It provides a unified menu system, multilingual UI, and a management workspace f
 - React + TypeScript
 - Tailwind CSS
 - Prisma + SQLite (`prisma/dev.db`)
-- FSRS (review scheduler)
+- FSRS scheduling
 
-## Quick Start
+## Local Setup
 
 1. Install dependencies
 
@@ -53,47 +63,65 @@ It provides a unified menu system, multilingual UI, and a management workspace f
 npm install
 ```
 
-2. Generate Prisma client
+2. Generate Prisma Client
 
 ```bash
 npx prisma generate
 ```
 
-3. Apply schema to local SQLite
+3. Sync schema to local SQLite
 
 ```bash
 npx prisma db push
 ```
 
-4. Start dev server
+4. Start development server
 
 ```bash
 npm run dev
 ```
 
-5. Type-check
+5. Quality checks
 
 ```bash
 npx tsc --noEmit
+npm run lint
 ```
+
+## AI Output Workflow (In-App)
+
+In `/game`, the output task provides two templates:
+
+1. **Mission prompt** for AI to generate a writing mission
+2. **Coach prompt** for AI to grade learner text and return strict JSON metrics
+
+The app ingests the JSON and stores:
+- total score
+- comprehensibility
+- accuracy
+- complexity
+- task completion
+- summary and action items
+
+These metrics directly feed the game progress.
 
 ## Project Structure
 
 ```text
-app/            # Routes and pages
-components/     # Shared UI components
-context/        # Global providers (dialog, i18n)
-hooks/          # Shared hooks
-prisma/         # Schema, migrations, local sqlite db
-utils/          # Utility modules
+app/          routes + server actions
+components/   shared UI
+context/      global providers
+hooks/        telemetry/prefs hooks
+prisma/       schema + migrations + local db
+utils/        text/linguistic helpers
 ```
 
 ## Notes
 
-- This repository currently includes a local SQLite DB and static assets for local development/demo.
-- For production, separate database and static file strategy is recommended.
+- This repo includes local development assets and SQLite data.
+- For production, use managed DB/storage and proper secrets.
 
-## Translations
+## Other Languages
 
-- Chinese: [README.zh-CN.md](./README.zh-CN.md)
-- Japanese: [README.ja.md](./README.ja.md)
+- 中文: [README.zh-CN.md](./README.zh-CN.md)
+- 日本語: [README.ja.md](./README.ja.md)

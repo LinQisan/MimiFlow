@@ -88,7 +88,7 @@ export default async function LessonPage({
   const vocabularyMetaMap = relatedVocab.reduce<
     Record<string, VocabularyMeta>
   >((acc, item) => {
-    acc[item.word] = toVocabularyMeta(item)
+    acc[item.word] = toVocabularyMeta({ ...item, word: item.word })
     return acc
   }, {})
 

@@ -4,11 +4,15 @@ import VocabularyTabs from './VocabularyTabs'
 import { guessLanguageCode } from '@/utils/langDetector'
 import { parseJsonStringList } from '@/utils/jsonList'
 import { toVocabularyMeta } from '@/utils/vocabularyMeta'
+import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
 
 type SentenceSource = {
   text: string
   source: string
   sourceUrl: string
+  translation?: string | null
+  audioFile?: string | null
+  sourceType?: string | null
   meaningIndex?: number | null
   posTags?: string[]
 }
@@ -23,6 +27,7 @@ type GroupedVocabItem = {
   id: string
   word: string
   languageCode: string
+  wordAudio?: string | null
   pronunciation?: string | null
   pronunciations?: string[]
   partOfSpeech?: string | null
@@ -34,6 +39,19 @@ type GroupedVocabItem = {
   sourceType: string
   sentences: SentenceSource[]
   audioData: AudioData | null
+  review?: {
+    id: string
+    due: Date
+    state: number
+    stability: number
+    difficulty: number
+    elapsed_days: number
+    scheduled_days: number
+    reps: number
+    lapses: number
+    learning_steps: number
+    last_review: Date | null
+  } | null
 }
 
 type FolderItem = {
@@ -54,6 +72,21 @@ export default async function VocabularyPage() {
     include: {
       folder: {
         select: { id: true, name: true },
+      },
+      review: {
+        select: {
+          id: true,
+          due: true,
+          state: true,
+          stability: true,
+          difficulty: true,
+          elapsed_days: true,
+          scheduled_days: true,
+          reps: true,
+          lapses: true,
+          learning_steps: true,
+          last_review: true,
+        },
       },
     },
   })
@@ -76,6 +109,9 @@ export default async function VocabularyPage() {
       text: link.sentence.text,
       source: link.sentence.source,
       sourceUrl: link.sentence.sourceUrl,
+      translation: link.sentence.translation || null,
+      audioFile: link.sentence.audioFile || null,
+      sourceType: link.sentence.sourceType,
       meaningIndex: link.meaningIndex ?? null,
       posTags,
     })
@@ -140,7 +176,7 @@ export default async function VocabularyPage() {
       const d = dialogueMap.get(parseInt(vocab.sourceId))
       if (d) {
         levelTitle = d.lesson.category.level?.title || ''
-        sourceName = `🎧 听力：${d.lesson.title}`
+        sourceName = `听力：${d.lesson.title}`
         sourceUrl = `/lessons/${d.lessonId}`
         audioData = {
           audioFile: d.lesson.audioFile,
@@ -152,7 +188,7 @@ export default async function VocabularyPage() {
       const a = articleMap.get(vocab.sourceId)
       if (a) {
         levelTitle = a.category?.level?.title || '未分类'
-        sourceName = `📄 阅读：${a.title}`
+        sourceName = `阅读：${a.title}`
         sourceUrl = `/articles/${a.id}`
       }
     } else if (vocab.sourceType === 'QUIZ_QUESTION') {
@@ -161,19 +197,19 @@ export default async function VocabularyPage() {
         if (q.quiz) {
           const quizTitle = q.quiz.title || '无标题题库'
           levelTitle = q.quiz.category?.level?.title || ''
-          sourceName = `📝 题目：${quizTitle}`
+          sourceName = `题目：${quizTitle}`
           sourceUrl = `/quizzes/${q.quizId}`
         } else if (q.article) {
           const articleTitle = q.article.title || '无标题文章'
           levelTitle = q.article.category?.level?.title || ''
-          sourceName = `📄 阅读题目：${articleTitle}`
+          sourceName = `阅读题目：${articleTitle}`
           sourceUrl = `/articles/${q.articleId}`
         } else {
-          sourceName = '📝 练习题 (来源已失效)'
+          sourceName = '练习题 (来源已失效)'
           sourceUrl = '#'
         }
       } else {
-        sourceName = '📝 题目 (原题已删除)'
+        sourceName = '题目 (原题已删除)'
         sourceUrl = '#'
       }
     }
@@ -181,7 +217,7 @@ export default async function VocabularyPage() {
     let parsedSentences: SentenceSource[] = []
     const linkedSentences = sentenceLinksByVocabularyId[vocab.id] || []
     if (linkedSentences.length > 0) {
-      parsedSentences = linkedSentences
+      parsedSentences = dedupeAndRankSentences(linkedSentences, 16)
     }
 
     // 分组
@@ -202,6 +238,7 @@ export default async function VocabularyPage() {
       id: vocab.id,
       word: vocab.word,
       languageCode: defaultLang,
+      wordAudio: vocab.wordAudio || null,
       pronunciation: meta.pronunciations[0] || null,
       pronunciations: meta.pronunciations,
       partOfSpeech: meta.partsOfSpeech[0] || null,
@@ -213,6 +250,7 @@ export default async function VocabularyPage() {
       sourceType: vocab.sourceType,
       sentences: parsedSentences,
       audioData,
+      review: vocab.review || null,
     })
   })
 

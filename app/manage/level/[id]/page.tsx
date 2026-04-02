@@ -256,6 +256,12 @@ export default async function LevelPage({
                           const pronCount = quiz.questions.filter(
                             (q: any) => q.questionType === 'PRONUNCIATION',
                           ).length
+                          const distinctionCount = quiz.questions.filter(
+                            (q: any) => q.questionType === 'WORD_DISTINCTION',
+                          ).length
+                          const grammarCount = quiz.questions.filter(
+                            (q: any) => q.questionType === 'GRAMMAR',
+                          ).length
                           const readingCount = quiz.questions.filter(
                             (q: any) =>
                               q.questionType === 'READING_COMPREHENSION',
@@ -315,6 +321,24 @@ export default async function LevelPage({
                                       读音假名:{' '}
                                       <b className='text-gray-700'>
                                         {pronCount}
+                                      </b>
+                                    </span>
+                                  )}
+                                  {distinctionCount > 0 && (
+                                    <span className='flex items-center gap-1.5 mt-3'>
+                                      <span className='w-2 h-2 rounded-full bg-teal-400 shadow-sm'></span>{' '}
+                                      单词辨析:{' '}
+                                      <b className='text-gray-700'>
+                                        {distinctionCount}
+                                      </b>
+                                    </span>
+                                  )}
+                                  {grammarCount > 0 && (
+                                    <span className='flex items-center gap-1.5 mt-3'>
+                                      <span className='w-2 h-2 rounded-full bg-sky-400 shadow-sm'></span>{' '}
+                                      语法题:{' '}
+                                      <b className='text-gray-700'>
+                                        {grammarCount}
                                       </b>
                                     </span>
                                   )}
