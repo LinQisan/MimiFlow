@@ -4,6 +4,11 @@ import ArticleReaderUI from './ArticleReaderUI'
 import prisma from '@/lib/prisma'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabularyMeta'
 
+type SentenceMeaningRef = {
+  sentence: string
+  meaningIndex: number | null
+}
+
 export default async function ArticlePage({
   params,
 }: {
@@ -12,10 +17,10 @@ export default async function ArticlePage({
   const resolvedParams = await params
 
   // 获取文章与题目详情，按题号排序
-  const article = await prisma.article.findUnique({
+  const article = await prisma.passage.findUnique({
     where: { id: resolvedParams.id },
     include: {
-      category: true,
+      paper: true,
       questions: {
         orderBy: { order: 'asc' },
         include: {
@@ -47,6 +52,47 @@ export default async function ArticlePage({
     },
   })
 
+  const mappedMeaningRows = await prisma.vocabulary.findMany({
+    where: {
+      sentenceLinks: {
+        some: {
+          sentence: {
+            sourceType: 'ARTICLE_TEXT',
+            sourceId: article.id,
+          },
+        },
+      },
+    },
+    select: {
+      word: true,
+      sentenceLinks: {
+        where: {
+          sentence: {
+            sourceType: 'ARTICLE_TEXT',
+            sourceId: article.id,
+          },
+        },
+        select: {
+          meaningIndex: true,
+          sentence: { select: { text: true } },
+        },
+      },
+    },
+  })
+
+  const sentenceMeaningMap = mappedMeaningRows.reduce<
+    Record<string, SentenceMeaningRef[]>
+  >((acc, row) => {
+    const refs = row.sentenceLinks
+      .map(link => ({
+        sentence: link.sentence.text || '',
+        meaningIndex: link.meaningIndex ?? null,
+      }))
+      .filter(item => item.sentence.trim().length > 0)
+    if (refs.length > 0) acc[row.word] = refs
+    return acc
+  }, {})
+
   const pronunciationMap: Record<string, string> = {}
   const vocabularyMetaMap = vocabularyRows.reduce<
     Record<string, VocabularyMeta>
@@ -63,6 +109,7 @@ export default async function ArticlePage({
       article={article}
       pronunciationMap={pronunciationMap}
       vocabularyMetaMap={vocabularyMetaMap}
+      sentenceMeaningMap={sentenceMeaningMap}
     />
   )
 }

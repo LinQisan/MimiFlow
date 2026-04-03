@@ -174,8 +174,8 @@ export default function AudioPlayer({
       return acc
     }, {})
     const html = annotateJapaneseText(text, pronMap, {
-      rubyClassName: 'text-indigo-700',
-      rtClassName: 'text-[10px] font-bold text-indigo-500',
+      rubyClassName: 'text-indigo-700 dark:text-indigo-300',
+      rtClassName: 'text-[10px] font-bold text-indigo-500 dark:text-indigo-300',
     })
     return <span dangerouslySetInnerHTML={{ __html: html }} />
   }
@@ -484,7 +484,7 @@ export default function AudioPlayer({
   // ---------------- 渲染主视图 ----------------
   return (
     <div
-      className='relative min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_42%,_#f8fafc_100%)]'
+      className='relative min-h-screen bg-[radial-gradient(circle_at_top,_#eef2ff_0%,_#f8fafc_42%,_#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_top,_#0b1220_0%,_#020617_45%,_#020617_100%)]'
       onClick={() => setActiveTooltip(null)}>
       <audio ref={audioRef} src={lesson.audioFile} preload='metadata' />
 
@@ -515,7 +515,7 @@ export default function AudioPlayer({
         />
       )}
 
-      <div className='sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/80 backdrop-blur-xl'>
+      <div className='sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/85 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80'>
         <div className='mx-auto w-full max-w-5xl px-4 py-3 md:px-6 md:py-4'>
           <div className='space-y-3'>
             <div className='flex items-start justify-between gap-3'>
@@ -523,27 +523,30 @@ export default function AudioPlayer({
                 <p className='truncate text-[11px] font-semibold uppercase tracking-wide text-indigo-500 md:text-xs'>
                 {lessonGroup.name}
                 </p>
-                <h1 className='truncate text-[28px] font-semibold leading-none text-gray-900 md:text-3xl'>
+                <h1 className='truncate text-[28px] font-semibold leading-none text-gray-900 dark:text-slate-100 md:text-3xl'>
                   {lesson.title}
                 </h1>
               </div>
 
-              <button
-                onClick={togglePlaybackRate}
-                className='shrink-0 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 md:px-3.5 md:py-2'>
-                {playbackRate}x
-              </button>
-              <button
-                onClick={toggleTrackLoop}
-                aria-pressed={isTrackLoop}
-                title='整段循环播放'
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors md:px-3.5 md:py-2 ${
-                  isTrackLoop
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100'
-                }`}>
-                全曲循环
-              </button>
+              <div className='flex shrink-0 items-center gap-2'>
+                <button
+                  onClick={toggleTrackLoop}
+                  aria-pressed={isTrackLoop}
+                  title='整段循环播放'
+                  className={`h-10 rounded-full border px-3 text-sm font-semibold transition-colors md:px-3.5 ${
+                    isTrackLoop
+                      ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/40 dark:bg-indigo-500/20 dark:text-indigo-200'
+                      : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                  }`}>
+                  全曲循环
+                </button>
+                <button
+                  onClick={togglePlaybackRate}
+                  title='切换播放速度'
+                  className='h-10 min-w-[3.5rem] rounded-full border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
+                  {playbackRate}x
+                </button>
+              </div>
             </div>
 
             <div className='flex flex-wrap items-center gap-2'>
@@ -569,7 +572,7 @@ export default function AudioPlayer({
                 {prevId && (
                   <Link
                     href={`/lessons/${prevId}`}
-                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-11 md:w-11'>
+                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200 md:h-11 md:w-11'>
                     <svg
                       className='h-4 w-4 md:h-5 md:w-5'
                       fill='none'
@@ -587,7 +590,7 @@ export default function AudioPlayer({
               </div>
 
               <div className='flex items-center justify-center'>
-                <span className='rounded-full border border-indigo-100 bg-white px-3 py-1 text-sm font-semibold text-gray-600 md:text-[15px]'>
+                <span className='rounded-full border border-indigo-100 bg-white px-3 py-1 text-sm font-semibold text-gray-600 dark:border-indigo-400/30 dark:bg-slate-900 dark:text-slate-200 md:text-[15px]'>
                   {activeSentenceNo > 0
                     ? `句子 ${activeSentenceNo}/${lesson.dialogue.length}`
                     : `共 ${lesson.dialogue.length} 句`}
@@ -598,7 +601,7 @@ export default function AudioPlayer({
                 {nextId && (
                   <Link
                     href={`/lessons/${nextId}`}
-                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 md:h-11 md:w-11'>
+                    className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200 md:h-11 md:w-11'>
                     <svg
                       className='h-4 w-4 md:h-5 md:w-5'
                       fill='none'
@@ -621,12 +624,12 @@ export default function AudioPlayer({
 
       <div className='mx-auto w-full max-w-5xl px-4 py-4 md:px-6 md:py-5'>
         {activeSentenceEntries.length > 0 && (
-          <div className='mb-4 border border-gray-200 bg-white p-3 md:p-4 '>
+          <div className='mb-4 border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4 '>
             <div className='mb-2 flex items-center justify-between'>
-              <h2 className='text-sm font-bold text-gray-800'>
+              <h2 className='text-sm font-bold text-gray-800 dark:text-slate-100'>
                 词条区
               </h2>
-              <span className='text-[11px] text-gray-400'>
+              <span className='text-[11px] text-gray-400 dark:text-slate-400'>
                 {activeId ? `当前句：${activeSentenceNo}` : '先点击句子'}
               </span>
             </div>
@@ -731,15 +734,15 @@ function SentenceRow({
         onClick={onClick}
         onMouseUp={onMouseUp}
         onTouchEnd={onMouseUp}
-        className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-all duration-300 select-text break-words md:p-5 md:text-xl
+        className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-[background-color,border-color,color,box-shadow,filter,opacity] duration-300 select-text break-words md:p-5 md:text-xl
           ${
             isActive
-              ? 'scale-[1.01] border-indigo-200 bg-indigo-50 text-indigo-700 font-bold shadow-sm'
-              : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-100 hover:bg-indigo-50/30'
+              ? 'scale-[1.01] border-indigo-200 bg-indigo-50 text-indigo-700 font-bold shadow-sm dark:border-indigo-400/40 dark:bg-indigo-500/12 dark:text-indigo-200'
+              : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-100 hover:bg-indigo-50/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-500/40 dark:hover:bg-slate-800'
           }
-          ${isBlindMode && blindState === 'clear' ? 'border-indigo-200/80 bg-white text-gray-900' : ''}
+          ${isBlindMode && blindState === 'clear' ? 'border-indigo-200/80 bg-white text-gray-900 dark:border-indigo-400/50 dark:bg-slate-900 dark:text-slate-100' : ''}
         `}>
-        <div className={`min-w-0 transition-all duration-300 ${blurClass}`}>
+        <div className={`min-w-0 transition-[filter,opacity] duration-300 ${blurClass}`}>
           {renderedText}
         </div>
       </div>
@@ -750,9 +753,9 @@ function SentenceRow({
           onClick={onAddToReview}
           title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
           disabled={savingDialogueId === item.id || !canAddToReview}
-          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 md:h-10 md:w-10
-            ${isActive && currentState === 'idle' ? 'scale-110 bg-indigo-600 text-white hover:bg-indigo-700' : currentBgClass}
-            ${isActive || currentState !== 'idle' ? 'ring-2 ring-indigo-100' : ''}
+          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
+            ${isActive && currentState === 'idle' ? 'scale-110 bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400' : currentBgClass}
+            ${isActive || currentState !== 'idle' ? 'ring-2 ring-indigo-100 dark:ring-indigo-400/30' : ''}
           `}>
           <SaveStatusIcon
             state={currentState}
@@ -763,8 +766,8 @@ function SentenceRow({
         <button
           onClick={onToggleLoop}
           title='单句复读'
-          className={`flex h-9 w-9 items-center justify-center rounded-lg text-xs transition-all duration-200 md:h-10 md:w-10
-            ${isLooping ? 'scale-110 bg-indigo-600 text-white ring-2 ring-indigo-200' : isActive ? 'scale-105 bg-indigo-500 text-white hover:bg-indigo-600' : 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'}
+          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
+            ${isLooping ? 'scale-110 bg-indigo-600 text-white ring-2 ring-indigo-200 dark:bg-indigo-500 dark:ring-indigo-400/40' : isActive ? 'scale-105 bg-indigo-500 text-white hover:bg-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400' : 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200'}
           `}>
           <svg
             className='h-4 w-4 md:h-5 md:w-5'

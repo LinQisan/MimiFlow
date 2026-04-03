@@ -9,7 +9,7 @@ export default async function UnifiedUploadPage() {
   })
 
   // 2. 查出所有已有的试卷组 (用于听力/字幕上传)
-  const dbCategories = await prisma.category.findMany({
+  const dbCategories = await prisma.paper.findMany({
     select: {
       id: true,
       name: true,

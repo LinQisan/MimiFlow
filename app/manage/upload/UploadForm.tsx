@@ -5,9 +5,6 @@ import { useRouter } from 'next/navigation'
 import { listPublicAudioFiles, uploadAssAndSaveData } from './action'
 import { useDialog } from '@/context/DialogContext'
 
-// ==========================================
-// 🌟 核心：手写的高级自定义下拉菜单组件
-// ==========================================
 function CustomDropdown({
   value,
   onChange,
@@ -22,31 +19,37 @@ function CustomDropdown({
   const [isOpen, setIsOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  // 点击外部自动关闭
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
+      if (ref.current && !ref.current.contains(e.target as Node)) {
         setIsOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
   const selectedLabel =
-    options.find(o => o.value === value)?.label || placeholder
+    options.find(option => option.value === value)?.label || placeholder
 
   return (
     <div className='relative w-full' ref={ref}>
       <div
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-full p-4 bg-gray-50 border text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all cursor-pointer flex justify-between items-center
-          ${isOpen ? 'border-indigo-400 ring-2 ring-indigo-400/20 bg-white' : 'border-gray-200 hover:bg-white'}
-        `}>
-        <span className={value ? 'text-gray-800 truncate pr-4' : 'text-gray-400'}>
+        onClick={() => setIsOpen(prev => !prev)}
+        className={`flex w-full cursor-pointer items-center justify-between border bg-gray-50 p-4 text-sm font-bold outline-none transition-colors
+          ${
+            isOpen
+              ? 'border-indigo-400 bg-white ring-2 ring-indigo-400/20'
+              : 'border-gray-200 hover:bg-white'
+          }`}>
+        <span
+          className={value ? 'truncate pr-4 text-gray-800' : 'text-gray-400'}>
           {selectedLabel}
         </span>
         <svg
-          className={`w-5 h-5 text-gray-400 transition-transform duration-300 shrink-0 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`}
+          className={`h-5 w-5 shrink-0 text-gray-400 transition-transform duration-300 ${
+            isOpen ? 'rotate-180 text-indigo-500' : ''
+          }`}
           fill='none'
           stroke='currentColor'
           viewBox='0 0 24 24'>
@@ -60,23 +63,26 @@ function CustomDropdown({
       </div>
 
       {isOpen && (
-        <div className='absolute z-[80] mt-2 w-full max-h-[26rem] overflow-y-auto border border-gray-100 bg-white py-2 custom-scrollbar animate-in fade-in slide-in-from-top-2'>
+        <div className='custom-scrollbar animate-in fade-in slide-in-from-top-2 absolute z-[80] mt-2 max-h-[26rem] w-full overflow-y-auto border border-gray-100 bg-white py-2'>
           {options.length === 0 ? (
-            <div className='px-4 py-3 text-sm text-gray-400 text-center'>
+            <div className='px-4 py-3 text-center text-sm text-gray-400'>
               暂无选项
             </div>
           ) : (
-            options.map(opt => (
+            options.map(option => (
               <div
-                key={opt.value}
+                key={option.value}
                 onClick={() => {
-                  onChange(opt.value)
+                  onChange(option.value)
                   setIsOpen(false)
                 }}
-                className={`px-4 py-3 text-sm font-bold cursor-pointer transition-colors truncate
-                  ${value === opt.value ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50 hover:text-indigo-600'}
-                `}>
-                {opt.label}
+                className={`truncate px-4 py-3 text-sm font-bold transition-colors
+                  ${
+                    value === option.value
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'cursor-pointer text-gray-700 hover:bg-gray-50 hover:text-indigo-600'
+                  }`}>
+                {option.label}
               </div>
             ))
           )}
@@ -88,7 +94,7 @@ function CustomDropdown({
 
 type Props = {
   levels: { id: string; title: string }[]
-  categories: {
+  papers: {
     id: string
     name: string
     level: { title: string }
@@ -99,17 +105,37 @@ type Props = {
   }[]
 }
 
+type PickedFileMeta = {
+  name: string
+  size: number
+}
+
+type UploadStatus = {
+  type: 'idle' | 'loading' | 'success' | 'error'
+  message: string
+}
+
+type AudioMatchPreviewRow = PickedFileMeta & {
+  key: string
+  stem: string
+  autoValue: string
+  autoLabel: string
+  uploadCandidates: string[]
+  scopedCandidates: string[]
+  siteCandidates: string[]
+}
+
+type DropdownOption = {
+  value: string
+  label: string
+}
+
 const autoIncrementString = (str: string) => {
   if (!str) return ''
   return str.replace(/(\d+)(?!.*\d)/, match => {
     const num = parseInt(match, 10) + 1
     return num.toString().padStart(match.length, '0')
   })
-}
-
-type PickedFileMeta = {
-  name: string
-  size: number
 }
 
 const getStem = (name: string) =>
@@ -129,20 +155,20 @@ const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
   return `${trimmed}${baseName}.mp3`
 }
 
-export default function UploadForm({ levels, categories }: Props) {
+export default function UploadForm({ levels, papers }: Props) {
   const dialog = useDialog()
   const router = useRouter()
 
   const [mode, setMode] = useState<'existing' | 'new'>(
-    categories.length > 0 ? 'existing' : 'new',
+    papers.length > 0 ? 'existing' : 'new',
   )
-  const [selectedCategoryId, setSelectedCategoryId] = useState('')
-  const [selectedLevelId, setSelectedLevelId] = useState('') // 🌟 新增：记录大专区的选择
+  const [selectedPaperId, setSelectedPaperId] = useState('')
+  const [selectedLevelId, setSelectedLevelId] = useState('')
 
-  const [status, setStatus] = useState<{
-    type: 'idle' | 'loading' | 'success' | 'error'
-    message: string
-  }>({ type: 'idle', message: '' })
+  const [status, setStatus] = useState<UploadStatus>({
+    type: 'idle',
+    message: '',
+  })
 
   const [title, setTitle] = useState('')
   const [audioFile, setAudioFile] = useState('')
@@ -153,7 +179,7 @@ export default function UploadForm({ levels, categories }: Props) {
   const [selectedAudioFolder, setSelectedAudioFolder] = useState('')
   const [audioListLoading, setAudioListLoading] = useState(false)
   const [audioUploadFileNames, setAudioUploadFileNames] = useState<string[]>([])
-  const [categoryName, setCategoryName] = useState('')
+  const [paperName, setPaperName] = useState('')
   const [description, setDescription] = useState('')
 
   const [isDragging, setIsDragging] = useState(false)
@@ -163,15 +189,24 @@ export default function UploadForm({ levels, categories }: Props) {
   const [assAudioOverrides, setAssAudioOverrides] = useState<
     Record<string, string>
   >({})
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
+
   const isBatchAss = selectedFileNames.length > 1
 
+  const syncFilesToInput = (input: HTMLInputElement | null, files: File[]) => {
+    if (!input) return
+    const dataTransfer = new DataTransfer()
+    files.forEach(file => dataTransfer.items.add(file))
+    input.files = dataTransfer.files
+  }
+
   useEffect(() => {
-    if (mode === 'existing' && selectedCategoryId) {
-      const targetCategory = categories.find(c => c.id === selectedCategoryId)
-      if (targetCategory && targetCategory.lessons.length > 0) {
-        const latest = targetCategory.lessons[0]
+    if (mode === 'existing' && selectedPaperId) {
+      const targetPaper = papers.find(paper => paper.id === selectedPaperId)
+      if (targetPaper && targetPaper.lessons.length > 0) {
+        const latest = targetPaper.lessons[0]
         setTitle(autoIncrementString(latest.title))
         setAudioFile(autoIncrementString(latest.audioFile))
       } else {
@@ -179,13 +214,15 @@ export default function UploadForm({ levels, categories }: Props) {
         setAudioFile('/audios/')
       }
     }
-  }, [mode, selectedCategoryId, categories])
+  }, [mode, selectedPaperId, papers])
 
   useEffect(() => {
     const loadAudioFiles = async () => {
       setAudioListLoading(true)
       const res = await listPublicAudioFiles()
-      if (res.success) setExistingAudioFiles(res.files)
+      if (res.success) {
+        setExistingAudioFiles(res.files)
+      }
       setAudioListLoading(false)
     }
     void loadAudioFiles()
@@ -193,6 +230,7 @@ export default function UploadForm({ levels, categories }: Props) {
 
   const audioFolderMap = useMemo(() => {
     const folderMap = new Map<string, string[]>()
+
     for (const filePath of existingAudioFiles) {
       const normalized = filePath.startsWith('/audios/')
         ? filePath.slice('/audios/'.length)
@@ -200,12 +238,18 @@ export default function UploadForm({ levels, categories }: Props) {
       const segments = normalized.split('/').filter(Boolean)
       const folder =
         segments.length > 1 ? segments.slice(0, -1).join('/') : '(根目录)'
+
       if (!folderMap.has(folder)) folderMap.set(folder, [])
       folderMap.get(folder)?.push(filePath)
     }
+
     const sortedEntries = [...folderMap.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([folder, files]) => [folder, files.sort((a, b) => a.localeCompare(b))] as const)
+      .map(
+        ([folder, files]) =>
+          [folder, files.sort((a, b) => a.localeCompare(b))] as const,
+      )
+
     return new Map(sortedEntries)
   }, [existingAudioFiles])
 
@@ -213,10 +257,12 @@ export default function UploadForm({ levels, categories }: Props) {
     () => [...audioFolderMap.keys()],
     [audioFolderMap],
   )
+
   const filesInSelectedFolder = useMemo(
     () => audioFolderMap.get(selectedAudioFolder) || [],
     [audioFolderMap, selectedAudioFolder],
   )
+
   const siteAudioByStem = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const audioPath of existingAudioFiles) {
@@ -227,6 +273,7 @@ export default function UploadForm({ levels, categories }: Props) {
     }
     return map
   }, [existingAudioFiles])
+
   const scopedAudioByStem = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const audioPath of filesInSelectedFolder) {
@@ -237,6 +284,7 @@ export default function UploadForm({ levels, categories }: Props) {
     }
     return map
   }, [filesInSelectedFolder])
+
   const uploadedAudioByStem = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const fileName of audioUploadFileNames) {
@@ -248,17 +296,28 @@ export default function UploadForm({ levels, categories }: Props) {
     return map
   }, [audioUploadFileNames])
 
-  const previewRows = useMemo(() => {
+  const previewRows = useMemo<AudioMatchPreviewRow[]>(() => {
     return pickedAssFiles.map(file => {
       const key = buildPickedKey(file)
       const stem = getStem(file.name)
       const uploadCandidates = uploadedAudioByStem.get(stem) || []
       const scopedCandidates = scopedAudioByStem.get(stem) || []
       const siteCandidates = siteAudioByStem.get(stem) || []
-      const fallbackPath = deriveAudioPathFromDir(audioFile, file.name)
+
+      const effectiveAudioFile =
+        audioSourceType === 'existing' && isBatchAss
+          ? selectedAudioFolder
+            ? selectedAudioFolder === '(根目录)'
+              ? '/audios/'
+              : `/audios/${selectedAudioFolder}/`
+            : ''
+          : audioFile
+
+      const fallbackPath = deriveAudioPathFromDir(effectiveAudioFile, file.name)
 
       let autoValue = ''
       let autoLabel = '未匹配'
+
       if (uploadCandidates.length > 0 && audioSourceType === 'upload') {
         autoValue = `upload://${stem}`
         autoLabel = `上传同名：${uploadCandidates[0]}`
@@ -291,6 +350,8 @@ export default function UploadForm({ levels, categories }: Props) {
     siteAudioByStem,
     audioFile,
     audioSourceType,
+    isBatchAss,
+    selectedAudioFolder,
   ])
 
   useEffect(() => {
@@ -298,6 +359,7 @@ export default function UploadForm({ levels, categories }: Props) {
       setAssAudioOverrides({})
       return
     }
+
     setAssAudioOverrides(prev => {
       const next: Record<string, string> = {}
       for (const row of previewRows) {
@@ -309,52 +371,72 @@ export default function UploadForm({ levels, categories }: Props) {
 
   useEffect(() => {
     if (audioSourceType !== 'existing') return
+
     if (audioFolders.length === 0) {
       setSelectedAudioFolder('')
       return
     }
+
     if (!selectedAudioFolder || !audioFolderMap.has(selectedAudioFolder)) {
       setSelectedAudioFolder(audioFolders[0])
     }
   }, [audioFolderMap, audioFolders, audioSourceType, selectedAudioFolder])
 
   useEffect(() => {
-    if (audioSourceType !== 'existing') return
+    if (audioSourceType !== 'existing' || isBatchAss) return
+
     if (filesInSelectedFolder.length === 0) {
       setAudioFile('')
       return
     }
+
     if (!filesInSelectedFolder.includes(audioFile)) {
       setAudioFile(filesInSelectedFolder[0])
     }
-  }, [audioFile, audioSourceType, filesInSelectedFolder])
+  }, [audioFile, audioSourceType, filesInSelectedFolder, isBatchAss])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    // 🌟 手动拦截：因为我们把原生的 select 换成了自定义组件（隐藏的 input 不会自动触发浏览器的必填提示）
-    if (mode === 'existing' && !selectedCategoryId) {
-      setStatus({ type: 'error', message: '请选择要添加内容的分类。' })
+    if (mode === 'existing' && !selectedPaperId) {
+      setStatus({ type: 'error', message: '请选择要添加内容的试卷。' })
       return
     }
+
     if (mode === 'new' && !selectedLevelId) {
       setStatus({ type: 'error', message: '请选择所属等级。' })
       return
     }
+
     if (!fileInputRef.current?.files?.length) {
-      setStatus({ type: 'error', message: '请先选择或拖拽上传至少一个 .ass 文件。' })
+      setStatus({
+        type: 'error',
+        message: '请先选择或拖拽上传至少一个 .ass 文件。',
+      })
       return
     }
+
+    const effectiveAudioFile =
+      audioSourceType === 'existing' && isBatchAss
+        ? selectedAudioFolder
+          ? selectedAudioFolder === '(根目录)'
+            ? '/audios/'
+            : `/audios/${selectedAudioFolder}/`
+          : ''
+        : audioFile
+
     if (
       (audioSourceType === 'manual' || audioSourceType === 'existing') &&
-      !audioFile.trim()
+      !effectiveAudioFile.trim()
     ) {
       setStatus({ type: 'error', message: '请先设置音频路径。' })
       return
     }
+
     if (
       audioSourceType === 'upload' &&
-      (!audioInputRef.current?.files || audioInputRef.current.files.length === 0)
+      (!audioInputRef.current?.files ||
+        audioInputRef.current.files.length === 0)
     ) {
       setStatus({
         type: 'error',
@@ -367,7 +449,6 @@ export default function UploadForm({ levels, categories }: Props) {
 
     setStatus({ type: 'loading', message: '正在解析并写入...' })
     const formData = new FormData(event.currentTarget)
-
     const result = await uploadAssAndSaveData(formData)
 
     setStatus({
@@ -379,56 +460,61 @@ export default function UploadForm({ levels, categories }: Props) {
       setPickedAssFiles([])
       setSelectedFileNames([])
       if (fileInputRef.current) fileInputRef.current.value = ''
+
       setAudioUploadFileNames([])
       setAssAudioOverrides({})
+
       if (mode === 'new') {
-        setCategoryName('')
+        setPaperName('')
         setDescription('')
       }
+
       router.refresh()
     }
   }
 
-  // ================= 拖拽逻辑 =================
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(true)
   }
+
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
   }
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
+
     const files = e.dataTransfer.files
     if (files && files.length > 0) {
       const droppedFiles = Array.from(files).filter(file =>
         file.name.toLowerCase().endsWith('.ass'),
       )
+
       if (droppedFiles.length === 0) {
         void dialog.alert('只能上传 .ass 格式的字幕文件。')
         return
       }
+
       setSelectedFileNames(droppedFiles.map(file => file.name))
       setPickedAssFiles(
         droppedFiles.map(file => ({ name: file.name, size: file.size })),
       )
-      if (fileInputRef.current) {
-        const dataTransfer = new DataTransfer()
-        droppedFiles.forEach(file => dataTransfer.items.add(file))
-        fileInputRef.current.files = dataTransfer.files
-      }
+      syncFilesToInput(fileInputRef.current, droppedFiles)
     }
   }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : []
     setSelectedFileNames(files.map(file => file.name))
     setPickedAssFiles(files.map(file => ({ name: file.name, size: file.size })))
   }
+
   const handleZoneClick = () => fileInputRef.current?.click()
   const handleAudioPick = () => audioInputRef.current?.click()
 
@@ -452,36 +538,40 @@ export default function UploadForm({ levels, categories }: Props) {
     e.preventDefault()
     e.stopPropagation()
     setIsAudioDragging(false)
+
     const files = e.dataTransfer.files
     if (!files || files.length === 0) return
+
     const droppedList = Array.from(files).filter(isSupportedAudioFile)
     if (droppedList.length === 0) {
       void dialog.alert('仅支持音频文件（mp3/m4a/wav/ogg/aac/flac/webm）。')
       return
     }
+
     setAudioUploadFileNames(droppedList.map(file => file.name))
-    if (audioInputRef.current) {
-      const dataTransfer = new DataTransfer()
-      droppedList.forEach(file => dataTransfer.items.add(file))
-      audioInputRef.current.files = dataTransfer.files
-    }
+    syncFilesToInput(audioInputRef.current, droppedList)
   }
 
-  // 构建下拉菜单的数据选项
-  const categoryOptions = categories.map(c => ({
-    value: c.id,
-    label: `[${c.level.title}] ${c.name}`,
+  const paperOptions: DropdownOption[] = papers.map(paper => ({
+    value: paper.id,
+    label: `[${paper.level.title}] ${paper.name}`,
   }))
-  const levelOptions = levels.map(l => ({ value: l.id, label: l.title }))
-  const selectedCategoryLabel =
+
+  const levelOptions: DropdownOption[] = levels.map(level => ({
+    value: level.id,
+    label: level.title,
+  }))
+
+  const selectedPaperLabel =
     mode === 'existing'
-      ? categoryOptions.find(item => item.value === selectedCategoryId)?.label || '未选择分类'
-      : categoryName || '新建分类'
+      ? paperOptions.find(item => item.value === selectedPaperId)?.label ||
+        '未选择试卷'
+      : paperName || '新建试卷'
 
   return (
     <form
       onSubmit={handleSubmit}
-      className='mx-auto flex w-full max-w-5xl flex-col gap-4 pb-16 md:gap-6 md:pb-20 animate-in fade-in'>
+      className='animate-in fade-in mx-auto flex w-full max-w-5xl flex-col gap-4 pb-16 md:gap-6 md:pb-20'>
       <input type='hidden' name='uploadMode' value={mode} />
       <input type='hidden' name='audioSourceType' value={audioSourceType} />
       <input
@@ -490,46 +580,56 @@ export default function UploadForm({ levels, categories }: Props) {
         value={JSON.stringify(assAudioOverrides)}
       />
 
-      {/* ================= 1. 分类归属 ================= */}
       <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
-        <div className='absolute top-0 left-0 w-2 h-full bg-indigo-500 rounded-l-3xl'></div>
+        <div className='absolute left-0 top-0 h-full w-2 rounded-l-3xl bg-indigo-500'></div>
         <legend className='mb-4 flex items-center gap-2 px-2 text-lg font-black tracking-wide text-gray-800 md:mb-6 md:px-4 md:text-xl'>
-          分类归属
+          试卷归属
         </legend>
 
         <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-100/50 bg-gray-50/80 p-2 sm:grid-cols-2 md:mb-6 md:gap-4 md:p-2.5'>
           <label
-            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'existing' ? 'border border-gray-200/50 bg-white text-indigo-600 ' : 'text-gray-500 hover:bg-gray-100'} ${categories.length === 0 ? 'cursor-not-allowed opacity-50' : ''}`}>
+            className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-colors md:py-3
+              ${
+                mode === 'existing'
+                  ? 'border border-gray-200/50 bg-white text-indigo-600'
+                  : 'text-gray-500 hover:bg-gray-100'
+              }
+              ${papers.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
             <input
               type='radio'
               className='hidden'
               checked={mode === 'existing'}
               onChange={() => setMode('existing')}
-              disabled={categories.length === 0}
+              disabled={papers.length === 0}
             />
-            添加到已有分类
+            添加到已有试卷
           </label>
+
           <label
-            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-all md:py-3 ${mode === 'new' ? 'border border-gray-200/50 bg-white text-indigo-600 ' : 'text-gray-500 hover:bg-gray-100'}`}>
+            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-colors md:py-3
+              ${
+                mode === 'new'
+                  ? 'border border-gray-200/50 bg-white text-indigo-600'
+                  : 'text-gray-500 hover:bg-gray-100'
+              }`}>
             <input
               type='radio'
               className='hidden'
               checked={mode === 'new'}
               onChange={() => setMode('new')}
             />
-            新建分类并录入
+            新建试卷并录入
           </label>
         </div>
 
         {mode === 'existing' ? (
           <div>
-            {/* 🌟 使用自定义下拉菜单 */}
-            <input type='hidden' name='categoryId' value={selectedCategoryId} />
+            <input type='hidden' name='paperId' value={selectedPaperId} />
             <CustomDropdown
-              options={categoryOptions}
-              value={selectedCategoryId}
-              onChange={setSelectedCategoryId}
-              placeholder='请选择要追加内容的分类'
+              options={paperOptions}
+              value={selectedPaperId}
+              onChange={setSelectedPaperId}
+              placeholder='请选择要追加内容的试卷'
             />
           </div>
         ) : (
@@ -538,13 +638,12 @@ export default function UploadForm({ levels, categories }: Props) {
               <input
                 required
                 name='categoryName'
-                value={categoryName}
-                onChange={e => setCategoryName(e.target.value)}
-                placeholder='分类名称（例：N1 听力 2023-07）'
-                className='flex-[2] p-4 bg-gray-50 border border-gray-200 text-sm font-bold focus:ring-2 focus:ring-indigo-400 outline-none transition-all'
+                value={paperName}
+                onChange={e => setPaperName(e.target.value)}
+                placeholder='试卷名称（例：2025-07 N1 真题）'
+                className='flex-[2] border border-gray-200 bg-gray-50 p-4 text-sm font-bold outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
               />
 
-              {/* 🌟 使用自定义下拉菜单 */}
               <div className='flex-[1]'>
                 <input type='hidden' name='level' value={selectedLevelId} />
                 <CustomDropdown
@@ -555,60 +654,60 @@ export default function UploadForm({ levels, categories }: Props) {
                 />
               </div>
             </div>
+
             <textarea
               name='description'
               value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder='分类说明（可选）'
-              className='w-full p-4 bg-gray-50 border border-gray-200 text-sm font-medium focus:ring-2 focus:ring-indigo-400 outline-none transition-all min-h-[100px] resize-y custom-scrollbar'
+              placeholder='试卷说明（可选）'
+              className='custom-scrollbar min-h-[100px] w-full resize-y border border-gray-200 bg-gray-50 p-4 text-sm font-medium outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
             />
           </div>
         )}
       </fieldset>
 
-      {/* ================= 2. 题目信息 (带智能预填) ================= */}
       <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
-        <div className='absolute top-0 left-0 w-2 h-full bg-emerald-400 rounded-l-3xl'></div>
+        <div className='absolute left-0 top-0 h-full w-2 rounded-l-3xl bg-emerald-400'></div>
+
         <div className='mb-4 flex flex-col gap-2 px-2 md:mb-6 md:flex-row md:items-center md:justify-between md:px-4'>
           <legend className='flex items-center gap-2 text-lg font-black tracking-wide text-gray-800 md:text-xl'>
             语料基本信息
           </legend>
-          {mode === 'existing' && selectedCategoryId && (
-            <span className='text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 border border-emerald-100 flex items-center gap-1.5'>
-              <span className='animate-pulse'>✨</span> 已根据上条记录自动填充
+          {mode === 'existing' && selectedPaperId && (
+            <span className='flex items-center gap-1.5 border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-600'>
+              <span className='animate-pulse'>✨</span>
+              已根据上条记录自动填充
             </span>
           )}
         </div>
 
         <div className='mb-4 pl-1 md:mb-5 md:pl-2'>
-          <div className='w-full'>
-            <label className='text-[10px] font-black text-gray-400 uppercase tracking-wider mb-1.5 block'>
-              {isBatchAss ? '标题前缀（可选）' : '标题'}
-            </label>
-            <input
-              name='title'
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder={
-                isBatchAss
-                  ? '例：N1 听力（留空则直接用字幕文件名）'
+          <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
+            {isBatchAss ? '标题前缀（可选）' : '标题'}
+          </label>
+          <input
+            name='title'
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder={
+              isBatchAss
+                ? '例：N1 听力（留空则直接用字幕文件名）'
                 : '例：问题 1-01（可留空，不填则用字幕文件名）'
-              }
-              className='w-full p-4 bg-gray-50 border border-gray-200 text-sm font-bold text-gray-800 focus:ring-2 focus:ring-emerald-400 outline-none transition-all'
-            />
-            {isBatchAss && !title.trim() && (
-              <p className='mt-1 text-xs font-semibold text-amber-600'>
-                未填写标题前缀：将直接使用每个字幕文件名作为标题。
-              </p>
-            )}
-          </div>
+            }
+            className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-400'
+          />
+          {isBatchAss && !title.trim() && (
+            <p className='mt-1 text-xs font-semibold text-amber-600'>
+              未填写标题前缀：将直接使用每个字幕文件名作为标题。
+            </p>
+          )}
         </div>
 
         {isBatchAss && (
           <div className='mb-4 border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-xs text-emerald-800 md:mb-5'>
             <p className='font-black'>批量录入说明</p>
             <p className='mt-1'>
-              已进入批量模式。只需选择目标分类并上传多个字幕，系统会自动按顺序创建多条听力语料并分配排序。
+              已进入批量模式。只需选择目标试卷并上传多个字幕，系统会自动按顺序创建多条听力语料并分配排序。
             </p>
           </div>
         )}
@@ -617,6 +716,7 @@ export default function UploadForm({ levels, categories }: Props) {
           <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
             音频来源
           </label>
+
           <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-3'>
             <button
               type='button'
@@ -628,6 +728,7 @@ export default function UploadForm({ levels, categories }: Props) {
               }`}>
               手动填写路径
             </button>
+
             <button
               type='button'
               onClick={() => setAudioSourceType('existing')}
@@ -638,6 +739,7 @@ export default function UploadForm({ levels, categories }: Props) {
               }`}>
               浏览站内录音
             </button>
+
             <button
               type='button'
               onClick={() => setAudioSourceType('upload')}
@@ -658,7 +760,7 @@ export default function UploadForm({ levels, categories }: Props) {
                   value={audioFile}
                   onChange={e => setAudioFile(e.target.value)}
                   placeholder='例：/audios/Shadowing/N2-01.mp3'
-                  className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-all focus:ring-2 focus:ring-emerald-400'
+                  className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-400'
                 />
               ) : (
                 <div className='space-y-2'>
@@ -667,6 +769,7 @@ export default function UploadForm({ levels, categories }: Props) {
                     name='audioMatchFolder'
                     value={selectedAudioFolder}
                   />
+
                   <div className='grid grid-cols-1 gap-2 md:grid-cols-5'>
                     <div className='md:col-span-2'>
                       <CustomDropdown
@@ -684,6 +787,7 @@ export default function UploadForm({ levels, categories }: Props) {
                         }
                       />
                     </div>
+
                     {isBatchAss ? (
                       <div className='md:col-span-3 border border-emerald-100 bg-emerald-50/60 p-3 text-xs font-medium text-emerald-700'>
                         将按字幕文件名优先在当前文件夹匹配同名音频，匹配不到时自动回退到全站同名音频。
@@ -710,16 +814,22 @@ export default function UploadForm({ levels, categories }: Props) {
                             audioListLoading ? '读取录音中...' : '选择录音文件'
                           }
                         />
-                        <input type='hidden' name='audioFile' value={audioFile} />
+                        <input
+                          type='hidden'
+                          name='audioFile'
+                          value={audioFile}
+                        />
                       </div>
                     )}
                   </div>
+
                   <p className='text-xs font-medium text-gray-500'>
-                    共 {audioFolders.length} 个文件夹，
-                    当前文件夹 {filesInSelectedFolder.length} 个录音
+                    共 {audioFolders.length} 个文件夹，当前文件夹{' '}
+                    {filesInSelectedFolder.length} 个录音
                   </p>
                 </div>
               )}
+
               <p className='mt-1 text-xs font-medium text-gray-500'>
                 当前路径：{audioFile || '未设置'}
               </p>
@@ -748,16 +858,21 @@ export default function UploadForm({ levels, categories }: Props) {
                     setAudioUploadFileNames([])
                     return
                   }
+
                   if (!list.every(isSupportedAudioFile)) {
-                    void dialog.alert('仅支持音频文件（mp3/m4a/wav/ogg/aac/flac/webm）。')
+                    void dialog.alert(
+                      '仅支持音频文件（mp3/m4a/wav/ogg/aac/flac/webm）。',
+                    )
                     e.currentTarget.value = ''
                     setAudioUploadFileNames([])
                     return
                   }
+
                   setAudioUploadFileNames(list.map(file => file.name))
                 }}
                 className='hidden'
               />
+
               <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
                 <button
                   type='button'
@@ -765,6 +880,7 @@ export default function UploadForm({ levels, categories }: Props) {
                   className='border border-emerald-200 bg-white px-4 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50'>
                   选择录音文件
                 </button>
+
                 <span className='text-xs font-medium text-gray-500'>
                   {audioUploadFileNames.length > 0
                     ? `已选择 ${audioUploadFileNames.length} 个录音文件`
@@ -775,6 +891,7 @@ export default function UploadForm({ levels, categories }: Props) {
                         : '点击选择或拖拽录音文件（mp3/m4a/wav/ogg/aac/flac/webm）'}
                 </span>
               </div>
+
               {audioUploadFileNames.length > 1 && (
                 <div className='mt-2 max-h-24 overflow-y-auto border border-emerald-100 bg-white/70 p-2 text-xs text-emerald-700'>
                   {audioUploadFileNames.slice(0, 10).map((name, index) => (
@@ -789,22 +906,29 @@ export default function UploadForm({ levels, categories }: Props) {
                   )}
                 </div>
               )}
+
               <p className='mt-2 text-xs font-medium text-gray-500'>
-                提交后会自动保存到 `/public/audios/uploads`。批量模式会按同名优先配对，未命中时尝试站内同名音频，并自动分配语料顺序。
+                提交后会自动保存到
+                `/public/audios/uploads`。批量模式会按同名优先配对，未命中时尝试站内同名音频，并自动分配语料顺序。
               </p>
             </div>
           )}
         </div>
       </fieldset>
 
-      {/* ================= 3. 拖拽上传区 ================= */}
       <div
         onClick={handleZoneClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-8 transition-all md:p-14
-          ${isDragging ? 'border-indigo-400 bg-indigo-50/80 scale-[1.02]' : selectedFileNames.length > 0 ? 'border-emerald-400 bg-emerald-50/80' : 'border-dashed border-gray-300 bg-white hover:bg-gray-50 hover:border-indigo-300'}`}>
+        className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-8 transition-[background-color,border-color,color,transform] md:p-14
+          ${
+            isDragging
+              ? 'scale-[1.02] border-indigo-400 bg-indigo-50/80'
+              : selectedFileNames.length > 0
+                ? 'border-emerald-400 bg-emerald-50/80'
+                : 'border-dashed border-gray-300 bg-white hover:border-indigo-300 hover:bg-gray-50'
+          }`}>
         <input
           required
           type='file'
@@ -817,7 +941,7 @@ export default function UploadForm({ levels, categories }: Props) {
         />
 
         {selectedFileNames.length > 0 ? (
-          <div className='text-center animate-in zoom-in-95 duration-300'>
+          <div className='animate-in zoom-in-95 text-center duration-300'>
             <div className='mb-1.5 text-lg font-black text-emerald-700 md:text-xl'>
               字幕文件已就绪（{selectedFileNames.length}）
             </div>
@@ -833,14 +957,16 @@ export default function UploadForm({ levels, categories }: Props) {
                 </div>
               )}
             </div>
-            <div className='text-xs text-emerald-500/60 font-bold bg-emerald-100/50 px-3 py-1 rounded-full inline-block'>
+            <div className='inline-block rounded-full bg-emerald-100/50 px-3 py-1 text-xs font-bold text-emerald-500/60'>
               点击或拖拽可重新选择（支持批量）
             </div>
           </div>
         ) : (
           <div className='text-center'>
             <div
-              className={`mb-2 text-base font-black transition-colors md:text-xl ${isDragging ? 'text-indigo-600' : 'text-gray-800'}`}>
+              className={`mb-2 text-base font-black transition-colors md:text-xl ${
+                isDragging ? 'text-indigo-600' : 'text-gray-800'
+              }`}>
               {isDragging
                 ? '松开即可放入字幕文件'
                 : '点击选择，或拖拽一个或多个 .ass 文件到这里'}
@@ -851,9 +977,11 @@ export default function UploadForm({ levels, categories }: Props) {
           </div>
         )}
       </div>
+
       <p className='text-xs text-gray-500'>
         批量导入规则：会按文件逐个创建语料。若音频路径以 `/` 结尾（如
-        `/audios/n1/2026-07/`），系统将按字幕文件名自动映射为同名 `.mp3`；排序会自动续接。
+        `/audios/n1/2026-07/`），系统将按字幕文件名自动映射为同名
+        `.mp3`；排序会自动续接。
       </p>
 
       {previewRows.length > 0 && (
@@ -866,9 +994,11 @@ export default function UploadForm({ levels, categories }: Props) {
               {previewRows.length} 条
             </span>
           </div>
+
           <p className='mb-3 text-xs font-semibold text-indigo-700'>
-            当前分类：{selectedCategoryLabel}
+            当前试卷：{selectedPaperLabel}
           </p>
+
           <div className='space-y-2'>
             {previewRows.map(row => {
               const overrideValue = assAudioOverrides[row.key] ?? row.autoValue
@@ -876,9 +1006,10 @@ export default function UploadForm({ levels, categories }: Props) {
                 new Set([
                   ...row.scopedCandidates,
                   ...row.siteCandidates,
-                  ...row.uploadCandidates.map(name => `upload://${row.stem}`),
+                  ...row.uploadCandidates.map(() => `upload://${row.stem}`),
                 ]),
               )
+
               return (
                 <div
                   key={row.key}
@@ -887,6 +1018,7 @@ export default function UploadForm({ levels, categories }: Props) {
                     <p className='truncate text-xs font-bold text-gray-700 md:text-sm'>
                       {row.name}
                     </p>
+
                     <button
                       type='button'
                       onClick={() =>
@@ -899,9 +1031,11 @@ export default function UploadForm({ levels, categories }: Props) {
                       恢复自动
                     </button>
                   </div>
+
                   <p className='mb-2 text-[11px] font-medium text-indigo-700'>
                     自动结果：{row.autoLabel}
                   </p>
+
                   {uniqueCandidates.length > 0 && (
                     <div className='mb-2 flex flex-wrap gap-1.5'>
                       {uniqueCandidates.slice(0, 6).map(candidate => (
@@ -922,6 +1056,7 @@ export default function UploadForm({ levels, categories }: Props) {
                       ))}
                     </div>
                   )}
+
                   <input
                     type='text'
                     value={overrideValue}
@@ -941,43 +1076,28 @@ export default function UploadForm({ levels, categories }: Props) {
         </section>
       )}
 
-      {/* ================= 4. 提交按钮与状态 ================= */}
       <button
         type='submit'
         disabled={status.type === 'loading'}
-        className={`mt-2 flex w-full items-center justify-center gap-3 py-4 text-base font-black transition-all shadow-lg active:scale-95 md:mt-4 md:py-5 md:text-xl
-          ${status.type === 'loading' ? 'bg-gray-200 text-gray-500 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 hover:'}
-        `}>
-        {status.type === 'loading' ? (
-          <>
-            <svg
-              className='animate-spin h-6 w-6 text-gray-500'
-              viewBox='0 0 24 24'>
-              <circle
-                className='opacity-25'
-                cx='12'
-                cy='12'
-                r='10'
-                stroke='currentColor'
-                strokeWidth='4'
-                fill='none'></circle>
-              <path
-                className='opacity-75'
-                fill='currentColor'
-                d='M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z'></path>
-            </svg>{' '}
-            正在解析字幕并保存...
-          </>
-        ) : (
-          '提交并保存'
-        )}
+        className={`mt-2 flex w-full items-center justify-center gap-3 py-4 text-base font-black shadow-lg transition-[background-color,border-color,color,box-shadow,transform,opacity] active:scale-95 md:mt-4 md:py-5 md:text-xl
+          ${
+            status.type === 'loading'
+              ? 'bg-gray-200 text-gray-500'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}>
+        {status.type === 'loading' ? '正在导入...' : '开始导入'}
       </button>
 
       {status.message && (
         <div
-          className={`p-5 font-bold text-sm animate-in slide-in-from-bottom-4 flex items-center gap-3
-          ${status.type === 'success' ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-red-50 border border-red-200 text-red-800'}
-        `}>
+          className={`border px-4 py-3 text-sm font-semibold
+            ${
+              status.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : status.type === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-gray-200 bg-gray-50 text-gray-600'
+            }`}>
           {status.message}
         </div>
       )}

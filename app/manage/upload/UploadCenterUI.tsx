@@ -11,9 +11,23 @@ import {
 import { useDialog } from '@/context/DialogContext'
 
 interface Props {
-  dbLevels: any[]
-  dbCategories: any[]
+  dbLevels: UploadLevelLite[]
+  dbCategories: UploadCategoryLite[]
 }
+
+type UploadLevelLite = {
+  id: string
+  title: string
+}
+
+type UploadCategoryLite = {
+  id: string
+  name: string
+  level: { title: string }
+  lessons: { title: string; audioFile: string }[]
+}
+
+type QuestionOptionDraft = { text: string; isCorrect: boolean }
 
 type ArticlePreviewRow = {
   serial: string
@@ -27,7 +41,8 @@ type ArticleImportedQuestionDraft = {
   prompt: string
   contextSentence: string
   explanation: string
-  options: { text: string; isCorrect: boolean }[]
+  options: QuestionOptionDraft[]
+  __previewSerial?: string
   __previewToken?: string
   __previewDuplicateToken?: boolean
 }
@@ -43,7 +58,7 @@ type ParsedQuizDraft = {
   contextSentence: string
   targetWord?: string
   explanation: string
-  options: { text: string; isCorrect: boolean }[]
+  options: QuestionOptionDraft[]
 }
 
 const CIRCLED_NUM_TO_INDEX: Record<string, number> = {
@@ -89,7 +104,9 @@ const inferTargetWord = (
 ) => {
   if (questionType !== 'WORD_DISTINCTION' && questionType !== 'PRONUNCIATION')
     return ''
-  const normalized = prompt.replace(/^\s*\[?\d+\]?\s*[：:．.、)\-]\s*/, '').trim()
+  const normalized = prompt
+    .replace(/^\s*\[?\d+\]?\s*[：:．.、)\-]\s*/, '')
+    .trim()
   if (!normalized) return ''
   if (questionType === 'WORD_DISTINCTION') {
     const firstToken = normalized.split(/[\s　]/)[0] || normalized
@@ -481,12 +498,14 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
 
   // --- 文章表单状态 ---
   const [articleForm, setArticleForm] = useState({
-    categoryId: dbCategories[0]?.id || '',
+    paperId: dbCategories[0]?.id || '',
     title: '',
     description: '',
     content: '',
   })
-  const [articleQuestions, setArticleQuestions] = useState<any[]>([])
+  const [articleQuestions, setArticleQuestions] = useState<
+    ArticleImportedQuestionDraft[]
+  >([])
   const [articleQuickInput, setArticleQuickInput] = useState('')
   const [articleParsedPreviewRows, setArticleParsedPreviewRows] = useState<
     ArticlePreviewRow[]
@@ -525,7 +544,14 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
   const isSentenceBoundaryAt = (text: string, index: number) => {
     const ch = text[index]
     if (!ch) return false
-    if (ch === '\n' || ch === '。' || ch === '！' || ch === '？' || ch === '!' || ch === '?')
+    if (
+      ch === '\n' ||
+      ch === '。' ||
+      ch === '！' ||
+      ch === '？' ||
+      ch === '!' ||
+      ch === '?'
+    )
       return true
     if (ch === '.') {
       const prev = text[index - 1] || ''
@@ -551,7 +577,11 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       }
     }
     let sentenceEnd = text.length
-    for (let i = safeIndex + Math.max(1, anchorLength); i < text.length; i += 1) {
+    for (
+      let i = safeIndex + Math.max(1, anchorLength);
+      i < text.length;
+      i += 1
+    ) {
       if (isSentenceBoundaryAt(text, i)) {
         sentenceEnd = i + 1
         break
@@ -572,10 +602,12 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
   const fillBlankTokenRegex =
     /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』|__{2,}|[＿_]{2,}|[（(][\s　]*[）)]|～/
 
-  const rebuildFillBlankPromptFromQuestion = (question: any) => {
+  const rebuildFillBlankPromptFromQuestion = (
+    question: ArticleImportedQuestionDraft,
+  ) => {
     if (!question || question.questionType !== 'FILL_BLANK') return question
     const correctText =
-      question.options?.find((opt: any) => opt?.isCorrect)?.text?.trim() || ''
+      question.options?.find(opt => opt?.isCorrect)?.text?.trim() || ''
     const context = (question.contextSentence || '').trim()
     if (!context) return question
     if (!fillBlankTokenRegex.test(context) || !correctText) return question
@@ -649,9 +681,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       const newQs = [...articleQuestions]
 
       // 🌟 自动寻的魔法：寻找哪个新选项包含了我们刚才“划词”选中的正确答案
-      const currentCorrectOpt = newQs[qIndex].options.find(
-        (o: any) => o.isCorrect,
-      )
+      const currentCorrectOpt = newQs[qIndex].options.find(o => o.isCorrect)
       const correctText = currentCorrectOpt ? currentCorrectOpt.text : ''
 
       let newCorrectIdx = newOptionsTexts.findIndex(
@@ -711,20 +741,26 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       content: string,
       serialNumber: string,
     ): { token: string; index: number; matchCount: number } => {
-      if (!content || !serialNumber) return { token: '', index: -1, matchCount: 0 }
+      if (!content || !serialNumber)
+        return { token: '', index: -1, matchCount: 0 }
       const normalizedContent = normalizeAsciiDigit(content)
       const escaped = serialNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const tokenCountPattern = new RegExp(
         `[\\[［(（【「『]\\s*${escaped}\\s*[\\]］)）】」』]`,
         'g',
       )
-      const matchCount = [...normalizedContent.matchAll(tokenCountPattern)].length
+      const matchCount = [...normalizedContent.matchAll(tokenCountPattern)]
+        .length
       const patterns = [
         new RegExp(`[\\[［(（【「『]\\s*${escaped}\\s*[\\]］)）】」』]`),
         new RegExp(`第\\s*${escaped}\\s*[题題問]`),
         new RegExp(`(^|\\D)${escaped}(\\D|$)`),
       ]
-      for (let patternIndex = 0; patternIndex < patterns.length; patternIndex += 1) {
+      for (
+        let patternIndex = 0;
+        patternIndex < patterns.length;
+        patternIndex += 1
+      ) {
         const pattern = patterns[patternIndex]
         const matched = pattern.exec(normalizedContent)
         if (matched?.[0]) {
@@ -768,7 +804,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
         /^\s*(?:第\s*)?\d+\s*[：:．.、)\-]\s*/,
         '',
       )
-      const correctOption = item.options.find(opt => opt.isCorrect)?.text?.trim() || ''
+      const correctOption =
+        item.options.find(opt => opt.isCorrect)?.text?.trim() || ''
       const promptPlaceholder =
         normalizeAsciiDigit(normalizedPrompt).match(
           /[\[［(（【「『]\s*(\d+)\s*[\]］)）】」』]/,
@@ -838,7 +875,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   correctOption,
                 )
               }
-              return replaceBlankWithAnswer(resolvedContextSentence, correctOption)
+              return replaceBlankWithAnswer(
+                resolvedContextSentence,
+                correctOption,
+              )
             })()
           : normalizedPrompt
       return {
@@ -856,12 +896,14 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       }
     })
 
-    const previewRows: ArticlePreviewRow[] = newQuestions.map((question, idx) => ({
-      serial: question.__previewSerial || `${idx + 1}`,
-      placeholderToken: question.__previewToken || '未命中',
-      generatedPrompt: question.prompt || '（空题干）',
-      isDuplicateToken: Boolean(question.__previewDuplicateToken),
-    }))
+    const previewRows: ArticlePreviewRow[] = newQuestions.map(
+      (question, idx) => ({
+        serial: question.__previewSerial || `${idx + 1}`,
+        placeholderToken: question.__previewToken || '未命中',
+        generatedPrompt: question.prompt || '（空题干）',
+        isDuplicateToken: Boolean(question.__previewDuplicateToken),
+      }),
+    )
 
     const drafts = newQuestions.map(question => {
       const { __previewSerial, ...rest } = question
@@ -874,9 +916,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
   const handleArticleAddQuestion = () => {
     if (!articleQuickInput.trim()) return
 
-    const { drafts, previewRows } = buildArticleQuestionsFromQuickInput(
-      articleQuickInput,
-    )
+    const { drafts, previewRows } =
+      buildArticleQuestionsFromQuickInput(articleQuickInput)
     if (drafts.length === 0) {
       void dialog.alert('解析失败，请检查是否包含 1. 2. 3. 4. 四个选项。')
       return
@@ -917,9 +958,15 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
 
       let nextContextSentence = (draft.contextSentence || '').trim()
       if (matchedToken && nextContextSentence.includes(matchedToken)) {
-        nextContextSentence = nextContextSentence.replace(matchedToken, nextToken)
+        nextContextSentence = nextContextSentence.replace(
+          matchedToken,
+          nextToken,
+        )
       } else if (blankTokenRegex.test(nextContextSentence)) {
-        nextContextSentence = nextContextSentence.replace(blankTokenRegex, nextToken)
+        nextContextSentence = nextContextSentence.replace(
+          blankTokenRegex,
+          nextToken,
+        )
       }
 
       const nextPrompt =
@@ -976,7 +1023,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       return
     }
     setIsSubmitting(true)
-    const res = await createQuizQuestion(quizForm)
+    const res = await createQuizQuestion({
+      ...quizForm,
+      paperId: quizForm.categoryId,
+    })
     await dialog.alert(res.message)
     if (res.success) {
       setQuickInput('')
@@ -1052,7 +1102,11 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     setBulkParsedQuestions(prev =>
       prev.map((item, i) =>
         i === index
-          ? { ...item, prompt: value, contextSentence: value || item.contextSentence }
+          ? {
+              ...item,
+              prompt: value,
+              contextSentence: value || item.contextSentence,
+            }
           : item,
       ),
     )
@@ -1163,7 +1217,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     for (let i = 0; i < bulkParsedQuestions.length; i += 1) {
       const draft = bulkParsedQuestions[i]
       const res = await createQuizQuestion({
-        categoryId: quizForm.categoryId,
+        paperId: quizForm.categoryId,
         questionType: draft.questionType,
         contextSentence: draft.contextSentence,
         targetWord: draft.targetWord || '',
@@ -1190,7 +1244,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
         targetWord: '',
         prompt: '',
         explanation: '',
-        options: prev.options.map((o, idx) => ({ text: '', isCorrect: idx === 0 })),
+        options: prev.options.map((o, idx) => ({
+          text: '',
+          isCorrect: idx === 0,
+        })),
       }))
       await dialog.alert(`批量保存成功，共 ${successCount} 题。`)
       return
@@ -1281,10 +1338,12 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     }
   }
   const quizHasQuestionContent =
-    quizForm.prompt.trim().length > 0 || quizForm.contextSentence.trim().length > 0
+    quizForm.prompt.trim().length > 0 ||
+    quizForm.contextSentence.trim().length > 0
 
   const renderTargetWordPreview = (sentence: string, targetWord: string) => {
-    if (!targetWord || !sentence.includes(targetWord)) return sentence || '（语境句预览）'
+    if (!targetWord || !sentence.includes(targetWord))
+      return sentence || '（语境句预览）'
     const index = sentence.indexOf(targetWord)
     const before = sentence.slice(0, index)
     const after = sentence.slice(index + targetWord.length)
@@ -1336,9 +1395,15 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       setIsSavingCat(true)
 
       const res = await createCategory(newCatData)
-      if (res.success && res.category) {
-        setLocalCategories(prev => [res.category, ...prev])
-        onChange(res.category.id)
+      if (res.success && res.paper) {
+        const createdCategory: UploadCategoryLite = {
+          id: res.paper.id,
+          name: res.paper.name,
+          level: { title: res.paper.level.title },
+          lessons: [],
+        }
+        setLocalCategories(prev => [createdCategory, ...prev])
+        onChange(res.paper.id)
         setIsCreating(false)
         setNewCatData({ ...newCatData, name: '' })
       } else {
@@ -1348,7 +1413,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     }
 
     return (
-      <div className='mb-6 border border-indigo-100 bg-indigo-50/40 p-4 md:p-5 transition-all duration-300'>
+      <div className='mb-6 border border-indigo-100 bg-indigo-50/40 p-4 md:p-5 transition-colors duration-300'>
         <div className='flex justify-between items-center mb-3'>
           <label className='block text-sm font-bold text-indigo-900'>
             所属分类
@@ -1377,8 +1442,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               <div className='w-full md:w-1/3'>
                 <PanelDropdown
                   value={newCatData.levelId}
-                  onChange={val => setNewCatData({ ...newCatData, levelId: val })}
-                  options={dbLevels.map((lvl: any) => ({
+                  onChange={val =>
+                    setNewCatData({ ...newCatData, levelId: val })
+                  }
+                  options={dbLevels.map(lvl => ({
                     value: lvl.id,
                     label: lvl.title,
                   }))}
@@ -1418,17 +1485,17 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
         <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-200 bg-white p-1.5 sm:grid-cols-3 md:mb-8'>
           <button
             onClick={() => setActiveTab('audio')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-all duration-300 ${activeTab === 'audio' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'audio' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             听力语料
           </button>
           <button
             onClick={() => setActiveTab('article')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-all duration-300 ${activeTab === 'article' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'article' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             阅读录入
           </button>
           <button
             onClick={() => setActiveTab('quiz')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-all duration-300 ${activeTab === 'quiz' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'quiz' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             题库录入
           </button>
         </div>
@@ -1439,7 +1506,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
             <p className='mb-4 text-sm text-gray-500 md:mb-6'>
               选择分类并上传字幕。支持手动路径、站内浏览或本地上传录音，提交后将自动保存并入库。
             </p>
-            <UploadForm levels={dbLevels} categories={dbCategories} />
+            <UploadForm levels={dbLevels} papers={dbCategories} />
           </div>
         )}
 
@@ -1458,9 +1525,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
 
             <section className='space-y-5 border border-gray-200 bg-gray-50/30 p-4 md:p-5'>
               <CategorySelector
-                value={articleForm.categoryId}
+                value={articleForm.paperId}
                 onChange={val =>
-                  setArticleForm({ ...articleForm, categoryId: val })
+                  setArticleForm({ ...articleForm, paperId: val })
                 }
               />
 
@@ -1490,7 +1557,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   <button
                     type='button'
                     onClick={handleMakeBlank}
-                    className='inline-flex items-center justify-center border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition-all hover:bg-indigo-100 active:scale-95'>
+                    className='inline-flex items-center justify-center border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition-[background-color,border-color,color,transform] hover:bg-indigo-100 active:scale-95'>
                     划词生成填空题
                   </button>
                 </div>
@@ -1523,7 +1590,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   {articleQuestions.map((q, qIndex) => (
                     <div
                       key={qIndex}
-                      className='bg-white p-4 border border-indigo-100 relative transition-all'>
+                      className='bg-white p-4 border border-indigo-100 relative transition-colors'>
                       <button
                         type='button'
                         onClick={async () => {
@@ -1557,7 +1624,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       </div>
 
                       <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                        {q.options.map((opt: any, optIndex: number) => (
+                        {q.options.map((opt, optIndex: number) => (
                           <div
                             key={optIndex}
                             className='flex min-w-0 items-center gap-2 border border-gray-200 bg-white px-2.5 py-2 text-sm'>
@@ -1565,15 +1632,24 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                               type='radio'
                               checked={opt.isCorrect}
                               onChange={() => {
-                                const newQs = [...articleQuestions]
-                                newQs[qIndex].options.forEach(
-                                  (o: any, i: number) =>
-                                    (o.isCorrect = i === optIndex),
+                                setArticleQuestions(prev =>
+                                  prev.map((question, questionIndex) => {
+                                    if (questionIndex !== qIndex)
+                                      return question
+                                    const nextQuestion = {
+                                      ...question,
+                                      options: question.options.map(
+                                        (option, i) => ({
+                                          ...option,
+                                          isCorrect: i === optIndex,
+                                        }),
+                                      ),
+                                    }
+                                    return rebuildFillBlankPromptFromQuestion(
+                                      nextQuestion,
+                                    )
+                                  }),
                                 )
-                                newQs[qIndex] = rebuildFillBlankPromptFromQuestion(
-                                  newQs[qIndex],
-                                )
-                                setArticleQuestions(newQs)
                               }}
                               className='text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer'
                             />
@@ -1581,13 +1657,27 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                               type='text'
                               value={opt.text}
                               onChange={e => {
-                                const newQs = [...articleQuestions]
-                                newQs[qIndex].options[optIndex].text =
-                                  e.target.value
-                                newQs[qIndex] = rebuildFillBlankPromptFromQuestion(
-                                  newQs[qIndex],
+                                setArticleQuestions(prev =>
+                                  prev.map((question, questionIndex) => {
+                                    if (questionIndex !== qIndex)
+                                      return question
+                                    const nextQuestion = {
+                                      ...question,
+                                      options: question.options.map(
+                                        (option, i) =>
+                                          i === optIndex
+                                            ? {
+                                                ...option,
+                                                text: e.target.value,
+                                              }
+                                            : option,
+                                      ),
+                                    }
+                                    return rebuildFillBlankPromptFromQuestion(
+                                      nextQuestion,
+                                    )
+                                  }),
                                 )
-                                setArticleQuestions(newQs)
                               }}
                               placeholder={`选项 ${optIndex + 1}`}
                               className={`min-w-0 flex-1 rounded-md border px-3 py-2 transition-colors ${opt.isCorrect ? 'border-green-400 bg-green-50 font-bold text-green-700 ' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-indigo-300'} outline-none focus:ring-2 focus:ring-indigo-500`}
@@ -1604,7 +1694,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             handleParseCardOptions(qIndex, e.target.value)
                             e.target.value = ''
                           }}
-                          className='w-full px-4 py-2 text-xs bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white text-indigo-700 placeholder-indigo-300 transition-all'
+                          className='w-full px-4 py-2 text-xs bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white text-indigo-700 placeholder-indigo-300 transition-colors'
                         />
                       </div>
                     </div>
@@ -1640,7 +1730,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
 
                 {articleParsedPreviewRows.length > 0 && (
                   <div className='mt-4 overflow-x-auto border border-indigo-100'>
-                    {articleParsedPreviewRows.some(row => row.isDuplicateToken) && (
+                    {articleParsedPreviewRows.some(
+                      row => row.isDuplicateToken,
+                    ) && (
                       <div className='border-b border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700'>
                         检测到重号：同一占位符在正文中出现多次，已标红。请先修正编号再导入。
                       </div>
@@ -1649,7 +1741,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       <thead className='bg-indigo-50 text-indigo-900'>
                         <tr>
                           <th className='px-3 py-2 font-bold'>Q序号</th>
-                          <th className='px-3 py-2 font-bold'>命中文章占位符</th>
+                          <th className='px-3 py-2 font-bold'>
+                            命中文章占位符
+                          </th>
                           <th className='px-3 py-2 font-bold'>生成题干</th>
                         </tr>
                       </thead>
@@ -1667,7 +1761,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             </td>
                             <td
                               className={`px-3 py-2 font-semibold ${
-                                row.isDuplicateToken || row.placeholderToken === '未命中'
+                                row.isDuplicateToken ||
+                                row.placeholderToken === '未命中'
                                   ? 'text-rose-600'
                                   : 'text-emerald-700'
                               }`}>
@@ -1690,7 +1785,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
             <button
               disabled={isSubmitting}
               type='submit'
-              className='w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 transition-all disabled:opacity-50 shadow-indigo-200 text-lg'>
+              className='w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 transition-colors disabled:opacity-50 shadow-indigo-200 text-lg'>
               {isSubmitting ? '保存中...' : '保存文章与题目'}
             </button>
           </form>
@@ -1720,8 +1815,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 批量粘贴多题（智能识别）
               </label>
               <p className='mb-3 text-xs leading-relaxed text-emerald-700'>
-                一次粘贴多题文本，系统会按“题干 + 4 个选项”自动拆分。
-                支持 `1.2.3.4`、`①②③④`、`A.B.C.D` 选项标记。
+                一次粘贴多题文本，系统会按“题干 + 4 个选项”自动拆分。 支持
+                `1.2.3.4`、`①②③④`、`A.B.C.D` 选项标记。
               </p>
               <textarea
                 value={bulkQuickInput}
@@ -1742,11 +1837,14 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   disabled={isSubmitting || bulkParsedQuestions.length === 0}
                   onClick={() => void handleBulkQuizSave()}
                   className='bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50'>
-                  {isSubmitting ? '批量保存中...' : `批量保存（${bulkParsedQuestions.length}）`}
+                  {isSubmitting
+                    ? '批量保存中...'
+                    : `批量保存（${bulkParsedQuestions.length}）`}
                 </button>
                 {bulkParsedQuestions.length > 0 && (
                   <span className='text-xs font-semibold text-emerald-700'>
-                    已识别 {bulkParsedQuestions.length} 题（可在下方逐题校对后再保存）
+                    已识别 {bulkParsedQuestions.length}{' '}
+                    题（可在下方逐题校对后再保存）
                   </span>
                 )}
               </div>
@@ -1777,7 +1875,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         </span>
                         <button
                           type='button'
-                          onClick={() => handleBulkRemoveQuestion(bulkEditingIndex)}
+                          onClick={() =>
+                            handleBulkRemoveQuestion(bulkEditingIndex)
+                          }
                           className='border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50'>
                           删除
                         </button>
@@ -1785,7 +1885,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
 
                       <div className='grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr]'>
                         <select
-                          value={bulkParsedQuestions[bulkEditingIndex].questionType}
+                          value={
+                            bulkParsedQuestions[bulkEditingIndex].questionType
+                          }
                           onChange={e =>
                             handleBulkQuestionTypeChange(
                               bulkEditingIndex,
@@ -1815,7 +1917,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       <div className='mt-2'>
                         <textarea
                           ref={bulkContextTextareaRef}
-                          value={bulkParsedQuestions[bulkEditingIndex].contextSentence}
+                          value={
+                            bulkParsedQuestions[bulkEditingIndex]
+                              .contextSentence
+                          }
                           onChange={e =>
                             handleBulkContextSentenceChange(
                               bulkEditingIndex,
@@ -1841,8 +1946,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                           </button>
                           <input
                             value={
-                              bulkParsedQuestions[bulkEditingIndex].targetWord ||
-                              ''
+                              bulkParsedQuestions[bulkEditingIndex]
+                                .targetWord || ''
                             }
                             onChange={e =>
                               handleBulkTargetWordChange(
@@ -1926,7 +2031,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         key={num}
                         type='button'
                         onClick={() => setCorrectOption(idx)}
-                        className={`h-9 min-w-9 px-3 text-sm font-black transition-all ${quizForm.options[idx].isCorrect ? 'bg-emerald-500 text-white shadow-emerald-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-emerald-500 text-white shadow-emerald-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
                         选项 {num}
                       </button>
                     ))}
@@ -2005,11 +2110,11 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       const orderNum = sortSequence.indexOf(i) + 1
                       return (
                         <button
-                          key={i}
+                          key={`sort-option-${opt.text || 'empty'}-${i}`}
                           type='button'
                           disabled={isClicked || !opt.text}
                           onClick={() => handleSortClick(i)}
-                          className={`relative px-4 py-2 font-bold transition-all ${isClicked ? 'bg-orange-200 text-orange-500 opacity-50' : 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-100'}`}>
+                          className={`relative px-4 py-2 font-bold transition-colors ${isClicked ? 'bg-orange-200 text-orange-500 opacity-50' : 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-100'}`}>
                           {opt.text || `选项 ${i + 1}`}
                           {isClicked && (
                             <span className='absolute -top-2 -right-2 w-5 h-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center'>
@@ -2034,8 +2139,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                     </div>
                   ) : (
                     <div className='text-xs text-orange-500'>
-                        还需点击 {4 - sortSequence.length} 个选项
-                      </div>
+                      还需点击 {4 - sortSequence.length} 个选项
+                    </div>
                   )}
                 </div>
               )}
@@ -2069,14 +2174,20 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       type='text'
                       value={quizForm.targetWord}
                       onChange={e =>
-                        setQuizForm({ ...quizForm, targetWord: e.target.value.trim() })
+                        setQuizForm({
+                          ...quizForm,
+                          targetWord: e.target.value.trim(),
+                        })
                       }
                       placeholder='或手动输入目标词'
                       className='h-9 min-w-0 flex-1 border border-indigo-200 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500'
                     />
                   </div>
                   <div className='text-sm leading-relaxed text-gray-700'>
-                    {renderTargetWordPreview(quizForm.contextSentence, quizForm.targetWord)}
+                    {renderTargetWordPreview(
+                      quizForm.contextSentence,
+                      quizForm.targetWord,
+                    )}
                   </div>
                 </div>
               )}
@@ -2094,7 +2205,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                 {quizForm.options.map((opt, idx) => (
                   <div
-                    key={idx}
+                    key={`option-editor-${opt.text || 'empty'}-${idx}`}
                     className='flex min-w-0 items-center gap-3 border border-gray-200 bg-white px-3 py-2.5'>
                     <input
                       type='radio'
@@ -2135,14 +2246,31 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
             </section>
 
             <button
-              disabled={isSubmitting || !quizHasQuestionContent}
-              type='submit'
-              className='w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 transition-all disabled:opacity-50 shadow-indigo-200'>
+              disabled={
+                isSubmitting ||
+                (!quizHasQuestionContent && bulkParsedQuestions.length === 0)
+              }
+              // 如果当前有批量解析的数据，强制拦截默认表单提交，改为执行批量保存逻辑
+              onClick={e => {
+                if (bulkParsedQuestions.length > 0) {
+                  e.preventDefault() // 阻止表单 onSubmit
+                  void handleBulkQuizSave() // 执行多题上传逻辑
+                }
+              }}
+              // 动态切换按钮类型：有批量数据就当普通按钮，只有单题才当提交按钮
+              type={bulkParsedQuestions.length > 0 ? 'button' : 'submit'}
+              className={`w-full font-black py-4 transition-colors disabled:opacity-50 text-white ${
+                bulkParsedQuestions.length > 0
+                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
+                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+              }`}>
               {isSubmitting
                 ? '保存中...'
-                : quizHasQuestionContent
-                  ? '保存题目'
-                  : '请先填写题目内容'}
+                : bulkParsedQuestions.length > 0
+                  ? `一键批量保存全部 ${bulkParsedQuestions.length} 题` // 明确提示用户这是批量操作
+                  : quizHasQuestionContent
+                    ? '保存当前单题'
+                    : '请先填写题目内容'}
             </button>
           </form>
         )}

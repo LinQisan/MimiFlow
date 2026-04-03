@@ -66,7 +66,7 @@ export default function InlineConfirmAction({
       {open && !pending && (
         <div
           onClick={event => event.stopPropagation()}
-          className='ui-pop absolute right-0 bottom-full mb-2 w-56 border border-gray-200 bg-white p-3 z-60 animate-in fade-in zoom-in-95 duration-150'>
+          className='ui-pop ui-pop-surface absolute right-0 bottom-full mb-2 w-56 p-3 z-60 animate-in fade-in zoom-in-95 duration-150'>
           <p className='text-xs leading-relaxed text-gray-600 mb-2.5'>{message}</p>
           <div className='flex items-center justify-end gap-2'>
             <button

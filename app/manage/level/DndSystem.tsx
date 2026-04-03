@@ -15,10 +15,27 @@ import {
   SortableContext,
   verticalListSortingStrategy,
   useSortable,
+  type UseSortableArguments,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-const DragContext = createContext<any>(null)
+type SortActionResult = { success: boolean; message?: string }
+
+type DragContextValue = {
+  setActivatorNodeRef: (element: HTMLElement | null) => void
+  listeners: ReturnType<typeof useSortable>['listeners']
+  attributes: ReturnType<typeof useSortable>['attributes']
+}
+
+const DragContext = createContext<DragContextValue | null>(null)
+
+type SortableChildProps = { id: string }
+
+const isSortableElement = (
+  node: React.ReactNode,
+): node is React.ReactElement<SortableChildProps> =>
+  React.isValidElement<SortableChildProps>(node) &&
+  typeof node.props.id === 'string'
 
 export function SortableList({
   items,
@@ -27,7 +44,7 @@ export function SortableList({
   className = '',
 }: {
   items: { id: string }[]
-  action: (orderedIds: string[]) => Promise<any>
+  action: (orderedIds: string[]) => Promise<SortActionResult>
   children: React.ReactNode
   className?: string
 }) {
@@ -72,8 +89,9 @@ export function SortableList({
 
   // 核心魔法：拦截服务器传来的子组件，在客户端重新排序渲染！
   const childrenArray = React.Children.toArray(children)
+    .filter(isSortableElement)
   const sortedChildren = orderedIds
-    .map(id => childrenArray.find((c: any) => c.props.id === id))
+    .map(id => childrenArray.find(c => c.props.id === id))
     .filter(Boolean)
 
   return (
@@ -94,7 +112,7 @@ export function SortableItem({
   id,
   children,
 }: {
-  id: string
+  id: UseSortableArguments['id']
   children: React.ReactNode
 }) {
   const {

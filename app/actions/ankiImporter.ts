@@ -20,6 +20,7 @@ type ParsedRow = {
   sentenceAudioRaw: string
   sentenceAudioName: string
   usage: string
+  tags: string[]
 }
 
 type PreviewRow = {
@@ -29,6 +30,7 @@ type PreviewRow = {
   sentence: string
   sentenceTranslation: string
   sentenceAudioName: string
+  tags: string[]
   status: 'valid' | 'skipped'
   reason?: string
 }
@@ -71,6 +73,7 @@ const SENTENCE_AUDIO_HEADERS = new Set([
   '音频',
   'audio',
 ])
+const TAG_HEADERS = new Set(['tags', 'tag', '标签', '標籤', 'anki tags'])
 
 const normalizeHeader = (value: string) =>
   value
@@ -194,6 +197,7 @@ const parseTsv = (content: string) => {
   let sentenceIdx = findIndex(SENTENCE_HEADERS)
   let sentenceTranslationIdx = findIndex(SENTENCE_TRANSLATION_HEADERS)
   let sentenceAudioIdx = findIndex(SENTENCE_AUDIO_HEADERS)
+  let tagsIdx = findIndex(TAG_HEADERS)
   let usageIdx = headers.findIndex(h =>
     ['usage', '用法', 'note', 'notes', '备注', 'メモ'].includes(h),
   )
@@ -213,18 +217,22 @@ const parseTsv = (content: string) => {
     if (colCount >= 8) {
       wordAudioIdx = 6
       sentenceAudioIdx = 7
+      tagsIdx = colCount >= 9 ? 8 : -1
     } else if (colCount === 7) {
       wordAudioIdx = 5
       sentenceAudioIdx = 6
       usageIdx = -1
+      tagsIdx = -1
     } else if (colCount === 6) {
       wordAudioIdx = -1
       sentenceAudioIdx = 5
       usageIdx = -1
+      tagsIdx = -1
     } else {
       wordAudioIdx = -1
       sentenceAudioIdx = -1
       usageIdx = -1
+      tagsIdx = -1
     }
     startDataIndex = 0
   }
@@ -247,6 +255,7 @@ const parseTsv = (content: string) => {
     const sentenceTranslation =
       sentenceTranslationIdx >= 0 ? stripHtml(cells[sentenceTranslationIdx] || '') : ''
     const usage = usageIdx >= 0 ? stripHtml(cells[usageIdx] || '') : ''
+    const tags = tagsIdx >= 0 ? splitList(cells[tagsIdx] || '') : []
     const sentenceAudioRaw = sentenceAudioIdx >= 0 ? (cells[sentenceAudioIdx] || '').trim() : ''
     const sentenceAudioName = parseSoundTag(sentenceAudioRaw) || sentenceAudioRaw
 
@@ -262,6 +271,7 @@ const parseTsv = (content: string) => {
       sentenceAudioRaw,
       sentenceAudioName: path.basename(sentenceAudioName || '').trim(),
       usage,
+      tags,
     })
   }
 
@@ -291,6 +301,73 @@ const safeFileName = (name: string) =>
     .replace(/[^a-zA-Z0-9._-]/g, '')
     .replace(/-+/g, '-')
 
+const normalizeFolderSegments = (value: string) =>
+  value
+    .replace(/\\/g, '/')
+    .split('/')
+    .map(item => item.trim())
+    .filter(Boolean)
+
+const resolveVocabularyFolderPath = async (rawPath: string) => {
+  const segments = normalizeFolderSegments(rawPath)
+  if (segments.length === 0) return null
+
+  let parentId: string | null = null
+  for (const segment of segments) {
+    const existing: { id: string } | null =
+      await prisma.vocabularyFolder.findFirst({
+      where: { name: segment, parentId },
+      select: { id: true },
+    })
+    if (existing) {
+      parentId = existing.id
+      continue
+    }
+    const created: { id: string } = await prisma.vocabularyFolder.create({
+      data: { name: segment, parentId },
+      select: { id: true },
+    })
+    parentId = created.id
+  }
+  return parentId
+}
+
+const resolveVocabularyTagIds = async (tagNames: string[]) => {
+  const uniqueNames = Array.from(
+    new Set(tagNames.map(item => item.trim()).filter(Boolean)),
+  )
+  const ids: string[] = []
+  for (const name of uniqueNames) {
+    const tag = await prisma.vocabularyTag.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+      select: { id: true },
+    })
+    ids.push(tag.id)
+  }
+  return ids
+}
+
+const attachVocabularyTags = async (vocabularyId: string, tagIds: string[]) => {
+  if (tagIds.length === 0) return
+  for (const tagId of tagIds) {
+    await prisma.vocabularyTagOnVocabulary.upsert({
+      where: {
+        vocabularyId_tagId: {
+          vocabularyId,
+          tagId,
+        },
+      },
+      update: {},
+      create: {
+        vocabularyId,
+        tagId,
+      },
+    })
+  }
+}
+
 const createPreviewRows = (rows: ParsedRow[]): PreviewRow[] =>
   rows.slice(0, MAX_PREVIEW_ROWS).map(row => {
     if (!row.word) {
@@ -301,6 +378,7 @@ const createPreviewRows = (rows: ParsedRow[]): PreviewRow[] =>
         sentence: row.sentence,
         sentenceTranslation: row.sentenceTranslation,
         sentenceAudioName: row.sentenceAudioName,
+        tags: row.tags,
         status: 'skipped',
         reason: '缺少单词',
       }
@@ -313,6 +391,7 @@ const createPreviewRows = (rows: ParsedRow[]): PreviewRow[] =>
         sentence: '',
         sentenceTranslation: row.sentenceTranslation,
         sentenceAudioName: row.sentenceAudioName,
+        tags: row.tags,
         status: 'skipped',
         reason: '缺少例句',
       }
@@ -324,6 +403,7 @@ const createPreviewRows = (rows: ParsedRow[]): PreviewRow[] =>
       sentence: row.sentence,
       sentenceTranslation: row.sentenceTranslation,
       sentenceAudioName: row.sentenceAudioName,
+      tags: row.tags,
       status: 'valid',
     }
   })
@@ -349,6 +429,9 @@ const parseRowsJson = (raw: string): ParsedRow[] => {
         sentenceAudioRaw: String(item.sentenceAudioRaw || '').trim(),
         sentenceAudioName: String(item.sentenceAudioName || '').trim(),
         usage: String(item.usage || '').trim(),
+        tags: Array.isArray(item.tags)
+          ? item.tags.map((x: unknown) => String(x || '').trim()).filter(Boolean)
+          : [],
       }))
       .filter(item => item.rowNo > 0)
   } catch {
@@ -417,6 +500,8 @@ export async function previewAnkiImport(formData: FormData) {
 
   const audioFiles = (formData.getAll('audioFiles') as File[]).filter(file => file?.size > 0)
   const notebookName = String(formData.get('notebookName') || '').trim()
+  const groupName = String(formData.get('groupName') || '').trim()
+  const globalTags = splitList(String(formData.get('globalTags') || ''))
   const uploadNameSet = new Set([
     ...audioFiles.map(file => path.basename(file.name)),
     ...audioFiles.map(file => normalizeAudioLookupKey(file.name)),
@@ -451,6 +536,8 @@ export async function previewAnkiImport(formData: FormData) {
       matchedWordAudioRows,
       uploadedAudioFiles: audioFiles.length,
       notebookName,
+      groupName,
+      globalTags: globalTags.join(' / '),
       sampleRows: createPreviewRows(truncatedRows),
       rowsJson: JSON.stringify(validRows),
     },
@@ -462,6 +549,8 @@ export async function runAnkiImport(formData: FormData) {
   const audioFolder = String(formData.get('audioFolder') || 'imports/anki').trim() || 'imports/anki'
   const sourceLabel = String(formData.get('sourceLabel') || '').trim()
   const notebookName = String(formData.get('notebookName') || '').trim()
+  const groupName = String(formData.get('groupName') || '').trim()
+  const globalTags = splitList(String(formData.get('globalTags') || ''))
   const rows = parseRowsJson(rowsJson)
   if (rows.length === 0) {
     return { success: false, message: '没有可导入的数据。请先预览。' }
@@ -470,22 +559,10 @@ export async function runAnkiImport(formData: FormData) {
   const audioFiles = (formData.getAll('audioFiles') as File[]).filter(file => file?.size > 0)
   const audioMap = await uploadAudioFiles(audioFiles, audioFolder)
   const sourceName = sourceLabel || 'Anki导入'
-  let targetFolderId: string | null = null
-  if (notebookName) {
-    const existed = await prisma.vocabularyFolder.findUnique({
-      where: { name: notebookName },
-      select: { id: true },
-    })
-    if (existed) {
-      targetFolderId = existed.id
-    } else {
-      const createdFolder = await prisma.vocabularyFolder.create({
-        data: { name: notebookName },
-        select: { id: true },
-      })
-      targetFolderId = createdFolder.id
-    }
-  }
+  const targetFolderId = notebookName
+    ? await resolveVocabularyFolderPath(notebookName)
+    : null
+  const globalTagIds = await resolveVocabularyTagIds(globalTags)
 
   let created = 0
   let updated = 0
@@ -535,7 +612,7 @@ export async function runAnkiImport(formData: FormData) {
           word: row.word,
           sourceType: SourceType.ARTICLE_TEXT,
           sourceId: 'anki-import',
-          groupName: null,
+          groupName: groupName || null,
           folderId: targetFolderId,
           wordAudio: wordAudioPath || null,
           pronunciations: toJsonStringList(normalizedPronunciations),
@@ -588,6 +665,12 @@ export async function runAnkiImport(formData: FormData) {
       }
       vocabularyId = existing.id
       updated += 1
+    }
+
+    await attachVocabularyTags(vocabularyId, globalTagIds)
+    if (row.tags.length > 0) {
+      const rowTagIds = await resolveVocabularyTagIds(row.tags)
+      await attachVocabularyTags(vocabularyId, rowTagIds)
     }
 
     const sentenceAudioPath = row.sentenceAudioName
@@ -655,6 +738,8 @@ export async function runAnkiImport(formData: FormData) {
       uploadedAudios: audioMap.size,
       sourceName,
       notebookName: notebookName || '',
+      groupName: groupName || '',
+      globalTags: globalTags.join(' / '),
     },
   }
 }

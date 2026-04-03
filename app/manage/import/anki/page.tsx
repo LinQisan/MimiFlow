@@ -16,6 +16,8 @@ type PreviewPayload = {
   matchedWordAudioRows: number
   uploadedAudioFiles: number
   notebookName?: string
+  groupName?: string
+  globalTags?: string
   rowsJson: string
   sampleRows: {
     rowNo: number
@@ -24,6 +26,7 @@ type PreviewPayload = {
     sentence: string
     sentenceTranslation: string
     sentenceAudioName: string
+    tags?: string[]
     status: 'valid' | 'skipped'
     reason?: string
   }[]
@@ -37,6 +40,8 @@ export default function ManageAnkiImportPage() {
   const [pickedAudioNames, setPickedAudioNames] = useState<string[]>([])
   const [audioFolder, setAudioFolder] = useState('imports/anki')
   const [sourceLabel, setSourceLabel] = useState('Anki导入')
+  const [groupName, setGroupName] = useState('Anki导入')
+  const [globalTags, setGlobalTags] = useState('书籍:N2核心, 单元:Unit01')
   const [notebookName, setNotebookName] = useState('')
   const [preview, setPreview] = useState<PreviewPayload | null>(null)
   const [summary, setSummary] = useState<{
@@ -47,6 +52,8 @@ export default function ManageAnkiImportPage() {
     uploadedAudios: number
     sourceName?: string
     notebookName?: string
+    groupName?: string
+    globalTags?: string
   } | null>(null)
   const [isPreviewPending, startPreviewTransition] = useTransition()
   const [isImportPending, startImportTransition] = useTransition()
@@ -58,6 +65,8 @@ export default function ManageAnkiImportPage() {
     formData.set('tsvFile', file)
     formData.set('audioFolder', audioFolder)
     formData.set('sourceLabel', sourceLabel.trim())
+    formData.set('groupName', groupName.trim())
+    formData.set('globalTags', globalTags.trim())
     formData.set('notebookName', notebookName.trim())
     const audioFiles = audioRef.current?.files || []
     Array.from(audioFiles).forEach(item => formData.append('audioFiles', item))
@@ -98,6 +107,8 @@ export default function ManageAnkiImportPage() {
       formData.set('rowsJson', preview.rowsJson)
       formData.set('audioFolder', audioFolder)
       formData.set('sourceLabel', sourceLabel.trim())
+      formData.set('groupName', groupName.trim())
+      formData.set('globalTags', globalTags.trim())
       formData.set('notebookName', notebookName.trim())
       const audioFiles = audioRef.current?.files || []
       Array.from(audioFiles).forEach(item => formData.append('audioFiles', item))
@@ -232,12 +243,30 @@ export default function ManageAnkiImportPage() {
               />
             </label>
             <label className='flex flex-col gap-2 text-sm font-semibold text-gray-700'>
-              笔记本名称（可新建）
+              导入分组名称（生词页标签）
+              <input
+                value={groupName}
+                onChange={event => setGroupName(event.currentTarget.value)}
+                className='h-10 border border-gray-200 bg-white px-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'
+                placeholder='例如：Anki导入 / N2导入'
+              />
+            </label>
+            <label className='flex flex-col gap-2 text-sm font-semibold text-gray-700'>
+              全局标签（逗号/分号分隔）
+              <input
+                value={globalTags}
+                onChange={event => setGlobalTags(event.currentTarget.value)}
+                className='h-10 border border-gray-200 bg-white px-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'
+                placeholder='例如：书籍:N2核心, 单元:Unit01, 主题:词汇'
+              />
+            </label>
+            <label className='flex flex-col gap-2 text-sm font-semibold text-gray-700'>
+              笔记本路径（可多级）
               <input
                 value={notebookName}
                 onChange={event => setNotebookName(event.currentTarget.value)}
                 className='h-10 border border-gray-200 bg-white px-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'
-                placeholder='例如：N2::Unit01 名词A'
+                placeholder='例如：日语/N2/Unit01/名词A'
               />
             </label>
           </div>
@@ -275,6 +304,8 @@ export default function ManageAnkiImportPage() {
               <Info label='上传音频数' value={String(preview.uploadedAudioFiles)} />
               <Info label='跳过行' value={String(preview.skippedRows)} />
               <Info label='目标笔记本' value={preview.notebookName || notebookName || '未设置'} />
+              <Info label='导入分组' value={preview.groupName || groupName || '未设置'} />
+              <Info label='全局标签' value={preview.globalTags || globalTags || '未设置'} />
             </div>
 
             <div className='mt-3 overflow-x-auto'>
@@ -287,6 +318,7 @@ export default function ManageAnkiImportPage() {
                     <th className='px-2 py-2'>例句</th>
                     <th className='px-2 py-2'>翻译</th>
                     <th className='px-2 py-2'>句子音频</th>
+                    <th className='px-2 py-2'>标签</th>
                     <th className='px-2 py-2'>状态</th>
                   </tr>
                 </thead>
@@ -299,6 +331,9 @@ export default function ManageAnkiImportPage() {
                       <td className='px-2 py-2 text-gray-700'>{row.sentence || '-'}</td>
                       <td className='px-2 py-2 text-gray-600'>{row.sentenceTranslation || '-'}</td>
                       <td className='px-2 py-2 text-gray-600'>{row.sentenceAudioName || '-'}</td>
+                      <td className='px-2 py-2 text-gray-600'>
+                        {row.tags && row.tags.length > 0 ? row.tags.join(' / ') : '-'}
+                      </td>
                       <td className='px-2 py-2 text-xs'>
                         {row.status === 'valid' ? (
                           <span className='ui-tag ui-tag-success'>可导入</span>
@@ -326,7 +361,9 @@ export default function ManageAnkiImportPage() {
             </div>
             <div className='mt-2 text-xs text-emerald-700'>
               来源：{summary.sourceName || sourceLabel || 'Anki导入'} ｜ 笔记本：
-              {summary.notebookName || notebookName || '未设置'}
+              {summary.notebookName || notebookName || '未设置'} ｜ 分组：
+              {summary.groupName || groupName || '未设置'} ｜ 标签：
+              {summary.globalTags || globalTags || '未设置'}
             </div>
           </section>
         )}

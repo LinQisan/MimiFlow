@@ -52,7 +52,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
         _count: { select: { dialogues: true } },
       },
     }),
-    prisma.article.findFirst({
+    prisma.passage.findFirst({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       select: {
         id: true,

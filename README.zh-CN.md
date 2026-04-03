@@ -57,7 +57,7 @@ MimiFlow 是一个围绕二语习得闭环构建的语言学习应用：
 - Next.js（App Router）
 - React + TypeScript
 - Tailwind CSS
-- Prisma + SQLite（`prisma/dev.db`）
+- Prisma + PostgreSQL
 - FSRS 复习调度
 
 ## 本地运行
@@ -74,7 +74,7 @@ npm install
 npx prisma generate
 ```
 
-3. 同步本地数据库结构
+3. 同步数据库结构
 
 ```bash
 npx prisma db push

@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 // --- 下面是你的业务数据模型 ---
@@ -13,20 +13,22 @@ model Level {
   id          String     @id // 例如 "n1"
   title       String // 例如 "N1 听力"
   description String? // 例如 "包含 N1 历年真题及模拟题"
-  categories  Category[] // 关联下面具体的试卷
+  papers      Paper[] // 关联下面具体的套卷
 }
 
-// 🌟 2. 修改：具体试卷表 (如 25年7月真题)
-model Category {
+// 🌟 2. 具体套卷表 (如 25年7月真题)
+model Paper {
   id          String    @id // 例如 "N1_202507"
   levelId     String // 记录它属于哪个大模块
   level       Level     @relation(fields: [levelId], references: [id])
   name        String // 例如 "2025年7月 N1真题"
   description String? // 👈 试卷自己的单独描述！
   lessons     Lesson[]
-  articles    Article[]
+  passages    Passage[]
   quizzes     Quiz[]
   sortOrder   Int       @default(0)
+
+  @@map("Category")
 }
 
 // 3. 课程和字幕表保持不变
@@ -34,8 +36,8 @@ model Lesson {
   id         String     @id @default(uuid())
   title      String
   audioFile  String
-  categoryId String
-  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  paperId    String     @map("categoryId")
+  paper      Paper      @relation(fields: [paperId], references: [id], onDelete: Cascade)
   dialogues  Dialogue[]
   sortOrder  Int        @default(0)
   createdAt  DateTime   @default(now())
@@ -86,6 +88,25 @@ model Vocabulary {
   review         VocabularyReview?
   createdAt      DateTime   @default(now())
   sentenceLinks  VocabularySentenceLink[]
+  tags           VocabularyTagOnVocabulary[]
+}
+
+model VocabularyTag {
+  id          String                     @id @default(cuid())
+  name        String                     @unique
+  createdAt   DateTime                   @default(now())
+  vocabularies VocabularyTagOnVocabulary[]
+}
+
+model VocabularyTagOnVocabulary {
+  vocabularyId String
+  tagId        String
+  createdAt    DateTime      @default(now())
+  vocabulary   Vocabulary    @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  tag          VocabularyTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([vocabularyId, tagId])
+  @@index([tagId])
 }
 
 model VocabularyReview {
@@ -112,10 +133,16 @@ model VocabularyReview {
 }
 
 model VocabularyFolder {
-  id          String       @id @default(cuid())
-  name        String       @unique
-  createdAt   DateTime     @default(now())
+  id           String             @id @default(cuid())
+  name         String
+  parentId     String?
+  parent       VocabularyFolder?  @relation("VocabularyFolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children     VocabularyFolder[] @relation("VocabularyFolderTree")
+  createdAt    DateTime           @default(now())
   vocabularies Vocabulary[]
+
+  @@unique([parentId, name])
+  @@index([parentId])
 }
 
 model VocabularySentence {
@@ -169,7 +196,7 @@ model SentenceReview {
 }
 
 // 📖 文章主表
-model Article {
+model Passage {
   id          String  @id @default(cuid())
   title       String
   description String? // 文章简介或背景
@@ -177,12 +204,14 @@ model Article {
   // 🌟 核心优化：直接用一个长文本字段存整篇文章！
   content String // 如果你用的是 MySQL/PostgreSQL，建议加上 @db.Text 防止超长截断
 
-  categoryId String
-  category   Category? @relation(fields: [categoryId], references: [id])
+  paperId String @map("categoryId")
+  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
 
   questions Question[]
   createdAt DateTime   @default(now())
   sortOrder Int        @default(0)
+
+  @@map("Article")
 }
 
 // 📝 题库集 (例如："N1真题 2023年7月 词汇部分")
@@ -191,8 +220,8 @@ model Quiz {
   title       String
   description String?
 
-  categoryId String
-  category   Category? @relation(fields: [categoryId], references: [id])
+  paperId String @map("categoryId")
+  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
 
   createdAt DateTime   @default(now())
   questions Question[]
@@ -226,8 +255,11 @@ model Question {
   attempts QuestionAttempt[]
   retryQueue QuestionRetry?
 
-  article   Article? @relation(fields: [articleId], references: [id], onDelete: Cascade)
-  articleId String?
+  passage   Passage? @relation(fields: [passageId], references: [id], onDelete: Cascade)
+  passageId String?  @map("articleId")
+
+  @@index([quizId, order])
+  @@index([passageId, order])
 }
 
 // 📝 题目选项表
@@ -383,6 +415,15 @@ model MorningRecall {
   prompt        String
   content       String
   wordCount     Int      @default(0)
+  aiCoachPrompt String?
+  aiFeedbackRaw String?
+  totalScore    Int      @default(0)
+  accuracy      Int      @default(0)
+  coverage      Int      @default(0)
+  clarity       Int      @default(0)
+  feedbackSummary String?
+  actionItems   String?
+  modelAnswer   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

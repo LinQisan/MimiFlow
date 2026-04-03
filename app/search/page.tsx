@@ -10,7 +10,7 @@ import {
 const typeLabelMap: Record<GlobalSearchResult['type'], string> = {
   vocabulary: '单词',
   sentence: '句子',
-  article: '阅读',
+  passage: '阅读',
   quiz: '题库',
   question: '题目',
   dialogue: '听力',
@@ -47,7 +47,9 @@ export default function SearchPage() {
     <main className='min-h-screen bg-gray-50 p-4 md:p-8'>
       <div className='mx-auto max-w-5xl'>
         <section className='border-b border-gray-200 pb-4 md:pb-6'>
-          <h1 className='text-3xl font-black text-gray-900 md:text-4xl'>全局搜索</h1>
+          <h1 className='text-3xl font-black text-gray-900 md:text-4xl'>
+            全局搜索
+          </h1>
           <p className='mt-2 text-sm text-gray-500'>
             一次搜索单词、句子、阅读、题目和来源，直接跳转。
           </p>
@@ -104,7 +106,9 @@ export default function SearchPage() {
                       <span className='ui-tag ui-tag-info'>
                         {typeLabelMap[item.type]}
                       </span>
-                      <p className='text-sm font-bold text-gray-900'>{item.title}</p>
+                      <p className='text-sm font-bold text-gray-900'>
+                        {item.title}
+                      </p>
                       <span className='text-xs text-gray-400'>{item.meta}</span>
                     </div>
                     <p className='mt-1 text-sm text-gray-600'>{item.snippet}</p>
@@ -118,4 +122,3 @@ export default function SearchPage() {
     </main>
   )
 }
-

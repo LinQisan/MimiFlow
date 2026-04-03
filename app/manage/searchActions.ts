@@ -37,11 +37,36 @@ type MergePreviewGroup = {
   items: MergePreviewItem[]
 }
 
+type VocabularyRecordForAdmin = {
+  id: string
+  word: string
+  sourceType: 'AUDIO_DIALOGUE' | 'ARTICLE_TEXT' | 'QUIZ_QUESTION'
+  sentences: {
+    text: string
+    source: string
+    sourceUrl: string
+    sourceType?: string | null
+    meaningIndex?: number | null
+    posTags?: string[]
+  }[]
+  pronunciations: string[]
+  partsOfSpeech: string[]
+  meanings: string[]
+  tags: string[]
+}
+
+export type GlobalCorpusSearchResult = {
+  id: string | number
+  type: 'AUDIO_DIALOGUE' | 'ARTICLE_TEXT' | 'QUIZ_QUESTION'
+  text: string
+  sourceTitle: string
+  categoryName: string
+}
+
 const normalizeSentencePosTags = (list?: string[] | null) =>
-  Array.from(new Set((list || []).map(item => item.trim()).filter(Boolean))).slice(
-    0,
-    1,
-  )
+  Array.from(
+    new Set((list || []).map(item => item.trim()).filter(Boolean)),
+  ).slice(0, 1)
 
 const buildMergeGroups = (items: MergePreviewItem[]): MergePreviewGroup[] => {
   if (items.length === 0) return []
@@ -52,7 +77,9 @@ const buildMergeGroups = (items: MergePreviewItem[]): MergePreviewGroup[] => {
   items.forEach(item => {
     const keys = Array.from(
       new Set(
-        buildVocabularyCanonicalKeys(item.word).map(key => key.trim()).filter(Boolean),
+        buildVocabularyCanonicalKeys(item.word)
+          .map(key => key.trim())
+          .filter(Boolean),
       ),
     )
     if (keys.length === 0) keys.push(item.word.trim().toLowerCase())
@@ -122,9 +149,9 @@ const buildMergeGroups = (items: MergePreviewItem[]): MergePreviewGroup[] => {
       })
     })
     const groupKey =
-      [...keyCounter.entries()]
-        .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)[0]?.[0] ||
-      keep.word.toLowerCase()
+      [...keyCounter.entries()].sort(
+        (a, b) => b[1] - a[1] || b[0].length - a[0].length,
+      )[0]?.[0] || keep.word.toLowerCase()
 
     groups.push({
       groupKey,
@@ -141,7 +168,9 @@ const buildMergeGroups = (items: MergePreviewItem[]): MergePreviewGroup[] => {
 // ==========================================
 // 1. 全局全量语料搜索 (听力 + 阅读 + 题目)
 // ==========================================
-export async function searchGlobalCorpus(keyword: string) {
+export async function searchGlobalCorpus(
+  keyword: string,
+): Promise<GlobalCorpusSearchResult[]> {
   if (!keyword.trim()) return []
   const k = keyword.trim()
 
@@ -149,14 +178,14 @@ export async function searchGlobalCorpus(keyword: string) {
   const dialogues = await prisma.dialogue.findMany({
     where: { text: { contains: k } },
     include: {
-      lesson: { select: { title: true, category: { select: { name: true } } } },
+      lesson: { select: { title: true, paper: { select: { name: true } } } },
     },
     take: 15,
     orderBy: { id: 'desc' },
   })
 
   // 搜阅读文章
-  const articles = await prisma.article.findMany({
+  const articles = await prisma.passage.findMany({
     where: {
       OR: [
         { title: { contains: k } },
@@ -170,7 +199,7 @@ export async function searchGlobalCorpus(keyword: string) {
       description: true,
       createdAt: true,
       content: true,
-      category: {
+      paper: {
         select: { name: true },
       },
     },
@@ -183,7 +212,7 @@ export async function searchGlobalCorpus(keyword: string) {
   const questions = await prisma.question.findMany({
     where: { contextSentence: { contains: k } },
     include: {
-      quiz: { select: { title: true, category: { select: { name: true } } } },
+      quiz: { select: { title: true, paper: { select: { name: true } } } },
     },
     take: 15,
   })
@@ -192,26 +221,26 @@ export async function searchGlobalCorpus(keyword: string) {
   const results = [
     ...dialogues.map(d => ({
       id: d.id,
-      type: 'AUDIO_DIALOGUE',
+      type: 'AUDIO_DIALOGUE' as const,
       text: d.text,
       sourceTitle: `🎧 ${d.lesson?.title}`,
-      categoryName: d.lesson?.category?.name || '未知分类',
+      categoryName: d.lesson?.paper?.name || '未知分类',
     })),
     ...articles.map(a => ({
       id: a.id,
-      type: 'ARTICLE_TEXT',
+      type: 'ARTICLE_TEXT' as const,
       text:
         a.description ||
         (a.content ? a.content.substring(0, 100) + '...' : '暂无内容'),
       sourceTitle: `📄 ${a.title}`,
-      categoryName: a.category?.name || '未知分类',
+      categoryName: a.paper?.name || '未知分类',
     })),
     ...questions.map(q => ({
       id: q.id,
-      type: 'QUIZ_QUESTION',
+      type: 'QUIZ_QUESTION' as const,
       text: q.contextSentence,
       sourceTitle: `📝 ${q.quiz?.title}`,
-      categoryName: q.quiz?.category?.name || '未知分类',
+      categoryName: q.quiz?.paper?.name || '未知分类',
     })),
   ]
 
@@ -251,6 +280,94 @@ export async function getAllVocabulariesAdmin() {
       ),
     }
   })
+}
+
+export async function getVocabulariesPagedAdmin(
+  keyword = '',
+  page = 1,
+  pageSize = 40,
+): Promise<{
+  items: VocabularyRecordForAdmin[]
+  total: number
+  page: number
+  pageSize: number
+}> {
+  const safePageSize = Math.min(120, Math.max(10, Math.floor(pageSize)))
+  const safePage = Math.max(1, Math.floor(page))
+  const search = keyword.trim()
+
+  const where = search
+    ? {
+        OR: [
+          { word: { contains: search } },
+          { pronunciations: { contains: search } },
+          { partsOfSpeech: { contains: search } },
+          { meanings: { contains: search } },
+          {
+            sentenceLinks: {
+              some: {
+                OR: [
+                  { sentence: { text: { contains: search } } },
+                  { sentence: { source: { contains: search } } },
+                ],
+              },
+            },
+          },
+        ],
+      }
+    : {}
+
+  const total = await prisma.vocabulary.count({ where })
+  const totalPages = Math.max(1, Math.ceil(total / safePageSize))
+  const normalizedPage = Math.min(safePage, totalPages)
+  const skip = (normalizedPage - 1) * safePageSize
+
+  const rows = await prisma.vocabulary.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    skip,
+    take: safePageSize,
+    include: {
+      sentenceLinks: {
+        include: { sentence: true },
+        orderBy: { createdAt: 'asc' },
+      },
+      tags: {
+        include: { tag: true },
+      },
+    },
+  })
+
+  const items: VocabularyRecordForAdmin[] = rows.map(item => {
+    const { sentenceLinks, tags } = item
+    return {
+      id: item.id,
+      word: item.word,
+      sourceType: item.sourceType,
+      pronunciations: parseJsonStringList(item.pronunciations),
+      partsOfSpeech: parseJsonStringList(item.partsOfSpeech),
+      meanings: parseJsonStringList(item.meanings),
+      tags: (tags || []).map(t => t.tag?.name || '').filter(Boolean),
+      sentences: dedupeAndRankSentences(
+        sentenceLinks.map(link => ({
+          text: link.sentence.text,
+          source: link.sentence.source,
+          sourceUrl: link.sentence.sourceUrl,
+          sourceType: link.sentence.sourceType,
+          meaningIndex: link.meaningIndex,
+          posTags: parseJsonStringList(link.posTags).slice(0, 1),
+        })),
+        16,
+      ),
+    }
+  })
+
+  return {
+    items,
+    total,
+    page: normalizedPage,
+    pageSize: safePageSize,
+  }
 }
 
 // ==========================================
@@ -297,13 +414,53 @@ export async function updateVocabularyMetaAdmin(
   }
 }
 
+export async function updateVocabularyTagsAdmin(
+  vocabId: string,
+  tagNames: string[],
+) {
+  try {
+    const normalizedTags = Array.from(
+      new Set(tagNames.map(t => t.trim()).filter(Boolean)),
+    )
+
+    // 删除所有现有标签关联
+    await prisma.vocabularyTagAssociation.deleteMany({
+      where: { vocabularyId: vocabId },
+    })
+
+    // 创建或连接新标签
+    if (normalizedTags.length > 0) {
+      for (const tagName of normalizedTags) {
+        // 查找或创建标签
+        let tag = await prisma.tag.findUnique({ where: { name: tagName } })
+        if (!tag) {
+          tag = await prisma.tag.create({ data: { name: tagName } })
+        }
+        // 创建关联
+        await prisma.vocabularyTagAssociation.create({
+          data: { vocabularyId: vocabId, tagId: tag.id },
+        })
+      }
+    }
+
+    revalidatePath('/manage/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '更新标签失败'
+    return { success: false, message }
+  }
+}
+
 export async function batchUpdateVocabularyMetaAdmin(
   vocabIds: string[],
   payload: Pick<VocabularyMetaPayload, 'pronunciations' | 'partsOfSpeech'>,
   mode: BatchMetaUpdateMode = 'append',
 ) {
   try {
-    const targetIds = Array.from(new Set(vocabIds.map(id => id.trim()).filter(Boolean)))
+    const targetIds = Array.from(
+      new Set(vocabIds.map(id => id.trim()).filter(Boolean)),
+    )
     if (targetIds.length === 0) {
       return { success: false, message: '请先选择词条' }
     }
@@ -392,7 +549,10 @@ export async function getVocabularyMergePreviewAdmin() {
   }))
 
   const groups = buildMergeGroups(items)
-  const duplicateCount = groups.reduce((sum, group) => sum + group.mergeIds.length, 0)
+  const duplicateCount = groups.reduce(
+    (sum, group) => sum + group.mergeIds.length,
+    0,
+  )
   return {
     groups,
     totalGroups: groups.length,
@@ -405,7 +565,9 @@ export async function mergeVocabularyDuplicateGroupAdmin(
   mergeIds: string[],
 ) {
   try {
-    const uniqMergeIds = Array.from(new Set(mergeIds.filter(id => id !== keepId)))
+    const uniqMergeIds = Array.from(
+      new Set(mergeIds.filter(id => id !== keepId)),
+    )
     if (uniqMergeIds.length === 0) return { success: true, mergedCount: 0 }
 
     await prisma.$transaction(async tx => {
@@ -432,9 +594,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
       ])
 
       const fallbackFolderId =
-        keep.folderId ||
-        sources.find(item => !!item.folderId)?.folderId ||
-        null
+        keep.folderId || sources.find(item => !!item.folderId)?.folderId || null
 
       await tx.vocabulary.update({
         where: { id: keepId },
@@ -477,7 +637,9 @@ export async function mergeVocabularyDuplicateGroupAdmin(
             where: { id: existed.id },
             data: {
               meaningIndex:
-                existed.meaningIndex == null ? link.meaningIndex : existed.meaningIndex,
+                existed.meaningIndex == null
+                  ? link.meaningIndex
+                  : existed.meaningIndex,
               posTags: toJsonStringList(mergedTags),
             },
           })

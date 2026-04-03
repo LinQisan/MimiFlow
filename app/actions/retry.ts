@@ -25,7 +25,7 @@ export type RetryQueueItem = {
 const mapRetrySource = (item: {
   question: {
     quiz: { id: string; title: string | null } | null
-    article: { id: string; title: string | null } | null
+    passage: { id: string; title: string | null } | null
   }
 }) => {
   if (item.question.quiz) {
@@ -34,10 +34,10 @@ const mapRetrySource = (item: {
       sourceUrl: `/quizzes/${item.question.quiz.id}`,
     }
   }
-  if (item.question.article) {
+  if (item.question.passage) {
     return {
-      sourceTitle: `阅读 · ${item.question.article.title || '未命名文章'}`,
-      sourceUrl: `/articles/${item.question.article.id}`,
+      sourceTitle: `阅读 · ${item.question.passage.title || '未命名文章'}`,
+      sourceUrl: `/articles/${item.question.passage.id}`,
     }
   }
   return {
@@ -63,7 +63,9 @@ export async function getRetryQueueSummary() {
   }
 }
 
-export async function getDueRetryQuestions(limit = 20): Promise<RetryQueueItem[]> {
+export async function getDueRetryQuestions(
+  limit = 20,
+): Promise<RetryQueueItem[]> {
   const now = new Date()
   const rows = await prisma.questionRetry.findMany({
     where: { dueAt: { lte: now } },
@@ -74,7 +76,7 @@ export async function getDueRetryQuestions(limit = 20): Promise<RetryQueueItem[]
         include: {
           options: true,
           quiz: { select: { id: true, title: true } },
-          article: { select: { id: true, title: true } },
+          passage: { select: { id: true, title: true } },
         },
       },
     },
@@ -122,7 +124,9 @@ export async function submitRetryAnswer(
       return { success: false, message: '回流题目不存在或已完成' }
     }
 
-    const selected = row.question.options.find(item => item.id === selectedOptionId)
+    const selected = row.question.options.find(
+      item => item.id === selectedOptionId,
+    )
     if (!selected) {
       return { success: false, message: '未选择有效选项' }
     }
@@ -203,4 +207,3 @@ export async function submitRetryAnswer(
     return { success: false, message }
   }
 }
-

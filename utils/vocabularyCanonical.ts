@@ -110,6 +110,25 @@ const normalizeJapaneseVerbHeadword = (word: string) => {
   return base
 }
 
+const normalizeJapaneseAdjectiveHeadword = (word: string) => {
+  const base = normalizeRawWord(word)
+  if (!base) return base
+
+  const iAdjSuffixes = ['くなかった', 'くない', 'かった', 'くて', 'く']
+  for (const suffix of iAdjSuffixes) {
+    if (!base.endsWith(suffix) || base.length <= suffix.length) continue
+    return `${base.slice(0, -suffix.length)}い`
+  }
+
+  const naAdjSuffixes = ['でした', 'ではない', 'じゃない', 'だった', 'です', 'だ', 'な', 'に']
+  for (const suffix of naAdjSuffixes) {
+    if (!base.endsWith(suffix) || base.length <= suffix.length) continue
+    return base.slice(0, -suffix.length)
+  }
+
+  return base
+}
+
 export const normalizeVocabularyHeadword = (
   rawWord: string,
   partsOfSpeech: string[] = [],
@@ -121,8 +140,14 @@ export const normalizeVocabularyHeadword = (
   const isVerb = partsOfSpeech.some(
     item => item.includes('動詞') || /verb/i.test(item),
   )
+  const isAdjective = partsOfSpeech.some(
+    item => item.includes('形容詞') || item.includes('形容動詞') || /adjective|adj\./i.test(item),
+  )
   if (isVerb && (lang === 'ja' || hasJapanese)) {
     return normalizeJapaneseVerbHeadword(normalized)
+  }
+  if (isAdjective && (lang === 'ja' || hasJapanese)) {
+    return normalizeJapaneseAdjectiveHeadword(normalized)
   }
   return normalized
 }

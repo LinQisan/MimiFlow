@@ -10,13 +10,15 @@ import {
   normalizeVocabularyHeadword,
 } from '@/utils/vocabularyCanonical'
 import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
-import { sanitizePronunciation, sanitizePronunciations } from '@/utils/pronunciation'
+import {
+  sanitizePronunciation,
+  sanitizePronunciations,
+} from '@/utils/pronunciation'
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
-  Array.from(new Set((list || []).map(item => item.trim()).filter(Boolean))).slice(
-    0,
-    1,
-  )
+  Array.from(
+    new Set((list || []).map(item => item.trim()).filter(Boolean)),
+  ).slice(0, 1)
 
 type VocabularySentenceRecord = {
   text: string
@@ -28,6 +30,69 @@ type VocabularySentenceRecord = {
   meaningIndex?: number | null
   posTags?: string[] | null
 }
+
+type QuestionOptionInput = {
+  text?: string | null
+  isCorrect?: boolean | null
+}
+
+type ArticleQuestionInput = {
+  questionType?: string | null
+  prompt?: string | null
+  contextSentence?: string | null
+  explanation?: string | null
+  options?: QuestionOptionInput[] | null
+}
+
+type CreateArticlePayload = {
+  title?: string | null
+  content?: string | null
+  paperId?: string | null
+  description?: string | null
+  questions?: ArticleQuestionInput[] | null
+}
+
+type CreateQuizQuestionPayload = {
+  paperId?: string | null
+  questionType?: string | null
+  prompt?: string | null
+  contextSentence?: string | null
+  targetWord?: string | null
+  explanation?: string | null
+  options?: QuestionOptionInput[] | null
+}
+
+const QUESTION_TYPE_VALUES = new Set<string>(Object.values(QuestionType))
+
+const toSafeQuestionType = (
+  value: string | null | undefined,
+  fallback: QuestionType,
+) =>
+  value && QUESTION_TYPE_VALUES.has(value) ? (value as QuestionType) : fallback
+
+const normalizeOptions = (
+  optionsInput: QuestionOptionInput[] | null | undefined,
+): { text: string; isCorrect: boolean }[] => {
+  const source = Array.isArray(optionsInput) ? optionsInput : []
+  const normalized =
+    source.length > 0
+      ? source.map((opt, index) => ({
+          text: (opt?.text || '').trim() || `选项 ${index + 1}`,
+          isCorrect: Boolean(opt?.isCorrect),
+        }))
+      : [
+          { text: '选项 1', isCorrect: true },
+          { text: '选项 2', isCorrect: false },
+          { text: '选项 3', isCorrect: false },
+          { text: '选项 4', isCorrect: false },
+        ]
+  if (!normalized.some(option => option.isCorrect))
+    normalized[0].isCorrect = true
+  return normalized
+}
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : 'Unknown error'
 
 const normalizeSentenceKey = (text: string) =>
   text
@@ -94,20 +159,27 @@ const upsertVocabularySentenceLink = async (
     },
     update: {
       meaningIndex:
-        typeof sentence.meaningIndex === 'number' ? sentence.meaningIndex : null,
+        typeof sentence.meaningIndex === 'number'
+          ? sentence.meaningIndex
+          : null,
       posTags: toJsonStringList(normalizeSentencePosTags(sentence.posTags)),
     },
     create: {
       vocabularyId,
       sentenceId: sentenceRow.id,
       meaningIndex:
-        typeof sentence.meaningIndex === 'number' ? sentence.meaningIndex : null,
+        typeof sentence.meaningIndex === 'number'
+          ? sentence.meaningIndex
+          : null,
       posTags: toJsonStringList(normalizeSentencePosTags(sentence.posTags)),
     },
   })
 }
 
-const findSentenceLinkByText = async (vocabularyId: string, sentenceText: string) => {
+const findSentenceLinkByText = async (
+  vocabularyId: string,
+  sentenceText: string,
+) => {
   const normalized = normalizeSentenceKey(sentenceText)
   if (!normalized) return null
   return prisma.vocabularySentenceLink.findFirst({
@@ -171,14 +243,14 @@ const resolveVocabularySourceMeta = async (
   }
 
   if (sourceType === 'ARTICLE_TEXT') {
-    const article = await prisma.article.findUnique({
+    const passage = await prisma.passage.findUnique({
       where: { id: sourceId },
       select: { id: true, title: true },
     })
-    if (article) {
+    if (passage) {
       return {
-        source: `📄 阅读：${article.title}`,
-        sourceUrl: `/articles/${article.id}`,
+        source: `📄 阅读：${passage.title}`,
+        sourceUrl: `/articles/${passage.id}`,
       }
     }
     return { source: '📄 阅读', sourceUrl: '#' }
@@ -190,9 +262,9 @@ const resolveVocabularySourceMeta = async (
       select: {
         id: true,
         quizId: true,
-        articleId: true,
+        passageId: true,
         quiz: { select: { title: true } },
-        article: { select: { title: true } },
+        passage: { select: { title: true } },
       },
     })
     if (question?.quizId && question.quiz) {
@@ -201,10 +273,10 @@ const resolveVocabularySourceMeta = async (
         sourceUrl: `/quizzes/${question.quizId}`,
       }
     }
-    if (question?.articleId && question.article) {
+    if (question?.passageId && question.passage) {
       return {
-        source: `📄 阅读题目：${question.article.title}`,
-        sourceUrl: `/articles/${question.articleId}`,
+        source: `📄 阅读题目：${question.passage.title}`,
+        sourceUrl: `/articles/${question.passageId}`,
       }
     }
     return { source: '📝 题目', sourceUrl: '#' }
@@ -236,60 +308,81 @@ const listVocabularySentenceRecords = async (
   )
 }
 
-export async function createArticle(data: any) {
+export async function createArticle(data: CreateArticlePayload) {
   try {
     const articleTitle = (data.title || '').trim()
+    const content = (data.content || '').trim()
+    const paperId = (data.paperId || '').trim()
+    if (!paperId) {
+      return { success: false, message: '请选择所属分类。' }
+    }
+    if (!content) {
+      return { success: false, message: '文章正文不能为空。' }
+    }
+    const normalizedQuestions = (data.questions || []).map((q, index) => ({
+      questionType: toSafeQuestionType(
+        (q.questionType || '').trim(),
+        QuestionType.READING_COMPREHENSION,
+      ),
+      prompt: (q.prompt || '').trim() || null,
+      contextSentence:
+        (q.contextSentence || '').trim() ||
+        (q.prompt || '').trim() ||
+        '（未填写语境句）',
+      explanation: (q.explanation || '').trim(),
+      order: index + 1,
+      options: normalizeOptions(q.options),
+    }))
 
-    await prisma.article.create({
+    await prisma.passage.create({
       data: {
         title: articleTitle,
-        content: data.content,
-        categoryId: data.categoryId,
-        description: data.description,
+        content,
+        paperId,
+        description: (data.description || '').trim() || null,
 
         questions: {
           // 以数组顺序生成题号，保证前端展示顺序稳定
-          create:
-            data.questions?.map((q: any, index: number) => ({
-              questionType: q.questionType || 'READING_COMPREHENSION',
-              prompt: (q.prompt || '').trim() || null,
-              contextSentence:
-                (q.contextSentence || '').trim() ||
-                (q.prompt || '').trim() ||
-                '（未填写语境句）',
-              explanation: q.explanation || '',
-              order: index + 1,
-              options: {
-                create: q.options,
-              },
-            })) || [],
+          create: normalizedQuestions.map(q => ({
+            questionType: q.questionType,
+            prompt: q.prompt,
+            contextSentence: q.contextSentence,
+            explanation: q.explanation,
+            order: q.order,
+            options: {
+              create: q.options.map(option => ({
+                text: option.text,
+                isCorrect: option.isCorrect,
+              })),
+            },
+          })),
         },
       },
     })
     return { success: true, message: '文章及相关题目发布成功！' }
-  } catch (error: any) {
-    console.error(error)
+  } catch (error: unknown) {
+    console.error('createArticle failed:', getErrorMessage(error), error)
     return { success: false, message: '发布失败' }
   }
 }
 
-export async function createQuizQuestion(data: any) {
+export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
   try {
-    if (!data.categoryId) return { success: false, message: '请选择所属试卷！' }
+    if (!data.paperId) return { success: false, message: '请选择所属试卷！' }
 
     // 查找或创建该分类下的题库
     let quiz = await prisma.quiz.findFirst({
-      where: { categoryId: data.categoryId },
+      where: { paperId: data.paperId },
     })
 
     if (!quiz) {
-      const cat = await prisma.category.findUnique({
-        where: { id: data.categoryId },
+      const cat = await prisma.paper.findUnique({
+        where: { id: data.paperId },
       })
       quiz = await prisma.quiz.create({
         data: {
           title: `${cat?.name} - 综合题库`,
-          categoryId: data.categoryId,
+          paperId: data.paperId,
         },
       })
     }
@@ -308,31 +401,22 @@ export async function createQuizQuestion(data: any) {
           '未检测到题目内容。请填写“题目呈现”或“语境句”，或使用快速粘贴自动解析。',
       }
     }
-    const optionsInput = Array.isArray(data.options) ? data.options : []
-    const normalizedOptions =
-      optionsInput.length > 0
-        ? optionsInput.map((opt: any, index: number) => ({
-            text: (opt?.text || '').trim() || `选项 ${index + 1}`,
-            isCorrect: Boolean(opt?.isCorrect),
-          }))
-        : [
-            { text: '选项 1', isCorrect: true },
-            { text: '选项 2', isCorrect: false },
-            { text: '选项 3', isCorrect: false },
-            { text: '选项 4', isCorrect: false },
-          ]
+    const normalizedOptions = normalizeOptions(data.options)
 
     await prisma.question.create({
       data: {
         quizId: quiz.id,
-        questionType: data.questionType || 'PRONUNCIATION',
+        questionType: toSafeQuestionType(
+          (data.questionType || '').trim(),
+          QuestionType.PRONUNCIATION,
+        ),
         contextSentence: contextText || promptText || '（未填写语境句）',
-        targetWord: data.targetWord,
+        targetWord: (data.targetWord || '').trim() || null,
         prompt: promptText || null,
-        explanation: data.explanation,
+        explanation: (data.explanation || '').trim() || null,
         order: nextOrder,
         options: {
-          create: normalizedOptions.map((opt: any) => ({
+          create: normalizedOptions.map(opt => ({
             text: opt.text,
             isCorrect: opt.isCorrect,
           })),
@@ -361,17 +445,19 @@ type EditableArticleQuestionInput = {
 }
 
 type UpdateArticlePayload = {
-  articleId: string
+  passageId: string
   title: string
   content: string
   questions: EditableArticleQuestionInput[]
 }
 
-export async function updateArticleWithQuestions(payload: UpdateArticlePayload) {
+export async function updateArticleWithQuestions(
+  payload: UpdateArticlePayload,
+) {
   try {
     const title = payload.title.trim()
     const content = payload.content.trim()
-    if (!payload.articleId) {
+    if (!payload.passageId) {
       return { success: false, message: '文章 ID 缺失。' }
     }
     if (!content) {
@@ -380,7 +466,7 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
 
     await prisma.$transaction(async tx => {
       const existingQuestions = await tx.question.findMany({
-        where: { articleId: payload.articleId },
+        where: { passageId: payload.passageId },
         include: { options: { select: { id: true } } },
       })
       const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
@@ -388,8 +474,8 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
         existingQuestions.map(q => [q.id, new Set(q.options.map(o => o.id))]),
       )
 
-      await tx.article.update({
-        where: { id: payload.articleId },
+      await tx.passage.update({
+        where: { id: payload.passageId },
         data: { title, content },
       })
 
@@ -401,9 +487,12 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
         const contextText = (question.contextSentence || '').trim()
         const questionType = (question.questionType ||
           'READING_COMPREHENSION') as QuestionType
-        const normalizedContext = contextText || promptText || '（未填写语境句）'
+        const normalizedContext =
+          contextText || promptText || '（未填写语境句）'
 
-        const rawOptions = Array.isArray(question.options) ? question.options : []
+        const rawOptions = Array.isArray(question.options)
+          ? question.options
+          : []
         const normalizedOptions =
           rawOptions.length > 0
             ? rawOptions.map((option, optionIndex) => ({
@@ -421,7 +510,10 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
         }
 
         const incomingQuestionId = (question.id || '').trim()
-        if (incomingQuestionId && existingQuestionIdSet.has(incomingQuestionId)) {
+        if (
+          incomingQuestionId &&
+          existingQuestionIdSet.has(incomingQuestionId)
+        ) {
           keepQuestionIds.push(incomingQuestionId)
 
           await tx.question.update({
@@ -435,7 +527,8 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
           })
 
           const existingOptionIdSet =
-            existingOptionIdsByQuestion.get(incomingQuestionId) || new Set<string>()
+            existingOptionIdsByQuestion.get(incomingQuestionId) ||
+            new Set<string>()
           const keepOptionIds: string[] = []
 
           for (const option of normalizedOptions) {
@@ -468,7 +561,7 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
         } else {
           const createdQuestion = await tx.question.create({
             data: {
-              articleId: payload.articleId,
+              passageId: payload.passageId,
               questionType,
               prompt: promptText || null,
               contextSentence: normalizedContext,
@@ -488,14 +581,14 @@ export async function updateArticleWithQuestions(payload: UpdateArticlePayload) 
 
       await tx.question.deleteMany({
         where: {
-          articleId: payload.articleId,
+          passageId: payload.passageId,
           id: { notIn: keepQuestionIds },
         },
       })
     })
 
     revalidatePath('/manage')
-    revalidatePath('/manage/level/article/[id]', 'page')
+    revalidatePath('/manage/level/passage/[id]', 'page')
     revalidatePath('/articles')
     revalidatePath('/articles/[id]', 'page')
 
@@ -559,12 +652,16 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         const question = payload.questions[index]
         const promptText = (question.prompt || '').trim()
         const contextText = (question.contextSentence || '').trim()
-        const questionType = (question.questionType || 'PRONUNCIATION') as QuestionType
-        const normalizedContext = contextText || promptText || '（未填写语境句）'
+        const questionType = (question.questionType ||
+          'PRONUNCIATION') as QuestionType
+        const normalizedContext =
+          contextText || promptText || '（未填写语境句）'
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
 
-        const rawOptions = Array.isArray(question.options) ? question.options : []
+        const rawOptions = Array.isArray(question.options)
+          ? question.options
+          : []
         const normalizedOptions =
           rawOptions.length > 0
             ? rawOptions.map((option, optionIndex) => ({
@@ -584,7 +681,10 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         }
 
         const incomingQuestionId = (question.id || '').trim()
-        if (incomingQuestionId && existingQuestionIdSet.has(incomingQuestionId)) {
+        if (
+          incomingQuestionId &&
+          existingQuestionIdSet.has(incomingQuestionId)
+        ) {
           keepQuestionIds.push(incomingQuestionId)
 
           await tx.question.update({
@@ -600,7 +700,8 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
           })
 
           const existingOptionIdSet =
-            existingOptionIdsByQuestion.get(incomingQuestionId) || new Set<string>()
+            existingOptionIdsByQuestion.get(incomingQuestionId) ||
+            new Set<string>()
           const keepOptionIds: string[] = []
 
           for (const option of normalizedOptions) {
@@ -679,7 +780,7 @@ export async function createCategory(data: { levelId: string; name: string }) {
     // Category.id 为手动字符串，后端统一生成
     const uniqueId = `cat_${Date.now()}`
 
-    const newCategory = await prisma.category.create({
+    const newCategory = await prisma.paper.create({
       data: {
         id: uniqueId,
         levelId: data.levelId,
@@ -691,7 +792,7 @@ export async function createCategory(data: { levelId: string; name: string }) {
       },
     })
 
-    return { success: true, category: newCategory }
+    return { success: true, paper: newCategory }
   } catch (error) {
     console.error(error)
     return { success: false, message: '新建试卷失败，请检查控制台。' }
@@ -738,11 +839,7 @@ export async function saveVocabulary(
       normalizedPartsOfSpeech,
     )
     const normalizedMeanings = Array.from(
-      new Set(
-        (meanings || [])
-          .map(item => item.trim())
-          .filter(Boolean),
-      ),
+      new Set((meanings || []).map(item => item.trim()).filter(Boolean)),
     )
 
     let exists = await prisma.vocabulary.findFirst({
@@ -796,15 +893,16 @@ export async function saveVocabulary(
         ...normalizedPartsOfSpeech,
         ...parseJsonStringList(exists.partsOfSpeech),
       ])
-      const newSentence: VocabularySentenceRecord | null = normalizedContextSentence
-        ? {
-            text: normalizedContextSentence,
-            source: sourceMeta.source,
-            sourceUrl: sourceMeta.sourceUrl,
-            meaningIndex: null,
-            posTags: normalizeSentencePosTags(normalizedPartsOfSpeech),
-          }
-        : null
+      const newSentence: VocabularySentenceRecord | null =
+        normalizedContextSentence
+          ? {
+              text: normalizedContextSentence,
+              source: sourceMeta.source,
+              sourceUrl: sourceMeta.sourceUrl,
+              meaningIndex: null,
+              posTags: normalizeSentencePosTags(normalizedPartsOfSpeech),
+            }
+          : null
       const existedLink = newSentence
         ? await findSentenceLinkByText(exists.id, newSentence.text)
         : null
@@ -921,24 +1019,148 @@ export async function updateVocabularyPartsOfSpeechById(
   }
 }
 
-export async function createVocabularyFolder(name: string) {
+const isVocabularyFolderMoveValid = async (
+  folderId: string,
+  nextParentId: string | null,
+) => {
+  if (!nextParentId) return true
+  if (nextParentId === folderId) return false
+
+  let cursor: string | null = nextParentId
+  while (cursor) {
+    if (cursor === folderId) return false
+    const parent: { parentId: string | null } | null =
+      await prisma.vocabularyFolder.findUnique({
+        where: { id: cursor },
+        select: { parentId: true },
+      })
+    cursor = parent?.parentId || null
+  }
+  return true
+}
+
+export async function createVocabularyFolder(
+  name: string,
+  parentId?: string | null,
+) {
   try {
     const trimmedName = name.trim()
     if (!trimmedName) {
       return { success: false, message: '收藏夹名称不能为空' }
     }
+    const nextParentId = parentId?.trim() || null
+    if (nextParentId) {
+      const parent = await prisma.vocabularyFolder.findUnique({
+        where: { id: nextParentId },
+        select: { id: true },
+      })
+      if (!parent) {
+        return { success: false, message: '上级收藏夹不存在' }
+      }
+    }
     const folder = await prisma.vocabularyFolder.create({
-      data: { name: trimmedName },
-      select: { id: true, name: true, createdAt: true },
+      data: {
+        name: trimmedName,
+        parentId: nextParentId,
+      },
+      select: { id: true, name: true, parentId: true, createdAt: true },
     })
     revalidatePath('/vocabulary')
     return { success: true, folder }
-  } catch (error: any) {
-    if (error?.code === 'P2002') {
-      return { success: false, message: '收藏夹已存在' }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同级收藏夹名称已存在' }
     }
     console.error(error)
     return { success: false, message: '创建收藏夹失败' }
+  }
+}
+
+export async function renameVocabularyFolder(folderId: string, name: string) {
+  try {
+    const trimmedFolderId = folderId.trim()
+    const trimmedName = name.trim()
+    if (!trimmedFolderId) return { success: false, message: '收藏夹无效' }
+    if (!trimmedName) return { success: false, message: '名称不能为空' }
+    const updated = await prisma.vocabularyFolder.update({
+      where: { id: trimmedFolderId },
+      data: { name: trimmedName },
+      select: { id: true, name: true, parentId: true },
+    })
+    revalidatePath('/vocabulary')
+    return { success: true, folder: updated }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同级收藏夹名称已存在' }
+    }
+    console.error(error)
+    return { success: false, message: '重命名失败' }
+  }
+}
+
+export async function moveVocabularyFolder(
+  folderId: string,
+  parentId: string | null,
+) {
+  try {
+    const trimmedFolderId = folderId.trim()
+    const nextParentId = parentId?.trim() || null
+    if (!trimmedFolderId) return { success: false, message: '收藏夹无效' }
+    const folder = await prisma.vocabularyFolder.findUnique({
+      where: { id: trimmedFolderId },
+      select: { id: true },
+    })
+    if (!folder) return { success: false, message: '收藏夹不存在' }
+    if (nextParentId) {
+      const target = await prisma.vocabularyFolder.findUnique({
+        where: { id: nextParentId },
+        select: { id: true },
+      })
+      if (!target) return { success: false, message: '目标收藏夹不存在' }
+    }
+    const valid = await isVocabularyFolderMoveValid(
+      trimmedFolderId,
+      nextParentId,
+    )
+    if (!valid) return { success: false, message: '不能移动到自身或子收藏夹下' }
+    const updated = await prisma.vocabularyFolder.update({
+      where: { id: trimmedFolderId },
+      data: { parentId: nextParentId },
+      select: { id: true, name: true, parentId: true },
+    })
+    revalidatePath('/vocabulary')
+    return { success: true, folder: updated }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '目标位置已有同名收藏夹' }
+    }
+    console.error(error)
+    return { success: false, message: '移动收藏夹失败' }
+  }
+}
+
+export async function renameVocabularyGroup(
+  fromGroup: string,
+  toGroup: string,
+) {
+  try {
+    const from = fromGroup.trim()
+    const to = toGroup.trim()
+    if (!from) return { success: false, message: '原分组无效' }
+    if (!to) return { success: false, message: '新分组名称不能为空' }
+    if (from === to) return { success: true, changed: 0 }
+    const result = await prisma.vocabulary.updateMany({
+      where: { groupName: from },
+      data: { groupName: to },
+    })
+    revalidatePath('/vocabulary')
+    return { success: true, changed: result.count }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '重命名分组失败' }
   }
 }
 
@@ -960,17 +1182,17 @@ export async function assignVocabularyFolder(
   }
 }
 
-export async function deleteArticle(articleId: string) {
+export async function deleteArticle(passageId: string) {
   try {
     // 使用 deleteMany，避免不存在时抛错
-    const result = await prisma.article.deleteMany({
+    const result = await prisma.passage.deleteMany({
       where: {
-        id: articleId,
+        id: passageId,
       },
     })
 
     if (result.count === 0) {
-      console.warn(`尝试删除不存在的文章 ID: ${articleId}`)
+      console.warn(`尝试删除不存在的文章 ID: ${passageId}`)
       return { success: true, message: '文章已移除' }
     }
 
@@ -1055,7 +1277,7 @@ export async function deleteVocabulary(id: string) {
 
 export async function searchSentencesForWord(word: string) {
   try {
-    const articles = await prisma.article.findMany({
+    const articles = await prisma.passage.findMany({
       where: { content: { contains: word } },
       select: { id: true, title: true, content: true },
     })
@@ -1297,7 +1519,10 @@ export async function updateVocabularySentencePosTags(
   }
 }
 
-export async function deleteVocabularySentence(id: string, sentenceText: string) {
+export async function deleteVocabularySentence(
+  id: string,
+  sentenceText: string,
+) {
   try {
     const vocab = await prisma.vocabulary.findUnique({ where: { id } })
     if (!vocab) return { success: false, message: '单词不存在' }
@@ -1312,6 +1537,44 @@ export async function deleteVocabularySentence(id: string, sentenceText: string)
   } catch (error) {
     console.error(error)
     return { success: false, message: '句子删除失败' }
+  }
+}
+
+export async function updateVocabularyTags(
+  vocabId: string,
+  tagNames: string[],
+) {
+  try {
+    const normalizedTags = Array.from(
+      new Set(tagNames.map(t => t.trim()).filter(Boolean)),
+    )
+
+    // 删除所有现有标签关联
+    await prisma.vocabularyTagAssociation.deleteMany({
+      where: { vocabularyId: vocabId },
+    })
+
+    // 创建或连接新标签
+    if (normalizedTags.length > 0) {
+      for (const tagName of normalizedTags) {
+        // 查找或创建标签
+        const tag = await prisma.tag.upsert({
+          where: { name: tagName },
+          update: {},
+          create: { name: tagName },
+        })
+        // 创建关联
+        await prisma.vocabularyTagAssociation.create({
+          data: { vocabularyId: vocabId, tagId: tag.id },
+        })
+      }
+    }
+
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '标签保存失败' }
   }
 }
 
@@ -1346,9 +1609,17 @@ export async function deleteQuiz(quizId: string) {
   }
 }
 
-export type SortableModel = 'Category' | 'Lesson' | 'Article' | 'Quiz' | 'Question'
+export type SortableModel =
+  | 'Category'
+  | 'Lesson'
+  | 'Article'
+  | 'Quiz'
+  | 'Question'
 
-export async function updateSortOrder(model: SortableModel, orderedIds: string[]) {
+export async function updateSortOrder(
+  model: SortableModel,
+  orderedIds: string[],
+) {
   try {
     const updatePromises = orderedIds.map((id, index) => {
       if (model === 'Question') {

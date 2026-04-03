@@ -7,5 +7,5 @@ export default function ManageLayout({
 }: {
   children: React.ReactNode
 }) {
-  return children
+  return <div className='theme-page-manage min-h-full'>{children}</div>
 }

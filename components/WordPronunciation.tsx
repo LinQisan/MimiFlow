@@ -33,15 +33,20 @@ export default function WordPronunciation({
   const hasKanji = /[\u4e00-\u9fff]/.test(word)
   const parsedMeanings = meanings.map(item => item.trim()).filter(Boolean)
   const shouldShowMeaning = showMeaning && parsedMeanings.length > 0
-  const isJapaneseWord = hasKanji || /[\u3040-\u30ff]/.test(word)
+  const hasKana = /[\u3040-\u30ff]/.test(word)
+  const hasKanaInPron = /[\u3040-\u30ff]/.test(pron)
+  const isJapaneseWord = hasKana || hasKanaInPron || lang === 'ja'
+  const isChineseWord = lang === 'zh' && !isJapaneseWord
   const baseWordClass = isJapaneseWord
     ? `font-word-ja ${wordClassName}`.trim()
     : lang === 'en'
       ? `font-word-en ${wordClassName}`.trim()
-      : wordClassName
+      : isChineseWord
+        ? `font-word-zh ${wordClassName}`.trim()
+        : wordClassName
 
-  // 只要词中含汉字且有注音，就强制使用 ruby，避免“纯汉字词被识别为 zh 时不显示注音”。
-  if (hasKanji) {
+  // 仅对日语词（含汉字）使用 ruby；中文词保留普通注音展示，避免错误注音布局。
+  if (hasKanji && isJapaneseWord) {
     if (!shouldShowHint) {
       return <div className={baseWordClass}>{word}</div>
     }
@@ -66,6 +71,15 @@ export default function WordPronunciation({
       <div>
         {shouldShowHint && <div className={hintClassName}>{pron}</div>}
         <div className={baseWordClass}>{word}</div>
+      </div>
+    )
+  }
+
+  if (shouldShowHint) {
+    return (
+      <div>
+        <div className={baseWordClass}>{word}</div>
+        <div className={hintClassName}>{pron}</div>
       </div>
     )
   }

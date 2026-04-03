@@ -19,6 +19,33 @@ const normalizeComparable = (value: string) =>
     .toLowerCase()
     .replace(/\s+/g, '')
     .trim()
+const splitPronunciationTokens = (value: string) =>
+  value
+    .split(/[|｜\s\u3000]+/)
+    .map(item => item.trim())
+    .filter(Boolean)
+
+const splitPronunciationForKanji = (kanjiRun: string, pronRun: string) => {
+  const kanjiChars = Array.from(kanjiRun)
+  if (kanjiChars.length <= 1) return [pronRun]
+  const chars = Array.from(pronRun)
+  if (chars.length === 0) return kanjiChars.map(() => '')
+  const result: string[] = []
+  let cursor = 0
+  const remainCount = (index: number) => kanjiChars.length - index
+  for (let i = 0; i < kanjiChars.length; i += 1) {
+    const leftPronLen = chars.length - cursor
+    const minNeed = remainCount(i + 1)
+    const take =
+      i === kanjiChars.length - 1
+        ? leftPronLen
+        : Math.max(1, Math.floor((leftPronLen - minNeed) / remainCount(i) + 1))
+    const nextCursor = Math.min(chars.length, cursor + take)
+    result.push(chars.slice(cursor, nextCursor).join(''))
+    cursor = nextCursor
+  }
+  return result
+}
 
 export const buildJapaneseRubyHtml = (
   word: string,
@@ -39,6 +66,66 @@ export const buildJapaneseRubyHtml = (
   const rtClass = options?.rtClassName ? ` class="${options.rtClassName}"` : ''
   const buildRuby = (base: string, pron: string) =>
     `<ruby${rubyClass}>${escapeHtml(base)}<rt${rtClass}>${escapeHtml(pron)}</rt></ruby>`
+
+  const tryBuildFromMixedTokens = () => {
+    const tokens = splitPronunciationTokens(cleanPron)
+    if (tokens.length === 0) return null
+    const hasColonToken = tokens.some(item => item.includes(':') || item.includes('：'))
+    if (!hasColonToken) return null
+
+    const wordChars = Array.from(cleanWord)
+    const findFromCursor = (needle: string, cursor: number) => {
+      if (!needle) return -1
+      const tail = wordChars.slice(cursor).join('')
+      if (tail.startsWith(needle)) return cursor
+      const joined = wordChars.join('')
+      return joined.indexOf(needle, cursor)
+    }
+
+    let cursor = 0
+    let output = ''
+    for (const token of tokens) {
+      const normalized = token.replace('：', ':')
+      const delimiterIndex = normalized.indexOf(':')
+      if (delimiterIndex <= 0) {
+        const literal = normalized
+        const start = findFromCursor(literal, cursor)
+        if (start < 0) return null
+        output += escapeHtml(wordChars.slice(cursor, start).join(''))
+        output += escapeHtml(literal)
+        cursor = start + Array.from(literal).length
+        continue
+      }
+
+      const base = normalized.slice(0, delimiterIndex).trim()
+      const reading = normalized.slice(delimiterIndex + 1).trim()
+      if (!base || !reading) return null
+      const start = findFromCursor(base, cursor)
+      if (start < 0) return null
+      output += escapeHtml(wordChars.slice(cursor, start).join(''))
+
+      const baseChars = Array.from(base)
+      const hasKanjiInBase = baseChars.some(isKanjiChar)
+      if (baseChars.length > 1 && hasKanjiInBase) {
+        const allKanji = baseChars.every(isKanjiChar)
+        if (allKanji) {
+          const readings = splitPronunciationForKanji(base, reading)
+          baseChars.forEach((ch, index) => {
+            const piece = readings[index] || ''
+            output += piece ? buildRuby(ch, piece) : escapeHtml(ch)
+          })
+        } else {
+          output += buildRuby(base, reading)
+        }
+      } else {
+        output += buildRuby(base, reading)
+      }
+      cursor = start + baseChars.length
+    }
+
+    output += escapeHtml(wordChars.slice(cursor).join(''))
+    return output || null
+  }
 
   // 片假名/平假名词也允许显示注音（例如外来语标英语读音）。
   if (!hasKanji(cleanWord)) {
@@ -76,12 +163,12 @@ export const buildJapaneseRubyHtml = (
     return `${escapeHtml(prefixWord)}${buildRuby(coreWord, corePron)}${escapeHtml(suffixWord)}`
   }
 
+  const mixedTokenRuby = tryBuildFromMixedTokens()
+  if (mixedTokenRuby) return mixedTokenRuby
+
   // 手动拆分优先：例如 人間 -> にん|げん 或 にん げん（按汉字个数对应）
   if (cleanPron.includes('|') || /[\s\u3000]/.test(cleanPron)) {
-    const tokens = cleanPron
-      .split(/[|｜\s\u3000]+/)
-      .map(item => item.trim())
-      .filter(Boolean)
+    const tokens = splitPronunciationTokens(cleanPron)
     const wordChars = Array.from(cleanWord)
     const kanjiChars = wordChars.filter(isKanjiChar)
     if (tokens.length === kanjiChars.length) {
@@ -100,26 +187,6 @@ export const buildJapaneseRubyHtml = (
 
   const wordChars = Array.from(cleanWord)
   const pronChars = Array.from(compactPron)
-  const splitPronunciationForKanji = (kanjiRun: string, pronRun: string) => {
-    const kanjiChars = Array.from(kanjiRun)
-    if (kanjiChars.length <= 1) return [pronRun]
-    const chars = Array.from(pronRun)
-    if (chars.length === 0) return kanjiChars.map(() => '')
-    const result: string[] = []
-    let cursor = 0
-    const remainCount = (index: number) => kanjiChars.length - index
-    for (let i = 0; i < kanjiChars.length; i += 1) {
-      const leftPronLen = chars.length - cursor
-      const minNeed = remainCount(i + 1)
-      const take = i === kanjiChars.length - 1
-        ? leftPronLen
-        : Math.max(1, Math.floor((leftPronLen - minNeed) / remainCount(i) + 1))
-      const nextCursor = Math.min(chars.length, cursor + take)
-      result.push(chars.slice(cursor, nextCursor).join(''))
-      cursor = nextCursor
-    }
-    return result
-  }
 
   let output = ''
   let wordCursor = 0

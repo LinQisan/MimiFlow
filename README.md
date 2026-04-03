@@ -52,7 +52,7 @@ All key tasks are auto-submitted or quantifiable from telemetry/data logs to red
 - Next.js (App Router)
 - React + TypeScript
 - Tailwind CSS
-- Prisma + SQLite (`prisma/dev.db`)
+- Prisma + PostgreSQL
 - FSRS scheduling
 
 ## Local Setup
@@ -63,25 +63,32 @@ All key tasks are auto-submitted or quantifiable from telemetry/data logs to red
 npm install
 ```
 
-2. Generate Prisma Client
+2. Configure environment
 
 ```bash
-npx prisma generate
+cp .env.example .env
+# then edit DATABASE_URL to your PostgreSQL instance
 ```
 
-3. Sync schema to local SQLite
+3. Generate Prisma Client
 
 ```bash
-npx prisma db push
+npm run db:generate
 ```
 
-4. Start development server
+4. Sync schema to PostgreSQL
+
+```bash
+npm run db:push
+```
+
+5. Start development server
 
 ```bash
 npm run dev
 ```
 
-5. Quality checks
+6. Quality checks
 
 ```bash
 npx tsc --noEmit
@@ -118,8 +125,7 @@ utils/        text/linguistic helpers
 
 ## Notes
 
-- This repo includes local development assets and SQLite data.
-- For production, use managed DB/storage and proper secrets.
+- Use managed PostgreSQL/storage and proper secrets in production.
 
 ## Other Languages
 

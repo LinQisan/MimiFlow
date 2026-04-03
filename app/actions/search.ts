@@ -16,7 +16,7 @@ export async function getMoreExamples(word: string, excludeDialogueId: number) {
             id: true,
             title: true,
             audioFile: true, // 🌟 核心新增：必须查出音频文件路径
-            category: {
+            paper: {
               select: { name: true, level: { select: { title: true } } },
             },
           },

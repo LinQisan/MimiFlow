@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -47,7 +47,16 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
   const dialog = useDialog()
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 1024
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 1024)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   const [title, setTitle] = useState(article.title || '')
   const [content, setContent] = useState(article.content || '')
@@ -186,7 +195,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
   const handleSaveArticle = async () => {
     setIsSaving(true)
     const result = await updateArticleWithQuestions({
-      articleId: article.id || '',
+      passageId: article.id || '',
       title,
       content,
       questions: questions.map(question => ({

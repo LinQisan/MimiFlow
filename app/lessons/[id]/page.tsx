@@ -10,9 +10,9 @@ export default async function LessonPage({
   const { id } = await params
 
   const lessonData = await prisma.lesson.findUnique({
-    where: { id: id },
+    where: { id },
     include: {
-      category: {
+      paper: {
         include: {
           lessons: {
             select: {
@@ -34,14 +34,12 @@ export default async function LessonPage({
   })
 
   if (!lessonData) {
-    return (
-      <div className='mt-20 text-center text-gray-500'>找不到该课</div>
-    )
+    return <div className='mt-20 text-center text-gray-500'>找不到该课</div>
   }
 
   // 课程内前后导航
-  const lessonIds = lessonData.category.lessons.map(item => item.id)
-  const currentIndex = lessonIds.findIndex(id => id === lessonData.id)
+  const lessonIds = lessonData.paper.lessons.map(item => item.id)
+  const currentIndex = lessonIds.findIndex(itemId => itemId === lessonData.id)
 
   const prevId = currentIndex > 0 ? lessonIds[currentIndex - 1] : null
   const nextId =
@@ -61,12 +59,14 @@ export default async function LessonPage({
   }
 
   const lessonGroup = {
-    id: lessonData.category.id,
-    name: lessonData.category.name,
-    description: lessonData.category.description,
-    levelId: lessonData.category.levelId,
+    id: lessonData.paper.id,
+    name: lessonData.paper.name,
+    description: lessonData.paper.description,
+    levelId: lessonData.paper.levelId,
   }
+
   const dialogueIds = lessonData.dialogues.map(item => String(item.id))
+
   const relatedVocab = await prisma.vocabulary.findMany({
     where: {
       sentenceLinks: {
@@ -85,12 +85,14 @@ export default async function LessonPage({
       meanings: true,
     },
   })
-  const vocabularyMetaMap = relatedVocab.reduce<
-    Record<string, VocabularyMeta>
-  >((acc, item) => {
-    acc[item.word] = toVocabularyMeta({ ...item, word: item.word })
-    return acc
-  }, {})
+
+  const vocabularyMetaMap = relatedVocab.reduce<Record<string, VocabularyMeta>>(
+    (acc, item) => {
+      acc[item.word] = toVocabularyMeta({ ...item, word: item.word })
+      return acc
+    },
+    {},
+  )
 
   return (
     <main className='min-h-screen bg-gray-50'>

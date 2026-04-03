@@ -4,7 +4,7 @@
 import prisma from '@/lib/prisma'
 import { mkdir, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-
+import { randomUUID } from 'node:crypto'
 // ================== 核心解析逻辑 (保持不变) ==================
 
 function assTimeToSeconds(timeStr: string): number {
@@ -173,19 +173,15 @@ function getBaseNameWithoutExt(filename: string) {
 }
 
 function normalizeStem(raw: string) {
-  return raw
-    .normalize('NFKC')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '')
+  return raw.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, '')
 }
 
 async function buildLessonSequencePlan(
-  categoryId: string,
+  paperId: string,
   _count: number,
 ): Promise<LessonSequencePlan> {
   const lessons = await prisma.lesson.findMany({
-    where: { categoryId },
+    where: { paperId },
     select: { sortOrder: true },
   })
   const maxSortOrder = lessons.reduce(
@@ -229,7 +225,8 @@ function buildAudioStemMap(paths: string[]) {
 }
 
 function parseAssAudioOverrides(raw: FormDataEntryValue | null) {
-  if (typeof raw !== 'string' || !raw.trim()) return {} as Record<string, string>
+  if (typeof raw !== 'string' || !raw.trim())
+    return {} as Record<string, string>
   try {
     const parsed = JSON.parse(raw) as Record<string, string>
     if (!parsed || typeof parsed !== 'object') return {}
@@ -253,7 +250,7 @@ function pickAudioByStem(
 
 async function ensureTargetCategory(formData: FormData) {
   const uploadMode = formData.get('uploadMode') as string
-  const categoryId = (formData.get('categoryId') as string)?.trim()
+  const paperId = (formData.get('paperId') as string)?.trim()
 
   if (uploadMode === 'new') {
     const level = (formData.get('level') as string)?.trim()
@@ -264,13 +261,13 @@ async function ensureTargetCategory(formData: FormData) {
     }
 
     const generatedId = `${level.toLowerCase()}_${Date.now()}`
-    const targetCategoryId = categoryId || generatedId
+    const targetCategoryId = paperId || generatedId
 
-    const existed = await prisma.category.findUnique({
+    const existed = await prisma.paper.findUnique({
       where: { id: targetCategoryId },
     })
     if (!existed) {
-      await prisma.category.create({
+      await prisma.paper.create({
         data: {
           id: targetCategoryId,
           levelId: level.toLowerCase(),
@@ -282,18 +279,15 @@ async function ensureTargetCategory(formData: FormData) {
     return targetCategoryId
   }
 
-  if (!categoryId) {
+  if (!paperId) {
     throw new Error('分类信息缺失，请重新选择分类。')
   }
-  const existing = await prisma.category.findUnique({ where: { id: categoryId } })
+  const existing = await prisma.paper.findUnique({ where: { id: paperId } })
   if (!existing) throw new Error('选中的试卷组不存在，请刷新页面重试。')
-  return categoryId
+  return paperId
 }
 
-async function walkAudioFiles(
-  dir: string,
-  baseDir: string,
-): Promise<string[]> {
+async function walkAudioFiles(dir: string, baseDir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true })
   const results: string[] = []
 
@@ -352,29 +346,31 @@ async function saveUploadedAudio(file: File) {
 // ================== 暴露给前端的 Server Action ==================
 export async function uploadAssAndSaveData(formData: FormData) {
   try {
-    const categoryId = await ensureTargetCategory(formData)
+    const paperId = await ensureTargetCategory(formData)
     const title = (formData.get('title') as string)?.trim()
-    const audioSourceType = (formData.get('audioSourceType') as string) || 'manual'
+    const audioSourceType =
+      (formData.get('audioSourceType') as string) || 'manual'
     const audioFileField = formData.get('audioFile')
     const audioFileFromInput =
       typeof audioFileField === 'string' ? audioFileField : ''
     const audioUploadFile = formData.get('audioUploadFile') as File | null
-    const audioUploadFiles = (formData
-      .getAll('audioUploadFiles')
-      .filter(item => item instanceof File) as File[])
-      .filter(file => file.size > 0)
+    const audioUploadFiles = (
+      formData
+        .getAll('audioUploadFiles')
+        .filter(item => item instanceof File) as File[]
+    ).filter(file => file.size > 0)
     const uniqueAudioUploadFiles = Array.from(
       new Map(
-        [...audioUploadFiles, ...(audioUploadFile ? [audioUploadFile] : [])].map(
-          file => [`${file.name}_${file.size}`, file],
-        ),
+        [
+          ...audioUploadFiles,
+          ...(audioUploadFile ? [audioUploadFile] : []),
+        ].map(file => [`${file.name}_${file.size}`, file]),
       ).values(),
     )
     const audioMatchFolder = (formData.get('audioMatchFolder') as string) || ''
-    const files = (formData
-      .getAll('assFiles')
-      .filter(item => item instanceof File) as File[])
-      .filter(file => file.size > 0 && file.name.toLowerCase().endsWith('.ass'))
+    const files = (
+      formData.getAll('assFiles').filter(item => item instanceof File) as File[]
+    ).filter(file => file.size > 0 && file.name.toLowerCase().endsWith('.ass'))
     const legacyFile = formData.get('assFile')
     if (legacyFile instanceof File && legacyFile.size > 0) {
       files.push(legacyFile)
@@ -382,7 +378,8 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const uniqueFiles = Array.from(
       new Map(files.map(file => [`${file.name}_${file.size}`, file])).values(),
     )
-    if (uniqueFiles.length === 0) throw new Error('没有检测到可导入的 .ass 文件。')
+    if (uniqueFiles.length === 0)
+      throw new Error('没有检测到可导入的 .ass 文件。')
 
     const isBatch = uniqueFiles.length > 1
     let baseAudioFile = ensureAudioWebPath(audioFileFromInput)
@@ -408,7 +405,10 @@ export async function uploadAssAndSaveData(formData: FormData) {
       throw new Error('请填写或选择音频路径。')
     }
 
-    const siteAudioFiles = await walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR)
+    const siteAudioFiles = await walkAudioFiles(
+      PUBLIC_AUDIO_DIR,
+      PUBLIC_AUDIO_DIR,
+    )
     const siteAudioByStem = buildAudioStemMap(siteAudioFiles)
     const folderPrefix = getFolderPrefixFromSelection(audioMatchFolder)
     const scopedSiteAudioByStem = buildAudioStemMap(
@@ -426,7 +426,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
     let overrideApplied = 0
     let overrideInvalid = 0
     const sequencePlan = await buildLessonSequencePlan(
-      categoryId,
+      paperId,
       uniqueFiles.length,
     )
     for (let i = 0; i < uniqueFiles.length; i++) {
@@ -472,49 +472,65 @@ export async function uploadAssAndSaveData(formData: FormData) {
       }
 
       if (!finalAudioFile) {
-      if (!isBatch) {
-        finalAudioFile = baseAudioFile
-      } else {
-        const uploadMatched = uploadedAudioByStem.get(stem)?.[0] || null
-        if (uploadMatched) {
-          finalAudioFile = uploadMatched
-          matchedFromUpload.push(file.name)
+        if (!isBatch) {
+          finalAudioFile = baseAudioFile
         } else {
-          const siteMatched = pickAudioByStem(
-            stem,
-            scopedSiteAudioByStem,
-            siteAudioByStem,
-          )
-          if (siteMatched) {
-            finalAudioFile = siteMatched
-            matchedFromSite.push(file.name)
-          } else if (baseAudioFile) {
-            finalAudioFile = deriveAudioPathForBatch(baseAudioFile, file.name)
-            fallbackPaths.push(file.name)
+          const uploadMatched = uploadedAudioByStem.get(stem)?.[0] || null
+          if (uploadMatched) {
+            finalAudioFile = uploadMatched
+            matchedFromUpload.push(file.name)
+          } else {
+            const siteMatched = pickAudioByStem(
+              stem,
+              scopedSiteAudioByStem,
+              siteAudioByStem,
+            )
+            if (siteMatched) {
+              finalAudioFile = siteMatched
+              matchedFromSite.push(file.name)
+            } else if (baseAudioFile) {
+              finalAudioFile = deriveAudioPathForBatch(baseAudioFile, file.name)
+              fallbackPaths.push(file.name)
+            }
           }
         }
-      }
       }
       if (!finalAudioFile) {
         unmatchedAudio.push(file.name)
         continue
       }
+      const lessonId = randomUUID()
 
+      const existingLesson = await prisma.lesson.findUnique({
+        where: { id: lessonId },
+        select: { id: true },
+      })
+
+      if (existingLesson) {
+        throw new Error(`生成的 lessonId 已存在：${lessonId}`)
+      }
+
+      // 【修改点 1】先独立创建主表 Lesson
       await prisma.lesson.create({
         data: {
+          id: lessonId,
           title: finalTitle,
           audioFile: finalAudioFile,
-          categoryId,
+          paperId,
           sortOrder: sequencePlan.startSortOrder + i,
-          dialogues: {
-            create: processedSubs.map(sub => ({
-              sequenceId: sub.id,
-              text: sub.text,
-              start: sub.start,
-              end: sub.end,
-            })),
-          },
         },
+      })
+
+      // 【修改点 2】使用 createMany 批量插入子表 Dialogues
+      // (注意：这里假设你的 Prisma 模型名为 dialogue，如果你的 schema 里首字母是大写或叫别的名字，请对应替换)
+      await prisma.dialogue.createMany({
+        data: processedSubs.map(sub => ({
+          lessonId: lessonId, // 手动关联主表 ID
+          sequenceId: sub.id,
+          text: sub.text,
+          start: sub.start,
+          end: sub.end,
+        })),
       })
       createdLessons.push(file.name)
     }
@@ -528,17 +544,21 @@ export async function uploadAssAndSaveData(formData: FormData) {
     }
 
     const summary: string[] = []
-    if (matchedFromUpload.length > 0) summary.push(`上传配对 ${matchedFromUpload.length}`)
-    if (matchedFromSite.length > 0) summary.push(`站内配对 ${matchedFromSite.length}`)
-    if (fallbackPaths.length > 0) summary.push(`路径推断 ${fallbackPaths.length}`)
-    if (unmatchedAudio.length > 0) summary.push(`未匹配 ${unmatchedAudio.length}`)
+    if (matchedFromUpload.length > 0)
+      summary.push(`上传配对 ${matchedFromUpload.length}`)
+    if (matchedFromSite.length > 0)
+      summary.push(`站内配对 ${matchedFromSite.length}`)
+    if (fallbackPaths.length > 0)
+      summary.push(`路径推断 ${fallbackPaths.length}`)
+    if (unmatchedAudio.length > 0)
+      summary.push(`未匹配 ${unmatchedAudio.length}`)
     if (overrideApplied > 0) summary.push(`手动改配 ${overrideApplied}`)
     if (overrideInvalid > 0) summary.push(`无效改配 ${overrideInvalid}`)
     return {
       success: true,
       message: isBatch
-        ? `批量导入完成：${createdLessons.length} 个字幕文件已写入 [${categoryId}]。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
-        : `成功导入 ${createdLessons[0]} 至 [${categoryId}]。`,
+        ? `批量导入完成：${createdLessons.length} 个字幕文件已写入 [${paperId}]。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
+        : `成功导入 ${createdLessons[0]} 至 [${paperId}]。`,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '未知错误'

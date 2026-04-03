@@ -112,13 +112,33 @@ const formatBytes = (bytes: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const formatDateTimeStable = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return new Intl.DateTimeFormat('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(date)
+}
+
 export default function ManageAudioPage() {
+  const PAGE_SIZE = 30
   const dialog = useDialog()
   const [items, setItems] = useState<AudioItem[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [search, setSearch] = useState('')
   const [folder, setFolder] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [folderOptions, setFolderOptions] = useState<string[]>([])
   const [movingPath, setMovingPath] = useState<string | null>(null)
   const [activeMovePath, setActiveMovePath] = useState<string | null>(null)
   const [moveFolder, setMoveFolder] = useState('')
@@ -136,46 +156,52 @@ export default function ManageAudioPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({})
 
-  const fetchItems = async () => {
+  const fetchItems = async (page = currentPage, keyword = search, currentFolder = folder) => {
     setLoading(true)
-    const res = await listAudioFilesAdmin()
+    const res = await listAudioFilesAdmin({
+      page,
+      pageSize: PAGE_SIZE,
+      keyword,
+      folder: currentFolder,
+    })
     if (res.success) {
       setItems(res.items)
+      setFolderOptions(res.folders || [])
+      setTotalCount(res.total || 0)
+      setTotalPages(res.totalPages || 1)
+      setCurrentPage(res.page || 1)
     }
     setLoading(false)
   }
 
   useEffect(() => {
-    void fetchItems()
-  }, [])
+    const timer = window.setTimeout(() => {
+      void fetchItems(currentPage, search, folder)
+    }, 240)
+    return () => window.clearTimeout(timer)
+  }, [currentPage, search, folder])
 
   useEffect(() => {
     setSelectedPaths(prev => prev.filter(path => items.some(item => item.path === path)))
   }, [items])
 
-  const folders = useMemo(() => {
-    return Array.from(new Set(items.map(item => item.folder))).sort((a, b) =>
-      a.localeCompare(b),
-    )
-  }, [items])
-
-  const filtered = useMemo(() => {
-    const keyword = search.trim().toLowerCase()
-    return items.filter(item => {
-      const folderOk = !folder || item.folder === folder
-      const text = `${item.name} ${item.path} ${item.folder}`.toLowerCase()
-      const keyOk = !keyword || text.includes(keyword)
-      return folderOk && keyOk
-    })
-  }, [folder, items, search])
+  const filtered = items
 
   const filterFolderOptions = useMemo<SelectOption[]>(
-    () => [{ value: '', label: '全部文件夹' }, ...folders.map(item => ({ value: item, label: item }))],
-    [folders],
+    () => [
+      { value: '', label: '全部文件夹' },
+      ...folderOptions.map(item => ({ value: item, label: item })),
+    ],
+    [folderOptions],
   )
   const moveFolderOptions = useMemo<SelectOption[]>(
-    () => [{ value: '', label: '根目录' }, ...folders.filter(item => item !== '(根目录)').map(item => ({ value: item, label: item }))],
-    [folders],
+    () => [
+      { value: '', label: '根目录' },
+      ...folderOptions
+        .filter(item => item !== '(根目录)')
+        .map(item => ({ value: item, label: item })),
+    ],
+    [folderOptions],
   )
   const allVisibleSelected =
     filtered.length > 0 && filtered.every(item => selectedPaths.includes(item.path))
@@ -373,13 +399,19 @@ export default function ManageAudioPage() {
             <input
               type='text'
               value={search}
-              onChange={e => setSearch(e.currentTarget.value)}
+              onChange={e => {
+                setSearch(e.currentTarget.value)
+                setCurrentPage(1)
+              }}
               placeholder='搜索文件名或路径'
               className='w-full border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
             />
             <CompactDropdown
               value={folder}
-              onChange={setFolder}
+              onChange={value => {
+                setFolder(value)
+                setCurrentPage(1)
+              }}
               options={filterFolderOptions}
               placeholder='选择文件夹'
             />
@@ -472,17 +504,61 @@ export default function ManageAudioPage() {
             </div>
           </div>
           <p className='mt-2 text-xs text-gray-400'>
-            共 {items.length} 条录音，当前显示 {filtered.length} 条
+            共 {totalCount} 条录音，当前页显示 {filtered.length} 条
           </p>
         </section>
 
+        <section className='flex items-center justify-between border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600'>
+          <span>
+            第 {currentPage} / {totalPages} 页
+          </span>
+          <div className='flex items-center gap-2'>
+            <button
+              type='button'
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              className='ui-btn ui-btn-sm disabled:opacity-50'>
+              上一页
+            </button>
+            <button
+              type='button'
+              disabled={currentPage >= totalPages}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              className='ui-btn ui-btn-sm disabled:opacity-50'>
+              下一页
+            </button>
+          </div>
+        </section>
+
         <section className='border border-gray-200 bg-white '>
-          {loading ? (
-            <div className='py-14 text-center text-sm text-gray-500'>加载中...</div>
-          ) : filtered.length === 0 ? (
-            <div className='py-14 text-center text-sm text-gray-400'>暂无录音文件</div>
-          ) : (
-            <div className='divide-y divide-gray-100'>
+          <div className='min-h-[62vh]'>
+            {loading ? (
+              <div className='divide-y divide-gray-100'>
+                {Array.from({ length: 6 }).map((_, idx) => (
+                  <div
+                    key={`audio-skeleton-${idx}`}
+                    className='grid grid-cols-1 gap-3 px-4 py-4 md:grid-cols-[1fr_240px_130px_auto] md:items-start'>
+                    <div className='space-y-2'>
+                      <div className='h-4 w-48 animate-pulse bg-gray-100' />
+                      <div className='h-3 w-72 max-w-full animate-pulse bg-gray-100' />
+                      <div className='h-3 w-40 animate-pulse bg-gray-100' />
+                    </div>
+                    <div className='h-10 animate-pulse bg-gray-100' />
+                    <div className='space-y-2'>
+                      <div className='h-6 w-20 animate-pulse bg-gray-100' />
+                      <div className='h-6 w-20 animate-pulse bg-gray-100' />
+                    </div>
+                    <div className='space-y-2'>
+                      <div className='h-8 w-20 animate-pulse bg-gray-100' />
+                      <div className='h-8 w-20 animate-pulse bg-gray-100' />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
+              <div className='py-14 text-center text-sm text-gray-400'>暂无录音文件</div>
+            ) : (
+              <div className='divide-y divide-gray-100'>
               {filtered.map(item => (
                 <article
                   key={item.path}
@@ -501,7 +577,7 @@ export default function ManageAudioPage() {
                     <p className='mt-1 truncate text-xs text-gray-500'>{item.path}</p>
                     <p className='mt-1 text-[11px] text-gray-400'>
                       文件夹：{item.folder} · 更新：
-                      {new Date(item.updatedAt).toLocaleString()}
+                      {formatDateTimeStable(item.updatedAt)}
                     </p>
                   </div>
                   <audio
@@ -617,8 +693,9 @@ export default function ManageAudioPage() {
                   )}
                 </article>
               ))}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </section>
       </div>
     </main>

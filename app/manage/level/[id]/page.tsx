@@ -46,11 +46,11 @@ export default async function LevelPage({
   const level = await prisma.level.findUnique({
     where: { id: targetId },
     include: {
-      categories: {
+      papers: {
         orderBy: { sortOrder: 'asc' },
         include: {
           lessons: { orderBy: { sortOrder: 'asc' } },
-          articles: { orderBy: { sortOrder: 'asc' } },
+          passages: { orderBy: { sortOrder: 'asc' } },
           quizzes: {
             orderBy: { sortOrder: 'asc' },
             include: { questions: { select: { questionType: true } } },
@@ -60,7 +60,7 @@ export default async function LevelPage({
     },
   })
 
-  const allCategoriesRaw = await prisma.category.findMany({
+  const allCategoriesRaw = await prisma.paper.findMany({
     include: { level: true },
   })
   const allCategories = allCategoriesRaw.map(cat => ({
@@ -86,19 +86,21 @@ export default async function LevelPage({
             <h2 className='text-xl font-black tracking-tight text-gray-900 md:text-2xl'>
               {level.title}
             </h2>
-            <p className='text-xs text-gray-500'>按顺序管理分组、听力、阅读与题库。</p>
+            <p className='text-xs text-gray-500'>
+              按顺序管理分组、听力、阅读与题库。
+            </p>
           </div>
           <div className='inline-flex items-center rounded-xl border border-gray-100 bg-gray-50 px-3 py-1.5 text-xs font-bold text-gray-500'>
-            分组 {level.categories.length}
+            分组 {level.papers.length}
           </div>
         </div>
 
         {/* 试卷 (Categories) 列表 */}
         <SortableList
-          items={level.categories}
+          items={level.papers}
           action={updateSortOrder.bind(null, 'Category')}
           className='p-4 md:p-6 flex flex-col gap-6 bg-gray-50/40'>
-          {level.categories.map((category, categoryIndex) => (
+          {level.papers.map((category, categoryIndex) => (
             <SortableItem key={category.id} id={category.id}>
               <details
                 open
@@ -106,36 +108,36 @@ export default async function LevelPage({
                 {/* 试卷 Header */}
                 <summary className='list-none cursor-pointer border-b border-transparent p-4 transition-colors hover:bg-gray-50/80 group-open/cat:border-gray-100 [&::-webkit-details-marker]:hidden md:p-5'>
                   <div className='flex flex-col items-start justify-between gap-4 md:flex-row md:items-center'>
-                  <div className='flex items-center gap-3 w-full md:w-auto'>
-                    <ActionInterceptor>
-                      <DragHandle />
-                    </ActionInterceptor>
-                    <div>
-                      <h3 className='font-bold text-lg text-gray-800 leading-snug flex items-center gap-2'>
-                        <span className='inline-flex items-center rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-600'>
-                          第 {categoryIndex + 1} 项
-                        </span>
-                        {category.name}
-                        <ChevronIcon />
-                      </h3>
-                      <div className='text-[11px] text-gray-500 mt-1.5 flex items-center flex-wrap gap-2'>
-                        拖拽可调整分组顺序
+                    <div className='flex items-center gap-3 w-full md:w-auto'>
+                      <ActionInterceptor>
+                        <DragHandle />
+                      </ActionInterceptor>
+                      <div>
+                        <h3 className='font-bold text-lg text-gray-800 leading-snug flex items-center gap-2'>
+                          <span className='inline-flex items-center rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-[11px] font-bold text-gray-600'>
+                            第 {categoryIndex + 1} 项
+                          </span>
+                          {category.name}
+                          <ChevronIcon />
+                        </h3>
+                        <div className='text-[11px] text-gray-500 mt-1.5 flex items-center flex-wrap gap-2'>
+                          拖拽可调整分组顺序
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <ActionInterceptor className='shrink-0'>
-                    <DeleteButton
-                      categoryId={category.id}
-                      categoryName={category.name}
-                    />
-                  </ActionInterceptor>
+                    <ActionInterceptor className='shrink-0'>
+                      <DeleteButton
+                        categoryId={category.id}
+                        categoryName={category.name}
+                      />
+                    </ActionInterceptor>
                   </div>
                 </summary>
 
                 {/* 试卷内部内容 */}
                 <div className='p-4 md:p-6 space-y-8 bg-gray-50/30'>
                   {category.lessons.length === 0 &&
-                    category.articles.length === 0 &&
+                    category.passages.length === 0 &&
                     category.quizzes.length === 0 && (
                       <div className='flex justify-center items-center py-6 text-sm text-gray-400 font-medium bg-white rounded-xl border border-dashed border-gray-200'>
                         暂无内容，请在下方新增
@@ -193,19 +195,19 @@ export default async function LevelPage({
                   )}
 
                   {/* 阅读文章 */}
-                  {category.articles.length > 0 && (
+                  {category.passages.length > 0 && (
                     <div>
                       <h4 className='text-sm font-black text-gray-800 mb-4 flex items-center gap-2'>
                         <span className='inline-flex items-center rounded-md border border-sky-100 bg-sky-50 px-2 py-0.5 text-[11px] font-bold text-sky-700'>
                           阅读
                         </span>
-                        阅读文章 ({category.articles.length})
+                        阅读文章 ({category.passages.length})
                       </h4>
                       <SortableList
-                        items={category.articles}
+                        items={category.passages}
                         action={updateSortOrder.bind(null, 'Article')}
                         className='space-y-3'>
-                        {category.articles.map((article, articleIndex) => (
+                        {category.passages.map((article, articleIndex) => (
                           <SortableItem key={article.id} id={article.id}>
                             <div className='flex flex-col md:flex-row items-start md:items-center justify-between bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 transition-all gap-4'>
                               <div className='flex items-center gap-3 text-sm font-bold text-gray-800 tracking-wide'>

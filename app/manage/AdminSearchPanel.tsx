@@ -2,7 +2,10 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { searchGlobalCorpus, getAllVocabulariesAdmin } from './searchActions'
+import {
+  searchGlobalCorpus,
+  type GlobalCorpusSearchResult,
+} from './searchActions'
 import { saveVocabulary } from '@/app/actions/content'
 import { useDialog } from '@/context/DialogContext'
 
@@ -44,7 +47,7 @@ const SourceBadge = ({ type }: { type: string }) => {
 export default function AdminSearchPanel() {
   const dialog = useDialog()
   const [keyword, setKeyword] = useState('')
-  const [searchResults, setSearchResults] = useState<any[]>([])
+  const [searchResults, setSearchResults] = useState<GlobalCorpusSearchResult[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [isOpen, setIsOpen] = useState(false) // 控制搜索结果面板的悬浮展开
   const searchRef = useRef<HTMLDivElement>(null)
@@ -64,7 +67,7 @@ export default function AdminSearchPanel() {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!keyword) return
+    if (!keyword.trim()) return
     setIsSearching(true)
     setIsOpen(true)
     const results = await searchGlobalCorpus(keyword)
@@ -72,7 +75,7 @@ export default function AdminSearchPanel() {
     setIsSearching(false)
   }
 
-  const handleAddVocab = async (item: any) => {
+  const handleAddVocab = async (item: GlobalCorpusSearchResult) => {
     const word = await dialog.prompt(`请输入要提取的生词：\n\n"${item.text}"`, {
       title: '提取生词',
       defaultValue: keyword,

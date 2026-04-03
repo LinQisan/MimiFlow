@@ -22,18 +22,32 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   // 默认中文
   const [lang, setLangState] = useState<Language>('zh')
 
+  const applyLangToDocument = (nextLang: Language) => {
+    if (typeof document === 'undefined') return
+    document.documentElement.setAttribute('lang', nextLang)
+    document.documentElement.setAttribute('data-lang', nextLang)
+  }
+
   // 初始化时从 LocalStorage 读取用户偏好
   useEffect(() => {
     const savedLang = localStorage.getItem('app_lang') as Language
     if (savedLang && dictionaries[savedLang]) {
       setLangState(savedLang)
+      applyLangToDocument(savedLang)
+      return
     }
+    applyLangToDocument('zh')
   }, [])
+
+  useEffect(() => {
+    applyLangToDocument(lang)
+  }, [lang])
 
   // 切换语言并保存到本地
   const setLang = (newLang: Language) => {
     setLangState(newLang)
     localStorage.setItem('app_lang', newLang)
+    applyLangToDocument(newLang)
   }
 
   // 🌟 核心：路径解析翻译函数 (例如 t('player.blindMode'))

@@ -687,6 +687,52 @@ export async function getAllReviewSentences() {
   })
 }
 
+export async function getReviewSentencesPage(page = 1, pageSize = 30) {
+  const safePageSize = Math.min(100, Math.max(10, Math.floor(pageSize)))
+  const rawPage = Math.max(1, Math.floor(page))
+  const total = await prisma.sentenceReview.count()
+  const totalPages = Math.max(1, Math.ceil(total / safePageSize))
+  const normalizedPage = Math.min(rawPage, totalPages)
+  const skip = (normalizedPage - 1) * safePageSize
+
+  const reviews = await prisma.sentenceReview.findMany({
+    orderBy: { id: 'desc' },
+    skip,
+    take: safePageSize,
+  })
+
+  const dialogueIds = reviews
+    .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
+    .map(r => Number(r.sourceId))
+
+  const dialogues =
+    dialogueIds.length === 0
+      ? []
+      : await prisma.dialogue.findMany({
+          where: { id: { in: dialogueIds } },
+          include: { lesson: { select: { title: true, audioFile: true } } },
+        })
+
+  const items = reviews.map(review => {
+    if (review.sourceType === 'AUDIO_DIALOGUE') {
+      const matchingDialogue = dialogues.find(d => d.id === Number(review.sourceId))
+      return {
+        ...review,
+        dialogue: matchingDialogue,
+      }
+    }
+    return review
+  })
+
+  return {
+    items,
+    total,
+    page: normalizedPage,
+    pageSize: safePageSize,
+    totalPages,
+  }
+}
+
 export async function getFsrsProfileSnapshot() {
   const profile = await ensureFsrsProfile()
   const parsedWeights = parseWeights(profile.weights) || [...default_w]

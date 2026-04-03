@@ -167,20 +167,30 @@ export const inferContextualPos = (
   return unique([...inferred, ...normalizedExisting]).slice(0, 3)
 }
 
-export const posBadgeClass = (pos: string) => {
-  return 'bg-slate-50 text-slate-600 border-slate-200'
+export const posBadgeClass = (_pos: string) => {
+  return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-indigo-500/12 dark:text-indigo-200 dark:border-indigo-400/35'
 }
 
 export const posWordHighlightClass = (pos: string) => {
   const key = pos.toLowerCase()
-  if (key.includes('v') || pos.includes('動詞')) return 'text-rose-700 bg-rose-100/70'
-  if (key.includes('n') || pos.includes('名詞')) return 'text-sky-700 bg-sky-100/70'
-  if (key.includes('adj') || pos.includes('形容')) return 'text-amber-700 bg-amber-100/70'
-  if (key.includes('adv') || pos.includes('副詞')) return 'text-violet-700 bg-violet-100/70'
-  if (key.includes('prep') || pos.includes('助詞')) return 'text-emerald-700 bg-emerald-100/70'
-  if (key.includes('pron')) return 'text-cyan-700 bg-cyan-100/70'
-  if (key.includes('det') || pos.includes('連体詞')) return 'text-lime-700 bg-lime-100/70'
-  if (key.includes('conj') || pos.includes('接続')) return 'text-fuchsia-700 bg-fuchsia-100/70'
-  if (key.includes('interj') || pos.includes('感動')) return 'text-orange-700 bg-orange-100/70'
-  return 'text-slate-700 bg-slate-200/70'
+  const darkBase = 'dark:text-indigo-100 dark:bg-indigo-400/16'
+  if (key.includes('v') || pos.includes('動詞'))
+    return `text-rose-700 bg-rose-100/65 ${darkBase}`
+  if (key.includes('n') || pos.includes('名詞'))
+    return `text-sky-700 bg-sky-100/65 ${darkBase}`
+  if (key.includes('adj') || pos.includes('形容'))
+    return `text-amber-700 bg-amber-100/65 ${darkBase}`
+  if (key.includes('adv') || pos.includes('副詞'))
+    return `text-violet-700 bg-violet-100/65 ${darkBase}`
+  if (key.includes('prep') || pos.includes('助詞'))
+    return `text-emerald-700 bg-emerald-100/65 ${darkBase}`
+  if (key.includes('pron'))
+    return `text-cyan-700 bg-cyan-100/65 ${darkBase}`
+  if (key.includes('det') || pos.includes('連体詞'))
+    return `text-lime-700 bg-lime-100/65 ${darkBase}`
+  if (key.includes('conj') || pos.includes('接続'))
+    return `text-fuchsia-700 bg-fuchsia-100/65 ${darkBase}`
+  if (key.includes('interj') || pos.includes('感動'))
+    return `text-orange-700 bg-orange-100/65 ${darkBase}`
+  return `text-slate-700 bg-slate-200/65 ${darkBase}`
 }

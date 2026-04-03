@@ -17,6 +17,10 @@ const GAME_TASK_KEYS = [
   'next_morning_dictation',
 ] as const
 
+const GAME_STREAK_TASK_KEYS: GameTaskKey[] = GAME_TASK_KEYS.filter(
+  key => key !== 'next_morning_dictation',
+)
+
 type GameTaskKey = (typeof GAME_TASK_KEYS)[number]
 type GameTaskMode = 'auto' | 'input' | 'manual'
 
@@ -41,6 +45,16 @@ type OutputAssessmentMetrics = {
   taskCompletion: number
   feedbackSummary: string
   actionItems: string[]
+}
+
+type RecallAssessmentMetrics = {
+  totalScore: number
+  accuracy: number
+  coverage: number
+  clarity: number
+  feedbackSummary: string
+  actionItems: string[]
+  modelAnswer: string
 }
 
 export type GameTaskView = GameTaskDef & {
@@ -94,6 +108,9 @@ export type GameDashboard = {
     prompt: string
     content: string
     wordCount: number
+    coachPromptTemplate: string
+    aiFeedbackRaw: string
+    metrics: RecallAssessmentMetrics
   }
   output: {
     missionPromptTemplate: string
@@ -160,6 +177,8 @@ const levelByXp = (xp: number) => {
 
 const OUTPUT_PLACEHOLDER_MISSION = '{{MISSION_TEXT}}'
 const OUTPUT_PLACEHOLDER_LEARNER = '{{LEARNER_TEXT}}'
+const RECALL_PLACEHOLDER_PROMPT = '{{RECALL_PROMPT}}'
+const RECALL_PLACEHOLDER_TEXT = '{{RECALL_TEXT}}'
 
 const clampScore = (value: unknown, fallback = 0) => {
   const num = Number(value)
@@ -169,18 +188,49 @@ const clampScore = (value: unknown, fallback = 0) => {
 
 const countChars = (value: string) => value.replace(/\s+/g, '').trim().length
 
-const buildOutputMissionPromptTemplate = (dateKey: string) => {
+const buildOutputMissionPromptTemplate = (
+  dateKey: string,
+  previous?: {
+    totalScore: number
+    feedbackSummary: string
+    actionItems: string[]
+  },
+) => {
+  const previousSummary = (previous?.feedbackSummary || '').trim()
+  const previousActions = (previous?.actionItems || [])
+    .filter(Boolean)
+    .slice(0, 3)
+  const previousScore = Number.isFinite(previous?.totalScore)
+    ? Math.max(0, Number(previous?.totalScore || 0))
+    : 0
+  const adaptiveLine =
+    previousScore >= 85
+      ? '7) 难度自适应：昨天表现较好，请在同主题下提高半档复杂度（增加1-2个更高级连接结构）。'
+      : previousScore > 0 && previousScore < 65
+        ? '7) 难度自适应：昨天完成偏吃力，请降低词汇负担并先保证可理解度，再加入1个新结构。'
+        : '7) 难度自适应：默认标准难度，维持 i+1（95%可理解 + 5%新结构）。'
+  const carryLine =
+    previousActions.length > 0
+      ? `8) 必须优先纠正昨天问题：${previousActions.join('；')}。`
+      : previousSummary
+        ? `8) 参考昨天反馈：${previousSummary.slice(0, 80)}。`
+        : '8) 若无历史反馈，可自行选择一个高频错误作为本次重点。'
+
   return [
-    '你是我的二语教练，请按“可理解输入→输出假设→聚焦纠错→再输出”的原则，给我今天的一次写作输出任务。',
+    '你是我的二语教练，请按“可理解输入(i+1)→输出假设→聚焦纠错→再输出”的原则，给我今天的一次写作输出任务。',
     '约束：',
     '1) 目标语言默认日语；如果我说明其他语言，按我指定语言。',
-    '2) 难度：B1~B2，偏实用表达；主题贴近日常/工作/学习。',
-    '3) 输出格式必须严格为 4 段：',
+    '2) 先判断我的当前水平；若我未提供水平，默认按 CEFR A2/B1 过渡（或日语 N3/N2 过渡）处理。',
+    '3) 任务难度必须“刚好高半档”(i+1)：95%可理解 + 5%新结构，不要过难。',
+    '4) 主题偏实用表达，贴近日常/工作/学习，优先口语可迁移场景。',
+    '5) 输出格式必须严格为 4 段（不要给范文）：',
     '任务标题：...',
     '写作目标：...（3 条）',
     '必须使用结构：...（3-5 条语法/句式）',
     '提交要求：字数范围、时间限制、自评检查点',
-    `4) 今日日期：${dateKey}`,
+    `6) 今日日期：${dateKey}`,
+    adaptiveLine,
+    carryLine,
     '不要输出其它解释。',
   ].join('\n')
 }
@@ -188,6 +238,7 @@ const buildOutputMissionPromptTemplate = (dateKey: string) => {
 const buildOutputCoachPromptTemplate = () => {
   return [
     '你是二语写作评测教练。请基于我给出的任务与作文，输出严格 JSON（不要 markdown，不要额外文字）。',
+    '评改原则：优先判断“是否完成任务要求”，再给纠错建议；并在评改后提供一篇 i+1 范文供模仿输入。',
     '评分维度（0-100）：',
     '- comprehensibility（可理解度）',
     '- accuracy（准确度）',
@@ -203,8 +254,12 @@ const buildOutputCoachPromptTemplate = () => {
     '  "totalScore": 0,',
     '  "feedbackSummary": "50-120字的暖心反馈",',
     '  "actionItems": ["下一轮最关键的3条可执行建议"],',
-    '  "lineEdits": [{"original":"原句","suggestion":"改写","why":"原因"}]',
+    '  "lineEdits": [{"original":"原句","suggestion":"改写","why":"原因"}],',
+    '  "modelEssay": "120-180字范文，难度略高于学习者当前水平（i+1）",',
+    '  "modelEssayHighlights": ["3条可迁移表达：表达片段 + 中文说明 + 可替换模板"]',
     '}',
+    '要求：actionItems 必须可执行、单轮可完成；lineEdits 最多 5 条，优先高频错误。',
+    '要求：modelEssay 必须与本次任务同主题，控制在 95%可理解 + 5%新结构，不要明显超纲。',
     '',
     '任务：',
     OUTPUT_PLACEHOLDER_MISSION,
@@ -212,6 +267,43 @@ const buildOutputCoachPromptTemplate = () => {
     '作文：',
     OUTPUT_PLACEHOLDER_LEARNER,
   ].join('\n')
+}
+
+const buildRecallCoachPromptTemplate = () => {
+  return [
+    '你是二语默写评测教练。请基于“默写提示”和“学习者默写内容”，输出严格 JSON（不要 markdown，不要额外文字）。',
+    '评改目标：检查记忆提取质量，而不是只看语法。请给出鼓励式反馈并指出下一步最小改进点。',
+    '评分维度（0-100）：',
+    '- accuracy（关键信息准确）',
+    '- coverage（核心点覆盖度）',
+    '- clarity（表达清晰度）',
+    '- totalScore（综合分）',
+    '请输出 JSON 结构：',
+    '{',
+    '  "accuracy": 0,',
+    '  "coverage": 0,',
+    '  "clarity": 0,',
+    '  "totalScore": 0,',
+    '  "feedbackSummary": "40-100字鼓励式反馈",',
+    '  "actionItems": ["下一次默写前可执行的3条动作"],',
+    '  "modelAnswer": "80-140字的参考默写版本，简洁可复述"',
+    '}',
+    '要求：actionItems 必须具体、可立即执行；modelAnswer 要可直接朗读/默写。',
+    '',
+    '默写提示：',
+    '{{RECALL_PROMPT}}',
+    '',
+    '学习者默写：',
+    '{{RECALL_TEXT}}',
+  ].join('\n')
+}
+
+const parseActionItems = (value: unknown, max = 6) => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .slice(0, max)
 }
 
 const parseOutputAssessment = (raw: string): OutputAssessmentMetrics => {
@@ -232,20 +324,23 @@ const parseOutputAssessment = (raw: string): OutputAssessmentMetrics => {
 
   try {
     const parsed = JSON.parse(firstJson)
-    const actionItems = Array.isArray(parsed.actionItems)
-      ? parsed.actionItems
-          .map((item: unknown) => String(item || '').trim())
-          .filter(Boolean)
-          .slice(0, 6)
-      : []
+    const actionItems = parseActionItems(parsed.actionItems)
 
     return {
-      totalScore: clampScore(parsed.totalScore ?? parsed.overall ?? parsed.score),
-      comprehensibility: clampScore(parsed.comprehensibility ?? parsed.understandability),
+      totalScore: clampScore(
+        parsed.totalScore ?? parsed.overall ?? parsed.score,
+      ),
+      comprehensibility: clampScore(
+        parsed.comprehensibility ?? parsed.understandability,
+      ),
       accuracy: clampScore(parsed.accuracy ?? parsed.grammarAccuracy),
       complexity: clampScore(parsed.complexity ?? parsed.lexicalComplexity),
-      taskCompletion: clampScore(parsed.taskCompletion ?? parsed.taskAchievement),
-      feedbackSummary: String(parsed.feedbackSummary || parsed.summary || '').trim(),
+      taskCompletion: clampScore(
+        parsed.taskCompletion ?? parsed.taskAchievement,
+      ),
+      feedbackSummary: String(
+        parsed.feedbackSummary || parsed.summary || '',
+      ).trim(),
       actionItems,
     }
   } catch {
@@ -257,6 +352,52 @@ const parseOutputAssessment = (raw: string): OutputAssessmentMetrics => {
       taskCompletion: 0,
       feedbackSummary: '',
       actionItems: [],
+    }
+  }
+}
+
+const parseRecallAssessment = (raw: string): RecallAssessmentMetrics => {
+  const source = (raw || '').trim()
+  const fenced = source.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]
+  const firstJson = fenced || source.match(/\{[\s\S]*\}/)?.[0] || ''
+  if (!firstJson) {
+    return {
+      totalScore: 0,
+      accuracy: 0,
+      coverage: 0,
+      clarity: 0,
+      feedbackSummary: '',
+      actionItems: [],
+      modelAnswer: '',
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(firstJson)
+    return {
+      totalScore: clampScore(
+        parsed.totalScore ?? parsed.overall ?? parsed.score,
+      ),
+      accuracy: clampScore(parsed.accuracy),
+      coverage: clampScore(parsed.coverage ?? parsed.completeness),
+      clarity: clampScore(parsed.clarity ?? parsed.coherence),
+      feedbackSummary: String(
+        parsed.feedbackSummary || parsed.summary || '',
+      ).trim(),
+      actionItems: parseActionItems(parsed.actionItems),
+      modelAnswer: String(
+        parsed.modelAnswer || parsed.referenceAnswer || '',
+      ).trim(),
+    }
+  } catch {
+    return {
+      totalScore: 0,
+      accuracy: 0,
+      coverage: 0,
+      clarity: 0,
+      feedbackSummary: '',
+      actionItems: [],
+      modelAnswer: '',
     }
   }
 }
@@ -382,9 +523,11 @@ const getPreviousDateKeys = (dateKey: string, days: number) => {
 const clampTarget = (key: GameTaskKey, value: number) => {
   if (key === 'morning_new_content') return Math.min(220, Math.max(80, value))
   if (key === 'morning_reading_cycle') return Math.min(30, Math.max(10, value))
-  if (key === 'afternoon_mixed_practice') return Math.min(24, Math.max(8, value))
+  if (key === 'afternoon_mixed_practice')
+    return Math.min(24, Math.max(8, value))
   if (key === 'evening_feynman_diary') return Math.min(95, Math.max(55, value))
-  if (key === 'next_morning_dictation') return Math.min(140, Math.max(50, value))
+  if (key === 'next_morning_dictation')
+    return Math.min(140, Math.max(50, value))
   return value
 }
 
@@ -434,7 +577,7 @@ const getDailyMetrics = async (dateKey: string): Promise<DailyMetrics> => {
     outputPractice,
   ] = await Promise.all([
     prisma.lesson.count({ where: { createdAt: { gte: start, lt: end } } }),
-    prisma.article.count({ where: { createdAt: { gte: start, lt: end } } }),
+    prisma.passage.count({ where: { createdAt: { gte: start, lt: end } } }),
     prisma.quiz.count({ where: { createdAt: { gte: start, lt: end } } }),
     prisma.studyTimeDaily.findUnique({
       where: {
@@ -454,7 +597,9 @@ const getDailyMetrics = async (dateKey: string): Promise<DailyMetrics> => {
       },
       select: { seconds: true },
     }),
-    prisma.questionAttempt.count({ where: { createdAt: { gte: start, lt: end } } }),
+    prisma.questionAttempt.count({
+      where: { createdAt: { gte: start, lt: end } },
+    }),
     prisma.sentenceReview.count({
       where: {
         last_review: { gte: start, lt: end },
@@ -485,7 +630,8 @@ const getDailyMetrics = async (dateKey: string): Promise<DailyMetrics> => {
     return Boolean(first && first >= start && first < end)
   }).length
 
-  const speakingMinutes = Math.round(((speakingRow?.seconds || 0) / 60) * 10) / 10
+  const speakingMinutes =
+    Math.round(((speakingRow?.seconds || 0) / 60) * 10) / 10
   const readingMinutes = Math.round(((readingRow?.seconds || 0) / 60) * 10) / 10
   const effectiveReadingMinutes =
     Math.round((speakingMinutes * 2 + readingMinutes) * 10) / 10
@@ -534,7 +680,10 @@ const resolveTaskCurrentValue = (
   if (key === 'afternoon_mixed_practice') return metrics.mixedUnits
   if (key === 'evening_feynman_diary') return metrics.outputScore
   if (key === 'night_light_review') return metrics.nightReviewSignal
-  return recallChars
+  if (key === 'next_morning_dictation') return recallChars
+
+  // 明确返回 0 可以避免新增任务被误作为 recallChar 任务。
+  return 0
 }
 
 const resolveAdaptiveScale = (averageRatio: number) => {
@@ -592,9 +741,13 @@ const buildAdaptiveTaskDefs = async (
 
     if (ratios.length === 0) return task
 
-    const averageRatio = ratios.reduce((sum, item) => sum + item, 0) / ratios.length
+    const averageRatio =
+      ratios.reduce((sum, item) => sum + item, 0) / ratios.length
     const scale = scaleByPreset(preset, resolveAdaptiveScale(averageRatio))
-    const adaptiveTarget = clampTarget(task.key, Math.round(task.targetValue * scale))
+    const adaptiveTarget = clampTarget(
+      task.key,
+      Math.round(task.targetValue * scale),
+    )
 
     return {
       ...task,
@@ -699,12 +852,18 @@ const syncProgressByData = async (dateKey: string, defs: GameTaskDef[]) => {
       where: {
         profileId: PROFILE_ID,
         dateKey,
-        taskKey: { in: defs.map(item => item.key) },
+        taskKey: { in: GAME_STREAK_TASK_KEYS },
       },
     })
 
-    if (dayDoneCount === defs.length && profile.lastStreakDate !== dateKey) {
-      if (profile.lastStreakDate && isPreviousDate(profile.lastStreakDate, dateKey)) {
+    if (
+      dayDoneCount === GAME_STREAK_TASK_KEYS.length &&
+      profile.lastStreakDate !== dateKey
+    ) {
+      if (
+        profile.lastStreakDate &&
+        isPreviousDate(profile.lastStreakDate, dateKey)
+      ) {
         nextStreak = profile.streakDays + 1
       } else {
         nextStreak = 1
@@ -754,7 +913,7 @@ const getMixedPlan = async () => {
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, title: true },
     }),
-    prisma.article.findFirst({
+    prisma.passage.findFirst({
       orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
       select: { id: true, title: true },
     }),
@@ -772,12 +931,21 @@ const getMixedPlan = async () => {
     plan.push({ title: '先做口语复习', href: '/review' })
   }
   if (topQuiz) {
-    plan.push({ title: `刷题：${topQuiz.title || '题库'}`, href: `/quizzes/${topQuiz.id}` })
+    plan.push({
+      title: `刷题：${topQuiz.title || '题库'}`,
+      href: `/quizzes/${topQuiz.id}`,
+    })
   }
   if (topLesson) {
-    plan.push({ title: `听力朗诵：${topLesson.title}`, href: `/lessons/${topLesson.id}` })
+    plan.push({
+      title: `听力朗诵：${topLesson.title}`,
+      href: `/lessons/${topLesson.id}`,
+    })
   } else if (topArticle) {
-    plan.push({ title: `阅读：${topArticle.title || '文章'}`, href: `/articles/${topArticle.id}` })
+    plan.push({
+      title: `阅读：${topArticle.title || '文章'}`,
+      href: `/articles/${topArticle.id}`,
+    })
   }
   return plan
 }
@@ -830,7 +998,9 @@ const buildDashboard = async (dateKey: string): Promise<GameDashboard> => {
       progressPct,
       baseTargetValue: baseMap.get(task.key) || task.targetValue,
       targetScalePct: Math.round(
-        (task.targetValue / Math.max(1, baseMap.get(task.key) || task.targetValue)) * 100,
+        (task.targetValue /
+          Math.max(1, baseMap.get(task.key) || task.targetValue)) *
+          100,
       ),
     }
   })
@@ -841,49 +1011,86 @@ const buildDashboard = async (dateKey: string): Promise<GameDashboard> => {
   const earnedCoins = logs.reduce((sum, item) => sum + item.coins, 0)
 
   const sourceDateKey = previousDateKey(dateKey)
-  const [yesterdayDiary, outputPractice] = await Promise.all([
-    prisma.learningDiary.findUnique({
-      where: { dateKey: sourceDateKey },
-      select: { content: true },
-    }),
-    prisma.outputPractice.findUnique({
-      where: {
-        profileId_dateKey_practiceType: {
-          profileId: PROFILE_ID,
-          dateKey,
-          practiceType: 'WRITING',
+  const [yesterdayDiary, yesterdayOutputPractice, outputPractice] =
+    await Promise.all([
+      prisma.learningDiary.findUnique({
+        where: { dateKey: sourceDateKey },
+        select: { content: true },
+      }),
+      prisma.outputPractice.findUnique({
+        where: {
+          profileId_dateKey_practiceType: {
+            profileId: PROFILE_ID,
+            dateKey: sourceDateKey,
+            practiceType: 'WRITING',
+          },
         },
-      },
-      select: {
-        missionText: true,
-        learnerText: true,
-        aiFeedbackRaw: true,
-        totalScore: true,
-        comprehensibility: true,
-        accuracy: true,
-        complexity: true,
-        taskCompletion: true,
-        feedbackSummary: true,
-        actionItems: true,
-        updatedAt: true,
-      },
-    }),
-  ])
+        select: {
+          totalScore: true,
+          feedbackSummary: true,
+          actionItems: true,
+        },
+      }),
+      prisma.outputPractice.findUnique({
+        where: {
+          profileId_dateKey_practiceType: {
+            profileId: PROFILE_ID,
+            dateKey,
+            practiceType: 'WRITING',
+          },
+        },
+        select: {
+          missionText: true,
+          learnerText: true,
+          aiFeedbackRaw: true,
+          totalScore: true,
+          comprehensibility: true,
+          accuracy: true,
+          complexity: true,
+          taskCompletion: true,
+          feedbackSummary: true,
+          actionItems: true,
+          updatedAt: true,
+        },
+      }),
+    ])
   const fallbackPrompt =
     '请默写昨天学习的 3 个核心点，并写出 1 个你仍不确定的地方。'
   const promptBase = (yesterdayDiary?.content || '').trim().slice(0, 120)
   const recallPrompt = promptBase
     ? `根据你昨天的复述开头继续默写：${promptBase}`
     : fallbackPrompt
-  const missionPromptTemplate = buildOutputMissionPromptTemplate(dateKey)
-  const coachPromptTemplate = buildOutputCoachPromptTemplate()
-  const actionItems = outputPractice?.actionItems
+  const previousOutputActionItems = yesterdayOutputPractice?.actionItems
     ? (() => {
         try {
-          const parsed = JSON.parse(outputPractice.actionItems)
-          return Array.isArray(parsed)
-            ? parsed.map((item: unknown) => String(item || '').trim()).filter(Boolean)
-            : []
+          return parseActionItems(
+            JSON.parse(yesterdayOutputPractice.actionItems),
+          )
+        } catch {
+          return []
+        }
+      })()
+    : []
+  const missionPromptTemplate = buildOutputMissionPromptTemplate(dateKey, {
+    totalScore: yesterdayOutputPractice?.totalScore || 0,
+    feedbackSummary: yesterdayOutputPractice?.feedbackSummary || '',
+    actionItems: previousOutputActionItems,
+  })
+  const coachPromptTemplate = buildOutputCoachPromptTemplate()
+  const recallCoachPromptTemplate = buildRecallCoachPromptTemplate()
+  const outputActionItems = outputPractice?.actionItems
+    ? (() => {
+        try {
+          return parseActionItems(JSON.parse(outputPractice.actionItems))
+        } catch {
+          return []
+        }
+      })()
+    : []
+  const recallActionItems = synced.recall?.actionItems
+    ? (() => {
+        try {
+          return parseActionItems(JSON.parse(synced.recall.actionItems))
         } catch {
           return []
         }
@@ -911,6 +1118,17 @@ const buildDashboard = async (dateKey: string): Promise<GameDashboard> => {
       prompt: synced.recall?.prompt || recallPrompt,
       content: synced.recall?.content || '',
       wordCount: synced.recall?.wordCount || 0,
+      coachPromptTemplate: recallCoachPromptTemplate,
+      aiFeedbackRaw: synced.recall?.aiFeedbackRaw || '',
+      metrics: {
+        totalScore: synced.recall?.totalScore || 0,
+        accuracy: synced.recall?.accuracy || 0,
+        coverage: synced.recall?.coverage || 0,
+        clarity: synced.recall?.clarity || 0,
+        feedbackSummary: synced.recall?.feedbackSummary || '',
+        actionItems: recallActionItems,
+        modelAnswer: synced.recall?.modelAnswer || '',
+      },
     },
     output: {
       missionPromptTemplate,
@@ -925,7 +1143,7 @@ const buildDashboard = async (dateKey: string): Promise<GameDashboard> => {
         complexity: outputPractice?.complexity || 0,
         taskCompletion: outputPractice?.taskCompletion || 0,
         feedbackSummary: outputPractice?.feedbackSummary || '',
-        actionItems,
+        actionItems: outputActionItems,
       },
       updatedAt: outputPractice?.updatedAt || null,
     },
@@ -937,7 +1155,9 @@ const buildDashboard = async (dateKey: string): Promise<GameDashboard> => {
   }
 }
 
-export async function getGameDashboard(dateKey?: string): Promise<GameDashboard> {
+export async function getGameDashboard(
+  dateKey?: string,
+): Promise<GameDashboard> {
   const key = dateKey || toDateKey(new Date())
   return buildDashboard(key)
 }
@@ -1027,7 +1247,9 @@ export async function getDiaryEntries(limit = 60): Promise<DiaryListEntry[]> {
     existed.recallUpdatedAt = item.updatedAt
   })
 
-  return Array.from(map.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey))
+  return Array.from(map.values()).sort((a, b) =>
+    b.dateKey.localeCompare(a.dateKey),
+  )
 }
 
 export async function submitFeynmanDiary(content: string, dateKey?: string) {
@@ -1072,7 +1294,8 @@ export async function submitOutputPracticeEvaluation(payload: {
   const missionText = (payload.missionText || '').trim()
   const learnerText = (payload.learnerText || '').trim()
   const aiFeedbackRaw = (payload.aiFeedbackRaw || '').trim()
-  const languageCode = (payload.languageCode || 'ja').trim().toLowerCase() || 'ja'
+  const languageCode =
+    (payload.languageCode || 'ja').trim().toLowerCase() || 'ja'
 
   if (missionText.length < 10) {
     return { success: false, message: '请先粘贴 AI 生成的输出目标。' }
@@ -1100,7 +1323,34 @@ export async function submitOutputPracticeEvaluation(payload: {
     }
   }
 
-  const missionPrompt = buildOutputMissionPromptTemplate(key)
+  const previousOutput = await prisma.outputPractice.findUnique({
+    where: {
+      profileId_dateKey_practiceType: {
+        profileId: PROFILE_ID,
+        dateKey: previousDateKey(key),
+        practiceType: 'WRITING',
+      },
+    },
+    select: {
+      totalScore: true,
+      feedbackSummary: true,
+      actionItems: true,
+    },
+  })
+  const previousActionItems = previousOutput?.actionItems
+    ? (() => {
+        try {
+          return parseActionItems(JSON.parse(previousOutput.actionItems))
+        } catch {
+          return []
+        }
+      })()
+    : []
+  const missionPrompt = buildOutputMissionPromptTemplate(key, {
+    totalScore: previousOutput?.totalScore || 0,
+    feedbackSummary: previousOutput?.feedbackSummary || '',
+    actionItems: previousActionItems,
+  })
   const aiCoachPrompt = buildOutputCoachPromptTemplate()
     .replace(OUTPUT_PLACEHOLDER_MISSION, missionText)
     .replace(OUTPUT_PLACEHOLDER_LEARNER, learnerText)
@@ -1232,6 +1482,99 @@ export async function submitMorningRecall(content: string, dateKey?: string) {
   }
 }
 
+export async function submitMorningRecallEvaluation(payload: {
+  recallText: string
+  aiFeedbackRaw: string
+  dateKey?: string
+}) {
+  const key = payload.dateKey || toDateKey(new Date())
+  const recallText = (payload.recallText || '').trim()
+  const aiFeedbackRaw = (payload.aiFeedbackRaw || '').trim()
+
+  if (recallText.length < 20) {
+    return { success: false, message: '请先提交至少 20 字默写内容。' }
+  }
+  if (aiFeedbackRaw.length < 20) {
+    return { success: false, message: '请先粘贴 AI 默写评改结果（JSON）。' }
+  }
+
+  const metrics = parseRecallAssessment(aiFeedbackRaw)
+  const scoreVector = [
+    metrics.totalScore,
+    metrics.accuracy,
+    metrics.coverage,
+    metrics.clarity,
+  ]
+  if (!scoreVector.some(score => score > 0)) {
+    return {
+      success: false,
+      message: '未识别到默写评分。请让 AI 严格按 JSON 模板输出后再粘贴。',
+    }
+  }
+
+  try {
+    const sourceDateKey = previousDateKey(key)
+    const yesterdayDiary = await prisma.learningDiary.findUnique({
+      where: { dateKey: sourceDateKey },
+      select: { content: true },
+    })
+    const fallbackPrompt =
+      '请默写昨天学习的 3 个核心点，并写出 1 个你仍不确定的地方。'
+    const promptBase = (yesterdayDiary?.content || '').trim().slice(0, 120)
+    const prompt = promptBase
+      ? `根据你昨天的复述开头继续默写：${promptBase}`
+      : fallbackPrompt
+    const coachPrompt = buildRecallCoachPromptTemplate()
+      .replace(RECALL_PLACEHOLDER_PROMPT, prompt)
+      .replace(RECALL_PLACEHOLDER_TEXT, recallText)
+
+    await prisma.morningRecall.upsert({
+      where: { dateKey: key },
+      create: {
+        dateKey: key,
+        sourceDateKey,
+        prompt,
+        content: recallText,
+        wordCount: countChars(recallText),
+        aiCoachPrompt: coachPrompt,
+        aiFeedbackRaw,
+        totalScore: metrics.totalScore,
+        accuracy: metrics.accuracy,
+        coverage: metrics.coverage,
+        clarity: metrics.clarity,
+        feedbackSummary: metrics.feedbackSummary || null,
+        actionItems: JSON.stringify(metrics.actionItems),
+        modelAnswer: metrics.modelAnswer || null,
+      },
+      update: {
+        sourceDateKey,
+        prompt,
+        content: recallText,
+        wordCount: countChars(recallText),
+        aiCoachPrompt: coachPrompt,
+        aiFeedbackRaw,
+        totalScore: metrics.totalScore,
+        accuracy: metrics.accuracy,
+        coverage: metrics.coverage,
+        clarity: metrics.clarity,
+        feedbackSummary: metrics.feedbackSummary || null,
+        actionItems: JSON.stringify(metrics.actionItems),
+        modelAnswer: metrics.modelAnswer || null,
+      },
+    })
+
+    revalidatePath('/game')
+    revalidatePath('/game/diaries')
+    revalidatePath('/today')
+    revalidatePath('/')
+
+    return { success: true, metrics }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '默写评估保存失败' }
+  }
+}
+
 export async function completeNightReview(dateKey?: string) {
   const key = dateKey || toDateKey(new Date())
   const task = gameTaskDefs().find(item => item.key === 'night_light_review')
@@ -1271,14 +1614,20 @@ export async function completeNightReview(dateKey?: string) {
         where: {
           profileId: PROFILE_ID,
           dateKey: key,
-          taskKey: { in: GAME_TASK_KEYS as unknown as string[] },
+          taskKey: { in: GAME_STREAK_TASK_KEYS as unknown as string[] },
         },
       })
 
       let nextStreak = profile.streakDays
       let nextStreakDate = profile.lastStreakDate
-      if (dayDoneCount === GAME_TASK_KEYS.length && profile.lastStreakDate !== key) {
-        if (profile.lastStreakDate && isPreviousDate(profile.lastStreakDate, key)) {
+      if (
+        dayDoneCount === GAME_STREAK_TASK_KEYS.length &&
+        profile.lastStreakDate !== key
+      ) {
+        if (
+          profile.lastStreakDate &&
+          isPreviousDate(profile.lastStreakDate, key)
+        ) {
           nextStreak = profile.streakDays + 1
         } else {
           nextStreak = 1

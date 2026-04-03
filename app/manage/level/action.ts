@@ -7,12 +7,12 @@ import prisma from '@/lib/prisma'
 export async function deleteCategory(categoryId: string) {
   try {
     // 🌟 核心：一条指令，级联删除该分类及旗下所有题目和字幕！
-    await prisma.category.delete({
+    await prisma.paper.delete({
       where: { id: categoryId },
     })
 
     // 🌟 刷新缓存，让页面立刻显示最新状态
-    revalidatePath('/manage');
+    revalidatePath('/manage')
     revalidatePath('/')
     revalidatePath('/category/[categoryId]', 'page')
 
@@ -27,7 +27,7 @@ export async function deleteCategory(categoryId: string) {
 export async function deleteLesson(lessonId: string) {
   try {
     await prisma.lesson.delete({ where: { id: lessonId } })
-    revalidatePath('/manage');
+    revalidatePath('/manage')
     return { success: true, message: '课程删除成功！' }
   } catch (error: any) {
     return { success: false, message: `删除失败: ${error.message}` }
@@ -38,7 +38,7 @@ export async function deleteLesson(lessonId: string) {
 export async function deleteDialogue(dialogueId: number) {
   try {
     await prisma.dialogue.delete({ where: { id: dialogueId } })
-    revalidatePath('/manage/level/lesson/[lessonId]', 'page');
+    revalidatePath('/manage/level/lesson/[lessonId]', 'page')
     return { success: true, message: '字幕已删除' }
   } catch (error: any) {
     return { success: false, message: `删除失败: ${error.message}` }
@@ -59,7 +59,7 @@ export async function updateDialogue(
         end: data.end,
       },
     })
-    revalidatePath('/manage/level/lesson/[lessonId]', 'page');
+    revalidatePath('/manage/level/lesson/[lessonId]', 'page')
     return { success: true, message: '保存成功' }
   } catch (error: any) {
     return { success: false, message: `保存失败: ${error.message}` }
@@ -78,8 +78,8 @@ export async function createLevel(formData: FormData) {
 
     // 刷新全站缓存，让下拉框和主页立刻生效
     revalidatePath('/')
-    revalidatePath('/manage');
-    revalidatePath('/manage/upload');
+    revalidatePath('/manage')
+    revalidatePath('/manage/upload')
 
     return { success: true }
   } catch (error: any) {
@@ -94,11 +94,11 @@ export async function moveLesson(lessonId: string, targetCategoryId: string) {
   try {
     await prisma.lesson.update({
       where: { id: lessonId },
-      data: { categoryId: targetCategoryId },
+      data: { paperId: targetCategoryId },
     })
 
     // 刷新管理页和前台主页缓存
-    revalidatePath('/manage');
+    revalidatePath('/manage')
     revalidatePath('/')
 
     return { success: true, message: '移动成功' }
@@ -113,11 +113,11 @@ export async function updateCategoryId(oldId: string, newId: string) {
 
   try {
     // 1. 检查新 ID 是否已被占用，防止覆盖别人的数据
-    const existing = await prisma.category.findUnique({ where: { id: newId } })
+    const existing = await prisma.paper.findUnique({ where: { id: newId } })
     if (existing) return { success: false, message: '新 ID 已存在，请换一个！' }
 
     // 2. 获取老数据的内容
-    const oldCategory = await prisma.category.findUnique({
+    const oldCategory = await prisma.paper.findUnique({
       where: { id: oldId },
     })
     if (!oldCategory) return { success: false, message: '找不到原试卷' }
@@ -125,7 +125,7 @@ export async function updateCategoryId(oldId: string, newId: string) {
     // 3. 🌟 核心：开启事务，保证所有语料大迁移要么全成功，要么全失败回滚
     await prisma.$transaction([
       // A. 用新 ID 创建一个完全一样的试卷壳子
-      prisma.category.create({
+      prisma.paper.create({
         data: {
           id: newId,
           name: oldCategory.name,
@@ -136,30 +136,30 @@ export async function updateCategoryId(oldId: string, newId: string) {
 
       // B1. 把原来属于旧 ID 的听力，转移给新 ID
       prisma.lesson.updateMany({
-        where: { categoryId: oldId },
-        data: { categoryId: newId },
+        where: { paperId: oldId },
+        data: { paperId: newId },
       }),
 
       // B2. 🌟 转移阅读文章
-      prisma.article.updateMany({
-        where: { categoryId: oldId },
-        data: { categoryId: newId },
+      prisma.passage.updateMany({
+        where: { paperId: oldId },
+        data: { paperId: newId },
       }),
 
       // B3. 🌟 转移综合题库
       prisma.quiz.updateMany({
-        where: { categoryId: oldId },
-        data: { categoryId: newId },
+        where: { paperId: oldId },
+        data: { paperId: newId },
       }),
 
       // C. 功成身退，安全删除旧 ID 试卷
-      prisma.category.delete({
+      prisma.paper.delete({
         where: { id: oldId },
       }),
     ])
 
     // 刷新全站页面缓存
-    revalidatePath('/manage');
+    revalidatePath('/manage')
     revalidatePath('/')
     revalidatePath('/articles')
     revalidatePath('/quizzes')
@@ -194,7 +194,7 @@ export async function updateLevelId(oldId: string, newId: string) {
         },
       }),
       // 转移关联的试卷 (Category)
-      prisma.category.updateMany({
+      prisma.paper.updateMany({
         where: { levelId: oldId },
         data: { levelId: newId },
       }),
@@ -203,11 +203,25 @@ export async function updateLevelId(oldId: string, newId: string) {
       }),
     ])
 
-    revalidatePath('/manage');
+    revalidatePath('/manage')
     revalidatePath('/')
 
     return { success: true, message: '大模块 ID 修改成功！' }
   } catch (error: any) {
     return { success: false, message: `修改失败: ${error.message}` }
   }
+}
+
+export async function updateLessonTitle(lessonId: string, newTitle: string) {
+  if (!newTitle.trim()) {
+    throw new Error('标题不能为空')
+  }
+
+  await prisma.lesson.update({
+    where: { id: lessonId },
+    data: { title: newTitle },
+  })
+
+  // 刷新当前页面的缓存，让服务端组件重新获取最新数据
+  revalidatePath(`/admin/manage/lesson/${lessonId}`)
 }

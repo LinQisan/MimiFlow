@@ -2,11 +2,33 @@
 import Link from 'next/link'
 import prisma from '@/lib/prisma'
 
-export default async function QuizzesIndexPage() {
+export default async function QuizzesIndexPage({
+  searchParams,
+}: {
+  searchParams?:
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>
+}) {
+  const PAGE_SIZE = 16
+  const resolvedSearchParams = await Promise.resolve(searchParams || {})
+  const pageValue = Array.isArray(resolvedSearchParams.page)
+    ? resolvedSearchParams.page[0]
+    : resolvedSearchParams.page
+  const rawPage = Number(pageValue || 1)
+  const currentPage = Number.isFinite(rawPage)
+    ? Math.max(1, Math.floor(rawPage))
+    : 1
+  const totalCount = await prisma.quiz.count()
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const normalizedPage = Math.min(currentPage, totalPages)
+  const skip = (normalizedPage - 1) * PAGE_SIZE
+
   const quizzes = await prisma.quiz.findMany({
     orderBy: { createdAt: 'desc' },
+    skip,
+    take: PAGE_SIZE,
     include: {
-      category: { select: { name: true, level: { select: { title: true } } } },
+      paper: { select: { name: true, level: { select: { title: true } } } },
       _count: { select: { questions: true } },
     },
   })
@@ -14,8 +36,8 @@ export default async function QuizzesIndexPage() {
   const groupedQuizzes = quizzes.reduce<
     { categoryName: string; items: typeof quizzes }[]
   >((acc, quiz) => {
-    const categoryName = quiz.category
-      ? `${quiz.category.level?.title || '未分级'} · ${quiz.category.name}`
+    const categoryName = quiz.paper
+      ? `${quiz.paper.level?.title || '未分级'} · ${quiz.paper.name}`
       : '未分类'
     const existing = acc.find(group => group.categoryName === categoryName)
     if (existing) {
@@ -30,7 +52,7 @@ export default async function QuizzesIndexPage() {
     <div className='min-h-screen bg-gray-50 px-4 pb-20 pt-4 md:px-8 md:pt-8'>
       <div className='mx-auto max-w-7xl'>
         <section className='mb-8 border-b border-gray-200 pb-4 md:pb-5'>
-          <div className='flex flex-wrap items-end justify-between gap-4'>
+          <div className='flex flex-wrap items-center justify-between gap-4'>
             <div>
               <h1 className='text-3xl font-bold tracking-tight text-gray-900 md:text-4xl'>
                 题库练习
@@ -39,13 +61,37 @@ export default async function QuizzesIndexPage() {
                 选择一套题并开始作答，系统会记录正确率与答题耗时。
               </p>
             </div>
-            <div className='ui-tag ui-tag-info md:text-sm'>
-              共 {quizzes.length} 套
+            <div className='flex items-center gap-2'>
+              <Link
+                href='/quizzes/all?mode=scroll'
+                className='ui-btn ui-btn-sm ui-btn-primary'>
+                刷所有题
+              </Link>
+              <span className='ui-tag ui-tag-info md:text-sm'>
+                共 {quizzes.length} 套
+              </span>
             </div>
           </div>
         </section>
+        <section className='mb-4 flex items-center justify-between border-b border-gray-200 pb-3 text-xs text-gray-500'>
+          <span>
+            共 {totalCount} 套 · 第 {normalizedPage}/{totalPages} 页
+          </span>
+          <div className='flex items-center gap-2'>
+            <Link
+              href={`/quizzes?page=${Math.max(1, normalizedPage - 1)}`}
+              className={`ui-btn ui-btn-sm ${normalizedPage <= 1 ? 'pointer-events-none opacity-50' : ''}`}>
+              上一页
+            </Link>
+            <Link
+              href={`/quizzes?page=${Math.min(totalPages, normalizedPage + 1)}`}
+              className={`ui-btn ui-btn-sm ${normalizedPage >= totalPages ? 'pointer-events-none opacity-50' : ''}`}>
+              下一页
+            </Link>
+          </div>
+        </section>
 
-        <div className='space-y-6'>
+        <div className='min-h-[62vh] space-y-6'>
           {groupedQuizzes.map(group => (
             <section
               key={group.categoryName}

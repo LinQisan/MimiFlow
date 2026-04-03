@@ -33,6 +33,7 @@ type GroupedVocabItem = {
   partOfSpeech?: string | null
   partsOfSpeech?: string[]
   meanings?: string[]
+  tags?: string[]
   folderId?: string | null
   folderName?: string | null
   createdAt: Date
@@ -57,21 +58,101 @@ type GroupedVocabItem = {
 type FolderItem = {
   id: string
   name: string
+  parentId: string | null
 }
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
-  Array.from(new Set((list || []).map(item => item.trim()).filter(Boolean))).slice(
-    0,
-    1,
-  )
+  Array.from(
+    new Set((list || []).map(item => item.trim()).filter(Boolean)),
+  ).slice(0, 1)
 
-export default async function VocabularyPage() {
+export default async function VocabularyPage({
+  searchParams,
+}: {
+  searchParams?:
+    | Record<string, string | string[] | undefined>
+    | Promise<Record<string, string | string[] | undefined>>
+}) {
+  const PAGE_SIZE = 48
+  const resolvedSearchParams = await Promise.resolve(searchParams || {})
+  const pageValue = Array.isArray(resolvedSearchParams.page)
+    ? resolvedSearchParams.page[0]
+    : resolvedSearchParams.page
+  const focusValue = Array.isArray(resolvedSearchParams.focus)
+    ? resolvedSearchParams.focus[0]
+    : resolvedSearchParams.focus
+  const groupValue = Array.isArray(resolvedSearchParams.group)
+    ? resolvedSearchParams.group[0]
+    : resolvedSearchParams.group
+  const folderValue = Array.isArray(resolvedSearchParams.folder)
+    ? resolvedSearchParams.folder[0]
+    : resolvedSearchParams.folder
+  const focusId = (focusValue || '').trim()
+  const initialFocusGroup = (groupValue || '').trim()
+  const folderFilter = (folderValue || 'all').trim()
+  const allFolders = await prisma.vocabularyFolder.findMany({
+    orderBy: { createdAt: 'asc' },
+    select: { id: true, name: true, parentId: true },
+  })
+  const getFolderDescendantIds = (folderId: string) => {
+    const childrenByParent = allFolders.reduce<Record<string, string[]>>(
+      (acc, folder) => {
+        const parentKey = folder.parentId || '__root__'
+        if (!acc[parentKey]) acc[parentKey] = []
+        acc[parentKey].push(folder.id)
+        return acc
+      },
+      {},
+    )
+    const queue = [folderId]
+    const result: string[] = []
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      result.push(current)
+      const children = childrenByParent[current] || []
+      children.forEach(childId => queue.push(childId))
+    }
+    return result
+  }
+
+  const folderFilterIds =
+    folderFilter !== 'all' && folderFilter !== 'none'
+      ? getFolderDescendantIds(folderFilter)
+      : []
+  const rawPage = Number(pageValue || 1)
+  const currentPage = Number.isFinite(rawPage)
+    ? Math.max(1, Math.floor(rawPage))
+    : 1
+  const whereClause =
+    folderFilter === 'all'
+      ? {}
+      : folderFilter === 'none'
+        ? { folderId: null as null }
+        : { folderId: { in: folderFilterIds } }
+
+  const totalCount = await prisma.vocabulary.count({
+    where: whereClause,
+  })
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const normalizedPage = Math.min(currentPage, totalPages)
+  const skip = (normalizedPage - 1) * PAGE_SIZE
+
   // 获取生词及关联句子
-  const rawVocabularies = await prisma.vocabulary.findMany({
+  let rawVocabularies = await prisma.vocabulary.findMany({
+    where: whereClause,
     orderBy: { createdAt: 'desc' },
+    skip,
+    take: PAGE_SIZE,
     include: {
       folder: {
         select: { id: true, name: true },
+      },
+      tags: {
+        include: {
+          tag: {
+            select: { name: true },
+          },
+        },
       },
       review: {
         select: {
@@ -90,9 +171,69 @@ export default async function VocabularyPage() {
       },
     },
   })
-  const folders = await prisma.vocabularyFolder.findMany({
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true },
+  if (focusId && !rawVocabularies.some(item => item.id === focusId)) {
+    const focusedVocabulary = await prisma.vocabulary.findUnique({
+      where: { id: focusId },
+      include: {
+        folder: {
+          select: { id: true, name: true },
+        },
+        tags: {
+          include: {
+            tag: {
+              select: { name: true },
+            },
+          },
+        },
+        review: {
+          select: {
+            id: true,
+            due: true,
+            state: true,
+            stability: true,
+            difficulty: true,
+            elapsed_days: true,
+            scheduled_days: true,
+            reps: true,
+            lapses: true,
+            learning_steps: true,
+            last_review: true,
+          },
+        },
+      },
+    })
+    if (focusedVocabulary) {
+      rawVocabularies = [focusedVocabulary, ...rawVocabularies]
+    }
+  }
+  const folders = allFolders
+  const groupedCountRows = await prisma.vocabulary.groupBy({
+    by: ['groupName'],
+    where: whereClause,
+    _count: { _all: true },
+  })
+  const nullGroupWords = await prisma.vocabulary.findMany({
+    where: { ...whereClause, groupName: null },
+    select: { word: true },
+  })
+
+  const defaultNames: Record<string, string> = {
+    ja: '日语',
+    en: '英语',
+    ko: '韩语',
+    zh: '中文',
+    other: '未分类',
+  }
+  const groupedTotals: Record<string, number> = {}
+  groupedCountRows.forEach(row => {
+    if (!row.groupName) return
+    groupedTotals[row.groupName] =
+      (groupedTotals[row.groupName] || 0) + row._count._all
+  })
+  nullGroupWords.forEach(item => {
+    const code = guessLanguageCode(item.word) || 'other'
+    const groupName = defaultNames[code] || '未分类'
+    groupedTotals[groupName] = (groupedTotals[groupName] || 0) + 1
   })
   const vocabularyIds = rawVocabularies.map(item => item.id)
   const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
@@ -135,23 +276,23 @@ export default async function VocabularyPage() {
     prisma.dialogue.findMany({
       where: { id: { in: dialogueIds } },
       include: {
-        lesson: { include: { category: { include: { level: true } } } },
+        lesson: { include: { paper: { include: { level: true } } } },
       },
     }),
-    prisma.article.findMany({
+    prisma.passage.findMany({
       where: { id: { in: articleIds } },
-      include: { category: { include: { level: true } } },
+      include: { paper: { include: { level: true } } },
     }),
     prisma.question.findMany({
       where: { id: { in: questionIds } },
       include: {
         // 独立题库来源
         quiz: {
-          include: { category: { include: { level: true } } },
+          include: { paper: { include: { level: true } } },
         },
         // 阅读题来源
-        article: {
-          include: { category: { include: { level: true } } },
+        passage: {
+          include: { paper: { include: { level: true } } },
         },
       },
     }),
@@ -175,7 +316,7 @@ export default async function VocabularyPage() {
     if (vocab.sourceType === 'AUDIO_DIALOGUE') {
       const d = dialogueMap.get(parseInt(vocab.sourceId))
       if (d) {
-        levelTitle = d.lesson.category.level?.title || ''
+        levelTitle = d.lesson.paper.level?.title || ''
         sourceName = `听力：${d.lesson.title}`
         sourceUrl = `/lessons/${d.lessonId}`
         audioData = {
@@ -187,7 +328,7 @@ export default async function VocabularyPage() {
     } else if (vocab.sourceType === 'ARTICLE_TEXT') {
       const a = articleMap.get(vocab.sourceId)
       if (a) {
-        levelTitle = a.category?.level?.title || '未分类'
+        levelTitle = a.paper?.level?.title || '未分类'
         sourceName = `阅读：${a.title}`
         sourceUrl = `/articles/${a.id}`
       }
@@ -196,14 +337,14 @@ export default async function VocabularyPage() {
       if (q) {
         if (q.quiz) {
           const quizTitle = q.quiz.title || '无标题题库'
-          levelTitle = q.quiz.category?.level?.title || ''
+          levelTitle = q.quiz.paper?.level?.title || ''
           sourceName = `题目：${quizTitle}`
           sourceUrl = `/quizzes/${q.quizId}`
-        } else if (q.article) {
-          const articleTitle = q.article.title || '无标题文章'
-          levelTitle = q.article.category?.level?.title || ''
+        } else if (q.passage) {
+          const articleTitle = q.passage.title || '无标题文章'
+          levelTitle = q.passage.paper?.level?.title || ''
           sourceName = `阅读题目：${articleTitle}`
-          sourceUrl = `/articles/${q.articleId}`
+          sourceUrl = `/articles/${q.passageId}`
         } else {
           sourceName = '练习题 (来源已失效)'
           sourceUrl = '#'
@@ -222,14 +363,6 @@ export default async function VocabularyPage() {
 
     // 分组
     const defaultLang = guessLanguageCode(vocab.word) || 'other'
-    const defaultNames: Record<string, string> = {
-      ja: '日语',
-      en: '英语',
-      ko: '韩语',
-      zh: '中文',
-      other: '未分类',
-    }
-
     const finalGroupName =
       vocab.groupName || defaultNames[defaultLang] || '未分类'
     if (!groupedData[finalGroupName]) groupedData[finalGroupName] = []
@@ -244,6 +377,13 @@ export default async function VocabularyPage() {
       partOfSpeech: meta.partsOfSpeech[0] || null,
       partsOfSpeech: meta.partsOfSpeech,
       meanings: meta.meanings,
+      tags: Array.from(
+        new Set(
+          (vocab.tags || [])
+            .map(item => (item.tag?.name || '').trim())
+            .filter(Boolean),
+        ),
+      ),
       folderId: vocab.folder?.id || null,
       folderName: vocab.folder?.name || null,
       createdAt: vocab.createdAt,
@@ -257,7 +397,17 @@ export default async function VocabularyPage() {
   return (
     <main className='min-h-screen bg-gray-50 p-4 md:p-8'>
       <div className='max-w-7xl mx-auto'>
-        <VocabularyTabs groupedData={groupedData} folders={folders as FolderItem[]} />
+        <VocabularyTabs
+          groupedData={groupedData}
+          groupedTotals={groupedTotals}
+          folders={folders as FolderItem[]}
+          initialFolderFilter={folderFilter}
+          initialFocusId={focusId || undefined}
+          initialFocusGroup={initialFocusGroup || undefined}
+          totalCount={totalCount}
+          currentPage={normalizedPage}
+          totalPages={totalPages}
+        />
       </div>
     </main>
   )

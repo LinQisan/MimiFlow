@@ -65,7 +65,7 @@ export default function LanguageSwitcher() {
 
       {/* 🌟 下拉菜单：绝对定位在按钮正下方，自带优雅进入动画 */}
       {isOpen && (
-        <div className='ui-pop absolute right-0 top-full mt-2 w-36 bg-white border border-gray-100 p-2 z-[120] animate-in fade-in slide-in-from-top-2 duration-200'>
+        <div className='ui-pop ui-pop-surface absolute right-0 top-full mt-2 w-36 p-2 z-[120] animate-in fade-in slide-in-from-top-2 duration-200'>
           <div className='flex flex-col gap-1'>
             {languages.map(l => (
                 <button

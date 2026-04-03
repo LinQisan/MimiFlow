@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState, useTransition } from 'react'
+import { usePathname, useSearchParams } from 'next/navigation'
 import RouteMenu from '@/components/RouteMenu'
+import Breadcrumbs from '@/components/Breadcrumbs'
+import HeaderSearch from '@/components/HeaderSearch'
 import { useSidebarMenu } from '@/hooks/useSidebarMenu'
 import { Language, useI18n } from '@/context/I18nContext'
 import {
@@ -16,6 +19,8 @@ type AppShellLevel = {
   title: string
 }
 
+type ThemeMode = 'light' | 'dark' | 'system'
+
 export default function AppShell({
   children,
   levels,
@@ -24,6 +29,9 @@ export default function AppShell({
   levels: AppShellLevel[]
 }) {
   const { t, lang, setLang } = useI18n()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const searchKey = searchParams.toString()
   const dialog = useDialog()
   const {
     isDesktopCollapsed,
@@ -32,11 +40,31 @@ export default function AppShell({
     closeMobileSidebar,
   } = useSidebarMenu()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [difficultyPreset, setDifficultyPreset] = useState<GameDifficultyPreset>(
-    GameDifficultyPreset.STANDARD,
-  )
+  const [difficultyPreset, setDifficultyPreset] =
+    useState<GameDifficultyPreset>(GameDifficultyPreset.STANDARD)
+  const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [difficultyPending, startDifficultyTransition] = useTransition()
   const settingsRef = useRef<HTMLDivElement>(null)
+  const contentScrollRef = useRef<HTMLDivElement>(null)
+
+  const applyTheme = (mode: ThemeMode, suppressTransition = true) => {
+    if (typeof document === 'undefined') return
+    const root = document.documentElement
+    if (suppressTransition) {
+      root.classList.add('theme-switching')
+    }
+    const prefersDark =
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches
+    const useDark = mode === 'dark' || (mode === 'system' && prefersDark)
+    root.classList.toggle('dark', useDark)
+    root.setAttribute('data-theme', mode)
+    if (suppressTransition) {
+      window.setTimeout(() => {
+        root.classList.remove('theme-switching')
+      }, 120)
+    }
+  }
 
   useEffect(() => {
     let mounted = true
@@ -50,6 +78,25 @@ export default function AppShell({
       mounted = false
     }
   }, [])
+
+  useEffect(() => {
+    const saved =
+      (localStorage.getItem('app_theme') as ThemeMode | null) || 'system'
+    const next =
+      saved === 'light' || saved === 'dark' || saved === 'system'
+        ? saved
+        : 'system'
+    setThemeMode(next)
+    applyTheme(next, false)
+  }, [])
+
+  useEffect(() => {
+    if (themeMode !== 'system') return
+    const media = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = () => applyTheme('system')
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [themeMode])
 
   useEffect(() => {
     const handlePointerDown = (event: MouseEvent | TouchEvent) => {
@@ -75,20 +122,28 @@ export default function AppShell({
     }
   }, [isMobileOpen])
 
+  useEffect(() => {
+    const scrollEl = contentScrollRef.current
+    if (!scrollEl) return
+    scrollEl.scrollTo({ top: 0, behavior: 'auto' })
+  }, [pathname, searchKey])
+
+  const isArticleDetailRoute = /^\/articles\/[^/]+$/.test(pathname || '')
+
   return (
-    <div className='flex h-screen w-full bg-white overflow-hidden'>
+    <div className='flex h-screen w-full bg-white text-gray-900 dark:bg-slate-950 dark:text-slate-100'>
       <aside
         className={`
-          fixed lg:static inset-y-0 left-0 z-50 h-full bg-gray-50 border-r border-gray-200 flex flex-col shrink-0
+          fixed lg:static inset-y-0 left-0 z-50 h-full border-r border-gray-200 bg-gray-50 dark:border-slate-800 dark:bg-slate-900 flex flex-col shrink-0
           transition-[width,transform] duration-300 ease-in-out overflow-hidden
           ${isMobileOpen ? 'translate-x-0 w-64 ' : '-translate-x-full lg:translate-x-0'}
           ${isDesktopCollapsed ? 'lg:w-20' : 'lg:w-64'}
         `}>
         <div
-          className={`h-16 flex items-center border-b border-gray-100 shrink-0 transition-all duration-300 ${
+          className={`h-16 flex items-center border-b border-gray-100 dark:border-slate-800 shrink-0 transition-all duration-300 ${
             isDesktopCollapsed ? 'justify-center px-0' : 'px-6'
           }`}>
-          <span className='text-lg font-black text-gray-800 tracking-wide whitespace-nowrap'>
+          <span className='text-lg font-black text-gray-800 dark:text-slate-100 tracking-wide whitespace-nowrap'>
             {isDesktopCollapsed ? 'M' : 'MimiFlow'}
           </span>
         </div>
@@ -102,8 +157,8 @@ export default function AppShell({
         </div>
       </aside>
 
-      <div className='flex-1 min-w-0 flex flex-col h-screen bg-white'>
-        <header className='relative z-[90] h-16 shrink-0 flex items-center justify-between overflow-visible px-4 border-b border-gray-100 bg-white/90 backdrop-blur-md'>
+      <div className='flex-1 min-w-0 flex flex-col h-screen bg-white dark:bg-slate-950'>
+        <header className='relative z-[90] h-16 shrink-0 flex items-center justify-between overflow-visible px-4 border-b border-gray-100 dark:border-slate-800 bg-white/90 dark:bg-slate-950/90 backdrop-blur-md'>
           <button
             onClick={toggleSidebar}
             className='ui-btn ui-btn-sm px-2'
@@ -121,6 +176,9 @@ export default function AppShell({
               />
             </svg>
           </button>
+
+          <HeaderSearch />
+
           <div ref={settingsRef} className='relative z-[100] shrink-0'>
             <button
               onClick={() => setSettingsOpen(prev => !prev)}
@@ -147,8 +205,8 @@ export default function AppShell({
             </button>
 
             {settingsOpen && (
-              <div className='ui-pop absolute right-0 mt-2 w-56 bg-white border border-gray-200 p-2 z-[120] space-y-2'>
-                <div className='text-[11px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
+              <div className='ui-pop ui-pop-surface absolute right-0 mt-2 w-60 p-2 z-[120] space-y-2'>
+                <div className='text-[11px] font-bold text-gray-400 dark:text-slate-400 px-2 py-1 uppercase tracking-wider'>
                   {t('settings.language')}
                 </div>
                 {(
@@ -166,17 +224,53 @@ export default function AppShell({
                     }}
                     className={`w-full text-left px-3 ui-mobile-py-sm text-sm font-medium ${
                       lang === code
-                        ? 'bg-indigo-50 text-indigo-700'
-                        : 'text-gray-600 hover:bg-gray-50'
+                        ? 'bg-indigo-50 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-200'
+                        : 'text-gray-600 hover:bg-gray-50 dark:text-slate-300 dark:hover:bg-slate-800'
                     }`}>
                     {label}
                   </button>
                 ))}
-                <div className='border-t border-gray-100 pt-2'>
-                  <div className='text-[11px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
+                <div className='border-t border-gray-100 dark:border-slate-800 pt-2'>
+                  <div className='text-[11px] font-bold text-gray-400 dark:text-slate-400 px-2 py-1 uppercase tracking-wider'>
+                    {t('settings.theme')}
+                  </div>
+                  <div className='flex rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-1'>
+                    {(
+                      [
+                        ['light', t('settings.themeLight')],
+                        ['dark', t('settings.themeDark')],
+                        ['system', t('settings.themeSystem')],
+                      ] as [ThemeMode, string][]
+                    ).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type='button'
+                        onClick={() => {
+                          setThemeMode(mode)
+                          localStorage.setItem('app_theme', mode)
+                          applyTheme(mode)
+                          dialog.toast(
+                            `${t('settings.theme')}${t('settings.saved')}`,
+                            {
+                              tone: 'success',
+                            },
+                          )
+                        }}
+                        className={`h-8 flex-1 rounded-md text-xs font-bold transition ${
+                          themeMode === mode
+                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm'
+                            : 'text-gray-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className='border-t border-gray-100 dark:border-slate-800 pt-2'>
+                  <div className='text-[11px] font-bold text-gray-400 dark:text-slate-400 px-2 py-1 uppercase tracking-wider'>
                     动态难度
                   </div>
-                  <div className='flex rounded-lg border border-gray-200 bg-gray-50 p-1'>
+                  <div className='flex rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800 p-1'>
                     {[
                       [GameDifficultyPreset.CONSERVATIVE, '保守'],
                       [GameDifficultyPreset.STANDARD, '标准'],
@@ -193,16 +287,20 @@ export default function AppShell({
                               preset as GameDifficultyPreset,
                             )
                             if (!res.success) {
-                              dialog.toast(res.message || '难度保存失败', { tone: 'error' })
+                              dialog.toast(res.message || '难度保存失败', {
+                                tone: 'error',
+                              })
                               return
                             }
-                            dialog.toast(`动态难度已切换为${label}`, { tone: 'success' })
+                            dialog.toast(`动态难度已切换为${label}`, {
+                              tone: 'success',
+                            })
                           })
                         }
                         className={`h-8 flex-1 rounded-md text-xs font-bold transition ${
                           difficultyPreset === preset
-                            ? 'bg-white text-indigo-700 shadow-sm'
-                            : 'text-gray-600 hover:bg-white'
+                            ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-200 shadow-sm'
+                            : 'text-gray-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700'
                         }`}>
                         {label}
                       </button>
@@ -214,7 +312,20 @@ export default function AppShell({
           </div>
         </header>
 
-        <main className='flex-1 overflow-y-auto bg-gray-50/50'>{children}</main>
+        <main className='flex-1 min-h-0 bg-gray-50/50 dark:bg-slate-950/60'>
+          <div className='border-b border-gray-100 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-sm'>
+            <Breadcrumbs levels={levels} />
+          </div>
+          <div
+            ref={contentScrollRef}
+            className={`min-h-0 ${
+              isArticleDetailRoute
+                ? 'h-full overflow-hidden'
+                : 'h-full overflow-y-auto'
+            }`}>
+            {children}
+          </div>
+        </main>
       </div>
 
       {isMobileOpen && (

@@ -184,7 +184,7 @@ export default async function Home() {
     prisma.questionRetry.count({
       where: { dueAt: { lte: now } },
     }),
-    prisma.article.count(),
+    prisma.passage.count(),
     prisma.quiz.count(),
     prisma.vocabulary.groupBy({
       by: ['sourceType'],
@@ -206,7 +206,7 @@ export default async function Home() {
             contextSentence: true,
             quiz: {
               select: {
-                category: {
+                paper: {
                   select: {
                     name: true,
                     level: { select: { title: true } },
@@ -214,9 +214,9 @@ export default async function Home() {
                 },
               },
             },
-            article: {
+            passage: {
               select: {
-                category: {
+                paper: {
                   select: {
                     name: true,
                     level: { select: { title: true } },
@@ -334,8 +334,8 @@ export default async function Home() {
   const languageBreakdown = groupAttemptBreakdown(
     currentMonthRows.map(item => {
       const levelTitle =
-        item.question.quiz?.category?.level?.title ||
-        item.question.article?.category?.level?.title ||
+        item.question.quiz?.paper?.level?.title ||
+        item.question.passage?.paper?.level?.title ||
         ''
       return {
         isCorrect: item.isCorrect,
@@ -353,8 +353,8 @@ export default async function Home() {
       isCorrect: item.isCorrect,
       timeSpentMs: item.timeSpentMs,
       groupKey:
-        item.question.quiz?.category?.name ||
-        item.question.article?.category?.name ||
+        item.question.quiz?.paper?.name ||
+        item.question.passage?.paper?.name ||
         '未分类',
     })),
   )

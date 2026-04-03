@@ -28,6 +28,8 @@ type ToastItem = {
   id: number
   message: string
   tone: ToastTone
+  count: number
+  updatedAt: number
 }
 
 type DialogContextType = {
@@ -79,7 +81,25 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   const pushToast = useCallback((message: string, tone: ToastTone = 'info') => {
     const id = toastSeedRef.current
     toastSeedRef.current += 1
-    setToasts(items => [...items, { id, message, tone }])
+    const now = Date.now()
+    setToasts(items => {
+      const duplicateIndex = items.findIndex(
+        item => item.message === message && item.tone === tone,
+      )
+      if (duplicateIndex >= 0) {
+        const next = [...items]
+        const duplicate = next[duplicateIndex]
+        next[duplicateIndex] = {
+          ...duplicate,
+          count: duplicate.count + 1,
+          updatedAt: now,
+        }
+        const moved = next.splice(duplicateIndex, 1)[0]
+        next.push(moved)
+        return next.slice(-3)
+      }
+      return [...items, { id, message, tone, count: 1, updatedAt: now }].slice(-3)
+    })
   }, [])
 
   const removeToast = useCallback((id: number) => {
@@ -89,7 +109,7 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (toasts.length === 0) return
     const timers = toasts.map(item =>
-      window.setTimeout(() => removeToast(item.id), 2600),
+      window.setTimeout(() => removeToast(item.id), 2200 + Math.min(1000, item.count * 180)),
     )
     return () => timers.forEach(timer => window.clearTimeout(timer))
   }, [toasts, removeToast])
@@ -162,14 +182,21 @@ export function DialogProvider({ children }: { children: React.ReactNode }) {
         {toasts.map(toast => (
           <div
             key={toast.id}
-            className={`pointer-events-auto rounded-xl border px-3 py-2 text-sm font-medium shadow-lg backdrop-blur-sm ${
+            className={`pointer-events-auto rounded-xl border px-3 py-2 text-sm font-semibold shadow-md backdrop-blur-sm animate-in slide-in-from-right-3 fade-in duration-150 ${
               toast.tone === 'success'
-                ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700'
+                ? 'border-emerald-200 bg-emerald-50/95 text-emerald-700 dark:border-emerald-500/45 dark:bg-emerald-500/12 dark:text-emerald-200'
                 : toast.tone === 'error'
-                  ? 'border-rose-200 bg-rose-50/95 text-rose-700'
-                  : 'border-gray-200 bg-white/95 text-gray-700'
+                  ? 'border-rose-200 bg-rose-50/95 text-rose-700 dark:border-rose-500/45 dark:bg-rose-500/12 dark:text-rose-200'
+                  : 'border-gray-200 bg-white/95 text-gray-700 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200'
             }`}>
-            {toast.message}
+            <div className='flex items-center justify-between gap-2'>
+              <span className='min-w-0 truncate'>{toast.message}</span>
+              {toast.count > 1 && (
+                <span className='ui-tag ui-tag-muted h-6 px-2 text-[11px]'>
+                  x{toast.count}
+                </span>
+              )}
+            </div>
           </div>
         ))}
       </div>

@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   batchUpdateVocabularyMetaAdmin,
   deleteVocabularyAdmin,
-  getAllVocabulariesAdmin,
+  getVocabulariesPagedAdmin,
   getVocabularyMergePreviewAdmin,
   mergeAllVocabularyDuplicatesAdmin,
   mergeVocabularyDuplicateGroupAdmin,
   updateVocabularyMetaAdmin,
+  updateVocabularyTagsAdmin,
 } from '../searchActions'
 import { useDialog } from '@/context/DialogContext'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
@@ -22,6 +23,7 @@ type VocabularyRecord = {
   pronunciations: string[]
   partsOfSpeech: string[]
   meanings: string[]
+  tags: string[]
 }
 
 type SentenceRecord = {
@@ -85,16 +87,20 @@ const deleteButtonClassName =
   'bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100'
 
 export default function VocabularyManagePage() {
+  const PAGE_SIZE = 30
   const dialog = useDialog()
   const [vocabList, setVocabList] = useState<VocabularyRecord[]>([])
+  const [totalCount, setTotalCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<'table' | 'card'>('table')
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [pronunciationsInput, setPronunciationsInput] = useState('')
   const [partsOfSpeechInput, setPartsOfSpeechInput] = useState('')
   const [meaningInput, setMeaningInput] = useState('')
+  const [tagsInput, setTagsInput] = useState('')
   const [mergePreview, setMergePreview] = useState<{
     groups: MergePreviewGroup[]
     totalGroups: number
@@ -115,14 +121,17 @@ export default function VocabularyManagePage() {
   const pronunciationsPreview = splitUserInput(pronunciationsInput)
   const partsOfSpeechPreview = splitUserInput(partsOfSpeechInput)
   const meaningPreview = splitUserInput(meaningInput)
+  const tagsPreview = splitUserInput(tagsInput)
   const bulkPronunciationsPreview = splitUserInput(bulkPronunciationsInput)
   const bulkPartsOfSpeechPreview = splitUserInput(bulkPartsOfSpeechInput)
 
-  const fetchVocabs = async () => {
+  const fetchVocabs = async (page = currentPage, keyword = searchKeyword) => {
     setLoading(true)
-    const data = await getAllVocabulariesAdmin()
-    const nextList = data as VocabularyRecord[]
+    const data = await getVocabulariesPagedAdmin(keyword, page, PAGE_SIZE)
+    const nextList = data.items as VocabularyRecord[]
     setVocabList(nextList)
+    setTotalCount(data.total || 0)
+    setCurrentPage(data.page || 1)
     const validIdSet = new Set(nextList.map(item => item.id))
     setSelectedIds(prev => prev.filter(id => validIdSet.has(id)))
     setLoading(false)
@@ -136,9 +145,15 @@ export default function VocabularyManagePage() {
   }
 
   useEffect(() => {
-    fetchVocabs()
     fetchMergePreview()
   }, [])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void fetchVocabs(currentPage, searchKeyword)
+    }, 260)
+    return () => window.clearTimeout(timer)
+  }, [currentPage, searchKeyword])
 
   useEffect(() => {
     if (window.matchMedia('(max-width: 768px)').matches) {
@@ -150,29 +165,12 @@ export default function VocabularyManagePage() {
     () => vocabList.reduce((acc, item) => acc + item.meanings.length, 0),
     [vocabList],
   )
-  const filteredList = useMemo(() => {
-    const keyword = searchKeyword.trim().toLowerCase()
-    if (!keyword) return vocabList
-    return vocabList.filter(item => {
-      const sentenceText = (item.sentences || [])
-        .map(sentence => `${sentence.text} ${sentence.source}`)
-        .join(' ')
-      const haystack = [
-        item.word,
-        item.pronunciations.join(' '),
-        item.partsOfSpeech.join(' '),
-        item.meanings.join(' '),
-        sentenceText,
-      ]
-        .join(' ')
-        .toLowerCase()
-      return haystack.includes(keyword)
-    })
-  }, [searchKeyword, vocabList])
+  const filteredList = vocabList
   const filteredIdSet = useMemo(
     () => new Set(filteredList.map(item => item.id)),
     [filteredList],
   )
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
   const selectedInViewCount = useMemo(
     () => selectedIds.filter(id => filteredIdSet.has(id)).length,
     [filteredIdSet, selectedIds],
@@ -204,6 +202,7 @@ export default function VocabularyManagePage() {
     setPronunciationsInput(item.pronunciations.join('\n'))
     setPartsOfSpeechInput(item.partsOfSpeech.join('\n'))
     setMeaningInput(item.meanings.join('\n'))
+    setTagsInput(item.tags.join('\n'))
   }
 
   const handleDeleteVocab = async (id: string, word: string) => {
@@ -212,8 +211,7 @@ export default function VocabularyManagePage() {
       dialog.toast(res.message || `删除 "${word}" 失败`, { tone: 'error' })
       return
     }
-    setVocabList(prev => prev.filter(item => item.id !== id))
-    setSelectedIds(prev => prev.filter(item => item !== id))
+    await fetchVocabs(currentPage, searchKeyword)
     dialog.toast('已删除', { tone: 'success' })
   }
 
@@ -273,6 +271,7 @@ export default function VocabularyManagePage() {
     const pronunciations = splitUserInput(pronunciationsInput)
     const partsOfSpeech = splitUserInput(partsOfSpeechInput)
     const meanings = splitUserInput(meaningInput)
+    const tags = splitUserInput(tagsInput)
     setSavingId(item.id)
     const res = await updateVocabularyMetaAdmin(item.id, {
       pronunciations,
@@ -286,6 +285,17 @@ export default function VocabularyManagePage() {
       return
     }
 
+    // 上传标签（如果有变化）
+    if (tags.length > 0 || item.tags.length > 0) {
+      setSavingId(item.id)
+      const tagRes = await updateVocabularyTagsAdmin(item.id, tags)
+      setSavingId(null)
+      if (!tagRes.success) {
+        await dialog.alert(tagRes.message || '保存标签失败')
+        return
+      }
+    }
+
     setVocabList(prev =>
       prev.map(current =>
         current.id === item.id
@@ -294,6 +304,7 @@ export default function VocabularyManagePage() {
               pronunciations,
               partsOfSpeech,
               meanings,
+              tags,
             }
           : current,
       ),
@@ -313,8 +324,10 @@ export default function VocabularyManagePage() {
       dialog.toast(result.message || '归并失败', { tone: 'error' })
       return
     }
-    dialog.toast(`已归并 ${result.mergedCount || 0} 条重复词`, { tone: 'success' })
-    await fetchVocabs()
+    dialog.toast(`已归并 ${result.mergedCount || 0} 条重复词`, {
+      tone: 'success',
+    })
+    await fetchVocabs(currentPage, searchKeyword)
     await fetchMergePreview()
   }
 
@@ -326,8 +339,10 @@ export default function VocabularyManagePage() {
       dialog.toast(result.message || '一键归并失败', { tone: 'error' })
       return
     }
-    dialog.toast(`已归并 ${result.mergedCount || 0} 条重复词`, { tone: 'success' })
-    await fetchVocabs()
+    dialog.toast(`已归并 ${result.mergedCount || 0} 条重复词`, {
+      tone: 'success',
+    })
+    await fetchVocabs(currentPage, searchKeyword)
     await fetchMergePreview()
   }
 
@@ -336,13 +351,15 @@ export default function VocabularyManagePage() {
       <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
         <div>
           <h1 className='text-2xl font-black text-gray-900'>词库管理</h1>
-          <p className='mt-1 text-sm text-gray-500'>维护单词注音和释义，可多值保存。</p>
+          <p className='mt-1 text-sm text-gray-500'>
+            维护单词注音和释义，可多值保存。
+          </p>
         </div>
         <div className='flex flex-col gap-2'>
           <div className='grid grid-cols-2 gap-2 text-sm'>
             <div className='border border-gray-200 bg-white px-3 py-2'>
               <p className='text-xs text-gray-500'>词条</p>
-              <p className='text-lg font-bold text-gray-900'>{vocabList.length}</p>
+              <p className='text-lg font-bold text-gray-900'>{totalCount}</p>
             </div>
             <div className='border border-gray-200 bg-white px-3 py-2'>
               <p className='text-xs text-gray-500'>释义总数</p>
@@ -381,25 +398,32 @@ export default function VocabularyManagePage() {
         <input
           type='text'
           value={searchKeyword}
-          onChange={e => setSearchKeyword(e.currentTarget.value)}
+          onChange={e => {
+            setSearchKeyword(e.currentTarget.value)
+            setCurrentPage(1)
+          }}
           placeholder='支持搜索单词、注音、词性、释义、例句来源'
           className='w-full border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
         />
         <p className='mt-1 text-xs text-gray-400'>
-          共 {vocabList.length} 条，当前匹配 {filteredList.length} 条
+          共 {totalCount} 条，当前页 {filteredList.length} 条
         </p>
       </div>
 
       <section className='mb-4 border border-gray-200 bg-white p-3 md:p-4'>
         <div className='flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-3'>
           <div>
-            <h2 className='text-sm font-black text-gray-900'>词性/注音批量编辑</h2>
+            <h2 className='text-sm font-black text-gray-900'>
+              词性/注音批量编辑
+            </h2>
             <p className='mt-1 text-xs text-gray-500'>
               适合日语外来语、多音词、多词性词条的集中治理。
             </p>
           </div>
           <div className='flex flex-wrap items-center gap-2 text-xs'>
-            <span className='ui-tag ui-tag-info'>已选 {selectedIds.length}</span>
+            <span className='ui-tag ui-tag-info'>
+              已选 {selectedIds.length}
+            </span>
             <button
               type='button'
               onClick={() => toggleSelectAllVisible(true)}
@@ -434,9 +458,11 @@ export default function VocabularyManagePage() {
             批量注音
             <textarea
               value={bulkPronunciationsInput}
-              onChange={event => setBulkPronunciationsInput(event.currentTarget.value)}
+              onChange={event =>
+                setBulkPronunciationsInput(event.currentTarget.value)
+              }
               rows={3}
-              placeholder='每行一个，可用逗号分隔；日语可用空格或 | 拆分（如 にん げん）'
+              placeholder='每行一个，可用逗号分隔；日语支持 言:い い 訳:わけ，也兼容空格或 | 拆分'
               className='mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
             />
           </label>
@@ -444,7 +470,9 @@ export default function VocabularyManagePage() {
             批量词性
             <textarea
               value={bulkPartsOfSpeechInput}
-              onChange={event => setBulkPartsOfSpeechInput(event.currentTarget.value)}
+              onChange={event =>
+                setBulkPartsOfSpeechInput(event.currentTarget.value)
+              }
               rows={3}
               placeholder='每行一个词性'
               className='mt-1 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700 outline-none focus:border-indigo-300 focus:bg-white focus:ring-2 focus:ring-indigo-100'
@@ -454,20 +482,17 @@ export default function VocabularyManagePage() {
 
         <div className='mt-3 flex flex-wrap items-center gap-2'>
           {bulkPronunciationsPreview.slice(0, 6).map(item => (
-            <span
-              key={`bulk-pron-${item}`}
-              className='ui-tag ui-tag-info'>
+            <span key={`bulk-pron-${item}`} className='ui-tag ui-tag-info'>
               注音: {item}
             </span>
           ))}
           {bulkPartsOfSpeechPreview.slice(0, 6).map(item => (
-            <span
-              key={`bulk-pos-${item}`}
-              className='ui-tag ui-tag-warn'>
+            <span key={`bulk-pos-${item}`} className='ui-tag ui-tag-warn'>
               词性: {item}
             </span>
           ))}
-          {(bulkPronunciationsPreview.length > 6 || bulkPartsOfSpeechPreview.length > 6) && (
+          {(bulkPronunciationsPreview.length > 6 ||
+            bulkPartsOfSpeechPreview.length > 6) && (
             <span className='text-xs text-gray-400'>仅展示前 6 个预览项</span>
           )}
         </div>
@@ -485,7 +510,31 @@ export default function VocabularyManagePage() {
             onClick={() => toggleSelectAllVisible(!allInViewSelected)}
             disabled={filteredList.length === 0}
             className='ui-btn ui-btn-sm disabled:opacity-50'>
-            {allInViewSelected ? '取消当前筛选全选' : '勾选当前筛选结果'}
+            {allInViewSelected ? '取消当前页全选' : '勾选当前页'}
+          </button>
+        </div>
+      </section>
+
+      <section className='mb-4 flex items-center justify-between border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600'>
+        <span>
+          第 {currentPage} / {totalPages} 页
+        </span>
+        <div className='flex items-center gap-2'>
+          <button
+            type='button'
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className='ui-btn ui-btn-sm disabled:opacity-50'>
+            上一页
+          </button>
+          <button
+            type='button'
+            disabled={currentPage >= totalPages}
+            onClick={() =>
+              setCurrentPage(prev => Math.min(totalPages, prev + 1))
+            }
+            className='ui-btn ui-btn-sm disabled:opacity-50'>
+            下一页
           </button>
         </div>
       </section>
@@ -516,8 +565,12 @@ export default function VocabularyManagePage() {
           </div>
         </div>
         <div className='mt-3 flex flex-wrap items-center gap-2 text-xs'>
-          <span className='ui-tag ui-tag-muted'>重复组 {mergePreview.totalGroups}</span>
-          <span className='ui-tag ui-tag-warn'>待归并词条 {mergePreview.duplicateCount}</span>
+          <span className='ui-tag ui-tag-muted'>
+            重复组 {mergePreview.totalGroups}
+          </span>
+          <span className='ui-tag ui-tag-warn'>
+            待归并词条 {mergePreview.duplicateCount}
+          </span>
         </div>
         <div className='mt-3 space-y-2'>
           {mergePreview.groups.slice(0, 12).map(group => (
@@ -526,16 +579,24 @@ export default function VocabularyManagePage() {
               className='border border-gray-200 bg-gray-50/60 p-2.5'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <div className='flex flex-wrap items-center gap-2 text-xs'>
-                  <span className='ui-tag ui-tag-info'>词根: {group.groupKey}</span>
-                  <span className='ui-tag ui-tag-success'>保留: {group.keepWord}</span>
-                  <span className='ui-tag ui-tag-muted'>合并 {group.mergeIds.length} 条</span>
+                  <span className='ui-tag ui-tag-info'>
+                    词根: {group.groupKey}
+                  </span>
+                  <span className='ui-tag ui-tag-success'>
+                    保留: {group.keepWord}
+                  </span>
+                  <span className='ui-tag ui-tag-muted'>
+                    合并 {group.mergeIds.length} 条
+                  </span>
                 </div>
                 <button
                   type='button'
                   onClick={() => handleMergeSingleGroup(group)}
                   disabled={mergingGroupKey === group.groupKey}
                   className='ui-btn ui-btn-sm'>
-                  {mergingGroupKey === group.groupKey ? '处理中...' : '合并此组'}
+                  {mergingGroupKey === group.groupKey
+                    ? '处理中...'
+                    : '合并此组'}
                 </button>
               </div>
               <div className='mt-2 flex flex-wrap gap-1.5 text-[11px] text-gray-600'>
@@ -559,14 +620,89 @@ export default function VocabularyManagePage() {
             </p>
           )}
           {mergePreview.totalGroups === 0 && (
-            <p className='text-xs text-gray-400'>当前未发现可归并的历史重复词。</p>
+            <p className='text-xs text-gray-400'>
+              当前未发现可归并的历史重复词。
+            </p>
           )}
         </div>
       </section>
 
-      <div className='border border-gray-200 bg-white '>
+      <div className='min-h-[62vh] border border-gray-200 bg-white '>
         {loading ? (
-          <div className='py-16 text-center text-sm text-gray-500'>加载中...</div>
+          viewMode === 'card' ? (
+            <div className='space-y-3 p-3 md:p-4'>
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`manage-vocab-card-skeleton-${idx}`}
+                  className='border border-gray-200 bg-gray-50/60 p-3 md:p-4'>
+                  <div className='h-6 w-32 animate-pulse bg-gray-100' />
+                  <div className='mt-3 h-4 w-5/6 animate-pulse bg-gray-100' />
+                  <div className='mt-2 h-4 w-2/3 animate-pulse bg-gray-100' />
+                  <div className='mt-4 h-20 animate-pulse bg-gray-100' />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className='overflow-x-auto'>
+              <table className='w-full min-w-[920px] text-left text-sm text-gray-700'>
+                <thead className='sticky top-0 z-10 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500'>
+                  <tr>
+                    <th className='border-b border-gray-200 px-3 py-3.5 font-bold'>
+                      选择
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      单词
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      注音
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      词性
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      释义
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      来源
+                    </th>
+                    <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                      操作
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 8 }).map((_, idx) => (
+                    <tr
+                      key={`manage-vocab-row-skeleton-${idx}`}
+                      className='border-b border-gray-100'>
+                      <td className='px-3 py-3.5'>
+                        <div className='h-4 w-4 animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-5 w-32 animate-pulse bg-gray-100' />
+                        <div className='mt-2 h-14 w-full max-w-md animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-5 w-24 animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-5 w-20 animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-5 w-32 animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-5 w-14 animate-pulse bg-gray-100' />
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        <div className='h-8 w-24 animate-pulse bg-gray-100' />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         ) : viewMode === 'card' ? (
           <div className='space-y-3 p-3 md:p-4'>
             {filteredList.map(item => {
@@ -630,7 +766,9 @@ export default function VocabularyManagePage() {
                           </button>
                           <InlineConfirmAction
                             message={`删除 "${item.word}" 后不可恢复，确认删除吗？`}
-                            onConfirm={() => handleDeleteVocab(item.id, item.word)}
+                            onConfirm={() =>
+                              handleDeleteVocab(item.id, item.word)
+                            }
                             triggerLabel='删除'
                             confirmLabel='确认删除'
                             pendingLabel='删除中...'
@@ -654,11 +792,12 @@ export default function VocabularyManagePage() {
                               setPronunciationsInput(e.currentTarget.value)
                             }
                             rows={3}
-                            placeholder='每行一个，或使用逗号分隔；日语可用空格或 | 拆分（如 にん げん）'
+                            placeholder='每行一个，或使用逗号分隔；日语支持 言:い い 訳:わけ，也兼容空格或 | 拆分'
                             className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
                           />
                           <p className='mt-1 text-[10px] text-indigo-400'>
-                            示例：人間 可填 にん げん；外来语一般整词填写
+                            示例：言い訳 可填 言:い い 訳:わけ；也可填 にん げん
+                            / にん|げん；外来语一般整词填写
                           </p>
                           <div className='mt-2 flex flex-wrap gap-1.5'>
                             {pronunciationsPreview.length > 0 ? (
@@ -687,7 +826,9 @@ export default function VocabularyManagePage() {
                               </span>
                             ))
                           ) : (
-                            <span className='text-xs text-gray-400'>未设置</span>
+                            <span className='text-xs text-gray-400'>
+                              未设置
+                            </span>
                           )}
                         </div>
                       )}
@@ -701,7 +842,9 @@ export default function VocabularyManagePage() {
                         <>
                           <textarea
                             value={partsOfSpeechInput}
-                            onChange={e => setPartsOfSpeechInput(e.currentTarget.value)}
+                            onChange={e =>
+                              setPartsOfSpeechInput(e.currentTarget.value)
+                            }
                             rows={3}
                             placeholder='例如: n. / vt.'
                             className='w-full border border-amber-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-amber-400'
@@ -733,7 +876,9 @@ export default function VocabularyManagePage() {
                               </span>
                             ))
                           ) : (
-                            <span className='text-xs text-gray-400'>未设置</span>
+                            <span className='text-xs text-gray-400'>
+                              未设置
+                            </span>
                           )}
                         </div>
                       )}
@@ -747,7 +892,9 @@ export default function VocabularyManagePage() {
                         <>
                           <textarea
                             value={meaningInput}
-                            onChange={e => setMeaningInput(e.currentTarget.value)}
+                            onChange={e =>
+                              setMeaningInput(e.currentTarget.value)
+                            }
                             rows={3}
                             placeholder='每行一个释义'
                             className='w-full border border-emerald-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-emerald-400'
@@ -779,7 +926,57 @@ export default function VocabularyManagePage() {
                               </span>
                             ))
                           ) : (
-                            <span className='text-xs text-gray-400'>未设置</span>
+                            <span className='text-xs text-gray-400'>
+                              未设置
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </section>
+
+                    <section className='border border-indigo-100 bg-indigo-50/40 p-2.5'>
+                      <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600'>
+                        标签
+                      </p>
+                      {isEditing ? (
+                        <>
+                          <textarea
+                            value={tagsInput}
+                            onChange={e => setTagsInput(e.currentTarget.value)}
+                            rows={2}
+                            placeholder='每行一个标签'
+                            className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
+                          />
+                          <div className='mt-2 flex flex-wrap gap-1.5'>
+                            {tagsPreview.length > 0 ? (
+                              tagsPreview.map(tag => (
+                                <span
+                                  key={`${item.id}-tag-preview-card-${tag}`}
+                                  className='rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700'>
+                                  #{tag}
+                                </span>
+                              ))
+                            ) : (
+                              <span className='text-[10px] text-indigo-300'>
+                                未添加标签
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className='flex flex-wrap gap-1.5'>
+                          {item.tags && item.tags.length > 0 ? (
+                            item.tags.map(tag => (
+                              <span
+                                key={`${item.id}-tag-card-${tag}`}
+                                className='rounded-md bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700'>
+                                #{tag}
+                              </span>
+                            ))
+                          ) : (
+                            <span className='text-xs text-gray-400'>
+                              未设置
+                            </span>
                           )}
                         </div>
                       )}
@@ -859,12 +1056,24 @@ export default function VocabularyManagePage() {
                       aria-label='全选当前筛选词条'
                     />
                   </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>单词</th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>注音</th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>词性</th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>释义</th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>来源</th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 text-right font-bold'>操作</th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                    单词
+                  </th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                    注音
+                  </th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                    词性
+                  </th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                    释义
+                  </th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
+                    来源
+                  </th>
+                  <th className='border-b border-gray-200 px-4 py-3.5 text-right font-bold'>
+                    操作
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -903,7 +1112,9 @@ export default function VocabularyManagePage() {
                           const sentenceList = item.sentences || []
                           if (sentenceList.length === 0) {
                             return (
-                              <p className='mt-1 text-xs text-gray-400'>暂无例句</p>
+                              <p className='mt-1 text-xs text-gray-400'>
+                                暂无例句
+                              </p>
                             )
                           }
                           return (
@@ -919,18 +1130,21 @@ export default function VocabularyManagePage() {
                                     <span className='rounded-md bg-white border border-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500'>
                                       {sentence.source}
                                     </span>
-                                    {typeof sentence.meaningIndex === 'number' && (
+                                    {typeof sentence.meaningIndex ===
+                                      'number' && (
                                       <span className='rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700'>
                                         释义 {sentence.meaningIndex + 1}
                                       </span>
                                     )}
-                                    {(sentence.posTags || []).slice(0, 1).map(tag => (
-                                      <span
-                                        key={`${item.id}-sentence-${idx}-tag-${tag}`}
-                                        className='rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700'>
-                                        {tag}
-                                      </span>
-                                    ))}
+                                    {(sentence.posTags || [])
+                                      .slice(0, 1)
+                                      .map(tag => (
+                                        <span
+                                          key={`${item.id}-sentence-${idx}-tag-${tag}`}
+                                          className='rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700'>
+                                          {tag}
+                                        </span>
+                                      ))}
                                   </div>
                                 </div>
                               ))}
@@ -955,11 +1169,12 @@ export default function VocabularyManagePage() {
                                 setPronunciationsInput(e.currentTarget.value)
                               }
                               rows={3}
-                              placeholder='每行一个，或使用逗号分隔；日语可用空格或 | 拆分（如 にん げん）'
+                              placeholder='每行一个，或使用逗号分隔；日语支持 言:い い 訳:わけ，也兼容空格或 | 拆分'
                               className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
                             />
                             <p className='mt-1 text-[10px] text-indigo-400'>
-                              示例：人間 可填 にん げん；外来语一般整词填写
+                              示例：言い訳 可填 言:い い 訳:わけ；也可填 にん
+                              げん / にん|げん；外来语一般整词填写
                             </p>
                             <div className='mt-2 flex flex-wrap gap-1.5'>
                               {pronunciationsPreview.length > 0 ? (
@@ -988,7 +1203,9 @@ export default function VocabularyManagePage() {
                                 </span>
                               ))
                             ) : (
-                              <span className='text-xs text-gray-400'>未设置</span>
+                              <span className='text-xs text-gray-400'>
+                                未设置
+                              </span>
                             )}
                           </div>
                         )}
@@ -1035,7 +1252,9 @@ export default function VocabularyManagePage() {
                                 </span>
                               ))
                             ) : (
-                              <span className='text-xs text-gray-400'>未设置</span>
+                              <span className='text-xs text-gray-400'>
+                                未设置
+                              </span>
                             )}
                           </div>
                         )}
@@ -1048,7 +1267,9 @@ export default function VocabularyManagePage() {
                             </p>
                             <textarea
                               value={meaningInput}
-                              onChange={e => setMeaningInput(e.currentTarget.value)}
+                              onChange={e =>
+                                setMeaningInput(e.currentTarget.value)
+                              }
                               rows={3}
                               placeholder='每行一个释义，支持多个词义'
                               className='w-full border border-emerald-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-emerald-400'
@@ -1080,7 +1301,58 @@ export default function VocabularyManagePage() {
                                 </span>
                               ))
                             ) : (
-                              <span className='text-xs text-gray-400'>未设置</span>
+                              <span className='text-xs text-gray-400'>
+                                未设置
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className='px-4 py-3.5'>
+                        {isEditing ? (
+                          <div className='w-40 border border-indigo-100 bg-indigo-50/40 p-2.5'>
+                            <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600'>
+                              标签
+                            </p>
+                            <textarea
+                              value={tagsInput}
+                              onChange={e =>
+                                setTagsInput(e.currentTarget.value)
+                              }
+                              rows={2}
+                              placeholder='每行一个标签'
+                              className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
+                            />
+                            <div className='mt-2 flex max-w-40 flex-wrap gap-1.5'>
+                              {tagsPreview.length > 0 ? (
+                                tagsPreview.map(tag => (
+                                  <span
+                                    key={`${item.id}-tag-preview-${tag}`}
+                                    className='rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700'>
+                                    #{tag}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className='text-[10px] text-indigo-300'>
+                                  未添加标签
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className='flex max-w-40 flex-wrap gap-1.5'>
+                            {item.tags && item.tags.length > 0 ? (
+                              item.tags.map(tag => (
+                                <span
+                                  key={`${item.id}-tag-${tag}`}
+                                  className='rounded-md bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700'>
+                                  #{tag}
+                                </span>
+                              ))
+                            ) : (
+                              <span className='text-xs text-gray-400'>
+                                未设置
+                              </span>
                             )}
                           </div>
                         )}
@@ -1113,7 +1385,9 @@ export default function VocabularyManagePage() {
                               </button>
                               <InlineConfirmAction
                                 message={`删除 "${item.word}" 后不可恢复，确认删除吗？`}
-                                onConfirm={() => handleDeleteVocab(item.id, item.word)}
+                                onConfirm={() =>
+                                  handleDeleteVocab(item.id, item.word)
+                                }
                                 triggerLabel='删除'
                                 confirmLabel='确认删除'
                                 pendingLabel='删除中...'

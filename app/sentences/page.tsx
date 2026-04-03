@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import {
-  getAllReviewSentences,
+  getReviewSentencesPage,
   removeSentenceFromReview,
 } from '@/app/actions/fsrs'
 import { useDialog } from '@/context/DialogContext'
@@ -26,8 +26,12 @@ type SentenceItem = {
 }
 
 export default function SentencesManagePage() {
+  const PAGE_SIZE = 24
   const dialog = useDialog()
   const [sentences, setSentences] = useState<SentenceItem[]>([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [isLoading, setIsLoading] = useState(true)
   const [playingId, setPlayingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -35,13 +39,17 @@ export default function SentencesManagePage() {
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   useEffect(() => {
-    async function fetchAll() {
-      const data = await getAllReviewSentences()
-      setSentences(data || [])
+    async function fetchPage() {
+      setIsLoading(true)
+      const data = await getReviewSentencesPage(currentPage, PAGE_SIZE)
+      setSentences(data.items || [])
+      setTotalCount(data.total || 0)
+      setCurrentPage(data.page || 1)
+      setTotalPages(data.totalPages || 1)
       setIsLoading(false)
     }
-    fetchAll()
-  }, [])
+    fetchPage()
+  }, [currentPage])
 
   const handlePlay = (item: SentenceItem) => {
     const audio = audioRef.current
@@ -74,7 +82,16 @@ export default function SentencesManagePage() {
 
     const res = await removeSentenceFromReview(id)
     if (res.success) {
-      setSentences(prev => prev.filter(s => s.id !== id))
+      const nextCount = Math.max(0, totalCount - 1)
+      const nextPages = Math.max(1, Math.ceil(nextCount / PAGE_SIZE))
+      const targetPage = Math.min(currentPage, nextPages)
+      setTotalCount(nextCount)
+      setCurrentPage(targetPage)
+      if (targetPage === currentPage) {
+        const data = await getReviewSentencesPage(targetPage, PAGE_SIZE)
+        setSentences(data.items || [])
+        setTotalPages(data.totalPages || 1)
+      }
     } else {
       await dialog.alert('移除失败')
     }
@@ -123,7 +140,7 @@ export default function SentencesManagePage() {
               句库管理
             </h1>
             <p className='mt-2 text-sm text-gray-500 md:text-base'>
-              已收录 {sentences.length} 条跟读训练句，可直接进入复习训练
+              已收录 {totalCount} 条跟读训练句，可直接进入复习训练
             </p>
           </div>
           <Link
@@ -134,26 +151,59 @@ export default function SentencesManagePage() {
         </div>
         </div>
 
-        {isLoading ? (
-          <div className='text-center py-20 text-gray-400'>加载中...</div>
-        ) : sentences.length === 0 ? (
-          <div className='text-center py-20 border-b border-dashed border-gray-300'>
-            <span className='text-4xl mb-4 block'>📭</span>
-            <h3 className='text-lg font-medium text-gray-700'>句库暂无训练句</h3>
-            <p className='text-gray-400 mt-2'>
-              请先在听力页面添加句子到句库
-            </p>
-          </div>
-        ) : (
+        <div className='min-h-[62vh]'>
           <div className='space-y-3 md:space-y-4'>
-            {sentences.map(item => (
+            <section className='flex items-center justify-between border-b border-gray-200 pb-3 text-xs text-gray-500'>
+              <span>
+                第 {currentPage} / {totalPages} 页
+              </span>
+              <div className='flex items-center gap-2'>
+                <button
+                  type='button'
+                  disabled={currentPage <= 1}
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  className='ui-btn ui-btn-sm disabled:opacity-50'>
+                  上一页
+                </button>
+                <button
+                  type='button'
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  className='ui-btn ui-btn-sm disabled:opacity-50'>
+                  下一页
+                </button>
+              </div>
+            </section>
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`sentence-skeleton-${idx}`}
+                  className='border-b border-gray-200 px-1 py-4 md:py-5'>
+                  <div className='flex items-start gap-3 md:gap-4'>
+                    <div className='h-10 w-10 shrink-0 animate-pulse rounded-lg bg-gray-100' />
+                    <div className='min-w-0 flex-1 space-y-2'>
+                      <div className='h-5 w-11/12 animate-pulse bg-gray-100' />
+                      <div className='h-4 w-2/3 animate-pulse bg-gray-100' />
+                      <div className='h-3 w-1/2 animate-pulse bg-gray-100' />
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : sentences.length === 0 ? (
+              <div className='text-center py-20 border-b border-dashed border-gray-300'>
+                <span className='mb-4 block text-4xl'>📭</span>
+                <h3 className='text-lg font-medium text-gray-700'>句库暂无训练句</h3>
+                <p className='mt-2 text-gray-400'>请先在听力页面添加句子到句库</p>
+              </div>
+            ) : (
+              sentences.map(item => (
               <div
                 key={item.id}
                 className='border-b border-gray-200 px-1 py-4 transition-colors hover:bg-gray-50 md:py-5'>
                 <div className='flex items-start gap-3 md:gap-4'>
                 <button
                   onClick={() => handlePlay(item)}
-                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center border border-gray-200 transition-all ${
+                  className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center border border-gray-200 transition-colors ${
                     playingId === item.id
                       ? 'bg-indigo-600 text-white'
                       : 'bg-indigo-50 text-indigo-500 hover:bg-indigo-100'
@@ -198,7 +248,7 @@ export default function SentencesManagePage() {
                             className='flex items-center gap-1.5 cursor-help'
                             title={`FSRS 算法稳定度: ${item.stability.toFixed(2)}`}>
                             <div className='w-10 h-1.5 bg-gray-100 overflow-hidden'>
-                              <div
+              <div
                                 className={`h-full ${fluency.barBg} ${fluency.barW} transition-all duration-500`}></div>
                             </div>
                             <span
@@ -224,9 +274,10 @@ export default function SentencesManagePage() {
                   />
                 </div>
               </div>
-            ))}
+            )))
+            }
           </div>
-        )}
+        </div>
       </div>
     </main>
   )

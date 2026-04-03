@@ -54,7 +54,7 @@ export default function ConfirmModal({
 
       {/* 弹窗主体 (带缩放弹出动画) */}
       <div
-        className={`ui-pop bg-white w-full max-w-sm overflow-hidden z-10 transform transition-all duration-300 ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
+        className={`ui-pop ui-pop-surface w-full max-w-sm overflow-hidden z-10 transform transition-all duration-300 ${isOpen ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
         <div className='p-6'>
           <div className='flex items-center gap-3 mb-4'>
             {/* 图标 */}

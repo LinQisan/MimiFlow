@@ -1,8 +1,22 @@
 @import 'tailwindcss';
+@custom-variant dark (&:is(.dark *));
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --color-primary: #4f46e5;
+  --color-primary-strong: #4338ca;
+  --color-primary-surface: #eef2ff;
+  --color-primary-border: #c7d2fe;
+  --color-primary-text: #4338ca;
+  --color-secondary: #0f766e;
+  --color-secondary-strong: #115e59;
+  --color-secondary-surface: #ecfeff;
+  --color-secondary-border: #99f6e4;
+  --color-secondary-text: #0f766e;
+  --font-ui-default:
+    'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'Microsoft YaHei', sans-serif;
   --ui-py-mobile-sm: 0.75rem;
   --ui-py-mobile-md: 1rem;
   --ui-py-mobile-lg: 1.25rem;
@@ -11,15 +25,50 @@
   --ui-py-desktop-lg: 1.5rem;
 }
 
+html.dark {
+  --background: #020617;
+  --foreground: #e2e8f0;
+  --color-primary: #818cf8;
+  --color-primary-strong: #6366f1;
+  --color-primary-surface: rgba(99, 102, 241, 0.16);
+  --color-primary-border: rgba(129, 140, 248, 0.45);
+  --color-primary-text: #c7d2fe;
+  --color-secondary: #2dd4bf;
+  --color-secondary-strong: #14b8a6;
+  --color-secondary-surface: rgba(20, 184, 166, 0.16);
+  --color-secondary-border: rgba(45, 212, 191, 0.45);
+  --color-secondary-text: #99f6e4;
+  --tone-info-bg: rgba(59, 130, 246, 0.16);
+  --tone-info-border: rgba(96, 165, 250, 0.45);
+  --tone-info-text: #bfdbfe;
+  --tone-success-bg: rgba(16, 185, 129, 0.16);
+  --tone-success-border: rgba(52, 211, 153, 0.45);
+  --tone-success-text: #a7f3d0;
+  --tone-warn-bg: rgba(245, 158, 11, 0.16);
+  --tone-warn-border: rgba(251, 191, 36, 0.45);
+  --tone-warn-text: #fde68a;
+  --tone-danger-bg: rgba(244, 63, 94, 0.16);
+  --tone-danger-border: rgba(251, 113, 133, 0.45);
+  --tone-danger-text: #fecdd3;
+  --tone-brand-bg: rgba(99, 102, 241, 0.16);
+  --tone-brand-border: rgba(129, 140, 248, 0.45);
+  --tone-brand-text: #c7d2fe;
+  --tone-violet-bg: rgba(139, 92, 246, 0.16);
+  --tone-violet-border: rgba(167, 139, 250, 0.45);
+  --tone-violet-text: #ddd6fe;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-ui-default);
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.dark):not([data-theme='light']) {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
@@ -28,56 +77,91 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-ui-default);
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+
+html.dark body {
+  background: #020617;
+  color: #e6edf7;
+}
+
+html[data-lang='ja'] {
+  --font-ui-default:
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'BIZ UDPGothic', 'Noto Sans JP',
+    'Meiryo', sans-serif;
+}
+
+html[data-lang='en'] {
+  --font-ui-default:
+    'Inter', 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+}
+
+html[data-lang='zh'] {
+  --font-ui-default:
+    'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'Microsoft YaHei', sans-serif;
+}
+
+/* Prevent staggered/flickery theme transitions: freeze animations briefly
+   while toggling dark/light mode, then restore immediately. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+.font-word-zh {
+  font-family:
+    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', serif;
+  letter-spacing: 0.01em;
 }
 
 .font-word-ja {
   font-family:
-    'Hiragino Mincho ProN',
-    'Yu Mincho',
-    'Noto Serif JP',
-    'HGSMinchoE',
-    serif;
+    'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', 'HGSMinchoE', serif;
   letter-spacing: 0.01em;
 }
 
 .font-word-en {
   font-family:
-    'Iowan Old Style',
-    'Palatino Linotype',
-    'Georgia',
-    'Times New Roman',
-    serif;
+    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Georgia',
+    'Times New Roman', serif;
+  letter-spacing: 0.01em;
+}
+
+.font-reading-zh {
+  font-family:
+    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', serif;
   letter-spacing: 0.01em;
 }
 
 .font-reading-ja {
   font-family:
-    'Hiragino Mincho ProN',
-    'Yu Mincho',
-    'Noto Serif JP',
-    'HGSMinchoE',
-    serif;
+    'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', 'HGSMinchoE', serif;
   font-feature-settings: 'palt' 1;
   letter-spacing: 0.01em;
 }
 
 .font-reading-en {
   font-family:
-    'Iowan Old Style',
-    'Palatino Linotype',
-    'Georgia',
-    'Times New Roman',
-    serif;
+    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Georgia',
+    'Times New Roman', serif;
+  letter-spacing: 0.01em;
+}
+
+.font-reading-body-zh {
+  font-family:
+    'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'Microsoft YaHei', sans-serif;
   letter-spacing: 0.01em;
 }
 
 .font-reading-body-ja {
   font-family:
-    'Hiragino Kaku Gothic ProN',
-    'Yu Gothic',
-    'Noto Sans JP',
-    'Meiryo',
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', 'Meiryo',
     sans-serif;
   font-feature-settings: 'palt' 1;
   letter-spacing: 0.01em;
@@ -85,11 +169,8 @@ body {
 
 .font-reading-body-en {
   font-family:
-    'Iowan Old Style',
-    'Charter',
-    'Georgia',
-    'Times New Roman',
-    serif;
+    'Source Serif 4', 'Iowan Old Style', 'Charter', 'Georgia',
+    'Times New Roman', serif;
   letter-spacing: 0.005em;
 }
 
@@ -118,11 +199,24 @@ body {
   font-weight: 600;
   line-height: 1;
   border-radius: 0.625rem;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+html.dark .ui-btn {
+  border-color: #334155;
+  background: #0f172a;
+  color: #e6edf7;
 }
 
 .ui-btn:hover {
   background: #f9fafb;
+}
+
+html.dark .ui-btn:hover {
+  background: #1e293b;
 }
 
 .ui-btn-sm {
@@ -133,14 +227,14 @@ body {
 }
 
 .ui-btn-primary {
-  border-color: #4f46e5;
-  background: #4f46e5;
+  border-color: var(--color-primary);
+  background: var(--color-primary);
   color: #fff;
 }
 
 .ui-btn-primary:hover {
-  background: #4338ca;
-  border-color: #4338ca;
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
 }
 
 .ui-btn-danger {
@@ -151,6 +245,16 @@ body {
 
 .ui-btn-danger:hover {
   background: #ffe4e6;
+}
+
+html.dark .ui-btn-danger {
+  border-color: #be123c;
+  background: rgba(190, 18, 60, 0.2);
+  color: #fecdd3;
+}
+
+html.dark .ui-btn-danger:hover {
+  background: rgba(190, 18, 60, 0.3);
 }
 
 .ui-tag {
@@ -167,9 +271,58 @@ body {
   background: #fff;
 }
 
+html.dark .ui-tag {
+  border-color: #334155;
+  color: #d6e0ee;
+  background: #0f172a;
+}
+
 .ui-pop {
   border-radius: 0.875rem;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+html.dark .ui-pop {
+  border-color: #334155;
+  background: #0f172a;
+  box-shadow: 0 14px 30px rgba(2, 6, 23, 0.55);
+}
+
+.ui-pop-surface {
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+}
+
+html.dark .ui-pop-surface {
+  border-color: #334155;
+  background: #0f172a;
+}
+
+.ui-input {
+  height: 2.25rem;
+  width: 100%;
+  border-radius: 0.625rem;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+  color: #374151;
+  outline: none;
+}
+
+.ui-input:focus {
+  border-color: #818cf8;
+  box-shadow: 0 0 0 2px rgba(129, 140, 248, 0.2);
+}
+
+html.dark .ui-input {
+  border-color: #334155;
+  background: #0b1220;
+  color: #e6edf7;
+}
+
+html.dark .ui-input::placeholder {
+  color: #64748b;
 }
 
 /* Fallback: keep interaction layer from feeling too hard even when a button
@@ -184,22 +337,58 @@ button {
   color: #64748b;
 }
 
+html.dark .ui-tag-muted {
+  border-color: #334155;
+  background: #0b1220;
+  color: #94a3b8;
+}
+
 .ui-tag-info {
-  border-color: #c7d2fe;
-  background: #eef2ff;
-  color: #4f46e5;
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-surface);
+  color: var(--color-primary-text);
+}
+
+html.dark .ui-tag-info {
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-surface);
+  color: var(--color-primary-text);
 }
 
 .ui-tag-success {
-  border-color: #bbf7d0;
-  background: #f0fdf4;
-  color: #15803d;
+  border-color: var(--color-secondary-border);
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-text);
+}
+
+html.dark .ui-tag-success {
+  border-color: var(--color-secondary-border);
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-text);
+}
+
+.ui-surface-primary {
+  border-color: var(--color-primary-border);
+  background: var(--color-primary-surface);
+  color: var(--color-primary-text);
+}
+
+.ui-surface-secondary {
+  border-color: var(--color-secondary-border);
+  background: var(--color-secondary-surface);
+  color: var(--color-secondary-text);
 }
 
 .ui-tag-warn {
   border-color: #fde68a;
   background: #fffbeb;
   color: #b45309;
+}
+
+html.dark .ui-tag-warn {
+  border-color: #92400e;
+  background: rgba(180, 83, 9, 0.18);
+  color: #fde68a;
 }
 
 .ui-mobile-py-sm {
@@ -254,4 +443,653 @@ html {
 
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/* Page-level dark refinement: reading / quiz / vocabulary */
+html.dark .theme-page-article,
+html.dark .theme-page-quiz,
+html.dark .theme-page-vocab,
+html.dark .theme-page-manage {
+  color: #e6edf7;
+}
+
+/* Global dark surface fallback:
+   ensures pages that still use plain bg-white/bg-gray-* won't stay white. */
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-gray-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .bg-gray-100 {
+  background-color: #111b2f !important;
+}
+
+html.dark .bg-gray-200 {
+  background-color: #1b2a42 !important;
+}
+
+html.dark .border-gray-100 {
+  border-color: #243244 !important;
+}
+
+html.dark .border-gray-200 {
+  border-color: #334155 !important;
+}
+
+html.dark .border-gray-300 {
+  border-color: #475569 !important;
+}
+
+html.dark .theme-page-article .bg-white,
+html.dark .theme-page-quiz .bg-white,
+html.dark .theme-page-vocab .bg-white,
+html.dark .theme-page-manage .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .theme-page-article .bg-gray-50,
+html.dark .theme-page-quiz .bg-gray-50,
+html.dark .theme-page-vocab .bg-gray-50,
+html.dark .theme-page-manage .bg-gray-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .theme-page-article .border-gray-200,
+html.dark .theme-page-quiz .border-gray-200,
+html.dark .theme-page-vocab .border-gray-200,
+html.dark .theme-page-manage .border-gray-200 {
+  border-color: #334155 !important;
+}
+
+html.dark .theme-page-manage .border-gray-100 {
+  border-color: #243244 !important;
+}
+
+html.dark
+  .theme-page-article
+  .divide-gray-200
+  > :not([hidden])
+  ~ :not([hidden]),
+html.dark .theme-page-quiz .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+html.dark .theme-page-vocab .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+html.dark
+  .theme-page-manage
+  .divide-gray-200
+  > :not([hidden])
+  ~ :not([hidden]) {
+  border-color: #334155 !important;
+}
+
+html.dark .theme-page-article .text-gray-900,
+html.dark .theme-page-quiz .text-gray-900,
+html.dark .theme-page-vocab .text-gray-900,
+html.dark .theme-page-manage .text-gray-900 {
+  color: #f8fbff !important;
+}
+
+html.dark .theme-page-article .text-gray-800,
+html.dark .theme-page-quiz .text-gray-800,
+html.dark .theme-page-vocab .text-gray-800,
+html.dark .theme-page-manage .text-gray-800 {
+  color: #edf3fb !important;
+}
+
+html.dark .theme-page-article .text-gray-700,
+html.dark .theme-page-quiz .text-gray-700,
+html.dark .theme-page-vocab .text-gray-700,
+html.dark .theme-page-manage .text-gray-700 {
+  color: #d8e3f1 !important;
+}
+
+html.dark .theme-page-article .text-gray-600,
+html.dark .theme-page-quiz .text-gray-600,
+html.dark .theme-page-vocab .text-gray-600,
+html.dark .theme-page-manage .text-gray-600 {
+  color: #b7c5d8 !important;
+}
+
+html.dark .theme-page-article .text-gray-500,
+html.dark .theme-page-quiz .text-gray-500,
+html.dark .theme-page-vocab .text-gray-500,
+html.dark .theme-page-manage .text-gray-500,
+html.dark .theme-page-article .text-gray-400,
+html.dark .theme-page-quiz .text-gray-400,
+html.dark .theme-page-vocab .text-gray-400,
+html.dark .theme-page-manage .text-gray-400 {
+  color: #9fb1c8 !important;
+}
+
+/* Vocabulary page often uses slate utilities; map them to readable dark tones. */
+html.dark .theme-page-vocab .text-slate-900 {
+  color: #f8fbff !important;
+}
+
+html.dark .theme-page-vocab .text-slate-800 {
+  color: #eef4ff !important;
+}
+
+html.dark .theme-page-vocab .text-slate-700 {
+  color: #dde8f8 !important;
+}
+
+html.dark .theme-page-vocab .text-slate-600 {
+  color: #c7d7ea !important;
+}
+
+html.dark .theme-page-vocab .text-slate-500 {
+  color: #afc2d9 !important;
+}
+
+html.dark .theme-page-vocab .text-slate-400 {
+  color: #9db3cc !important;
+}
+
+html.dark .theme-page-vocab .text-slate-300 {
+  color: #c5d3e6 !important;
+}
+
+html.dark .theme-page-vocab .bg-slate-50 {
+  background-color: rgba(30, 41, 59, 0.55) !important;
+}
+
+html.dark .theme-page-vocab .bg-slate-100 {
+  background-color: rgba(51, 65, 85, 0.6) !important;
+}
+
+html.dark .theme-page-vocab .border-slate-200,
+html.dark .theme-page-vocab .border-slate-300 {
+  border-color: #3a4a63 !important;
+}
+
+/* Vocabulary dark surface consistency for alpha/gradient utility classes */
+html.dark .theme-page-vocab .bg-white\/95,
+html.dark .theme-page-vocab .bg-white\/90,
+html.dark .theme-page-vocab .bg-white\/80,
+html.dark .theme-page-vocab .bg-white\/70 {
+  background-color: rgba(15, 23, 42, 0.92) !important;
+}
+
+html.dark .theme-page-vocab .border-gray-200\/80,
+html.dark .theme-page-vocab .border-gray-200\/70,
+html.dark .theme-page-vocab .border-gray-100\/50 {
+  border-color: #334155 !important;
+}
+
+html.dark .theme-page-vocab .bg-gradient-to-b.from-white.to-gray-50 {
+  background-image: none !important;
+  background-color: #0f172a !important;
+}
+
+/* Readability fallback for pages outside theme-page-* wrappers */
+html.dark .text-gray-900 {
+  color: #f8fbff !important;
+}
+
+html.dark .text-gray-800 {
+  color: #edf3fb !important;
+}
+
+html.dark .text-gray-700 {
+  color: #d8e3f1 !important;
+}
+
+html.dark .text-gray-600 {
+  color: #b7c5d8 !important;
+}
+
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: #9fb1c8 !important;
+}
+
+html.dark .theme-page-quiz .hover\:bg-gray-50:hover,
+html.dark .theme-page-vocab .hover\:bg-gray-50:hover,
+html.dark .theme-page-manage .hover\:bg-gray-50:hover {
+  background-color: #1e293b !important;
+}
+
+/* Global hover fallback in dark mode for components outside page wrappers */
+html.dark .hover\:bg-white:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .hover\:bg-gray-50:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #243244 !important;
+}
+
+html.dark .theme-page-vocab .shadow-sm,
+html.dark .theme-page-vocab .shadow-lg,
+html.dark .theme-page-vocab .shadow-xl,
+html.dark .theme-page-vocab .shadow-2xl,
+html.dark .theme-page-quiz .shadow-sm,
+html.dark .theme-page-quiz .shadow-lg,
+html.dark .theme-page-quiz .shadow-xl,
+html.dark .theme-page-manage .shadow-sm,
+html.dark .theme-page-manage .shadow-lg,
+html.dark .theme-page-manage .shadow-xl,
+html.dark .theme-page-manage .shadow-2xl {
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.55) !important;
+}
+
+/* Manage page dropdowns / floating panels / table-like rows */
+html.dark .theme-page-manage .bg-white\/70,
+html.dark .theme-page-manage .bg-white\/75,
+html.dark .theme-page-manage .bg-white\/80,
+html.dark .theme-page-manage .bg-white\/95 {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+}
+
+html.dark .theme-page-manage .bg-gray-50\/45,
+html.dark .theme-page-manage .bg-gray-50\/50,
+html.dark .theme-page-manage .bg-gray-50\/70,
+html.dark .theme-page-manage .bg-gray-50\/80 {
+  background-color: rgba(30, 41, 59, 0.55) !important;
+}
+
+html.dark .theme-page-manage input,
+html.dark .theme-page-manage textarea,
+html.dark .theme-page-manage select {
+  background-color: #0b1220;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+
+html.dark .theme-page-manage input::placeholder,
+html.dark .theme-page-manage textarea::placeholder {
+  color: #64748b;
+}
+
+html.dark .theme-page-manage .hover\:border-gray-100:hover {
+  border-color: #334155 !important;
+}
+
+html.dark .theme-page-manage .hover\:border-gray-300:hover {
+  border-color: #475569 !important;
+}
+
+html.dark .theme-page-manage .hover\:bg-white:hover {
+  background-color: #1e293b !important;
+}
+
+html.dark .theme-page-manage .odd\:bg-white:nth-child(odd) {
+  background-color: #0f172a !important;
+}
+
+html.dark .theme-page-vocab .bg-indigo-50,
+html.dark .theme-page-quiz .bg-indigo-50,
+html.dark .theme-page-article .bg-indigo-50 {
+  background-color: var(--tone-brand-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-indigo-200,
+html.dark .theme-page-quiz .border-indigo-200,
+html.dark .theme-page-article .border-indigo-200 {
+  border-color: var(--tone-brand-border) !important;
+}
+
+html.dark .theme-page-vocab .text-indigo-900,
+html.dark .theme-page-vocab .text-indigo-800,
+html.dark .theme-page-vocab .text-indigo-700,
+html.dark .theme-page-vocab .text-indigo-600,
+html.dark .theme-page-vocab .text-indigo-500,
+html.dark .theme-page-quiz .text-indigo-900,
+html.dark .theme-page-quiz .text-indigo-800,
+html.dark .theme-page-quiz .text-indigo-700,
+html.dark .theme-page-quiz .text-indigo-600,
+html.dark .theme-page-quiz .text-indigo-500,
+html.dark .theme-page-article .text-indigo-900,
+html.dark .theme-page-article .text-indigo-800,
+html.dark .theme-page-article .text-indigo-700,
+html.dark .theme-page-article .text-indigo-600,
+html.dark .theme-page-article .text-indigo-500 {
+  color: var(--tone-brand-text) !important;
+}
+
+html.dark .theme-page-vocab .bg-blue-50,
+html.dark .theme-page-vocab .bg-blue-50\/40,
+html.dark .theme-page-vocab .bg-blue-100\/50,
+html.dark .theme-page-quiz .bg-blue-50,
+html.dark .theme-page-quiz .bg-blue-50\/40,
+html.dark .theme-page-quiz .bg-blue-100\/50,
+html.dark .theme-page-article .bg-blue-50,
+html.dark .theme-page-article .bg-blue-50\/40,
+html.dark .theme-page-article .bg-blue-100\/50 {
+  background-color: var(--tone-info-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-blue-100,
+html.dark .theme-page-vocab .border-blue-200,
+html.dark .theme-page-vocab .border-blue-300,
+html.dark .theme-page-quiz .border-blue-100,
+html.dark .theme-page-quiz .border-blue-200,
+html.dark .theme-page-quiz .border-blue-300,
+html.dark .theme-page-article .border-blue-100,
+html.dark .theme-page-article .border-blue-200,
+html.dark .theme-page-article .border-blue-300 {
+  border-color: var(--tone-info-border) !important;
+}
+
+html.dark .theme-page-vocab .text-blue-900,
+html.dark .theme-page-vocab .text-blue-800,
+html.dark .theme-page-vocab .text-blue-700,
+html.dark .theme-page-vocab .text-blue-600,
+html.dark .theme-page-vocab .text-blue-500,
+html.dark .theme-page-quiz .text-blue-900,
+html.dark .theme-page-quiz .text-blue-800,
+html.dark .theme-page-quiz .text-blue-700,
+html.dark .theme-page-quiz .text-blue-600,
+html.dark .theme-page-quiz .text-blue-500,
+html.dark .theme-page-article .text-blue-900,
+html.dark .theme-page-article .text-blue-800,
+html.dark .theme-page-article .text-blue-700,
+html.dark .theme-page-article .text-blue-600,
+html.dark .theme-page-article .text-blue-500 {
+  color: var(--tone-info-text) !important;
+}
+
+html.dark .theme-page-vocab .bg-green-50,
+html.dark .theme-page-vocab .bg-green-50\/40,
+html.dark .theme-page-vocab .bg-emerald-50,
+html.dark .theme-page-vocab .bg-emerald-50\/40,
+html.dark .theme-page-vocab .bg-emerald-100,
+html.dark .theme-page-quiz .bg-green-50,
+html.dark .theme-page-quiz .bg-green-50\/40,
+html.dark .theme-page-quiz .bg-emerald-50,
+html.dark .theme-page-quiz .bg-emerald-50\/40,
+html.dark .theme-page-quiz .bg-emerald-100,
+html.dark .theme-page-article .bg-green-50,
+html.dark .theme-page-article .bg-green-50\/40,
+html.dark .theme-page-article .bg-emerald-50,
+html.dark .theme-page-article .bg-emerald-50\/40,
+html.dark .theme-page-article .bg-emerald-100 {
+  background-color: var(--tone-success-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-green-200,
+html.dark .theme-page-vocab .border-emerald-200,
+html.dark .theme-page-vocab .border-emerald-300,
+html.dark .theme-page-quiz .border-green-200,
+html.dark .theme-page-quiz .border-emerald-200,
+html.dark .theme-page-quiz .border-emerald-300,
+html.dark .theme-page-article .border-green-200,
+html.dark .theme-page-article .border-emerald-200,
+html.dark .theme-page-article .border-emerald-300 {
+  border-color: var(--tone-success-border) !important;
+}
+
+html.dark .theme-page-vocab .text-green-900,
+html.dark .theme-page-vocab .text-green-800,
+html.dark .theme-page-vocab .text-green-700,
+html.dark .theme-page-vocab .text-green-600,
+html.dark .theme-page-vocab .text-green-500,
+html.dark .theme-page-vocab .text-emerald-900,
+html.dark .theme-page-vocab .text-emerald-800,
+html.dark .theme-page-vocab .text-emerald-700,
+html.dark .theme-page-vocab .text-emerald-600,
+html.dark .theme-page-vocab .text-emerald-500,
+html.dark .theme-page-quiz .text-green-900,
+html.dark .theme-page-quiz .text-green-800,
+html.dark .theme-page-quiz .text-green-700,
+html.dark .theme-page-quiz .text-green-600,
+html.dark .theme-page-quiz .text-green-500,
+html.dark .theme-page-quiz .text-emerald-900,
+html.dark .theme-page-quiz .text-emerald-800,
+html.dark .theme-page-quiz .text-emerald-700,
+html.dark .theme-page-quiz .text-emerald-600,
+html.dark .theme-page-quiz .text-emerald-500,
+html.dark .theme-page-article .text-green-900,
+html.dark .theme-page-article .text-green-800,
+html.dark .theme-page-article .text-green-700,
+html.dark .theme-page-article .text-green-600,
+html.dark .theme-page-article .text-green-500,
+html.dark .theme-page-article .text-emerald-900,
+html.dark .theme-page-article .text-emerald-800,
+html.dark .theme-page-article .text-emerald-700,
+html.dark .theme-page-article .text-emerald-600,
+html.dark .theme-page-article .text-emerald-500 {
+  color: var(--tone-success-text) !important;
+}
+
+html.dark .theme-page-vocab .bg-red-50,
+html.dark .theme-page-vocab .bg-red-100,
+html.dark .theme-page-vocab .bg-rose-50,
+html.dark .theme-page-vocab .bg-rose-50\/40,
+html.dark .theme-page-vocab .bg-rose-100,
+html.dark .theme-page-quiz .bg-red-50,
+html.dark .theme-page-quiz .bg-red-100,
+html.dark .theme-page-quiz .bg-rose-50,
+html.dark .theme-page-quiz .bg-rose-50\/40,
+html.dark .theme-page-quiz .bg-rose-100,
+html.dark .theme-page-article .bg-red-50,
+html.dark .theme-page-article .bg-red-100,
+html.dark .theme-page-article .bg-rose-50,
+html.dark .theme-page-article .bg-rose-50\/40,
+html.dark .theme-page-article .bg-rose-100 {
+  background-color: var(--tone-danger-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-red-200,
+html.dark .theme-page-vocab .border-red-500,
+html.dark .theme-page-vocab .border-rose-200,
+html.dark .theme-page-vocab .border-rose-300,
+html.dark .theme-page-quiz .border-red-200,
+html.dark .theme-page-quiz .border-red-500,
+html.dark .theme-page-quiz .border-rose-200,
+html.dark .theme-page-quiz .border-rose-300,
+html.dark .theme-page-article .border-red-200,
+html.dark .theme-page-article .border-red-500,
+html.dark .theme-page-article .border-rose-200,
+html.dark .theme-page-article .border-rose-300 {
+  border-color: var(--tone-danger-border) !important;
+}
+
+html.dark .theme-page-vocab .text-red-900,
+html.dark .theme-page-vocab .text-red-800,
+html.dark .theme-page-vocab .text-red-700,
+html.dark .theme-page-vocab .text-red-600,
+html.dark .theme-page-vocab .text-red-500,
+html.dark .theme-page-vocab .text-rose-900,
+html.dark .theme-page-vocab .text-rose-800,
+html.dark .theme-page-vocab .text-rose-700,
+html.dark .theme-page-vocab .text-rose-600,
+html.dark .theme-page-vocab .text-rose-500,
+html.dark .theme-page-quiz .text-red-900,
+html.dark .theme-page-quiz .text-red-800,
+html.dark .theme-page-quiz .text-red-700,
+html.dark .theme-page-quiz .text-red-600,
+html.dark .theme-page-quiz .text-red-500,
+html.dark .theme-page-quiz .text-rose-900,
+html.dark .theme-page-quiz .text-rose-800,
+html.dark .theme-page-quiz .text-rose-700,
+html.dark .theme-page-quiz .text-rose-600,
+html.dark .theme-page-quiz .text-rose-500,
+html.dark .theme-page-article .text-red-900,
+html.dark .theme-page-article .text-red-800,
+html.dark .theme-page-article .text-red-700,
+html.dark .theme-page-article .text-red-600,
+html.dark .theme-page-article .text-red-500,
+html.dark .theme-page-article .text-rose-900,
+html.dark .theme-page-article .text-rose-800,
+html.dark .theme-page-article .text-rose-700,
+html.dark .theme-page-article .text-rose-600,
+html.dark .theme-page-article .text-rose-500 {
+  color: var(--tone-danger-text) !important;
+}
+
+html.dark .theme-page-vocab .bg-orange-50,
+html.dark .theme-page-vocab .bg-orange-100,
+html.dark .theme-page-vocab .bg-amber-50,
+html.dark .theme-page-vocab .bg-amber-100,
+html.dark .theme-page-quiz .bg-orange-50,
+html.dark .theme-page-quiz .bg-orange-100,
+html.dark .theme-page-quiz .bg-amber-50,
+html.dark .theme-page-quiz .bg-amber-100,
+html.dark .theme-page-article .bg-orange-50,
+html.dark .theme-page-article .bg-orange-100,
+html.dark .theme-page-article .bg-amber-50,
+html.dark .theme-page-article .bg-amber-100 {
+  background-color: var(--tone-warn-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-orange-200,
+html.dark .theme-page-vocab .border-orange-300,
+html.dark .theme-page-vocab .border-orange-400,
+html.dark .theme-page-vocab .border-amber-200,
+html.dark .theme-page-vocab .border-amber-300,
+html.dark .theme-page-quiz .border-orange-200,
+html.dark .theme-page-quiz .border-orange-300,
+html.dark .theme-page-quiz .border-orange-400,
+html.dark .theme-page-quiz .border-amber-200,
+html.dark .theme-page-quiz .border-amber-300,
+html.dark .theme-page-article .border-orange-200,
+html.dark .theme-page-article .border-orange-300,
+html.dark .theme-page-article .border-orange-400,
+html.dark .theme-page-article .border-amber-200,
+html.dark .theme-page-article .border-amber-300 {
+  border-color: var(--tone-warn-border) !important;
+}
+
+html.dark .theme-page-vocab .text-orange-900,
+html.dark .theme-page-vocab .text-orange-800,
+html.dark .theme-page-vocab .text-orange-700,
+html.dark .theme-page-vocab .text-orange-600,
+html.dark .theme-page-vocab .text-orange-500,
+html.dark .theme-page-vocab .text-amber-900,
+html.dark .theme-page-vocab .text-amber-800,
+html.dark .theme-page-vocab .text-amber-700,
+html.dark .theme-page-vocab .text-amber-600,
+html.dark .theme-page-vocab .text-amber-500,
+html.dark .theme-page-quiz .text-orange-900,
+html.dark .theme-page-quiz .text-orange-800,
+html.dark .theme-page-quiz .text-orange-700,
+html.dark .theme-page-quiz .text-orange-600,
+html.dark .theme-page-quiz .text-orange-500,
+html.dark .theme-page-quiz .text-amber-900,
+html.dark .theme-page-quiz .text-amber-800,
+html.dark .theme-page-quiz .text-amber-700,
+html.dark .theme-page-quiz .text-amber-600,
+html.dark .theme-page-quiz .text-amber-500,
+html.dark .theme-page-article .text-orange-900,
+html.dark .theme-page-article .text-orange-800,
+html.dark .theme-page-article .text-orange-700,
+html.dark .theme-page-article .text-orange-600,
+html.dark .theme-page-article .text-orange-500,
+html.dark .theme-page-article .text-amber-900,
+html.dark .theme-page-article .text-amber-800,
+html.dark .theme-page-article .text-amber-700,
+html.dark .theme-page-article .text-amber-600,
+html.dark .theme-page-article .text-amber-500 {
+  color: var(--tone-warn-text) !important;
+}
+
+html.dark .theme-page-vocab .bg-purple-50,
+html.dark .theme-page-vocab .bg-violet-50,
+html.dark .theme-page-quiz .bg-purple-50,
+html.dark .theme-page-quiz .bg-violet-50,
+html.dark .theme-page-article .bg-purple-50,
+html.dark .theme-page-article .bg-violet-50 {
+  background-color: var(--tone-violet-bg) !important;
+}
+
+html.dark .theme-page-vocab .border-purple-200,
+html.dark .theme-page-vocab .border-violet-200,
+html.dark .theme-page-quiz .border-purple-200,
+html.dark .theme-page-quiz .border-violet-200,
+html.dark .theme-page-article .border-purple-200,
+html.dark .theme-page-article .border-violet-200 {
+  border-color: var(--tone-violet-border) !important;
+}
+
+html.dark .theme-page-vocab .text-purple-900,
+html.dark .theme-page-vocab .text-purple-800,
+html.dark .theme-page-vocab .text-purple-700,
+html.dark .theme-page-vocab .text-purple-600,
+html.dark .theme-page-vocab .text-purple-500,
+html.dark .theme-page-vocab .text-violet-900,
+html.dark .theme-page-vocab .text-violet-800,
+html.dark .theme-page-vocab .text-violet-700,
+html.dark .theme-page-vocab .text-violet-600,
+html.dark .theme-page-vocab .text-violet-500,
+html.dark .theme-page-quiz .text-purple-900,
+html.dark .theme-page-quiz .text-purple-800,
+html.dark .theme-page-quiz .text-purple-700,
+html.dark .theme-page-quiz .text-purple-600,
+html.dark .theme-page-quiz .text-purple-500,
+html.dark .theme-page-quiz .text-violet-900,
+html.dark .theme-page-quiz .text-violet-800,
+html.dark .theme-page-quiz .text-violet-700,
+html.dark .theme-page-quiz .text-violet-600,
+html.dark .theme-page-quiz .text-violet-500,
+html.dark .theme-page-article .text-purple-900,
+html.dark .theme-page-article .text-purple-800,
+html.dark .theme-page-article .text-purple-700,
+html.dark .theme-page-article .text-purple-600,
+html.dark .theme-page-article .text-purple-500,
+html.dark .theme-page-article .text-violet-900,
+html.dark .theme-page-article .text-violet-800,
+html.dark .theme-page-article .text-violet-700,
+html.dark .theme-page-article .text-violet-600,
+html.dark .theme-page-article .text-violet-500 {
+  color: var(--tone-violet-text) !important;
+}
+
+/* Quiz option-state polish in dark mode */
+html.dark .theme-page-quiz .bg-indigo-50\/50 {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+}
+
+html.dark .theme-page-quiz .bg-emerald-50\/40 {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+}
+
+html.dark .theme-page-quiz .bg-rose-50\/40 {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+}
+
+html.dark .theme-page-quiz .border-l-indigo-500 {
+  border-left-color: #818cf8 !important;
+}
+
+html.dark .theme-page-quiz .border-l-emerald-500 {
+  border-left-color: #34d399 !important;
+}
+
+html.dark .theme-page-quiz .border-l-rose-500 {
+  border-left-color: #fb7185 !important;
+}
+
+html.dark .theme-page-article .article-blank-empty {
+  border-bottom-color: #64748b !important;
+  color: #64748b !important;
+}
+
+html.dark .theme-page-article .article-blank-filled {
+  background-color: rgba(99, 102, 241, 0.16) !important;
+  color: #c7d2fe !important;
+}
+
+html.dark .theme-page-article .article-blank-ok {
+  background-color: rgba(16, 185, 129, 0.16) !important;
+  color: #86efac !important;
+}
+
+html.dark .theme-page-article .article-blank-wrong {
+  background-color: rgba(244, 63, 94, 0.16) !important;
+  color: #fda4af !important;
+}
+
+html.dark .theme-page-article .article-blank-missed {
+  background-color: rgba(245, 158, 11, 0.16) !important;
+  color: #fcd34d !important;
+}
+
+html.dark .theme-page-article .article-blank-correct {
+  color: #86efac !important;
 }

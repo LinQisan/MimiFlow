@@ -57,7 +57,7 @@ MimiFlow は第二言語習得の循環に基づく学習アプリです：
 - Next.js (App Router)
 - React + TypeScript
 - Tailwind CSS
-- Prisma + SQLite (`prisma/dev.db`)
+- Prisma + PostgreSQL
 - FSRS
 
 ## ローカル実行
@@ -74,7 +74,7 @@ npm install
 npx prisma generate
 ```
 
-3. ローカル DB 同期
+3. DB 同期
 
 ```bash
 npx prisma db push

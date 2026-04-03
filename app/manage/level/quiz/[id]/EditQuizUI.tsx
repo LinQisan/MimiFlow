@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import type { QuestionType } from '@prisma/client'
 
 // 🌟 复用拖拽系统
 import {
@@ -12,6 +13,36 @@ import {
 } from '@/app/manage/level/DndSystem'
 import { updateQuizWithQuestions, updateSortOrder } from '@/app/actions/content'
 import { useDialog } from '@/context/DialogContext'
+
+type EditableOption = {
+  id: string
+  text: string
+  isCorrect: boolean
+}
+
+type EditableQuestion = {
+  id: string
+  questionType: QuestionType
+  contextSentence: string
+  targetWord?: string | null
+  prompt?: string | null
+  explanation?: string | null
+  options: EditableOption[]
+}
+
+type EditableQuiz = {
+  id: string
+  title: string
+  category?: { levelId?: string | null } | null
+  questions: EditableQuestion[]
+}
+
+type EditableQuestionField =
+  | 'questionType'
+  | 'contextSentence'
+  | 'targetWord'
+  | 'prompt'
+  | 'explanation'
 
 // 题型样式映射字典
 const getTypeConfig = (type: string) => {
@@ -54,12 +85,14 @@ const getTypeConfig = (type: string) => {
   }
 }
 
-export default function EditQuizUI({ quiz }: { quiz: any }) {
+export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
   const dialog = useDialog()
   const [isSaving, setIsSaving] = useState(false)
 
   const [title, setTitle] = useState(quiz.title || '')
-  const [questions, setQuestions] = useState<any[]>(quiz.questions || [])
+  const [questions, setQuestions] = useState<EditableQuestion[]>(
+    quiz.questions || [],
+  )
 
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(
     null,
@@ -75,13 +108,7 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
   ]
 
   const handleAddNewQuestion = (
-    type:
-      | 'PRONUNCIATION'
-      | 'WORD_DISTINCTION'
-      | 'GRAMMAR'
-      | 'FILL_BLANK'
-      | 'SORTING'
-      | 'READING_COMPREHENSION',
+    type: QuestionType,
   ) => {
     let defaultPrompt = '请选择正确的答案'
     if (type === 'PRONUNCIATION') defaultPrompt = '划线部分的读音是？'
@@ -106,7 +133,11 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
   }
 
   // ================= 2. 更新与排序 =================
-  const handleUpdateQuestion = (id: string, field: string, value: any) => {
+  const handleUpdateQuestion = (
+    id: string,
+    field: EditableQuestionField,
+    value: string,
+  ) => {
     setQuestions(
       questions.map(q => (q.id === id ? { ...q, [field]: value } : q)),
     )
@@ -115,8 +146,8 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
   const handleUpdateOption = (
     qId: string,
     optIndex: number,
-    field: string,
-    value: any,
+    field: 'text' | 'isCorrect',
+    value: string | boolean,
   ) => {
     setQuestions(
       questions.map(q => {
@@ -125,7 +156,10 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
         if (field === 'isCorrect') {
           newOptions.forEach((o, i) => (o.isCorrect = i === optIndex))
         } else {
-          newOptions[optIndex] = { ...newOptions[optIndex], [field]: value }
+          newOptions[optIndex] = {
+            ...newOptions[optIndex],
+            text: String(value),
+          }
         }
         return { ...q, options: newOptions }
       }),
@@ -135,7 +169,7 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
   const handleReorderQuestions = async (orderedIds: string[]) => {
     const reordered = orderedIds
       .map(id => questions.find(q => q.id === id))
-      .filter(Boolean)
+      .filter((item): item is EditableQuestion => Boolean(item))
     setQuestions(reordered)
     await updateSortOrder('Question', orderedIds)
     return { success: true }
@@ -160,14 +194,14 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
       const payload = {
         quizId: quiz.id,
         title,
-        questions: questions.map((q: any) => ({
+        questions: questions.map(q => ({
           id: q.id,
           questionType: q.questionType,
           contextSentence: q.contextSentence || '',
           targetWord: q.targetWord || '',
           prompt: q.prompt || '',
           explanation: q.explanation || '',
-          options: (q.options || []).map((opt: any) => ({
+          options: (q.options || []).map(opt => ({
             id: opt.id,
             text: opt.text || '',
             isCorrect: Boolean(opt.isCorrect),
@@ -319,7 +353,7 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
               items={questions}
               action={handleReorderQuestions}
               className='space-y-5 flex flex-col pb-10'>
-              {questions.map((q: any, index: number) => {
+              {questions.map((q, index: number) => {
                 const isEditing = editingQuestionId === q.id
                 const tConfig = getTypeConfig(q.questionType)
 
@@ -420,7 +454,7 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
                               选项（点击单选框设置正确答案）
                             </label>
                             <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
-                              {q.options?.map((opt: any, i: number) => (
+                              {q.options?.map((opt, i: number) => (
                                 <div
                                   key={opt.id}
                                   className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${opt.isCorrect ? 'bg-emerald-50 border-emerald-300 shadow-sm' : 'bg-white border-gray-200 shadow-sm'}`}>
@@ -537,7 +571,7 @@ export default function EditQuizUI({ quiz }: { quiz: any }) {
 
                           {/* 选项展示 (Grid排列) */}
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-3 mt-4'>
-                            {q.options?.map((opt: any, i: number) => (
+                            {q.options?.map((opt, i: number) => (
                               <div
                                 key={opt.id}
                                 className={`text-sm p-3 rounded-xl border flex justify-between items-center ${opt.isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-bold shadow-sm' : 'bg-gray-50 border-gray-100 text-gray-600 font-medium'}`}>

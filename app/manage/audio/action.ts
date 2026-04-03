@@ -153,8 +153,20 @@ async function walkAudioFiles(
   return results
 }
 
-export async function listAudioFilesAdmin() {
+export async function listAudioFilesAdmin(
+  params?: {
+    page?: number
+    pageSize?: number
+    keyword?: string
+    folder?: string
+  },
+) {
   try {
+    const safePageSize = Math.min(120, Math.max(10, Math.floor(params?.pageSize || 40)))
+    const rawPage = Math.max(1, Math.floor(params?.page || 1))
+    const keyword = (params?.keyword || '').trim().toLowerCase()
+    const selectedFolder = (params?.folder || '').trim()
+
     const files = await walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR)
     const uniquePaths = Array.from(new Set(files.map(item => item.webPath)))
 
@@ -167,30 +179,62 @@ export async function listAudioFilesAdmin() {
       usageMap.set(lesson.audioFile, (usageMap.get(lesson.audioFile) || 0) + 1)
     }
 
-    const rows: AudioRecord[] = []
-    for (const file of files) {
-      const meta = await stat(file.absPath)
-      const trimmed = file.webPath.replace(/^\/audios\//, '')
-      const segments = trimmed.split('/').filter(Boolean)
-      const folder =
-        segments.length > 1 ? segments.slice(0, -1).join('/') : '(根目录)'
-      rows.push({
-        path: file.webPath,
-        folder,
-        name: segments[segments.length - 1] || trimmed,
-        size: meta.size,
-        updatedAt: meta.mtime.toISOString(),
-        linkedLessons: usageMap.get(file.webPath) || 0,
-      })
-    }
+    const rows = await Promise.all(
+      files.map(async file => {
+        const meta = await stat(file.absPath)
+        const trimmed = file.webPath.replace(/^\/audios\//, '')
+        const segments = trimmed.split('/').filter(Boolean)
+        const folder =
+          segments.length > 1 ? segments.slice(0, -1).join('/') : '(根目录)'
+        const name = segments[segments.length - 1] || trimmed
+        return {
+          path: file.webPath,
+          folder,
+          name,
+          size: meta.size,
+          updatedAt: meta.mtime.toISOString(),
+          linkedLessons: usageMap.get(file.webPath) || 0,
+        } as AudioRecord
+      }),
+    )
+
+    const sorted = rows.sort((a, b) => a.path.localeCompare(b.path))
+    const folders = Array.from(new Set(sorted.map(item => item.folder))).sort((a, b) =>
+      a.localeCompare(b),
+    )
+    const filtered = sorted.filter(item => {
+      const folderOk = !selectedFolder || item.folder === selectedFolder
+      if (!folderOk) return false
+      if (!keyword) return true
+      const text = `${item.name} ${item.path} ${item.folder}`.toLowerCase()
+      return text.includes(keyword)
+    })
+    const total = filtered.length
+    const totalPages = Math.max(1, Math.ceil(total / safePageSize))
+    const page = Math.min(rawPage, totalPages)
+    const skip = (page - 1) * safePageSize
+    const paged = filtered.slice(skip, skip + safePageSize)
 
     return {
       success: true,
-      items: rows.sort((a, b) => a.path.localeCompare(b.path)),
+      items: paged,
+      folders,
+      total,
+      page,
+      pageSize: safePageSize,
+      totalPages,
     }
   } catch (error) {
     console.error('读取录音文件失败:', error)
-    return { success: false, items: [] as AudioRecord[] }
+    return {
+      success: false,
+      items: [] as AudioRecord[],
+      folders: [] as string[],
+      total: 0,
+      page: 1,
+      pageSize: 40,
+      totalPages: 1,
+    }
   }
 }
 

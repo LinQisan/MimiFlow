@@ -11,11 +11,11 @@ export default async function EditArticlePage({
   const resolvedParams = await params
   const { id } = resolvedParams
 
-  const article = await prisma.article.findUnique({
+  const article = await prisma.passage.findUnique({
     where: { id },
     // 🌟 核心升级：查出文章的同时，把属于它的题目和选项全部捞出来！
     include: {
-      category: { select: { levelId: true } },
+      paper: { select: { levelId: true } },
       questions: {
         orderBy: { order: 'asc' },
         include: { options: true },

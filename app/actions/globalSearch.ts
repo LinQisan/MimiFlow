@@ -5,12 +5,13 @@ import { parseJsonStringList } from '@/utils/jsonList'
 
 export type GlobalSearchResult = {
   id: string
-  type: 'vocabulary' | 'sentence' | 'article' | 'quiz' | 'question' | 'dialogue'
+  type: 'vocabulary' | 'sentence' | 'passage' | 'quiz' | 'question' | 'dialogue'
   title: string
   snippet: string
   href: string
   meta: string
 }
+export type GlobalSearchType = GlobalSearchResult['type']
 
 const shortText = (text: string, max = 96) => {
   const value = text.trim()
@@ -20,78 +21,96 @@ const shortText = (text: string, max = 96) => {
 
 export async function searchGlobalContent(
   keyword: string,
+  options?: { types?: GlobalSearchType[] },
 ): Promise<GlobalSearchResult[]> {
   const q = keyword.trim()
   if (!q) return []
+  const typeSet = new Set<GlobalSearchType>(
+    options?.types && options.types.length > 0
+      ? options.types
+      : ['vocabulary', 'sentence', 'passage', 'quiz', 'question', 'dialogue'],
+  )
 
   const [vocabRows, sentenceRows, articleRows, quizRows, questionRows, dialogueRows] =
     await Promise.all([
-      prisma.vocabulary.findMany({
-        where: {
-          OR: [
-            { word: { contains: q } },
-            { pronunciations: { contains: q } },
-            { partsOfSpeech: { contains: q } },
-            { meanings: { contains: q } },
-          ],
-        },
-        include: {
-          sentenceLinks: {
-            include: { sentence: true },
-            orderBy: { createdAt: 'asc' },
-            take: 1,
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      prisma.vocabularySentence.findMany({
-        where: {
-          OR: [{ text: { contains: q } }, { source: { contains: q } }],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      prisma.article.findMany({
-        where: {
-          OR: [
-            { title: { contains: q } },
-            { description: { contains: q } },
-            { content: { contains: q } },
-          ],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      prisma.quiz.findMany({
-        where: {
-          OR: [{ title: { contains: q } }, { description: { contains: q } }],
-        },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
-      }),
-      prisma.question.findMany({
-        where: {
-          OR: [
-            { prompt: { contains: q } },
-            { contextSentence: { contains: q } },
-            { options: { some: { text: { contains: q } } } },
-          ],
-        },
-        include: {
-          quiz: { select: { id: true, title: true } },
-          article: { select: { id: true, title: true } },
-        },
-        take: 10,
-      }),
-      prisma.dialogue.findMany({
-        where: { text: { contains: q } },
-        include: {
-          lesson: { select: { id: true, title: true } },
-        },
-        orderBy: { id: 'desc' },
-        take: 10,
-      }),
+      typeSet.has('vocabulary')
+        ? prisma.vocabulary.findMany({
+            where: {
+              OR: [
+                { word: { contains: q } },
+                { pronunciations: { contains: q } },
+                { partsOfSpeech: { contains: q } },
+                { meanings: { contains: q } },
+              ],
+            },
+            include: {
+              sentenceLinks: {
+                include: { sentence: true },
+                orderBy: { createdAt: 'asc' },
+                take: 1,
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      typeSet.has('sentence')
+        ? prisma.vocabularySentence.findMany({
+            where: {
+              OR: [{ text: { contains: q } }, { source: { contains: q } }],
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      typeSet.has('passage')
+        ? prisma.passage.findMany({
+            where: {
+              OR: [
+                { title: { contains: q } },
+                { description: { contains: q } },
+                { content: { contains: q } },
+              ],
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      typeSet.has('quiz')
+        ? prisma.quiz.findMany({
+            where: {
+              OR: [{ title: { contains: q } }, { description: { contains: q } }],
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      typeSet.has('question')
+        ? prisma.question.findMany({
+            where: {
+              OR: [
+                { prompt: { contains: q } },
+                { contextSentence: { contains: q } },
+                { options: { some: { text: { contains: q } } } },
+              ],
+            },
+            include: {
+              quiz: { select: { id: true, title: true } },
+              passage: { select: { id: true, title: true } },
+            },
+            take: 10,
+          })
+        : Promise.resolve([]),
+      typeSet.has('dialogue')
+        ? prisma.dialogue.findMany({
+            where: { text: { contains: q } },
+            include: {
+              lesson: { select: { id: true, title: true } },
+            },
+            orderBy: { id: 'desc' },
+            take: 10,
+          })
+        : Promise.resolve([]),
     ])
 
   const results: GlobalSearchResult[] = [
@@ -99,6 +118,10 @@ export async function searchGlobalContent(
       const firstSentence = item.sentenceLinks[0]?.sentence
       const meanings = parseJsonStringList(item.meanings).slice(0, 2)
       const pronunciations = parseJsonStringList(item.pronunciations).slice(0, 1)
+      const focusParams = new URLSearchParams()
+      focusParams.set('focus', item.id)
+      if (item.groupName) focusParams.set('group', item.groupName)
+      focusParams.set('q', item.word)
       return {
         id: `vocab-${item.id}`,
         type: 'vocabulary' as const,
@@ -107,7 +130,7 @@ export async function searchGlobalContent(
           meanings.length > 0
             ? meanings.join('；')
             : shortText(firstSentence?.text || '暂无释义', 80),
-        href: '/vocabulary',
+        href: `/vocabulary?${focusParams.toString()}`,
         meta:
           pronunciations.length > 0
             ? `单词 · ${pronunciations.join(' / ')}`
@@ -123,8 +146,8 @@ export async function searchGlobalContent(
       meta: item.source || '句子来源',
     })),
     ...articleRows.map(item => ({
-      id: `article-${item.id}`,
-      type: 'article' as const,
+      id: `passage-${item.id}`,
+      type: 'passage' as const,
       title: item.title || '未命名文章',
       snippet: shortText(item.description || item.content || '暂无摘要'),
       href: `/articles/${item.id}`,
@@ -145,13 +168,13 @@ export async function searchGlobalContent(
       snippet: shortText(item.contextSentence || item.prompt || '', 100),
       href: item.quizId
         ? `/quizzes/${item.quizId}`
-        : item.articleId
-          ? `/articles/${item.articleId}`
+        : item.passageId
+          ? `/articles/${item.passageId}`
           : '/quizzes',
       meta: item.quiz
         ? `题目 · ${item.quiz.title || '题库'}`
-        : item.article
-          ? `阅读题 · ${item.article.title || '文章'}`
+        : item.passage
+          ? `阅读题 · ${item.passage.title || '文章'}`
           : '题目',
     })),
     ...dialogueRows.map(item => ({
@@ -166,4 +189,3 @@ export async function searchGlobalContent(
 
   return results.slice(0, 50)
 }
-

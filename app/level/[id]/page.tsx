@@ -1,4 +1,4 @@
-import CategoryAccordion from '../../../components/CategoryAccordion'
+import PaperAccordion from '../../../components/PaperAccordion'
 import prisma from '@/lib/prisma'
 
 export default async function LevelPage({
@@ -9,9 +9,9 @@ export default async function LevelPage({
   const { id } = await params
 
   const levelData = await prisma.level.findUnique({
-    where: { id: id }, // 转小写防报错
+    where: { id },
     include: {
-      categories: {
+      papers: {
         orderBy: { sortOrder: 'asc' },
         include: {
           lessons: {
@@ -28,21 +28,21 @@ export default async function LevelPage({
   }
 
   return (
-    <main className='min-h-screen bg-gray-50 px-4 md:px-8 xl:px-10 py-6 md:py-8'>
-      <div className='w-full max-w-7xl mx-auto'>
+    <main className='min-h-screen bg-gray-50 px-4 py-6 md:px-8 md:py-8 xl:px-10'>
+      <div className='mx-auto w-full max-w-7xl'>
         <header className='mb-8 border-b border-gray-200 pb-3 md:mb-10 md:pb-4'>
-          <h1 className='text-3xl md:text-4xl font-bold mb-2 text-gray-900 tracking-tight'>
+          <h1 className='mb-2 text-3xl font-bold tracking-tight text-gray-900 md:text-4xl'>
             {levelData.title}
           </h1>
           {levelData.description && (
-            <p className='text-gray-500 max-w-3xl'>{levelData.description}</p>
+            <p className='max-w-3xl text-gray-500'>{levelData.description}</p>
           )}
         </header>
 
-        {levelData.categories.length > 0 ? (
-          <CategoryAccordion lessonGroups={levelData.categories} />
+        {levelData.papers.length > 0 ? (
+          <PaperAccordion papers={levelData.papers} />
         ) : (
-          <div className='text-center py-16 border-b border-dashed border-gray-300 text-gray-500'>
+          <div className='border-b border-dashed border-gray-300 py-16 text-center text-gray-500'>
             该分类下暂时没有材料
           </div>
         )}

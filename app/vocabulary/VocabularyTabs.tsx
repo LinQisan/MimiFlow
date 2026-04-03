@@ -3,6 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 import {
   assignVocabularyFolder,
   createVocabularyFolder,
@@ -10,6 +11,9 @@ import {
   searchSentencesForWord,
   addVocabularySentence,
   moveVocabularyToGroup,
+  moveVocabularyFolder,
+  renameVocabularyFolder,
+  renameVocabularyGroup,
   updateVocabularyPronunciationById,
   assignVocabularySentenceMeaning,
   clearVocabularySentenceMeaning,
@@ -17,6 +21,7 @@ import {
   deleteVocabularySentence,
   updateVocabularyPartsOfSpeechById,
   updateVocabularySentencePosTags,
+  updateVocabularyTags,
 } from '@/app/actions/content'
 import { rateVocabularyMemory } from '@/app/actions/fsrs'
 import { useDialog } from '@/context/DialogContext'
@@ -34,6 +39,7 @@ import {
   getPosOptions,
   posWordHighlightClass,
 } from '@/utils/posTagger'
+import { normalizeVocabularyHeadword } from '@/utils/vocabularyCanonical'
 import { Rating } from 'ts-fsrs'
 
 type SentenceItem = {
@@ -62,6 +68,7 @@ type VocabItem = {
   partOfSpeech?: string | null
   partsOfSpeech?: string[]
   meanings?: string[]
+  tags?: string[]
   createdAt: Date
   folderId?: string | null
   folderName?: string | null
@@ -86,6 +93,21 @@ type VocabItem = {
 type FolderItem = {
   id: string
   name: string
+  parentId: string | null
+}
+
+type InflectionVariant = {
+  word: string
+  sentenceHits: number
+  sentenceTotal: number
+}
+
+type InflectionFamily = {
+  lemma: string
+  totalVariants: number
+  coveredVariants: number
+  coverage: number
+  variants: InflectionVariant[]
 }
 
 const LANG_NAMES: Record<string, string> = {
@@ -105,6 +127,9 @@ const splitListInput = (value: string) =>
         .filter(Boolean),
     ),
   )
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const firstSentencePosTag = (tags?: string[]) => {
   if (!Array.isArray(tags)) return ''
@@ -168,6 +193,46 @@ const getSentenceSourceDisplay = (sentence: SentenceItem) => {
   return `${sourceType} · ${detail}`
 }
 
+const detectInflectedSurface = (word: string, sentenceText: string) => {
+  const cleanWord = word.trim()
+  if (!cleanWord || !sentenceText) return ''
+  if (!/[\u3040-\u30ff\u4e00-\u9fff]/.test(cleanWord)) return ''
+  const escapedWord = escapeRegExp(cleanWord)
+  const suffixes = [
+    'しませんでした',
+    'しなかった',
+    'くなかった',
+    'ませんでした',
+    'ました',
+    'ません',
+    'なかった',
+    'ている',
+    'ていた',
+    'られる',
+    'かった',
+    'します',
+    'しない',
+    'して',
+    'した',
+    'ない',
+    'たい',
+    'ます',
+    'です',
+    'だ',
+    'た',
+    'て',
+    'な',
+    'に',
+    'く',
+  ]
+  for (const suffix of suffixes) {
+    const regex = new RegExp(`${escapedWord}${escapeRegExp(suffix)}`)
+    const matched = sentenceText.match(regex)?.[0] || ''
+    if (matched && matched !== cleanWord) return matched
+  }
+  return ''
+}
+
 const dateToMs = (value?: Date | string | null) => {
   if (!value) return Number.NaN
   const ts = new Date(value).getTime()
@@ -208,6 +273,46 @@ type DropdownOption = {
   label: string
 }
 
+type FolderTreeNode = FolderItem & {
+  children: FolderTreeNode[]
+}
+
+const buildFolderTree = (folders: FolderItem[]) => {
+  const nodeMap = new Map<string, FolderTreeNode>()
+  folders.forEach(folder => nodeMap.set(folder.id, { ...folder, children: [] }))
+  const roots: FolderTreeNode[] = []
+  nodeMap.forEach(node => {
+    if (node.parentId && nodeMap.has(node.parentId)) {
+      nodeMap.get(node.parentId)!.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  })
+  return roots
+}
+
+const flattenFolderTree = (
+  nodes: FolderTreeNode[],
+  depth = 0,
+  acc: Array<FolderItem & { depth: number; pathLabel: string }> = [],
+) => {
+  nodes
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
+    .forEach(node => {
+      const prefix = depth > 0 ? `${'— '.repeat(depth)}` : ''
+      acc.push({
+        id: node.id,
+        name: node.name,
+        parentId: node.parentId,
+        depth,
+        pathLabel: `${prefix}${node.name}`,
+      })
+      flattenFolderTree(node.children, depth + 1, acc)
+    })
+  return acc
+}
+
 function ControlDropdown({
   value,
   onChange,
@@ -243,7 +348,7 @@ function ControlDropdown({
         aria-label={ariaLabel}
         aria-expanded={open}
         onClick={() => setOpen(prev => !prev)}
-        className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-all hover:border-gray-300 hover:shadow focus-visible:border-indigo-300 focus-visible:ring-2 focus-visible:ring-indigo-100'>
+        className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus-visible:border-indigo-300 focus-visible:ring-2 focus-visible:ring-indigo-100'>
         <span className='truncate'>{selected?.label || ''}</span>
         <span
           className={`ml-2 text-[11px] font-black text-gray-400 transition-transform ${
@@ -283,12 +388,28 @@ function ControlDropdown({
 
 export default function VocabularyTabs({
   groupedData,
+  groupedTotals,
   folders,
+  initialFolderFilter = 'all',
+  initialFocusId,
+  initialFocusGroup,
+  totalCount,
+  currentPage,
+  totalPages,
 }: {
   groupedData: Record<string, VocabItem[]>
+  groupedTotals: Record<string, number>
   folders: FolderItem[]
+  initialFolderFilter?: string
+  initialFocusId?: string
+  initialFocusGroup?: string
+  totalCount: number
+  currentPage: number
+  totalPages: number
 }) {
   const dialog = useDialog()
+  const router = useRouter()
+  const pathname = usePathname()
   const [activeTab, setActiveTab] = useState(
     Object.keys(groupedData)[0] || '未分类',
   )
@@ -306,11 +427,26 @@ export default function VocabularyTabs({
     null,
   )
   const [isEditMode, setIsEditMode] = useState(false)
+  const [selectedVocabIds, setSelectedVocabIds] = useState<Set<string>>(
+    new Set(),
+  )
+  const [bulkTagsInput, setBulkTagsInput] = useState('')
+  const [bulkTagPanelOpen, setBulkTagPanelOpen] = useState(false)
+  const [activeTagEditorId, setActiveTagEditorId] = useState<string | null>(
+    null,
+  )
+  const [tagDraft, setTagDraft] = useState('')
+  const [isSavingTags, setIsSavingTags] = useState(false)
+  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const [sortMode, setSortMode] = useState<'recent' | 'word' | 'pos'>('recent')
   const [selectedPosFilter, setSelectedPosFilter] = useState('all')
-  const [selectedFolderFilter, setSelectedFolderFilter] = useState('all')
+  const [selectedFolderFilter, setSelectedFolderFilter] =
+    useState(initialFolderFilter)
   const [folderList, setFolderList] = useState(folders)
+  const [selectedFolderManageId, setSelectedFolderManageId] = useState<
+    string | null
+  >(null)
 
   // 🌟 轻量级分组移动控制
   const [activeMoveId, setActiveMoveId] = useState<string | null>(null)
@@ -320,6 +456,9 @@ export default function VocabularyTabs({
   const [activeFolderEditId, setActiveFolderEditId] = useState<string | null>(
     null,
   )
+  const [expandedInflectionIds, setExpandedInflectionIds] = useState<
+    Record<string, boolean>
+  >({})
   const [dragOffsetX, setDragOffsetX] = useState(0)
   const [cardTransitionState, setCardTransitionState] = useState<
     'idle' | 'leaving' | 'entering'
@@ -327,6 +466,7 @@ export default function VocabularyTabs({
   const [cardTransitionDirection, setCardTransitionDirection] = useState<
     'next' | 'prev'
   >('next')
+  const appliedFocusIdRef = useRef<string | null>(null)
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transitionRafRef = useRef<number | null>(null)
   const swipeStateRef = useRef<{
@@ -352,6 +492,21 @@ export default function VocabularyTabs({
   const lastAutoPlayedWordIdRef = useRef<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  const folderTree = useMemo(() => buildFolderTree(folderList), [folderList])
+  const flatFolders = useMemo(() => flattenFolderTree(folderTree), [folderTree])
+  const folderPathLabelMap = useMemo(
+    () =>
+      flatFolders.reduce<Record<string, string>>((acc, folder) => {
+        acc[folder.id] = folder.pathLabel
+        return acc
+      }, {}),
+    [flatFolders],
+  )
+  const activeFolderContextId =
+    selectedFolderFilter !== 'all' && selectedFolderFilter !== 'none'
+      ? selectedFolderFilter
+      : selectedFolderManageId
   const bumpShuffleSeed = () => {
     shuffleSeedRef.current += 1
     setShuffleSeed(shuffleSeedRef.current)
@@ -485,9 +640,9 @@ export default function VocabularyTabs({
     setIsSearchingMore(false)
   }
 
-  const handleCreateFolder = async () => {
+  const handleCreateFolder = async (parentId?: string | null) => {
     const nextName = await dialog.prompt('收藏夹名称', {
-      title: '新建收藏夹',
+      title: parentId ? '新建子收藏夹' : '新建收藏夹',
       defaultValue: '',
       confirmText: '创建',
     })
@@ -497,21 +652,138 @@ export default function VocabularyTabs({
       dialog.toast('收藏夹名称不能为空', { tone: 'error' })
       return
     }
-    const result = await createVocabularyFolder(trimmed)
+    const result = await createVocabularyFolder(trimmed, parentId || null)
     if (!result.success || !result.folder) {
       dialog.toast(result.message || '创建失败', { tone: 'error' })
       return
     }
     setFolderList(prev => [...prev, result.folder])
+    setSelectedFolderManageId(result.folder.id)
     dialog.toast('收藏夹已创建', { tone: 'success' })
+  }
+
+  const handleRenameFolder = async (folderId: string) => {
+    const target = folderList.find(item => item.id === folderId)
+    if (!target) return
+    const nextName = await dialog.prompt('新的收藏夹名称', {
+      title: '重命名收藏夹',
+      defaultValue: target.name,
+      confirmText: '保存',
+    })
+    if (nextName == null) return
+    const trimmed = nextName.trim()
+    if (!trimmed) {
+      dialog.toast('收藏夹名称不能为空', { tone: 'error' })
+      return
+    }
+    const result = await renameVocabularyFolder(folderId, trimmed)
+    if (!result.success || !result.folder) {
+      dialog.toast(result.message || '重命名失败', { tone: 'error' })
+      return
+    }
+    setFolderList(prev =>
+      prev.map(item =>
+        item.id === folderId ? { ...item, name: result.folder!.name } : item,
+      ),
+    )
+    setLocalData(
+      prev =>
+        Object.fromEntries(
+          Object.entries(prev).map(([group, items]) => [
+            group,
+            items.map(item =>
+              item.folderId === folderId
+                ? { ...item, folderName: result.folder!.name }
+                : item,
+            ),
+          ]),
+        ) as Record<string, VocabItem[]>,
+    )
+    dialog.toast('收藏夹名称已更新', { tone: 'success' })
+  }
+
+  const handleMoveFolder = async (folderId: string) => {
+    const target = folderList.find(item => item.id === folderId)
+    if (!target) return
+    const options = [
+      { id: 'root', label: '根目录（无上级）' },
+      ...flatFolders
+        .filter(item => item.id !== folderId)
+        .map(item => ({
+          id: item.id,
+          label: item.pathLabel,
+        })),
+    ]
+    const optionText = options
+      .map((item, idx) => `${idx + 1}. ${item.label}`)
+      .join('\n')
+    const selected = await dialog.prompt(
+      `输入目标序号，把「${target.name}」移动到：\n${optionText}`,
+      {
+        title: '移动收藏夹',
+        defaultValue: '1',
+        confirmText: '移动',
+      },
+    )
+    if (selected == null) return
+    const index = Number(selected.trim())
+    if (!Number.isFinite(index) || index < 1 || index > options.length) {
+      dialog.toast('请输入有效的序号', { tone: 'error' })
+      return
+    }
+    const nextParentId =
+      options[index - 1].id === 'root' ? null : options[index - 1].id
+    const result = await moveVocabularyFolder(folderId, nextParentId)
+    if (!result.success || !result.folder) {
+      dialog.toast(result.message || '移动失败', { tone: 'error' })
+      return
+    }
+    setFolderList(prev =>
+      prev.map(item =>
+        item.id === folderId ? { ...item, parentId: nextParentId } : item,
+      ),
+    )
+    dialog.toast('收藏夹已移动', { tone: 'success' })
+  }
+
+  const handleRenameGroup = async () => {
+    const currentGroup = activeTab.trim()
+    if (!currentGroup) return
+    const nextName = await dialog.prompt('新的分组名称', {
+      title: `重命名分组：${currentGroup}`,
+      defaultValue: currentGroup,
+      confirmText: '保存',
+    })
+    if (nextName == null) return
+    const trimmed = nextName.trim()
+    if (!trimmed) {
+      dialog.toast('分组名称不能为空', { tone: 'error' })
+      return
+    }
+    const result = await renameVocabularyGroup(currentGroup, trimmed)
+    if (!result.success) {
+      dialog.toast(result.message || '分组重命名失败', { tone: 'error' })
+      return
+    }
+    setLocalData(prev => {
+      if (!prev[currentGroup] || currentGroup === trimmed) return prev
+      const next = { ...prev }
+      const moving = next[currentGroup]
+      delete next[currentGroup]
+      next[trimmed] = [...(next[trimmed] || []), ...moving]
+      return next
+    })
+    setActiveTab(trimmed)
+    router.refresh()
+    dialog.toast(`分组已重命名（影响 ${result.changed || 0} 条）`, {
+      tone: 'success',
+    })
   }
 
   const handleAssignFolder = async (vocabId: string, folderId: string) => {
     const nextFolderId = folderId === 'none' ? null : folderId
     const nextFolderName =
-      nextFolderId == null
-        ? null
-        : folderList.find(item => item.id === nextFolderId)?.name || null
+      nextFolderId == null ? null : folderPathLabelMap[nextFolderId] || null
     setLocalData(prev => ({
       ...prev,
       [activeTab]: prev[activeTab].map(item =>
@@ -584,6 +856,91 @@ export default function VocabularyTabs({
       setLocalData(prevData)
       await dialog.alert(result.message || '词性保存失败')
     }
+  }
+
+  const openTagEditor = (vocab: VocabItem) => {
+    setActiveMoveId(null)
+    setActivePronEditId(null)
+    setActiveFolderEditId(null)
+    setActiveTagEditorId(vocab.id)
+    setTagDraft((vocab.tags || []).join('\n'))
+  }
+
+  const closeTagEditor = () => {
+    setActiveTagEditorId(null)
+    setTagDraft('')
+    setIsSavingTags(false)
+  }
+
+  const handleSaveTagsForVocab = async (vocab: VocabItem) => {
+    const newTags = splitListInput(tagDraft)
+    const prevData = localData
+
+    setIsSavingTags(true)
+    setLocalData(prev => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map(item =>
+        item.id === vocab.id
+          ? {
+              ...item,
+              tags: newTags,
+            }
+          : item,
+      ),
+    }))
+
+    const result = await updateVocabularyTags(vocab.id, newTags)
+    if (!result.success) {
+      setLocalData(prevData)
+      setIsSavingTags(false)
+      dialog.toast(result.message || '标签保存失败', { tone: 'error' })
+      return
+    }
+
+    dialog.toast('标签已更新', { tone: 'success' })
+    closeTagEditor()
+  }
+
+  const handleBulkEditTagsInline = async () => {
+    const selectedCount = selectedVocabIds.size
+    if (selectedCount === 0) {
+      dialog.toast('请先选择单词', { tone: 'error' })
+      return
+    }
+
+    const newTags = splitListInput(bulkTagsInput)
+    if (newTags.length === 0) {
+      dialog.toast('请输入至少一个标签', { tone: 'error' })
+      return
+    }
+
+    const prevData = localData
+    const selectedIds = Array.from(selectedVocabIds)
+
+    setLocalData(prev => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map(item =>
+        selectedIds.includes(item.id)
+          ? {
+              ...item,
+              tags: newTags,
+            }
+          : item,
+      ),
+    }))
+
+    for (const vocabId of selectedIds) {
+      const result = await updateVocabularyTags(vocabId, newTags)
+      if (!result.success) {
+        console.error(`更新标签失败: ${vocabId}`)
+      }
+    }
+
+    setSelectedVocabIds(new Set())
+    setIsSelectAllChecked(false)
+    setBulkTagsInput('')
+    setBulkTagPanelOpen(false)
+    dialog.toast(`已为 ${selectedCount} 个单词添加标签`, { tone: 'success' })
   }
 
   const handleAddSentence = async (
@@ -754,6 +1111,78 @@ export default function VocabularyTabs({
   }
 
   const currentList: VocabItem[] = localData[activeTab] || []
+  const inflectionByWordId = useMemo(() => {
+    const allVocab = Object.values(localData).flat()
+    const familyBuckets = new Map<string, VocabItem[]>()
+    const isJaVerbOrAdj = (item: VocabItem) => {
+      const tags = item.partsOfSpeech || []
+      const hasTargetPos = tags.some(
+        tag =>
+          tag.includes('動詞') ||
+          tag.includes('形容詞') ||
+          tag.includes('形容動詞'),
+      )
+      if (!hasTargetPos) return false
+      return /[\u3040-\u30ff\u4e00-\u9fff]/.test(item.word)
+    }
+
+    allVocab.forEach(item => {
+      if (!isJaVerbOrAdj(item)) return
+      const lemma = normalizeVocabularyHeadword(
+        item.word,
+        item.partsOfSpeech || [],
+      )
+      if (!lemma) return
+      const list = familyBuckets.get(lemma) || []
+      list.push(item)
+      familyBuckets.set(lemma, list)
+    })
+
+    const byId = new Map<string, InflectionFamily>()
+    familyBuckets.forEach((items, lemma) => {
+      const uniqueWords = Array.from(
+        new Set(items.map(item => item.word.trim()).filter(Boolean)),
+      )
+      if (uniqueWords.length <= 1) return
+      const allSentences = items.flatMap(item => item.sentences || [])
+      const variants: InflectionVariant[] = uniqueWords
+        .map(word => {
+          const regex = new RegExp(escapeRegExp(word), 'g')
+          const sentenceHits = allSentences.filter(sent =>
+            regex.test(sent.text),
+          ).length
+          return {
+            word,
+            sentenceHits,
+            sentenceTotal: allSentences.length,
+          }
+        })
+        .sort(
+          (a, b) =>
+            b.sentenceHits - a.sentenceHits ||
+            a.word.localeCompare(b.word, 'ja'),
+        )
+      const coveredVariants = variants.filter(
+        item => item.sentenceHits > 0,
+      ).length
+      const totalVariants = variants.length
+      const coverage =
+        totalVariants > 0
+          ? Math.round((coveredVariants / totalVariants) * 100)
+          : 0
+      const payload: InflectionFamily = {
+        lemma,
+        totalVariants,
+        coveredVariants,
+        coverage,
+        variants,
+      }
+      items.forEach(item => {
+        byId.set(item.id, payload)
+      })
+    })
+    return byId
+  }, [localData])
   const activeTabLanguageCode = normalizeLanguageCode(activeTab)
   const posFilterOptions = useMemo(
     () =>
@@ -825,9 +1254,13 @@ export default function VocabularyTabs({
     return list
   }, [visibleList, memoryMode, memoryNowMs, randomOrder, shuffleSeed])
   const currentFlashVocab = flashList[currentIndex] || null
-  const allExistingGroups = Object.keys(localData).filter(
-    g => localData[g].length > 0,
-  )
+  const allExistingGroups = useMemo(() => {
+    const totalGroups = Object.keys(groupedTotals).filter(
+      name => (groupedTotals[name] || 0) > 0,
+    )
+    if (totalGroups.length > 0) return totalGroups
+    return Object.keys(localData).filter(g => localData[g].length > 0)
+  }, [groupedTotals, localData])
 
   useEffect(() => {
     if (viewMode !== 'flashcard') return
@@ -844,11 +1277,18 @@ export default function VocabularyTabs({
       setActiveMoveId(null)
       setActivePronEditId(null)
       setActiveFolderEditId(null)
+      setActiveTagEditorId(null)
     }
-    if (activeMoveId || activePronEditId || activeFolderEditId)
+    if (
+      activeMoveId ||
+      activePronEditId ||
+      activeFolderEditId ||
+      activeTagEditorId
+    ) {
       window.addEventListener('click', handleClickOutside)
+    }
     return () => window.removeEventListener('click', handleClickOutside)
-  }, [activeMoveId, activePronEditId, activeFolderEditId])
+  }, [activeMoveId, activePronEditId, activeFolderEditId, activeTagEditorId])
 
   useEffect(() => {
     setPendingSentenceIndex(null)
@@ -859,15 +1299,62 @@ export default function VocabularyTabs({
       setActiveMoveId(null)
       setActivePronEditId(null)
       setActiveFolderEditId(null)
+      setActiveTagEditorId(null)
+      setBulkTagPanelOpen(false)
       setPendingSentenceIndex(null)
     }
   }, [isEditMode])
 
   useEffect(() => {
     setSelectedPosFilter('all')
-    setSelectedFolderFilter('all')
     setCurrentIndex(0)
   }, [activeTab])
+
+  useEffect(() => {
+    setLocalData(groupedData)
+    const groups = Object.keys(groupedData)
+    if (groups.length === 0) {
+      if (activeTab !== '未分类') setActiveTab('未分类')
+      return
+    }
+    if (!groups.includes(activeTab)) setActiveTab(groups[0])
+  }, [groupedData, activeTab])
+
+  useEffect(() => {
+    setFolderList(folders)
+  }, [folders])
+
+  useEffect(() => {
+    if (!selectedFolderManageId) return
+    if (folderList.some(item => item.id === selectedFolderManageId)) return
+    setSelectedFolderManageId(null)
+  }, [folderList, selectedFolderManageId])
+
+  useEffect(() => {
+    setSelectedFolderFilter(initialFolderFilter || 'all')
+  }, [initialFolderFilter])
+
+  useEffect(() => {
+    if (!initialFocusId) return
+    if (appliedFocusIdRef.current === initialFocusId) return
+    const allGroups = Object.keys(localData)
+    if (allGroups.length === 0) return
+    const preferredGroup =
+      initialFocusGroup && localData[initialFocusGroup]
+        ? initialFocusGroup
+        : allGroups.find(group =>
+            (localData[group] || []).some(item => item.id === initialFocusId),
+          )
+    if (!preferredGroup) return
+    setActiveTab(preferredGroup)
+    const nextVisible = localData[preferredGroup] || []
+    const nextIndex = nextVisible.findIndex(item => item.id === initialFocusId)
+    if (nextIndex >= 0) {
+      setCurrentIndex(nextIndex)
+      setViewMode('flashcard')
+      appliedFocusIdRef.current = initialFocusId
+    }
+  }, [initialFocusId, initialFocusGroup, localData])
 
   useEffect(() => {
     if (currentIndex >= flashList.length) {
@@ -895,6 +1382,35 @@ export default function VocabularyTabs({
         ? activeTabLanguageCode
         : normalizeLanguageCode(vocab.languageCode || '')
     return supportsPronunciationByLanguage(languageCode)
+  }
+
+  const renderWordPosLine = (vocab: VocabItem, centered = false) => {
+    const posList = (vocab.partsOfSpeech || [])
+      .map(item => item.trim())
+      .filter(Boolean)
+
+    if (posList.length === 0) return null
+
+    return (
+      <div
+        className={`mt-2 flex flex-wrap gap-1.5 ${
+          centered ? 'justify-center' : 'justify-start'
+        }`}>
+        {posList.map(pos => (
+          <span
+            key={`${vocab.id}-pos-display-${pos}`}
+            className='inline-flex items-center rounded-full border border-slate-200/90 bg-gradient-to-b from-white to-slate-50 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'>
+            {pos}
+          </span>
+        ))}
+      </div>
+    )
+  }
+  const toggleInflectionExpand = (wordId: string) => {
+    setExpandedInflectionIds(prev => ({
+      ...prev,
+      [wordId]: !prev[wordId],
+    }))
   }
 
   const renderSentenceWithPronunciation = (
@@ -958,11 +1474,28 @@ export default function VocabularyTabs({
     const sourceText = getSentenceSourceDisplay(sentence)
     const hasSource = !!sourceText.trim()
     const sentencePos = sentencePosTagsFromItem(vocab, sentence)[0]
+    const inflectionFamily = inflectionByWordId.get(vocab.id)
+    const matchedInflection = inflectionFamily
+      ? inflectionFamily.variants.find(variant =>
+          sentence.text.includes(variant.word),
+        )?.word || (sentence.text.includes(vocab.word) ? vocab.word : '')
+      : ''
+    const fallbackInflectionSurface = !matchedInflection
+      ? detectInflectedSurface(vocab.word, sentence.text)
+      : ''
+    const inflectionLabel = inflectionFamily
+      ? matchedInflection && matchedInflection !== inflectionFamily.lemma
+        ? `词形 ${matchedInflection} → ${inflectionFamily.lemma}`
+        : `原形 ${inflectionFamily.lemma}`
+      : fallbackInflectionSurface
+        ? `词形 ${fallbackInflectionSurface} → ${vocab.word}`
+        : ''
+    const hasInflection = !!inflectionLabel
     const canPlay = canPlaySentenceAudio(vocab, sentence)
     const sourceClass =
-      'inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-400'
+      'inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-400 dark:text-indigo-200/75'
     const divider = (
-      <span className='inline-flex h-5 items-center text-[12px] leading-5 text-slate-300'>
+      <span className='inline-flex h-5 items-center text-[12px] leading-5 text-slate-300 dark:text-indigo-200/45'>
         ｜
       </span>
     )
@@ -974,7 +1507,7 @@ export default function VocabularyTabs({
             <Link
               href={sentence.sourceUrl}
               onClick={event => event.stopPropagation()}
-              className={`${sourceClass} underline-offset-2 hover:text-slate-600 hover:underline`}>
+              className={`${sourceClass} underline-offset-2 hover:text-slate-600 dark:hover:text-indigo-100 hover:underline`}>
               {sourceText}
             </Link>
           ) : (
@@ -983,14 +1516,22 @@ export default function VocabularyTabs({
         {sentencePos && (
           <>
             {hasSource && divider}
-            <span className='inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-400'>
+            <span className='inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-400 dark:text-indigo-200/75'>
               {sentencePos}
+            </span>
+          </>
+        )}
+        {hasInflection && (
+          <>
+            {(hasSource || sentencePos) && divider}
+            <span className='inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-400 dark:text-indigo-200/75'>
+              {inflectionLabel}
             </span>
           </>
         )}
         {canPlay && (
           <>
-            {(hasSource || sentencePos) && divider}
+            {(hasSource || sentencePos || hasInflection) && divider}
             <button
               type='button'
               onClick={event => {
@@ -1002,7 +1543,7 @@ export default function VocabularyTabs({
                 const audioData = vocab.audioData
                 if (audioData) playAudio(audioData)
               }}
-              className='inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline'>
+              className='inline-flex h-5 items-center text-[12px] font-medium leading-5 text-slate-500 dark:text-indigo-200/85 underline-offset-2 hover:text-slate-700 dark:hover:text-indigo-100 hover:underline'>
               播放
             </button>
           </>
@@ -1014,7 +1555,7 @@ export default function VocabularyTabs({
   const renderSentenceTranslation = (sentence: SentenceItem) => {
     if (!sentence.translation) return null
     return (
-      <p className='mt-1.5 text-[14px] leading-relaxed text-slate-500'>
+      <p className='mt-1.5 text-[14px] leading-relaxed text-slate-500 dark:text-indigo-200/70'>
         {sentence.translation}
       </p>
     )
@@ -1271,7 +1812,7 @@ export default function VocabularyTabs({
   const cardTransitionOpacity = cardTransitionState === 'idle' ? 1 : 0.14
 
   return (
-    <div className='max-w-7xl mx-auto'>
+    <div className='theme-page-vocab max-w-7xl mx-auto'>
       {/* 头部导航 */}
       <div className={viewMode === 'flashcard' ? 'mb-3' : 'mb-6'}>
         <div
@@ -1286,7 +1827,7 @@ export default function VocabularyTabs({
                 setCurrentIndex(0)
                 setViewMode('list')
               }}
-              className={`rounded-full font-bold whitespace-nowrap transition-all ${
+              className={`rounded-full font-bold whitespace-nowrap transition-colors ${
                 viewMode === 'flashcard' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2'
               } ${
                 activeTab === name
@@ -1295,10 +1836,16 @@ export default function VocabularyTabs({
               }`}>
               {LANG_NAMES[name] || name}
               <span className='ml-1 opacity-75'>
-                ({localData[name].length})
+                ({groupedTotals[name] || 0})
               </span>
             </button>
           ))}
+          <button
+            type='button'
+            onClick={() => void handleRenameGroup()}
+            className='ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
+            重命名分组
+          </button>
         </div>
 
         <div className='space-y-2 border-b border-gray-200 pb-3'>
@@ -1313,6 +1860,57 @@ export default function VocabularyTabs({
                 }`}>
                 {isEditMode ? '退出编辑' : '编辑'}
               </button>
+              {isEditMode && (
+                <div className='flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-1.5 border border-indigo-200'>
+                  <label className='flex items-center gap-2 cursor-pointer'>
+                    <input
+                      type='checkbox'
+                      checked={isSelectAllChecked}
+                      onChange={e => {
+                        setIsSelectAllChecked(e.target.checked)
+                        if (e.target.checked) {
+                          const allIds = new Set(
+                            visibleList.map(item => item.id),
+                          )
+                          setSelectedVocabIds(allIds)
+                        } else {
+                          setSelectedVocabIds(new Set())
+                        }
+                      }}
+                      className='w-4 h-4 rounded border-gray-300 cursor-pointer accent-indigo-600'
+                    />
+                    <span className='text-xs text-indigo-700 font-medium'>
+                      全选
+                    </span>
+                  </label>
+                  {selectedVocabIds.size > 0 && (
+                    <>
+                      <span className='border-l border-indigo-200 h-4'></span>
+                      <span className='text-xs text-indigo-700 font-medium'>
+                        已选 {selectedVocabIds.size}/{visibleList.length} 个
+                      </span>
+                      <button
+                        type='button'
+                        onClick={() => setBulkTagPanelOpen(prev => !prev)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
+                          bulkTagPanelOpen
+                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                            : 'border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50'
+                        }`}>
+                        {bulkTagPanelOpen ? '收起标签面板' : '批量添加标签'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedVocabIds(new Set())
+                          setIsSelectAllChecked(false)
+                        }}
+                        className='px-2 py-1 rounded-md text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors'>
+                        清空选择
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               {!(viewMode === 'flashcard' && memoryMode) && (
                 <ToggleSwitch
                   label='注音'
@@ -1337,6 +1935,61 @@ export default function VocabularyTabs({
               </button>
             </div>
           </div>
+
+          {isEditMode && bulkTagPanelOpen && (
+            <div className='rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50/70 p-4 shadow-sm'>
+              <div className='flex flex-col gap-3'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className='inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700'>
+                    已选 {selectedVocabIds.size} 个单词
+                  </span>
+                  <span className='text-xs text-slate-500'>
+                    支持换行、逗号、分号分隔
+                  </span>
+                </div>
+
+                <textarea
+                  value={bulkTagsInput}
+                  onChange={event =>
+                    setBulkTagsInput(event.currentTarget.value)
+                  }
+                  rows={3}
+                  placeholder='例如：N1重点\n抽象表达\n易混'
+                  className='w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-inner outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
+                />
+
+                {splitListInput(bulkTagsInput).length > 0 && (
+                  <div className='flex flex-wrap gap-1.5'>
+                    {splitListInput(bulkTagsInput).map(tag => (
+                      <span
+                        key={`bulk-draft-tag-${tag}`}
+                        className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className='flex flex-wrap items-center justify-end gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setBulkTagsInput('')
+                      setBulkTagPanelOpen(false)
+                    }}
+                    className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
+                    取消
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => void handleBulkEditTagsInline()}
+                    className='rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700'>
+                    保存批量标签
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {viewMode === 'flashcard' && (
             <div className='flex flex-wrap items-center gap-2 pt-1'>
@@ -1431,23 +2084,120 @@ export default function VocabularyTabs({
                 <ControlDropdown
                   ariaLabel='收藏夹筛选'
                   value={selectedFolderFilter}
-                  onChange={setSelectedFolderFilter}
+                  onChange={value => {
+                    setSelectedFolderFilter(value)
+                    setSelectedFolderManageId(
+                      value !== 'all' && value !== 'none' ? value : null,
+                    )
+                    const params = new URLSearchParams()
+                    params.set('page', '1')
+                    params.set('folder', value)
+                    router.push(`${pathname}?${params.toString()}`)
+                  }}
                   className='w-full'
                   options={[
                     { value: 'all', label: '全部收藏夹' },
                     { value: 'none', label: '未收藏' },
-                    ...folderList.map(folder => ({
+                    ...flatFolders.map(folder => ({
                       value: folder.id,
-                      label: folder.name,
+                      label: folder.pathLabel,
                     })),
                   ]}
                 />
                 <button
                   type='button'
-                  onClick={handleCreateFolder}
+                  onClick={() =>
+                    void handleCreateFolder(activeFolderContextId || null)
+                  }
                   className='h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-bold text-indigo-700 transition-colors hover:bg-indigo-100'>
-                  新建收藏夹
+                  {activeFolderContextId ? '新建子收藏夹' : '新建收藏夹'}
                 </button>
+              </div>
+
+              <div className='flex flex-wrap items-center gap-2'>
+                <span className='text-xs font-bold text-gray-500'>
+                  收藏夹管理
+                </span>
+                <ControlDropdown
+                  ariaLabel='选择要管理的收藏夹'
+                  value={activeFolderContextId || 'none'}
+                  onChange={value =>
+                    setSelectedFolderManageId(value === 'none' ? null : value)
+                  }
+                  className='w-full sm:max-w-sm'
+                  options={[
+                    { value: 'none', label: '未选择' },
+                    ...flatFolders.map(folder => ({
+                      value: folder.id,
+                      label: folder.pathLabel,
+                    })),
+                  ]}
+                />
+                <button
+                  type='button'
+                  disabled={!activeFolderContextId}
+                  onClick={() =>
+                    activeFolderContextId &&
+                    void handleCreateFolder(activeFolderContextId)
+                  }
+                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                  新建子收藏夹
+                </button>
+                <button
+                  type='button'
+                  disabled={!activeFolderContextId}
+                  onClick={() =>
+                    activeFolderContextId &&
+                    void handleRenameFolder(activeFolderContextId)
+                  }
+                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                  重命名
+                </button>
+                <button
+                  type='button'
+                  disabled={!activeFolderContextId}
+                  onClick={() =>
+                    activeFolderContextId &&
+                    void handleMoveFolder(activeFolderContextId)
+                  }
+                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                  移动
+                </button>
+              </div>
+
+              <div className='flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 text-xs text-gray-600'>
+                <span>
+                  本页 {visibleList.length} 条 · 第 {currentPage}/{totalPages}{' '}
+                  页
+                </span>
+                <div className='flex items-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      if (currentPage <= 1) return
+                      const params = new URLSearchParams()
+                      params.set('page', String(currentPage - 1))
+                      params.set('folder', selectedFolderFilter)
+                      router.push(`${pathname}?${params.toString()}`)
+                    }}
+                    disabled={currentPage <= 1}
+                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                    上一页
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      if (currentPage >= totalPages) return
+                      const params = new URLSearchParams()
+                      params.set('page', String(currentPage + 1))
+                      params.set('folder', selectedFolderFilter)
+                      router.push(`${pathname}?${params.toString()}`)
+                    }}
+                    disabled={currentPage >= totalPages}
+                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                    下一页
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1456,20 +2206,47 @@ export default function VocabularyTabs({
 
       {/* 列表模式：仅显示单词和基础操作 */}
       {viewMode === 'list' && (
-        <div className='grid grid-cols-1 xl:grid-cols-2 gap-4'>
+        <div className='grid min-h-[56vh] auto-rows-min content-start items-start grid-cols-1 gap-4 xl:grid-cols-2'>
           {visibleList.map((vocab, idx) => (
             <div
               key={vocab.id}
               onClick={() => {
+                if (isEditMode) return // 编辑模式下不跳转
                 const nextIndex = flashList.findIndex(
                   item => item.id === vocab.id,
                 )
                 setCurrentIndex(nextIndex >= 0 ? nextIndex : idx)
                 setViewMode('flashcard')
               }}
-              className='bg-white/95 p-5 rounded-2xl border border-gray-200/80 shadow-sm hover:shadow-lg hover:-translate-y-0.5 hover:border-indigo-200 cursor-pointer flex items-center justify-between group transition-all'>
-              <div className='flex items-center gap-4'>
-                <div>
+              className={`relative rounded-2xl border border-gray-200/80 bg-white/95 p-4 shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg ${
+                isEditMode ? 'pr-36 border-indigo-200 bg-indigo-50/30' : ''
+              }`}>
+              {isEditMode && (
+                <div className='absolute bottom-3 right-3'>
+                  <input
+                    type='checkbox'
+                    checked={selectedVocabIds.has(vocab.id)}
+                    onChange={e => {
+                      e.stopPropagation()
+                      const newSet = new Set(selectedVocabIds)
+                      if (e.target.checked) {
+                        newSet.add(vocab.id)
+                        // 检查是否全选
+                        if (newSet.size === visibleList.length) {
+                          setIsSelectAllChecked(true)
+                        }
+                      } else {
+                        newSet.delete(vocab.id)
+                        setIsSelectAllChecked(false)
+                      }
+                      setSelectedVocabIds(newSet)
+                    }}
+                    className='w-5 h-5 rounded border-gray-300 cursor-pointer accent-indigo-600'
+                  />
+                </div>
+              )}
+              <div className='flex items-start gap-3'>
+                <div className='min-w-0'>
                   <WordPronunciation
                     word={vocab.word}
                     pronunciation={getPrimaryPronunciation(vocab)}
@@ -1486,31 +2263,59 @@ export default function VocabularyTabs({
                         playAudioFile(vocab.wordAudio)
                       }}
                       className='mt-1 inline-flex h-6 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700'>
-                      播放发音
+                      发音
                     </button>
                   )}
-                  {vocab.wordAudio && (
-                    <div className='mt-1.5'>
-                      <button
-                        type='button'
-                        onClick={e => {
-                          e.stopPropagation()
-                          playAudioFile(vocab.wordAudio)
-                        }}
-                        className='inline-flex h-6 items-center rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700'>
-                        发音
-                      </button>
-                    </div>
-                  )}
                   {vocab.folderName && (
-                    <div className='mt-1'>
+                    <div className='mt-1.5'>
                       <span className='inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700'>
-                        收藏夹: {vocab.folderName}
+                        收藏夹:{' '}
+                        {vocab.folderId
+                          ? folderPathLabelMap[vocab.folderId] ||
+                            vocab.folderName
+                          : vocab.folderName}
                       </span>
                     </div>
                   )}
+                  {!isEditMode && renderWordPosLine(vocab)}
+
+                  {vocab.tags && vocab.tags.length > 0 && (
+                    <div className='mt-3 flex flex-wrap gap-1.5'>
+                      {vocab.tags.slice(0, 6).map(tag => (
+                        <span
+                          key={`${vocab.id}-tag-${tag}`}
+                          className='inline-flex items-center rounded-full border border-slate-200/90 bg-gradient-to-b from-white to-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'>
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {isEditMode && (
+                    <div className='mt-3 flex flex-wrap items-center gap-2'>
+                      <button
+                        type='button'
+                        onClick={event => {
+                          event.stopPropagation()
+                          if (activeTagEditorId === vocab.id) {
+                            closeTagEditor()
+                            return
+                          }
+                          openTagEditor(vocab)
+                        }}
+                        className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                          activeTagEditorId === vocab.id
+                            ? 'bg-slate-900 text-white shadow-md'
+                            : 'border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
+                        }`}>
+                        {activeTagEditorId === vocab.id
+                          ? '收起标签'
+                          : '添加标签'}
+                      </button>
+                    </div>
+                  )}
                   {vocab.meanings && vocab.meanings.length > 0 && (
-                    <div className='mt-2 space-y-1.5'>
+                    <div className='mt-2 space-y-1'>
                       {vocab.meanings.slice(0, 2).map((meaning, meaningIdx) => (
                         <div
                           key={`${vocab.id}-list-meaning-${meaning}-${meaningIdx}`}
@@ -1523,24 +2328,21 @@ export default function VocabularyTabs({
                       ))}
                     </div>
                   )}
-                  <div className='mt-2 flex flex-wrap gap-1.5'>
-                    {(vocab.partsOfSpeech || []).slice(0, 3).map(pos => (
-                      <button
-                        key={`${vocab.id}-list-pos-${pos}`}
-                        type='button'
-                        onClick={e => {
-                          e.stopPropagation()
-                          if (!isEditMode) return
-                          void handleToggleWordPos(vocab, pos)
-                        }}
-                        className={`rounded-md border px-2 py-0.5 text-[11px] font-bold transition-colors ${posBadgeClass(pos)} ${
-                          isEditMode ? 'hover:brightness-95' : ''
-                        }`}>
-                        {pos}
-                      </button>
-                    ))}
-                    {isEditMode &&
-                      getPosOptions(vocab.word, vocab.sentences[0]?.text || '')
+                  {isEditMode && (
+                    <div className='mt-1.5 flex flex-wrap gap-1.5'>
+                      {(vocab.partsOfSpeech || []).slice(0, 6).map(pos => (
+                        <button
+                          key={`${vocab.id}-list-pos-${pos}`}
+                          type='button'
+                          onClick={e => {
+                            e.stopPropagation()
+                            void handleToggleWordPos(vocab, pos)
+                          }}
+                          className={`rounded-md border px-2 py-0.5 text-[11px] font-bold transition-colors ${posBadgeClass(pos)} hover:brightness-95`}>
+                          {pos}
+                        </button>
+                      ))}
+                      {getPosOptions(vocab.word, vocab.sentences[0]?.text || '')
                         .filter(
                           option =>
                             !(vocab.partsOfSpeech || []).includes(option),
@@ -1558,7 +2360,8 @@ export default function VocabularyTabs({
                             {option}
                           </button>
                         ))}
-                  </div>
+                    </div>
+                  )}
                   {vocab.pronunciations &&
                     vocab.pronunciations.filter(Boolean).length > 1 &&
                     shouldShowPronunciationForVocab(vocab) && (
@@ -1572,11 +2375,106 @@ export default function VocabularyTabs({
                         ))}
                       </div>
                     )}
+                  {(() => {
+                    const family = inflectionByWordId.get(vocab.id)
+                    if (!family) return null
+                    const expanded = !!expandedInflectionIds[vocab.id]
+                    return (
+                      <div className='mt-2'>
+                        <button
+                          type='button'
+                          onClick={e => {
+                            e.stopPropagation()
+                            toggleInflectionExpand(vocab.id)
+                          }}
+                          className='inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100'>
+                          原形 {family.lemma}
+                          <span className='text-slate-400'>·</span>
+                          覆盖 {family.coveredVariants}/{family.totalVariants}
+                        </button>
+                        {expanded && (
+                          <div className='mt-1.5 flex flex-wrap gap-1.5'>
+                            {family.variants.map(variant => (
+                              <span
+                                key={`${vocab.id}-list-family-${variant.word}`}
+                                className='inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+                                <span>{variant.word}</span>
+                                <span className='text-slate-400'>
+                                  {variant.sentenceHits}/
+                                  {Math.max(variant.sentenceTotal, 1)}
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
 
+              {isEditMode && activeTagEditorId === vocab.id && (
+                <div
+                  onClick={event => event.stopPropagation()}
+                  className='mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-inner'>
+                  <div className='flex flex-col gap-3'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <div>
+                        <p className='text-sm font-bold text-slate-800'>
+                          编辑标签
+                        </p>
+                        <p className='text-[11px] text-slate-500'>
+                          支持换行、逗号、分号分隔
+                        </p>
+                      </div>
+                      {(vocab.tags || []).length > 0 && (
+                        <span className='rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500'>
+                          当前 {vocab.tags?.length || 0} 个
+                        </span>
+                      )}
+                    </div>
+
+                    <textarea
+                      value={tagDraft}
+                      onChange={event => setTagDraft(event.currentTarget.value)}
+                      rows={3}
+                      placeholder='例如：高频 / 书面语 / 易错'
+                      className='w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
+                    />
+
+                    {splitListInput(tagDraft).length > 0 && (
+                      <div className='flex flex-wrap gap-1.5'>
+                        {splitListInput(tagDraft).map(tag => (
+                          <span
+                            key={`${vocab.id}-draft-${tag}`}
+                            className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className='flex justify-end gap-2'>
+                      <button
+                        type='button'
+                        onClick={closeTagEditor}
+                        className='rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
+                        取消
+                      </button>
+                      <button
+                        type='button'
+                        disabled={isSavingTags}
+                        onClick={() => void handleSaveTagsForVocab(vocab)}
+                        className='rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60'>
+                        {isSavingTags ? '保存中...' : '保存标签'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {isEditMode && (
-                <div className='flex items-center gap-2 relative'>
+                <div className='absolute right-3 top-3 flex items-center gap-2'>
                   <div className='relative'>
                     <button
                       onClick={e => {
@@ -1602,11 +2500,12 @@ export default function VocabularyTabs({
                           autoFocus
                           value={pronInput}
                           onChange={e => setPronInput(e.currentTarget.value)}
-                          placeholder='例如：にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
+                          placeholder='例如：言:い い 訳:わけ / にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
                           className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 text-gray-800'
                         />
                         <p className='mt-1 px-1 text-[10px] text-gray-400'>
-                          日语可用空格或 | 拆分读音（如 人間: にん
+                          日语支持「汉字:读音 + 原文段」（如 言:い い
+                          訳:わけ），也兼容空格或 | 拆分（如 にん
                           げん）；外来语通常不需要拆分
                         </p>
                         <div className='mt-2 flex justify-end'>
@@ -1651,13 +2550,13 @@ export default function VocabularyTabs({
                               )
                               setActiveFolderEditId(null)
                             }}
-                            className='h-10 w-full appearance-none rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 pr-8 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-all hover:border-gray-300 hover:shadow focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'>
+                            className='h-10 w-full appearance-none rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 pr-8 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'>
                             <option value='none'>不收藏</option>
-                            {folderList.map(folder => (
+                            {flatFolders.map(folder => (
                               <option
                                 key={`folder-option-${vocab.id}-${folder.id}`}
                                 value={folder.id}>
-                                {folder.name}
+                                {folder.pathLabel}
                               </option>
                             ))}
                           </select>
@@ -1786,7 +2685,7 @@ export default function VocabularyTabs({
                         setActiveFolderEditId(null)
                         handleOpenPronEditor(current)
                       }}
-                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-all ${activePronEditId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
+                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-colors ${activePronEditId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
                       注音
                     </button>
                     {activePronEditId === currentFlashVocab.id && (
@@ -1800,11 +2699,12 @@ export default function VocabularyTabs({
                           autoFocus
                           value={pronInput}
                           onChange={e => setPronInput(e.currentTarget.value)}
-                          placeholder='例如：にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
+                          placeholder='例如：言:い い 訳:わけ / にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
                           className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 text-gray-800'
                         />
                         <p className='mt-1 px-1 text-[10px] text-gray-400'>
-                          日语可用空格或 | 拆分读音（如 人間: にん
+                          日语支持「汉字:读音 + 原文段」（如 言:い い
+                          訳:わけ），也兼容空格或 | 拆分（如 にん
                           げん）；外来语通常不需要拆分
                         </p>
                         <div className='mt-2 flex justify-end'>
@@ -1832,7 +2732,7 @@ export default function VocabularyTabs({
                             : currentFlashVocab.id,
                         )
                       }}
-                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-all ${activeMoveId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
+                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-colors ${activeMoveId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
                       移动
                     </button>
 
@@ -1889,7 +2789,7 @@ export default function VocabularyTabs({
                     triggerLabel='删除'
                     confirmLabel='确认删除'
                     pendingLabel='删除中...'
-                    triggerClassName='text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-4 py-2 rounded-xl transition-all'
+                    triggerClassName='text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-4 py-2 rounded-xl transition-colors'
                   />
                 </div>
               )}
@@ -1922,8 +2822,111 @@ export default function VocabularyTabs({
               {currentFlashVocab.folderName && (
                 <div className='mt-3'>
                   <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600'>
-                    收藏夹: {currentFlashVocab.folderName}
+                    收藏夹:{' '}
+                    {currentFlashVocab.folderId
+                      ? folderPathLabelMap[currentFlashVocab.folderId] ||
+                        currentFlashVocab.folderName
+                      : currentFlashVocab.folderName}
                   </span>
+                </div>
+              )}
+              {currentFlashVocab.tags && currentFlashVocab.tags.length > 0 && (
+                <div className='mt-2 flex flex-wrap items-center justify-center gap-1.5'>
+                  {currentFlashVocab.tags.slice(0, 8).map(tag => (
+                    <span
+                      key={`${currentFlashVocab.id}-flash-tag-${tag}`}
+                      className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {!isEditMode && renderWordPosLine(currentFlashVocab, true)}
+
+              {isEditMode && (
+                <div className='mt-3 flex flex-wrap items-center justify-center gap-2'>
+                  <button
+                    type='button'
+                    onClick={event => {
+                      event.stopPropagation()
+                      if (activeTagEditorId === currentFlashVocab.id) {
+                        closeTagEditor()
+                        return
+                      }
+                      openTagEditor(currentFlashVocab)
+                    }}
+                    className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                      activeTagEditorId === currentFlashVocab.id
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
+                    }`}>
+                    {activeTagEditorId === currentFlashVocab.id
+                      ? '收起标签'
+                      : '添加标签'}
+                  </button>
+                </div>
+              )}
+
+              {isEditMode && activeTagEditorId === currentFlashVocab.id && (
+                <div
+                  onClick={event => event.stopPropagation()}
+                  className='mx-auto mt-3 max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-inner text-left'>
+                  <div className='flex flex-col gap-3'>
+                    <div className='flex items-center justify-between gap-2'>
+                      <div>
+                        <p className='text-sm font-bold text-slate-800'>
+                          编辑标签
+                        </p>
+                        <p className='text-[11px] text-slate-500'>
+                          支持换行、逗号、分号分隔
+                        </p>
+                      </div>
+                      {(currentFlashVocab.tags || []).length > 0 && (
+                        <span className='rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500'>
+                          当前 {currentFlashVocab.tags?.length || 0} 个
+                        </span>
+                      )}
+                    </div>
+
+                    <textarea
+                      value={tagDraft}
+                      onChange={event => setTagDraft(event.currentTarget.value)}
+                      rows={3}
+                      placeholder='例如：高频 / 书面语 / 易错'
+                      className='w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
+                    />
+
+                    {splitListInput(tagDraft).length > 0 && (
+                      <div className='flex flex-wrap gap-1.5'>
+                        {splitListInput(tagDraft).map(tag => (
+                          <span
+                            key={`${currentFlashVocab.id}-flash-draft-${tag}`}
+                            className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className='flex justify-end gap-2'>
+                      <button
+                        type='button'
+                        onClick={closeTagEditor}
+                        className='rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
+                        取消
+                      </button>
+                      <button
+                        type='button'
+                        disabled={isSavingTags}
+                        onClick={() =>
+                          void handleSaveTagsForVocab(currentFlashVocab)
+                        }
+                        className='rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60'>
+                        {isSavingTags ? '保存中...' : '保存标签'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
               {shouldShowPronunciationForVocab(currentFlashVocab) &&
@@ -1939,6 +2942,45 @@ export default function VocabularyTabs({
                     ))}
                   </div>
                 )}
+              {(() => {
+                const family = inflectionByWordId.get(currentFlashVocab.id)
+                if (!family) return null
+                const expanded = !!expandedInflectionIds[currentFlashVocab.id]
+                return (
+                  <div className='mt-3 flex flex-col items-center gap-2'>
+                    <button
+                      type='button'
+                      onClick={() =>
+                        toggleInflectionExpand(currentFlashVocab.id)
+                      }
+                      className='inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100'>
+                      原形 {family.lemma}
+                      <span className='text-slate-400'>·</span>
+                      覆盖 {family.coveredVariants}/{family.totalVariants}
+                      <span className='text-slate-400'>
+                        ({family.coverage}%)
+                      </span>
+                    </button>
+                    {expanded && (
+                      <div className='w-full rounded-xl border border-slate-200 bg-slate-50/80 p-2.5'>
+                        <div className='flex flex-wrap items-center justify-center gap-1.5'>
+                          {family.variants.map(variant => (
+                            <span
+                              key={`${currentFlashVocab.id}-family-${variant.word}`}
+                              className='inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                              <span>{variant.word}</span>
+                              <span className='text-slate-400'>
+                                {variant.sentenceHits}/
+                                {Math.max(variant.sentenceTotal, 1)}
+                              </span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
               {isEditMode && (
                 <div className='mt-3 flex flex-wrap items-center justify-center gap-2'>
                   {(currentFlashVocab?.partsOfSpeech || []).map(pos => (
@@ -1995,377 +3037,365 @@ export default function VocabularyTabs({
                   : ''
               }>
               {(() => {
-              const currentVocab = currentFlashVocab
-              const hasMeanings =
-                !!currentVocab.meanings && currentVocab.meanings.length > 0
-              const unmatchedEntries = currentVocab.sentences
-                .map((sent, idx) => ({ sent, idx }))
-                .filter(
-                  ({ sent }) =>
-                    typeof sent.meaningIndex !== 'number' ||
-                    sent.meaningIndex < 0,
-                )
-              return (
-                <div className='flex-1 min-h-0 space-y-4 pt-2'>
-                  {hasMeanings && (
-                    <section className='min-h-0 border-t border-gray-100 pt-2'>
-                      <div className='max-h-[36vh] overflow-auto pr-1'>
-                        {currentVocab.meanings!.map((meaning, meaningIdx) => {
-                          const matchedSentences = currentVocab.sentences
-                            .map((sent, idx) => ({ sent, idx }))
-                            .filter(
-                              ({ sent }) => sent.meaningIndex === meaningIdx,
-                            )
-                          return (
-                            <button
-                              type='button'
-                              key={`${currentVocab.id}-meaning-drop-${meaning}-${meaningIdx}`}
-                              onClick={() => {
-                                if (
-                                  !isEditMode ||
-                                  pendingSentenceIndex === null
-                                )
-                                  return
-                                handleAssignSentenceMeaning(
-                                  currentVocab.id,
-                                  pendingSentenceIndex,
-                                  meaningIdx,
-                                )
-                                setPendingSentenceIndex(null)
-                              }}
-                              onDragOver={event => {
-                                event.preventDefault()
-                                event.dataTransfer.dropEffect = 'move'
-                              }}
-                              onDrop={event => {
-                                event.preventDefault()
-                                try {
-                                  const payload = JSON.parse(
-                                    event.dataTransfer.getData(
-                                      'application/json',
-                                    ),
-                                  ) as {
-                                    vocabId?: string
-                                    sentenceIndex?: number
-                                  }
+                const currentVocab = currentFlashVocab
+                const hasMeanings =
+                  !!currentVocab.meanings && currentVocab.meanings.length > 0
+                const unmatchedEntries = currentVocab.sentences
+                  .map((sent, idx) => ({ sent, idx }))
+                  .filter(
+                    ({ sent }) =>
+                      typeof sent.meaningIndex !== 'number' ||
+                      sent.meaningIndex < 0,
+                  )
+                return (
+                  <div className='flex-1 min-h-0 space-y-4 pt-2'>
+                    {hasMeanings && (
+                      <section className='min-h-0 border-t border-gray-100 pt-2'>
+                        <div className='max-h-[36vh] overflow-auto pr-1'>
+                          {currentVocab.meanings!.map((meaning, meaningIdx) => {
+                            const matchedSentences = currentVocab.sentences
+                              .map((sent, idx) => ({ sent, idx }))
+                              .filter(
+                                ({ sent }) => sent.meaningIndex === meaningIdx,
+                              )
+                            return (
+                              <div
+                                role='button'
+                                tabIndex={0}
+                                key={`${currentVocab.id}-meaning-drop-${meaning}-${meaningIdx}`}
+                                onClick={() => {
                                   if (
-                                    payload.vocabId !== currentVocab.id ||
-                                    typeof payload.sentenceIndex !== 'number'
+                                    !isEditMode ||
+                                    pendingSentenceIndex === null
+                                  )
+                                    return
+                                  handleAssignSentenceMeaning(
+                                    currentVocab.id,
+                                    pendingSentenceIndex,
+                                    meaningIdx,
+                                  )
+                                  setPendingSentenceIndex(null)
+                                }}
+                                onKeyDown={event => {
+                                  if (
+                                    event.key !== 'Enter' &&
+                                    event.key !== ' '
+                                  ) {
+                                    return
+                                  }
+                                  event.preventDefault()
+                                  if (
+                                    !isEditMode ||
+                                    pendingSentenceIndex === null
                                   ) {
                                     return
                                   }
                                   handleAssignSentenceMeaning(
-                                    payload.vocabId,
-                                    payload.sentenceIndex,
+                                    currentVocab.id,
+                                    pendingSentenceIndex,
                                     meaningIdx,
                                   )
                                   setPendingSentenceIndex(null)
-                                } catch {
-                                  return
-                                }
-                              }}
-                              className={`w-full px-1 py-4 text-left transition-colors last:border-b-0 ${
-                                pendingSentenceIndex !== null
-                                  ? 'bg-slate-50'
-                                  : 'hover:bg-slate-50/70'
-                              }`}>
-                              <div className='flex items-start gap-2.5'>
-                                <span className='pt-px text-sm font-semibold text-slate-400'>
-                                  {meaningIdx + 1}.
-                                </span>
-                                <div className='min-w-0'>
-                                  <div className='text-base font-semibold text-slate-700'>
-                                    {meaning}
-                                  </div>
-                                  <div className='mt-2 space-y-2'>
-                                    {matchedSentences.length === 0 ? (
-                                      isEditMode ? (
-                                        <div className='rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>
-                                          {pendingSentenceIndex === null
-                                            ? '拖拽句子到这里'
-                                            : '点击以匹配已选句子'}
-                                        </div>
-                                      ) : null
-                                    ) : (
-                                      matchedSentences.map(
-                                        ({ sent, idx }, sentIdx) => (
-                                          <div
-                                            key={`${currentVocab.id}-meaning-${meaningIdx}-sent-${sentIdx}`}
-                                            className='pt-1 text-xs font-medium leading-relaxed text-gray-800'>
-                                            <div className='text-[14px] leading-relaxed text-slate-700'>
-                                              {renderSentenceWithPronunciation(
-                                                sent,
-                                                currentVocab,
+                                }}
+                                onDragOver={event => {
+                                  event.preventDefault()
+                                  event.dataTransfer.dropEffect = 'move'
+                                }}
+                                onDrop={event => {
+                                  event.preventDefault()
+                                  try {
+                                    const payload = JSON.parse(
+                                      event.dataTransfer.getData(
+                                        'application/json',
+                                      ),
+                                    ) as {
+                                      vocabId?: string
+                                      sentenceIndex?: number
+                                    }
+                                    if (
+                                      payload.vocabId !== currentVocab.id ||
+                                      typeof payload.sentenceIndex !== 'number'
+                                    ) {
+                                      return
+                                    }
+                                    handleAssignSentenceMeaning(
+                                      payload.vocabId,
+                                      payload.sentenceIndex,
+                                      meaningIdx,
+                                    )
+                                    setPendingSentenceIndex(null)
+                                  } catch {
+                                    return
+                                  }
+                                }}
+                                className={`w-full px-1 py-4 text-left transition-colors last:border-b-0 ${
+                                  pendingSentenceIndex !== null
+                                    ? 'bg-slate-50'
+                                    : 'hover:bg-slate-50/70'
+                                }`}>
+                                <div className='flex items-start gap-2.5'>
+                                  <span className='pt-px text-sm font-semibold text-slate-400'>
+                                    {meaningIdx + 1}.
+                                  </span>
+                                  <div className='min-w-0'>
+                                    <div className='text-base font-semibold text-slate-700'>
+                                      {meaning}
+                                    </div>
+                                    <div className='mt-2 space-y-2'>
+                                      {matchedSentences.length === 0 ? (
+                                        isEditMode ? (
+                                          <div className='rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600'>
+                                            {pendingSentenceIndex === null
+                                              ? '拖拽句子到这里'
+                                              : '点击以匹配已选句子'}
+                                          </div>
+                                        ) : null
+                                      ) : (
+                                        matchedSentences.map(
+                                          ({ sent, idx }, sentIdx) => (
+                                            <div
+                                              key={`${currentVocab.id}-meaning-${meaningIdx}-sent-${sentIdx}`}
+                                              className='pt-1 text-xs font-medium leading-relaxed text-gray-800'>
+                                              <div className='text-[14px] leading-relaxed text-slate-700'>
+                                                {renderSentenceWithPronunciation(
+                                                  sent,
+                                                  currentVocab,
+                                                )}
+                                              </div>
+                                              {renderSentenceTranslation(sent)}
+                                              {isEditMode && (
+                                                <div className='mt-2 flex flex-wrap gap-1.5'>
+                                                  {getPosOptions(
+                                                    currentVocab.word,
+                                                    sent.text,
+                                                  ).map(option => {
+                                                    const active =
+                                                      sentencePosTagsFromItem(
+                                                        currentVocab,
+                                                        sent,
+                                                      ).includes(option)
+                                                    return (
+                                                      <button
+                                                        key={`${currentVocab.id}-meaning-${meaningIdx}-sent-${sentIdx}-pos-option-${option}`}
+                                                        type='button'
+                                                        onClick={event => {
+                                                          event.stopPropagation()
+                                                          handleToggleSentencePosTag(
+                                                            currentVocab.id,
+                                                            idx,
+                                                            option,
+                                                          )
+                                                        }}
+                                                        className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                                                          active
+                                                            ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                                        }`}>
+                                                        {option}
+                                                      </button>
+                                                    )
+                                                  })}
+                                                </div>
                                               )}
-                                            </div>
-                                            {renderSentenceTranslation(sent)}
-                                            {isEditMode && (
-                                              <div className='mt-2 flex flex-wrap gap-1.5'>
-                                                {getPosOptions(
-                                                  currentVocab.word,
-                                                  sent.text,
-                                                ).map(option => {
-                                                  const active =
-                                                    sentencePosTagsFromItem(
-                                                      currentVocab,
-                                                      sent,
-                                                    ).includes(option)
-                                                  return (
+                                              <div className='mt-2'>
+                                                {renderSentenceMetaRow(
+                                                  currentVocab,
+                                                  sent,
+                                                )}
+                                                {isEditMode && (
+                                                  <div className='mt-2 flex flex-wrap items-center gap-2'>
                                                     <button
-                                                      key={`${currentVocab.id}-meaning-${meaningIdx}-sent-${sentIdx}-pos-option-${option}`}
                                                       type='button'
                                                       onClick={event => {
                                                         event.stopPropagation()
-                                                        handleToggleSentencePosTag(
+                                                        handleClearSentenceMeaning(
                                                           currentVocab.id,
                                                           idx,
-                                                          option,
                                                         )
                                                       }}
-                                                      className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                                                        active
-                                                          ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
-                                                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                                                      }`}>
-                                                      {option}
+                                                      className='text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg hover:bg-amber-100'>
+                                                      取消匹配
                                                     </button>
-                                                  )
-                                                })}
+                                                  </div>
+                                                )}
                                               </div>
-                                            )}
-                                            <div className='mt-2'>
-                                              {renderSentenceMetaRow(
-                                                currentVocab,
-                                                sent,
-                                              )}
-                                              {isEditMode && (
-                                                <div className='mt-2 flex flex-wrap items-center gap-2'>
-                                                  <button
-                                                    type='button'
-                                                    onClick={event => {
-                                                      event.stopPropagation()
-                                                      handleClearSentenceMeaning(
-                                                        currentVocab.id,
-                                                        idx,
-                                                      )
-                                                    }}
-                                                    className='text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg hover:bg-amber-100'>
-                                                    取消匹配
-                                                  </button>
-                                                  <button
-                                                    type='button'
-                                                    onClick={event => {
-                                                      event.stopPropagation()
-                                                      handleEditSentence(
-                                                        currentVocab.id,
-                                                        idx,
-                                                      )
-                                                    }}
-                                                    className='text-[11px] font-bold text-gray-600 bg-white border border-gray-200 px-2.5 py-1 rounded-lg hover:bg-gray-100'>
-                                                    编辑
-                                                  </button>
-                                                  <InlineConfirmAction
-                                                    message='删除这条例句后不可恢复，确认删除吗？'
-                                                    onConfirm={() =>
-                                                      handleDeleteSentence(
-                                                        currentVocab.id,
-                                                        idx,
-                                                      )
-                                                    }
-                                                    triggerLabel='删除'
-                                                    confirmLabel='确认删除'
-                                                    pendingLabel='删除中...'
-                                                    triggerClassName='text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg hover:bg-rose-100'
-                                                  />
-                                                </div>
-                                              )}
                                             </div>
-                                          </div>
-                                        ),
-                                      )
-                                    )}
+                                          ),
+                                        )
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </section>
-                  )}
+                            )
+                          })}
+                        </div>
+                      </section>
+                    )}
 
-                  {unmatchedEntries.length > 0 && (
-                    <section className='min-h-0 border-t border-gray-100 pt-2'>
-                      <div className='max-h-[42vh] overflow-auto pr-1'>
-                        {unmatchedEntries.map(({ sent: sentObj, idx: i }) => (
-                          <button
-                            type='button'
-                            key={`${currentVocab.id}-sentence-${i}`}
-                            draggable
-                            onClick={() =>
-                              setPendingSentenceIndex(prev =>
-                                prev === i ? null : i,
-                              )
-                            }
-                            onDragStart={event => {
-                              event.dataTransfer.setData(
-                                'application/json',
-                                JSON.stringify({
-                                  vocabId: currentVocab.id,
-                                  sentenceIndex: i,
-                                }),
-                              )
-                              event.dataTransfer.effectAllowed = 'move'
-                            }}
-                            className={`w-full text-left px-1 py-4 relative transition-colors last:border-b-0 ${
-                              pendingSentenceIndex === i
-                                ? 'bg-slate-100/70'
-                                : 'bg-transparent'
-                            }`}>
-                            <div className='mb-2 flex flex-wrap items-center gap-2'>
-                              {isEditMode && (
-                                <span className='text-[10px] font-bold uppercase tracking-wider text-gray-400'>
-                                  可拖拽
-                                </span>
-                              )}
-                              {isEditMode && pendingSentenceIndex === i && (
-                                <span className='rounded-lg border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700'>
-                                  已选中，点击右侧释义完成匹配
-                                </span>
-                              )}
-                              {isEditMode && (
-                                <>
-                                  <button
-                                    type='button'
-                                    onClick={event => {
-                                      event.stopPropagation()
-                                      handleEditSentence(currentVocab.id, i)
-                                    }}
-                                    className='text-[11px] font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1 rounded-lg hover:bg-gray-100'>
-                                    编辑
-                                  </button>
-                                  <InlineConfirmAction
-                                    message='删除这条例句后不可恢复，确认删除吗？'
-                                    onConfirm={() =>
-                                      handleDeleteSentence(currentVocab.id, i)
-                                    }
-                                    triggerLabel='删除'
-                                    confirmLabel='确认删除'
-                                    pendingLabel='删除中...'
-                                    triggerClassName='text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-1 rounded-lg hover:bg-rose-100'
-                                  />
-                                </>
-                              )}
-                            </div>
-                            <div className='text-lg text-gray-700 leading-relaxed font-medium'>
-                              {renderSentenceWithPronunciation(
-                                sentObj,
-                                currentVocab,
-                              )}
-                            </div>
-                            {renderSentenceTranslation(sentObj)}
-                            {renderSentenceMetaRow(currentVocab, sentObj)}
-                            {isEditMode && (
-                              <div className='mt-2 flex flex-wrap gap-1.5'>
-                                {getPosOptions(
-                                  currentVocab.word,
-                                  sentObj.text,
-                                ).map(option => {
-                                  const active = sentencePosTagsFromItem(
-                                    currentVocab,
-                                    sentObj,
-                                  ).includes(option)
-                                  return (
-                                    <button
-                                      key={`${currentVocab.id}-sent-${i}-pos-option-${option}`}
-                                      type='button'
-                                      onClick={event => {
-                                        event.stopPropagation()
-                                        handleToggleSentencePosTag(
-                                          currentVocab.id,
-                                          i,
-                                          option,
-                                        )
-                                      }}
-                                      className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                                        active
-                                          ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
-                                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                                      }`}>
-                                      {option}
-                                    </button>
-                                  )
-                                })}
+                    {unmatchedEntries.length > 0 && (
+                      <section className='min-h-0 border-t border-gray-100 pt-2'>
+                        <div className='max-h-[42vh] overflow-auto pr-1'>
+                          {unmatchedEntries.map(({ sent: sentObj, idx: i }) => (
+                            <div
+                              role='button'
+                              tabIndex={0}
+                              key={`${currentVocab.id}-sentence-${i}`}
+                              draggable
+                              onClick={() =>
+                                setPendingSentenceIndex(prev =>
+                                  prev === i ? null : i,
+                                )
+                              }
+                              onKeyDown={event => {
+                                if (
+                                  event.key !== 'Enter' &&
+                                  event.key !== ' '
+                                ) {
+                                  return
+                                }
+                                event.preventDefault()
+                                setPendingSentenceIndex(prev =>
+                                  prev === i ? null : i,
+                                )
+                              }}
+                              onDragStart={event => {
+                                event.dataTransfer.setData(
+                                  'application/json',
+                                  JSON.stringify({
+                                    vocabId: currentVocab.id,
+                                    sentenceIndex: i,
+                                  }),
+                                )
+                                event.dataTransfer.effectAllowed = 'move'
+                              }}
+                              className={`w-full text-left px-1 py-4 relative transition-colors last:border-b-0 ${
+                                pendingSentenceIndex === i
+                                  ? 'bg-slate-100/70'
+                                  : 'bg-transparent'
+                              }`}>
+                              <div className='mb-2 flex flex-wrap items-center gap-2'>
+                                {isEditMode && (
+                                  <span className='text-[10px] font-bold uppercase tracking-wider text-gray-400'>
+                                    可拖拽
+                                  </span>
+                                )}
+                                {isEditMode && pendingSentenceIndex === i && (
+                                  <span className='rounded-lg border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-700'>
+                                    已选中，点击右侧释义完成匹配
+                                  </span>
+                                )}
                               </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-                </div>
-              )
+                              <div className='text-lg text-gray-700 leading-relaxed font-medium'>
+                                {renderSentenceWithPronunciation(
+                                  sentObj,
+                                  currentVocab,
+                                )}
+                              </div>
+                              {renderSentenceTranslation(sentObj)}
+                              {renderSentenceMetaRow(currentVocab, sentObj)}
+                              {isEditMode && (
+                                <div className='mt-2 flex flex-wrap gap-1.5'>
+                                  {getPosOptions(
+                                    currentVocab.word,
+                                    sentObj.text,
+                                  ).map(option => {
+                                    const active = sentencePosTagsFromItem(
+                                      currentVocab,
+                                      sentObj,
+                                    ).includes(option)
+                                    return (
+                                      <button
+                                        key={`${currentVocab.id}-sent-${i}-pos-option-${option}`}
+                                        type='button'
+                                        onClick={event => {
+                                          event.stopPropagation()
+                                          handleToggleSentencePosTag(
+                                            currentVocab.id,
+                                            i,
+                                            option,
+                                          )
+                                        }}
+                                        className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
+                                          active
+                                            ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                                        }`}>
+                                        {option}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+                  </div>
+                )
               })()}
 
-            <button
-              onClick={() =>
-                handleSearchSentences(
-                  currentFlashVocab.id,
-                  currentFlashVocab.word,
-                )
-              }
-              className='w-full py-3 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700'>
-              {searchingId === currentFlashVocab.id ? '收起' : '更多例句'}
-            </button>
+              <button
+                onClick={() =>
+                  handleSearchSentences(
+                    currentFlashVocab.id,
+                    currentFlashVocab.word,
+                  )
+                }
+                className='w-full py-3 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700'>
+                {searchingId === currentFlashVocab.id ? '收起' : '更多例句'}
+              </button>
 
-            {/* 搜索结果 */}
-            {searchingId === currentFlashVocab.id && (
-              <div className='mt-4 space-y-3 max-h-60 overflow-y-auto pr-2'>
-                {isSearchingMore && (
-                  <div className='py-3 text-sm text-slate-400'>
-                    正在搜索例句...
-                  </div>
-                )}
-                {!isSearchingMore &&
-                  (searchResults[currentFlashVocab.id] || []).length === 0 && (
+              {/* 搜索结果 */}
+              {searchingId === currentFlashVocab.id && (
+                <div className='mt-4 space-y-3 max-h-60 overflow-y-auto pr-2'>
+                  {isSearchingMore && (
                     <div className='py-3 text-sm text-slate-400'>
-                      未找到可追加例句
+                      正在搜索例句...
                     </div>
                   )}
-                {(searchResults[currentFlashVocab.id] || []).map(
-                  (sentObj, idx) => {
-                    const isAdded = currentFlashVocab.sentences.some(
-                      (s: SentenceItem) => s.text === sentObj.text,
-                    )
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-4 rounded-2xl border flex flex-col gap-3 transition-all ${isAdded ? 'bg-gray-50 border-gray-100 opacity-50' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                        <div className='text-[11px] text-slate-400 font-medium'>
-                          {getSentenceSourceDisplay(sentObj)}
-                        </div>
-                        <div className='text-sm text-slate-700 font-medium'>
-                          {sentObj.text}
-                        </div>
-                        {!isAdded && (
-                          <button
-                            onClick={() =>
-                              handleAddSentence(
-                                activeTab,
-                                currentFlashVocab.id,
-                                sentObj,
-                              )
-                            }
-                            className='self-end rounded-xl border border-slate-300 bg-slate-700 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-800'>
-                            追加例句
-                          </button>
-                        )}
+                  {!isSearchingMore &&
+                    (searchResults[currentFlashVocab.id] || []).length ===
+                      0 && (
+                      <div className='py-3 text-sm text-slate-400'>
+                        未找到可追加例句
                       </div>
-                    )
-                  },
-                )}
-              </div>
-            )}
+                    )}
+                  {(searchResults[currentFlashVocab.id] || []).map(
+                    (sentObj, idx) => {
+                      const isAdded = currentFlashVocab.sentences.some(
+                        (s: SentenceItem) => s.text === sentObj.text,
+                      )
+                      return (
+                        <div
+                          key={`${currentFlashVocab.id}-search-sent-${sentObj.sourceUrl || 'unknown'}-${sentObj.text}-${idx}`}
+                          className={`p-4 rounded-2xl border flex flex-col gap-3 transition-[background-color,border-color,color,opacity] ${isAdded ? 'bg-gray-50 border-gray-100 opacity-50' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
+                          <div className='text-[11px] text-slate-400 font-medium'>
+                            {getSentenceSourceDisplay(sentObj)}
+                          </div>
+                          <div className='text-sm text-slate-700 font-medium'>
+                            {sentObj.text}
+                          </div>
+                          {!isAdded && (
+                            <button
+                              onClick={() =>
+                                handleAddSentence(
+                                  activeTab,
+                                  currentFlashVocab.id,
+                                  sentObj,
+                                )
+                              }
+                              className='self-end rounded-xl border border-slate-300 bg-slate-700 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-800'>
+                              追加例句
+                            </button>
+                          )}
+                        </div>
+                      )
+                    },
+                  )}
+                </div>
+              )}
             </div>
 
             {memoryMode && (

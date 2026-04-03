@@ -12,9 +12,9 @@ export default async function ManageIndexPage() {
     recentLevels,
   ] = await Promise.all([
     prisma.level.count(),
-    prisma.category.count(),
+    prisma.paper.count(),
     prisma.lesson.count(),
-    prisma.article.count(),
+    prisma.passage.count(),
     prisma.quiz.count(),
     prisma.vocabulary.count(),
     prisma.level.findMany({
@@ -28,32 +28,32 @@ export default async function ManageIndexPage() {
     {
       label: '等级分类',
       value: levelCount,
-      tone: 'text-indigo-700 bg-indigo-50 border-indigo-100',
+      tone: 'ui-surface-primary',
     },
     {
       label: '语料分组',
       value: categoryCount,
-      tone: 'text-sky-700 bg-sky-50 border-sky-100',
+      tone: 'ui-surface-secondary',
     },
     {
       label: '听力语料',
       value: lessonCount,
-      tone: 'text-blue-700 bg-blue-50 border-blue-100',
+      tone: 'ui-surface-primary',
     },
     {
       label: '阅读文章',
       value: articleCount,
-      tone: 'text-emerald-700 bg-emerald-50 border-emerald-100',
+      tone: 'ui-surface-secondary',
     },
     {
       label: '题库题目',
       value: quizCount,
-      tone: 'text-violet-700 bg-violet-50 border-violet-100',
+      tone: 'ui-surface-primary',
     },
     {
       label: '词库词条',
       value: vocabCount,
-      tone: 'text-amber-700 bg-amber-50 border-amber-100',
+      tone: 'ui-surface-secondary',
     },
   ]
 
