@@ -259,106 +259,28 @@ export default async function VocabularyPage({
     return acc
   }, {})
 
-  // 按来源提取 ID，后续批量查询关联数据
-  const dialogueIds = rawVocabularies
-    .filter(v => v.sourceType === 'AUDIO_DIALOGUE')
-    .map(v => parseInt(v.sourceId))
-    .filter(id => !isNaN(id))
-  const articleIds = rawVocabularies
-    .filter(v => v.sourceType === 'ARTICLE_TEXT')
-    .map(v => v.sourceId)
-  const questionIds = rawVocabularies
-    .filter(v => v.sourceType === 'QUIZ_QUESTION')
-    .map(v => v.sourceId)
-
-  // 并行获取来源对象
-  const [dialogues, articles, questions] = await Promise.all([
-    prisma.dialogue.findMany({
-      where: { id: { in: dialogueIds } },
-      include: {
-        lesson: { include: { paper: { include: { level: true } } } },
-      },
-    }),
-    prisma.passage.findMany({
-      where: { id: { in: articleIds } },
-      include: { paper: { include: { level: true } } },
-    }),
-    prisma.question.findMany({
-      where: { id: { in: questionIds } },
-      include: {
-        // 独立题库来源
-        quiz: {
-          include: { paper: { include: { level: true } } },
-        },
-        // 阅读题来源
-        passage: {
-          include: { paper: { include: { level: true } } },
-        },
-      },
-    }),
-  ])
-
-  // 建立快速索引
-  const dialogueMap = new Map(dialogues.map(d => [d.id, d]))
-  const articleMap = new Map(articles.map(a => [a.id, a]))
-  const questionMap = new Map(questions.map(q => [q.id, q]))
-
   const groupedData: Record<string, GroupedVocabItem[]> = {}
 
   // 组装页面数据
   rawVocabularies.forEach(vocab => {
     let sourceName = '未知来源'
-    let levelTitle = ''
     let sourceUrl = '#'
     let audioData: AudioData | null = null
-
-    // 解析来源信息
-    if (vocab.sourceType === 'AUDIO_DIALOGUE') {
-      const d = dialogueMap.get(parseInt(vocab.sourceId))
-      if (d) {
-        levelTitle = d.lesson.paper.level?.title || ''
-        sourceName = `听力：${d.lesson.title}`
-        sourceUrl = `/lessons/${d.lessonId}`
-        audioData = {
-          audioFile: d.lesson.audioFile,
-          start: d.start,
-          end: d.end,
-        }
-      }
-    } else if (vocab.sourceType === 'ARTICLE_TEXT') {
-      const a = articleMap.get(vocab.sourceId)
-      if (a) {
-        levelTitle = a.paper?.level?.title || '未分类'
-        sourceName = `阅读：${a.title}`
-        sourceUrl = `/articles/${a.id}`
-      }
-    } else if (vocab.sourceType === 'QUIZ_QUESTION') {
-      const q = questionMap.get(vocab.sourceId)
-      if (q) {
-        if (q.quiz) {
-          const quizTitle = q.quiz.title || '无标题题库'
-          levelTitle = q.quiz.paper?.level?.title || ''
-          sourceName = `题目：${quizTitle}`
-          sourceUrl = `/quizzes/${q.quizId}`
-        } else if (q.passage) {
-          const articleTitle = q.passage.title || '无标题文章'
-          levelTitle = q.passage.paper?.level?.title || ''
-          sourceName = `阅读题目：${articleTitle}`
-          sourceUrl = `/articles/${q.passageId}`
-        } else {
-          sourceName = '练习题 (来源已失效)'
-          sourceUrl = '#'
-        }
-      } else {
-        sourceName = '题目 (原题已删除)'
-        sourceUrl = '#'
-      }
-    }
 
     let parsedSentences: SentenceSource[] = []
     const linkedSentences = sentenceLinksByVocabularyId[vocab.id] || []
     if (linkedSentences.length > 0) {
       parsedSentences = dedupeAndRankSentences(linkedSentences, 16)
+      const firstSentence = parsedSentences[0]
+      sourceName = firstSentence?.source || sourceName
+      sourceUrl = firstSentence?.sourceUrl || sourceUrl
+      if (firstSentence?.audioFile) {
+        audioData = {
+          audioFile: firstSentence.audioFile,
+          start: 0,
+          end: 0,
+        }
+      }
     }
 
     // 分组

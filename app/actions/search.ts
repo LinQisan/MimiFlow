@@ -5,28 +5,32 @@ import prisma from '@/lib/prisma'
 
 export async function getMoreExamples(word: string, excludeDialogueId: number) {
   try {
-    const results = await prisma.dialogue.findMany({
+    const results = await prisma.vocabularySentence.findMany({
       where: {
+        sourceType: 'AUDIO_DIALOGUE',
         text: { contains: word },
-        id: { not: excludeDialogueId },
-      },
-      include: {
-        lesson: {
-          select: {
-            id: true,
-            title: true,
-            audioFile: true, // 🌟 核心新增：必须查出音频文件路径
-            paper: {
-              select: { name: true, level: { select: { title: true } } },
-            },
-          },
-        },
+        sourceId: { not: String(excludeDialogueId) },
       },
       take: 5,
-      orderBy: { id: 'desc' },
+      orderBy: { createdAt: 'desc' },
     })
 
-    return { success: true, data: results }
+    return {
+      success: true,
+      data: results.map(item => ({
+        id: Number(item.sourceId || 0),
+        text: item.text,
+        lesson: {
+          id: item.sourceUrl.replace('/shadowing/', '').replace('/lessons/', ''),
+          title: item.source.replace(/^听力[:：]/, '') || '听力',
+          audioFile: item.audioFile || '',
+          paper: {
+            name: '听力',
+            level: { title: '' },
+          },
+        },
+      })),
+    }
   } catch (error: any) {
     console.error('搜索例句失败:', error)
     return { success: false, message: error.message }

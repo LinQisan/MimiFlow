@@ -8,56 +8,32 @@ datasource db {
   provider = "postgresql"
 }
 
-// --- 下面是你的业务数据模型 ---
-model Level {
-  id          String     @id // 例如 "n1"
-  title       String // 例如 "N1 听力"
-  description String? // 例如 "包含 N1 历年真题及模拟题"
-  papers      Paper[] // 关联下面具体的套卷
-}
-
-// 🌟 2. 具体套卷表 (如 25年7月真题)
-model Paper {
-  id          String    @id // 例如 "N1_202507"
-  levelId     String // 记录它属于哪个大模块
-  level       Level     @relation(fields: [levelId], references: [id])
-  name        String // 例如 "2025年7月 N1真题"
-  description String? // 👈 试卷自己的单独描述！
-  lessons     Lesson[]
-  passages    Passage[]
-  quizzes     Quiz[]
-  sortOrder   Int       @default(0)
-
-  @@map("Category")
-}
-
-// 3. 课程和字幕表保持不变
-model Lesson {
-  id         String     @id @default(uuid())
-  title      String
-  audioFile  String
-  paperId    String     @map("categoryId")
-  paper      Paper      @relation(fields: [paperId], references: [id], onDelete: Cascade)
-  dialogues  Dialogue[]
-  sortOrder  Int        @default(0)
-  createdAt  DateTime   @default(now())
-}
-
-model Dialogue {
-  id         Int    @id @default(autoincrement())
-  sequenceId Int
-  text       String
-  start      Float
-  end        Float
-  lessonId   String
-  lesson     Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-}
-
-// 🌟 核心枚举：定义语料的来源类型
 enum SourceType {
   AUDIO_DIALOGUE // 来自听力跟读
   ARTICLE_TEXT // 来自阅读文章
   QUIZ_QUESTION // 来自选择题
+}
+
+enum MaterialType {
+  LISTENING
+  READING
+  VOCAB_GRAMMAR
+  SPEAKING
+}
+
+enum QuestionTemplate {
+  CHOICE_QUIZ // 单/多选题
+  CLOZE_TEST // 完形填空
+  FILL_BLANK // 填空题
+}
+
+enum CollectionType {
+  LIBRARY_ROOT // 系统内容根分类（例如：口语/阅读/听力）
+  BOOK // 一本书/一套教材/一个官方内容合集
+  CHAPTER // 章节/Unit/Lesson
+  PAPER // 官方试卷
+  CUSTOM_GROUP // 用户自定义分组/生词本
+  FAVORITES // 默认收藏夹
 }
 
 // 题目类型枚举
@@ -69,13 +45,30 @@ enum QuestionType {
   TRANSLATION // 翻译题
   SORTING
   READING_COMPREHENSION
+  SYNONYM_REPLACEMENT // 近义词替换题
+  LISTENING // 听力理解题
+}
+
+model Material {
+  id             String       @id @default(uuid())
+  type           MaterialType
+  title          String
+  contentPayload Json         @map("content_payload")
+  metadata       Json?
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  questions           Question[]
+  collectionMaterials CollectionMaterial[]
+  studyProgresses     MaterialStudyProgress[]
+
+  @@map("materials")
 }
 
 model Vocabulary {
   id   String @id @default(cuid())
-  word String // 选中的生词，例如 "コミュニケーション"
+  word String
 
-  // 🌟 核心来源字段：记录该词最初收录时的来源
   sourceType     SourceType
   sourceId       String
   groupName      String?
@@ -84,17 +77,17 @@ model Vocabulary {
   partsOfSpeech  String?
   meanings       String?
   folderId       String?
-  folder         VocabularyFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  folder         VocabularyFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
   review         VocabularyReview?
-  createdAt      DateTime   @default(now())
+  createdAt      DateTime                    @default(now())
   sentenceLinks  VocabularySentenceLink[]
   tags           VocabularyTagOnVocabulary[]
 }
 
 model VocabularyTag {
-  id          String                     @id @default(cuid())
-  name        String                     @unique
-  createdAt   DateTime                   @default(now())
+  id           String                      @id @default(cuid())
+  name         String                      @unique
+  createdAt    DateTime                    @default(now())
   vocabularies VocabularyTagOnVocabulary[]
 }
 
@@ -116,18 +109,18 @@ model VocabularyReview {
   vocabulary   Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
 
   // FSRS core fields (same shape as SentenceReview)
-  due            DateTime @default(now())
-  state          Int      @default(0)
-  stability      Float    @default(0)
-  difficulty     Float    @default(0)
-  elapsed_days   Int      @default(0)
-  scheduled_days Int      @default(0)
-  reps           Int      @default(0)
-  lapses         Int      @default(0)
-  learning_steps Int      @default(0)
+  due            DateTime  @default(now())
+  state          Int       @default(0)
+  stability      Float     @default(0)
+  difficulty     Float     @default(0)
+  elapsed_days   Int       @default(0)
+  scheduled_days Int       @default(0)
+  reps           Int       @default(0)
+  lapses         Int       @default(0)
+  learning_steps Int       @default(0)
   last_review    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([due])
 }
@@ -146,7 +139,7 @@ model VocabularyFolder {
 }
 
 model VocabularySentence {
-  id             String                  @id @default(cuid())
+  id             String                   @id @default(cuid())
   text           String
   normalizedText String
   translation    String?
@@ -155,7 +148,7 @@ model VocabularySentence {
   sourceUrl      String
   sourceType     SourceType?
   sourceId       String?
-  createdAt      DateTime                @default(now())
+  createdAt      DateTime                 @default(now())
   links          VocabularySentenceLink[]
 
   @@unique([normalizedText, sourceUrl])
@@ -195,81 +188,60 @@ model SentenceReview {
   updatedAt      DateTime   @updatedAt
 }
 
-// 📖 文章主表
-model Passage {
-  id          String  @id @default(cuid())
-  title       String
-  description String? // 文章简介或背景
-
-  // 🌟 核心优化：直接用一个长文本字段存整篇文章！
-  content String // 如果你用的是 MySQL/PostgreSQL，建议加上 @db.Text 防止超长截断
-
-  paperId String @map("categoryId")
-  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
-
-  questions Question[]
-  createdAt DateTime   @default(now())
-  sortOrder Int        @default(0)
-
-  @@map("Article")
-}
-
-// 📝 题库集 (例如："N1真题 2023年7月 词汇部分")
-model Quiz {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-
-  paperId String @map("categoryId")
-  paper   Paper  @relation(fields: [paperId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime   @default(now())
-  questions Question[]
-  sortOrder Int        @default(0)
-}
-
-// 📝 独立题目表
 model Question {
-  id     String  @id @default(cuid())
-  quizId String?
-  quiz   Quiz?   @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  id           String           @id @default(uuid())
+  materialId   String           @map("material_id")
+  templateType QuestionTemplate @map("template_type")
+  content      Json
+  prompt       String?          @db.Text
+  context      String?          @db.Text
+  options      Json?
+  answer       Json
+  analysis     String?          @db.Text
+  note         String?          @db.Text
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  sortOrder    Int              @default(0) @map("sort_order")
 
-  questionType QuestionType // 题型：读音、填空等
-
-  // 💡 核心设计：题目的完整语境句子 (用户可以直接收藏这整句话)
-  contextSentence String
-
-  // 特殊字段：如果是读音题，这里存那个被画线的词 (例如 "合宿")
-  targetWord String?
-
-  // 题干提示 (例如："划线部分的读音是？"，可以为空)
-  prompt String?
-
-  options QuestionOption[] // 选项
-
-  // 💡 绝佳体验：题目解析 (用户做完题后展示，里面也可以点词成金！)
-  explanation String?
-
-  order    Int // 题目序号
-  createdAt DateTime @default(now())
-  attempts QuestionAttempt[]
+  material   Material          @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  attempts   QuestionAttempt[]
   retryQueue QuestionRetry?
 
-  passage   Passage? @relation(fields: [passageId], references: [id], onDelete: Cascade)
-  passageId String?  @map("articleId")
-
-  @@index([quizId, order])
-  @@index([passageId, order])
+  @@map("questions")
 }
 
-// 📝 题目选项表
-model QuestionOption {
-  id         String   @id @default(cuid())
-  questionId String
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+model Collection {
+  id             String         @id @default(uuid())
+  title          String
+  description    String?        @db.Text
+  language       String?
+  level          String?
+  collectionType CollectionType @map("collection_type")
+  parentId       String?        @map("parent_id")
+  sortOrder      Int            @default(0) @map("sort_order")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
 
-  text      String // 选项文本
-  isCorrect Boolean @default(false) // 是否为正确答案
+  parent    Collection?         @relation("CollectionTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Collection[]        @relation("CollectionTree")
+  materials CollectionMaterial[]
+
+  @@index([parentId, sortOrder])
+  @@map("collections")
+}
+
+model CollectionMaterial {
+  id           String   @id @default(uuid())
+  collectionId String   @map("collection_id")
+  materialId   String   @map("material_id")
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  material   Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([collectionId, materialId])
+  @@map("collection_materials")
 }
 
 model QuestionAttempt {
@@ -301,19 +273,37 @@ model QuestionRetry {
 }
 
 model GameProfile {
-  id             String          @id @default("default")
-  xp             Int             @default(0)
-  level          Int             @default(1)
-  difficultyPreset GameDifficultyPreset @default(STANDARD)
-  coins          Int             @default(0)
-  streakDays     Int             @default(0)
-  lastStreakDate String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  sessions       GameSessionLog[]
-  fsrsProfile    FSRSProfile?
-  reviewEvents   ReviewEvent[]
-  outputPractices OutputPractice[]
+  id               String                  @id @default("default")
+  xp               Int                     @default(0)
+  level            Int                     @default(1)
+  difficultyPreset GameDifficultyPreset    @default(STANDARD)
+  coins            Int                     @default(0)
+  streakDays       Int                     @default(0)
+  lastStreakDate   String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  sessions         GameSessionLog[]
+  fsrsProfile      FSRSProfile?
+  reviewEvents     ReviewEvent[]
+  outputPractices  OutputPractice[]
+  studyProgresses  MaterialStudyProgress[]
+}
+
+model MaterialStudyProgress {
+  id              String      @id @default(uuid())
+  profileId       String      @default("default") @map("profile_id")
+  materialId      String      @map("material_id")
+  learningMode    String      @default("default") @map("learning_mode")
+  progressPercent Float       @default(0) @map("progress_percent")
+  lastPosition    String?     @map("last_position")
+  startedAt       DateTime    @default(now()) @map("started_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  profile         GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material        Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, materialId, learningMode])
+  @@index([updatedAt])
+  @@map("material_study_progresses")
 }
 
 enum GameDifficultyPreset {
@@ -323,43 +313,43 @@ enum GameDifficultyPreset {
 }
 
 model FSRSProfile {
-  id               String      @id @default(cuid())
-  profileId        String      @unique
-  profile          GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  requestRetention Float       @default(0.9)
-  maximumInterval  Int         @default(36500)
-  weights          String
-  sampleSize       Int         @default(0)
-  fitVersion       Int         @default(1)
-  enabled          Boolean     @default(true)
-  lastEngineMode   String      @default("custom")
+  id                 String      @id @default(cuid())
+  profileId          String      @unique
+  profile            GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  requestRetention   Float       @default(0.9)
+  maximumInterval    Int         @default(36500)
+  weights            String
+  sampleSize         Int         @default(0)
+  fitVersion         Int         @default(1)
+  enabled            Boolean     @default(true)
+  lastEngineMode     String      @default("custom")
   lastFallbackReason String?
-  lastFallbackAt   DateTime?
-  lastFittedAt     DateTime?
-  lastEventAt      DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  lastFallbackAt     DateTime?
+  lastFittedAt       DateTime?
+  lastEventAt        DateTime?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 }
 
 model ReviewEvent {
-  id              String      @id @default(cuid())
-  profileId       String
-  profile         GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  reviewId        String
-  sourceType      SourceType
-  sourceId        String
-  rating          Int
-  deltaDays       Int
-  scheduledDays   Int
-  stateBefore     Int
-  stateAfter      Int
-  stabilityBefore Float
-  stabilityAfter  Float
+  id               String      @id @default(cuid())
+  profileId        String
+  profile          GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  reviewId         String
+  sourceType       SourceType
+  sourceId         String
+  rating           Int
+  deltaDays        Int
+  scheduledDays    Int
+  stateBefore      Int
+  stateAfter       Int
+  stabilityBefore  Float
+  stabilityAfter   Float
   difficultyBefore Float
   difficultyAfter  Float
-  dueAt           DateTime
-  reviewedAt      DateTime    @default(now())
-  wasOverdue      Boolean
+  dueAt            DateTime
+  reviewedAt       DateTime    @default(now())
+  wasOverdue       Boolean
   wasRecallSuccess Boolean
 
   @@index([profileId, reviewedAt])
@@ -367,16 +357,16 @@ model ReviewEvent {
 }
 
 model GameSessionLog {
-  id           String      @id @default(cuid())
-  profileId    String
-  profile      GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  dateKey      String
-  taskKey      String
-  taskTitle    String
-  points       Int
-  coins        Int         @default(0)
-  durationMin  Int         @default(0)
-  completedAt  DateTime    @default(now())
+  id          String      @id @default(cuid())
+  profileId   String
+  profile     GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  dateKey     String
+  taskKey     String
+  taskTitle   String
+  points      Int
+  coins       Int         @default(0)
+  durationMin Int         @default(0)
+  completedAt DateTime    @default(now())
 
   @@unique([profileId, dateKey, taskKey])
   @@index([dateKey])
@@ -409,23 +399,23 @@ model LearningDiary {
 }
 
 model MorningRecall {
-  id            String   @id @default(cuid())
-  dateKey       String   @unique
-  sourceDateKey String
-  prompt        String
-  content       String
-  wordCount     Int      @default(0)
-  aiCoachPrompt String?
-  aiFeedbackRaw String?
-  totalScore    Int      @default(0)
-  accuracy      Int      @default(0)
-  coverage      Int      @default(0)
-  clarity       Int      @default(0)
+  id              String   @id @default(cuid())
+  dateKey         String   @unique
+  sourceDateKey   String
+  prompt          String
+  content         String
+  wordCount       Int      @default(0)
+  aiCoachPrompt   String?
+  aiFeedbackRaw   String?
+  totalScore      Int      @default(0)
+  accuracy        Int      @default(0)
+  coverage        Int      @default(0)
+  clarity         Int      @default(0)
   feedbackSummary String?
-  actionItems   String?
-  modelAnswer   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  actionItems     String?
+  modelAnswer     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 enum OutputPracticeType {

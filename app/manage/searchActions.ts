@@ -2,7 +2,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
 import {
   normalizeStringList,
   parseJsonStringList,
@@ -62,6 +64,13 @@ export type GlobalCorpusSearchResult = {
   sourceTitle: string
   categoryName: string
 }
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+const asString = (value: unknown) => (typeof value === 'string' ? value : '')
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
@@ -174,73 +183,135 @@ export async function searchGlobalCorpus(
   if (!keyword.trim()) return []
   const k = keyword.trim()
 
-  // 搜听力字幕
-  const dialogues = await prisma.dialogue.findMany({
-    where: { text: { contains: k } },
-    include: {
-      lesson: { select: { title: true, paper: { select: { name: true } } } },
-    },
-    take: 15,
-    orderBy: { id: 'desc' },
-  })
-
-  // 搜阅读文章
-  const articles = await prisma.passage.findMany({
+  const listeningMaterials = await prisma.material.findMany({
     where: {
+      type: MaterialType.LISTENING,
       OR: [
         { title: { contains: k } },
-        { description: { contains: k } },
-        { content: { contains: k } },
+        { contentPayload: { string_contains: k } },
       ],
     },
     select: {
       id: true,
+      type: true,
       title: true,
-      description: true,
-      createdAt: true,
-      content: true,
-      paper: {
-        select: { name: true },
+      contentPayload: true,
+      collectionMaterials: {
+        take: 1,
+        select: {
+          collection: { select: { title: true } },
+        },
       },
     },
     take: 15,
-    orderBy: {
-      createdAt: 'desc',
-    },
+    orderBy: { createdAt: 'desc' },
   })
-  // 搜题目题干
+
+  const articles = await prisma.material.findMany({
+    where: {
+      type: MaterialType.READING,
+      OR: [
+        { title: { contains: k } },
+        { contentPayload: { path: ['description'], string_contains: k } },
+        { contentPayload: { path: ['text'], string_contains: k } },
+      ],
+    },
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      contentPayload: true,
+      collectionMaterials: {
+        take: 1,
+        select: {
+          collection: { select: { title: true } },
+        },
+      },
+    },
+    take: 15,
+    orderBy: { createdAt: 'desc' },
+  })
+
   const questions = await prisma.question.findMany({
-    where: { contextSentence: { contains: k } },
-    include: {
-      quiz: { select: { title: true, paper: { select: { name: true } } } },
+    where: {
+      OR: [{ context: { contains: k } }, { prompt: { contains: k } }],
+    },
+    select: {
+      id: true,
+      context: true,
+      prompt: true,
+      material: {
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          contentPayload: true,
+          collectionMaterials: {
+            take: 1,
+            select: {
+              collection: { select: { title: true } },
+            },
+          },
+        },
+      },
     },
     take: 15,
   })
 
-  // 统一映射为搜索结果结构
   const results = [
-    ...dialogues.map(d => ({
-      id: d.id,
-      type: 'AUDIO_DIALOGUE' as const,
-      text: d.text,
-      sourceTitle: `🎧 ${d.lesson?.title}`,
-      categoryName: d.lesson?.paper?.name || '未知分类',
-    })),
-    ...articles.map(a => ({
-      id: a.id,
-      type: 'ARTICLE_TEXT' as const,
-      text:
-        a.description ||
-        (a.content ? a.content.substring(0, 100) + '...' : '暂无内容'),
-      sourceTitle: `📄 ${a.title}`,
-      categoryName: a.paper?.name || '未知分类',
-    })),
+    ...listeningMaterials.flatMap(item => {
+      const payload = asRecord(item.contentPayload)
+      const dialogues = Array.isArray(payload.dialogues)
+        ? (payload.dialogues as Record<string, unknown>[])
+        : []
+      const matched = dialogues.find(dialogue => asString(dialogue.text).includes(k))
+      const fallbackText = asString(matched?.text) || getMaterialDisplayTitle(
+        item.type,
+        item.title,
+        item.contentPayload,
+        item.id,
+      )
+      return [{
+        id: item.id,
+        type: 'AUDIO_DIALOGUE' as const,
+        text: fallbackText,
+        sourceTitle: getMaterialDisplayTitle(
+          item.type,
+          item.title,
+          item.contentPayload,
+          item.id,
+        ),
+        categoryName: item.collectionMaterials[0]?.collection.title || '未知分类',
+      }]
+    }),
+    ...articles.map(item => {
+      const payload = asRecord(item.contentPayload)
+      const description = asString(payload.description)
+      const text = asString(payload.text)
+      return {
+        id: item.id,
+        type: 'ARTICLE_TEXT' as const,
+        text: description || (text ? `${text.substring(0, 100)}...` : '暂无内容'),
+        sourceTitle: getMaterialDisplayTitle(
+          item.type,
+          item.title,
+          item.contentPayload,
+          item.id,
+        ),
+        categoryName: item.collectionMaterials[0]?.collection.title || '未知分类',
+      }
+    }),
     ...questions.map(q => ({
       id: q.id,
       type: 'QUIZ_QUESTION' as const,
-      text: q.contextSentence,
-      sourceTitle: `📝 ${q.quiz?.title}`,
-      categoryName: q.quiz?.paper?.name || '未知分类',
+      text: q.context || q.prompt || '暂无题干',
+      sourceTitle: getMaterialDisplayTitle(
+        q.material.type,
+        q.material.title,
+        q.material.contentPayload,
+        q.material.id,
+      ),
+      categoryName: q.material.collectionMaterials[0]?.collection.title || '未知分类',
     })),
   ]
 
@@ -424,7 +495,7 @@ export async function updateVocabularyTagsAdmin(
     )
 
     // 删除所有现有标签关联
-    await prisma.vocabularyTagAssociation.deleteMany({
+    await prisma.vocabularyTagOnVocabulary.deleteMany({
       where: { vocabularyId: vocabId },
     })
 
@@ -432,12 +503,14 @@ export async function updateVocabularyTagsAdmin(
     if (normalizedTags.length > 0) {
       for (const tagName of normalizedTags) {
         // 查找或创建标签
-        let tag = await prisma.tag.findUnique({ where: { name: tagName } })
+        let tag = await prisma.vocabularyTag.findUnique({
+          where: { name: tagName },
+        })
         if (!tag) {
-          tag = await prisma.tag.create({ data: { name: tagName } })
+          tag = await prisma.vocabularyTag.create({ data: { name: tagName } })
         }
         // 创建关联
-        await prisma.vocabularyTagAssociation.create({
+        await prisma.vocabularyTagOnVocabulary.create({
           data: { vocabularyId: vocabId, tagId: tag.id },
         })
       }
@@ -517,7 +590,7 @@ export async function batchUpdateVocabularyMetaAdmin(
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
     revalidatePath('/articles')
-    revalidatePath('/quizzes')
+    revalidatePath('/practice')
     return { success: true, updatedCount: rows.length }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '批量更新失败'
@@ -654,7 +727,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
     revalidatePath('/articles')
-    revalidatePath('/quizzes')
+    revalidatePath('/practice')
     return { success: true, mergedCount: uniqMergeIds.length }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '归并失败'

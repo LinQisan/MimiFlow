@@ -40,7 +40,7 @@ export default function PaperAccordion({ papers }: { papers: PaperItem[] }) {
             {paper.lessons.map((lesson, index) => (
               <Link
                 key={lesson.id}
-                href={`/lessons/${lesson.id}`}
+                href={`/shadowing/${lesson.id}`}
                 className='group flex items-center justify-between border-b border-gray-200 p-3 transition-colors hover:bg-gray-50'>
                 <div className='min-w-0'>
                   <p className='mb-1 text-sm font-semibold text-indigo-500'>

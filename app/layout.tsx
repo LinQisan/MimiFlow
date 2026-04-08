@@ -1,9 +1,7 @@
-// 文件路径：app/layout.tsx
-import './globals.css'
+import '@/app/globals.css'
+
 import { I18nProvider } from '@/context/I18nContext'
 import { DialogProvider } from '@/context/DialogContext'
-import AppShell from '@/components/AppShell'
-import prisma from '@/lib/prisma'
 
 export const metadata = {
   title: 'MimiFlow',
@@ -11,22 +9,17 @@ export const metadata = {
   icons: [{ rel: 'icon', url: '/icon.svg', type: 'image/svg+xml' }],
 }
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const levels = await prisma.level.findMany({
-    orderBy: { id: 'asc' },
-    select: { id: true, title: true },
-  })
-
   return (
-    <html lang='zh' suppressHydrationWarning>
-      <body suppressHydrationWarning>
+    <html lang='zh'>
+      <body>
         <I18nProvider>
           <DialogProvider>
-            <AppShell levels={levels}>{children}</AppShell>
+            {children}
           </DialogProvider>
         </I18nProvider>
       </body>

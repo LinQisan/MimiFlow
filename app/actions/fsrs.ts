@@ -1,5 +1,6 @@
 'use server'
 
+import { MaterialType } from '@prisma/client'
 import {
   Card,
   Rating,
@@ -37,8 +38,135 @@ type ReviewFitEvent = {
   difficultyAfter: number
 }
 
+type DialogueSnapshot = {
+  id: number
+  text: string
+  start: number
+  end: number
+  lesson: {
+    id: string
+    title: string
+    audioFile: string
+  }
+}
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
+
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+const asNumber = (value: unknown, fallback = 0) => {
+  const next = Number(value)
+  return Number.isFinite(next) ? next : fallback
+}
+
+async function getListeningDialoguesByIds(targetIds: number[]) {
+  const normalizedIds = Array.from(
+    new Set(targetIds.map(id => Number(id)).filter(Number.isFinite)),
+  )
+  if (normalizedIds.length === 0) return []
+
+  const materials = await prisma.material.findMany({
+    where: { type: MaterialType.LISTENING },
+    select: {
+      id: true,
+      title: true,
+      contentPayload: true,
+    },
+  })
+
+  const idSet = new Set(normalizedIds)
+  const snapshots: DialogueSnapshot[] = []
+  for (const material of materials) {
+    const payload = asRecord(material.contentPayload)
+    const rawDialogues = Array.isArray(payload.dialogues)
+      ? (payload.dialogues as Record<string, unknown>[])
+      : []
+    const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
+
+    for (const row of rawDialogues) {
+      const dialogueId = asNumber(row.id, asNumber(row.sequenceId))
+      if (!idSet.has(dialogueId)) continue
+      snapshots.push({
+        id: dialogueId,
+        text: asString(row.text),
+        start: asNumber(row.start),
+        end: asNumber(row.end),
+        lesson: {
+          id: material.id,
+          title: material.title,
+          audioFile,
+        },
+      })
+    }
+  }
+
+  return snapshots
+}
+
+async function getListeningDialogueContextByIds(targetIds: number[]) {
+  const normalizedIds = Array.from(
+    new Set(targetIds.map(id => Number(id)).filter(Number.isFinite)),
+  )
+  if (normalizedIds.length === 0) return []
+
+  const materials = await prisma.material.findMany({
+    where: { type: MaterialType.LISTENING },
+    select: {
+      id: true,
+      title: true,
+      contentPayload: true,
+    },
+  })
+
+  const idSet = new Set(normalizedIds)
+  const snapshots: Array<
+    DialogueSnapshot & {
+      lesson: DialogueSnapshot['lesson'] & {
+        dialogues: Array<{
+          id: number
+          text: string
+          start: number
+          end: number
+        }>
+      }
+    }
+  > = []
+
+  for (const material of materials) {
+    const payload = asRecord(material.contentPayload)
+    const rawDialogues = Array.isArray(payload.dialogues)
+      ? (payload.dialogues as Record<string, unknown>[])
+      : []
+    const dialogues = rawDialogues.map((row, index) => ({
+      id: asNumber(row.id, index + 1),
+      text: asString(row.text),
+      start: asNumber(row.start),
+      end: asNumber(row.end),
+    }))
+    const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
+
+    for (const row of dialogues) {
+      if (!idSet.has(row.id)) continue
+      snapshots.push({
+        ...row,
+        lesson: {
+          id: material.id,
+          title: material.title,
+          audioFile,
+          dialogues,
+        },
+      })
+    }
+  }
+
+  return snapshots
+}
 
 const parseWeights = (raw: string): number[] | null => {
   try {
@@ -324,19 +452,7 @@ export async function getDueSentences() {
       .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
       .map(r => Number(r.sourceId))
 
-    const dialoguesWithContext = await prisma.dialogue.findMany({
-      where: { id: { in: dialogueIds } },
-      include: {
-        lesson: {
-          include: {
-            dialogues: {
-              orderBy: { start: 'asc' },
-              select: { id: true, text: true, start: true, end: true },
-            },
-          },
-        },
-      },
-    })
+    const dialoguesWithContext = await getListeningDialogueContextByIds(dialogueIds)
 
     return reviews.map(review => {
       if (review.sourceType === 'AUDIO_DIALOGUE') {
@@ -463,10 +579,7 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
 
 export async function addSentenceToReview(dialogueId: number) {
   try {
-    const dialogue = await prisma.dialogue.findUnique({
-      where: { id: dialogueId },
-      select: { text: true },
-    })
+    const dialogue = (await getListeningDialoguesByIds([dialogueId]))[0]
 
     if (!dialogue) {
       return { success: false, message: '找不到对应的听力句子' }
@@ -670,10 +783,7 @@ export async function getAllReviewSentences() {
 
   if (dialogueIds.length === 0) return reviews
 
-  const dialogues = await prisma.dialogue.findMany({
-    where: { id: { in: dialogueIds } },
-    include: { lesson: { select: { title: true, audioFile: true } } },
-  })
+  const dialogues = await getListeningDialoguesByIds(dialogueIds)
 
   return reviews.map(review => {
     if (review.sourceType === 'AUDIO_DIALOGUE') {
@@ -708,10 +818,7 @@ export async function getReviewSentencesPage(page = 1, pageSize = 30) {
   const dialogues =
     dialogueIds.length === 0
       ? []
-      : await prisma.dialogue.findMany({
-          where: { id: { in: dialogueIds } },
-          include: { lesson: { select: { title: true, audioFile: true } } },
-        })
+      : await getListeningDialoguesByIds(dialogueIds)
 
   const items = reviews.map(review => {
     if (review.sourceType === 'AUDIO_DIALOGUE') {

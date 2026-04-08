@@ -1,5 +1,7 @@
 import PaperAccordion from '../../../components/PaperAccordion'
+import { CollectionType, MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
 
 export default async function LevelPage({
   params,
@@ -8,23 +10,46 @@ export default async function LevelPage({
 }) {
   const { id } = await params
 
-  const levelData = await prisma.level.findUnique({
+  const collection = await prisma.collection.findUnique({
     where: { id },
-    include: {
-      papers: {
+    select: {
+      id: true,
+      title: true,
+      collectionType: true,
+      materials: {
         orderBy: { sortOrder: 'asc' },
-        include: {
-          lessons: {
-            select: { id: true, title: true },
-            orderBy: { sortOrder: 'asc' },
+        select: {
+          material: {
+            select: { id: true, title: true, type: true },
           },
         },
       },
     },
   })
 
-  if (!levelData) {
+  if (!collection || collection.collectionType !== CollectionType.PAPER) {
     return <div className='text-center mt-20 text-gray-500'>找不到该分类</div>
+  }
+
+  const listeningLessons = collection.materials
+    .map(item => item.material)
+    .filter(item => item.type === MaterialType.LISTENING)
+    .map(item => ({
+      id: toLegacyMaterialId(item.id),
+      title: item.title,
+    }))
+
+  const levelData = {
+    title: collection.title,
+    description: null as string | null,
+    papers: [
+      {
+        id: collection.id,
+        name: collection.title,
+        description: null,
+        lessons: listeningLessons,
+      },
+    ],
   }
 
   return (

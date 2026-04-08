@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import UploadForm from './UploadForm'
+import type { CollectionType } from '@prisma/client'
 import {
   createArticle,
   createQuizQuestion,
@@ -12,7 +13,7 @@ import { useDialog } from '@/context/DialogContext'
 
 interface Props {
   dbLevels: UploadLevelLite[]
-  dbCategories: UploadCategoryLite[]
+  dbCollections: UploadCollectionLite[]
 }
 
 type UploadLevelLite = {
@@ -20,9 +21,11 @@ type UploadLevelLite = {
   title: string
 }
 
-type UploadCategoryLite = {
+type UploadCollectionLite = {
   id: string
   name: string
+  parentTitle?: string
+  collectionType?: CollectionType
   level: { title: string }
   lessons: { title: string; audioFile: string }[]
 }
@@ -50,15 +53,142 @@ type ArticleImportedQuestionDraft = {
 type ParsedQuizDraft = {
   questionType:
     | 'PRONUNCIATION'
-    | 'FILL_BLANK'
     | 'SORTING'
     | 'GRAMMAR'
     | 'WORD_DISTINCTION'
+    | 'SYNONYM_REPLACEMENT'
   prompt: string
   contextSentence: string
   targetWord?: string
   explanation: string
   options: QuestionOptionDraft[]
+}
+
+type UploadCenterTab = 'audio' | 'article' | 'quiz'
+
+type ArticleFormState = {
+  paperId: string
+  title: string
+  description: string
+  content: string
+}
+
+type QuizFormState = {
+  collectionId: string
+  questionType: string
+  contextSentence: string
+  targetWord: string
+  prompt: string
+  explanation: string
+  options: QuestionOptionDraft[]
+}
+
+function useUploadCenterState(dbCollections: UploadCollectionLite[]) {
+  const [localCollections, setLocalCollections] = useState(dbCollections)
+  const [activeTab, setActiveTab] = useState<UploadCenterTab>('audio')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const [articleForm, setArticleForm] = useState<ArticleFormState>({
+    paperId: dbCollections[0]?.id || '',
+    title: '',
+    description: '',
+    content: '',
+  })
+  const [articleQuestions, setArticleQuestions] = useState<
+    ArticleImportedQuestionDraft[]
+  >([])
+  const [articleQuickInput, setArticleQuickInput] = useState('')
+  const [articleParsedPreviewRows, setArticleParsedPreviewRows] = useState<
+    ArticlePreviewRow[]
+  >([])
+  const [articleParsedDrafts, setArticleParsedDrafts] = useState<
+    ArticleImportedQuestionDraft[]
+  >([])
+
+  const articleTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const [quizForm, setQuizForm] = useState<QuizFormState>({
+    collectionId: dbCollections[0]?.id || '',
+    questionType: 'PRONUNCIATION',
+    contextSentence: '',
+    targetWord: '',
+    prompt: '',
+    explanation: '',
+    options: [
+      { text: '', isCorrect: true },
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false },
+      { text: '', isCorrect: false },
+    ],
+  })
+  const [quickInput, setQuickInput] = useState('')
+  const [bulkQuickInput, setBulkQuickInput] = useState('')
+  const [bulkParsedQuestions, setBulkParsedQuestions] = useState<
+    ParsedQuizDraft[]
+  >([])
+  const [bulkEditingIndex, setBulkEditingIndex] = useState(0)
+  const [sortSequence, setSortSequence] = useState<number[]>([])
+  const quizContextTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const bulkContextTextareaRef = useRef<HTMLTextAreaElement>(null)
+
+  return {
+    localCollections,
+    setLocalCollections,
+    activeTab,
+    setActiveTab,
+    isSubmitting,
+    setIsSubmitting,
+    articleForm,
+    setArticleForm,
+    articleQuestions,
+    setArticleQuestions,
+    articleQuickInput,
+    setArticleQuickInput,
+    articleParsedPreviewRows,
+    setArticleParsedPreviewRows,
+    articleParsedDrafts,
+    setArticleParsedDrafts,
+    articleTextareaRef,
+    quizForm,
+    setQuizForm,
+    quickInput,
+    setQuickInput,
+    bulkQuickInput,
+    setBulkQuickInput,
+    bulkParsedQuestions,
+    setBulkParsedQuestions,
+    bulkEditingIndex,
+    setBulkEditingIndex,
+    sortSequence,
+    setSortSequence,
+    quizContextTextareaRef,
+    bulkContextTextareaRef,
+  }
+}
+
+function useCollectionCreatorState(defaultLevelId: string) {
+  const [isCreating, setIsCreating] = useState(false)
+  const [newCatData, setNewCatData] = useState({
+    collectionType: defaultLevelId,
+    name: '',
+  })
+  const [isSavingCat, setIsSavingCat] = useState(false)
+
+  const resetNameOnly = () =>
+    setNewCatData(prev => ({
+      ...prev,
+      name: '',
+    }))
+
+  return {
+    isCreating,
+    setIsCreating,
+    newCatData,
+    setNewCatData,
+    isSavingCat,
+    setIsSavingCat,
+    resetNameOnly,
+  }
 }
 
 const CIRCLED_NUM_TO_INDEX: Record<string, number> = {
@@ -92,7 +222,7 @@ const detectQuestionType = (
     sentenceLikeOptionCount >= 3
 
   if (isSorting) return 'SORTING'
-  if (isFillBlank) return 'FILL_BLANK'
+  if (isFillBlank) return 'GRAMMAR'
   if (isWordDistinction) return 'WORD_DISTINCTION'
   if (grammarHint) return 'GRAMMAR'
   return 'PRONUNCIATION'
@@ -102,7 +232,11 @@ const inferTargetWord = (
   questionType: ParsedQuizDraft['questionType'],
   prompt: string,
 ) => {
-  if (questionType !== 'WORD_DISTINCTION' && questionType !== 'PRONUNCIATION')
+  if (
+    questionType !== 'WORD_DISTINCTION' &&
+    questionType !== 'PRONUNCIATION' &&
+    questionType !== 'SYNONYM_REPLACEMENT'
+  )
     return ''
   const normalized = prompt
     .replace(/^\s*\[?\d+\]?\s*[：:．.、)\-]\s*/, '')
@@ -443,12 +577,12 @@ function PanelDropdown({
         onClick={() => setOpen(prev => !prev)}
         className={`flex w-full items-center justify-between border px-4 py-3 text-sm font-semibold transition ${
           open
-            ? 'border-indigo-300 bg-white text-gray-800 ring-2 ring-indigo-100'
-            : 'border-indigo-200 bg-white text-gray-700 hover:bg-indigo-50/30'
+            ? 'border-blue-300 bg-white text-gray-800 ring-2 ring-blue-100'
+            : 'border-blue-200 bg-white text-gray-700 hover:bg-blue-50/30'
         }`}>
         <span className='truncate pr-3'>{label}</span>
         <svg
-          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180 text-indigo-500' : ''}`}
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180 text-blue-500' : ''}`}
           fill='none'
           stroke='currentColor'
           viewBox='0 0 24 24'>
@@ -461,7 +595,7 @@ function PanelDropdown({
         </svg>
       </button>
       {open && (
-        <div className='absolute z-[90] mt-2 max-h-80 w-full overflow-y-auto border border-gray-100 bg-white py-1.5 '>
+        <div className='absolute z-90 mt-2 max-h-80 w-full overflow-y-auto border border-gray-100 bg-white py-1.5 '>
           {options.length === 0 ? (
             <div className='px-4 py-3 text-sm text-gray-400'>暂无选项</div>
           ) : (
@@ -475,7 +609,7 @@ function PanelDropdown({
                 }}
                 className={`block w-full truncate px-4 py-2.5 text-left text-sm font-semibold transition ${
                   value === item.value
-                    ? 'bg-indigo-50 text-indigo-700'
+                    ? 'bg-blue-50 text-blue-700'
                     : 'text-gray-700 hover:bg-gray-50'
                 }`}>
                 {item.label}
@@ -488,58 +622,41 @@ function PanelDropdown({
   )
 }
 
-export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
+export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
   const dialog = useDialog()
-  const [localCategories, setLocalCategories] = useState(dbCategories)
-  const [activeTab, setActiveTab] = useState<'audio' | 'article' | 'quiz'>(
-    'audio',
-  )
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  // --- 文章表单状态 ---
-  const [articleForm, setArticleForm] = useState({
-    paperId: dbCategories[0]?.id || '',
-    title: '',
-    description: '',
-    content: '',
-  })
-  const [articleQuestions, setArticleQuestions] = useState<
-    ArticleImportedQuestionDraft[]
-  >([])
-  const [articleQuickInput, setArticleQuickInput] = useState('')
-  const [articleParsedPreviewRows, setArticleParsedPreviewRows] = useState<
-    ArticlePreviewRow[]
-  >([])
-  const [articleParsedDrafts, setArticleParsedDrafts] = useState<
-    ArticleImportedQuestionDraft[]
-  >([])
-
-  // 🌟 1. 新增：绑定文章输入框的 Ref
-  const articleTextareaRef = useRef<HTMLTextAreaElement>(null)
-
-  const [quizForm, setQuizForm] = useState({
-    categoryId: dbCategories[0]?.id || '',
-    questionType: 'PRONUNCIATION',
-    contextSentence: '',
-    targetWord: '',
-    prompt: '',
-    explanation: '',
-    options: [
-      { text: '', isCorrect: true },
-      { text: '', isCorrect: false },
-      { text: '', isCorrect: false },
-      { text: '', isCorrect: false },
-    ],
-  })
-  const [quickInput, setQuickInput] = useState('')
-  const [bulkQuickInput, setBulkQuickInput] = useState('')
-  const [bulkParsedQuestions, setBulkParsedQuestions] = useState<
-    ParsedQuizDraft[]
-  >([])
-  const [bulkEditingIndex, setBulkEditingIndex] = useState(0)
-  const [sortSequence, setSortSequence] = useState<number[]>([])
-  const quizContextTextareaRef = useRef<HTMLTextAreaElement>(null)
-  const bulkContextTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const {
+    localCollections,
+    setLocalCollections,
+    activeTab,
+    setActiveTab,
+    isSubmitting,
+    setIsSubmitting,
+    articleForm,
+    setArticleForm,
+    articleQuestions,
+    setArticleQuestions,
+    articleQuickInput,
+    setArticleQuickInput,
+    articleParsedPreviewRows,
+    setArticleParsedPreviewRows,
+    articleParsedDrafts,
+    setArticleParsedDrafts,
+    articleTextareaRef,
+    quizForm,
+    setQuizForm,
+    quickInput,
+    setQuickInput,
+    bulkQuickInput,
+    setBulkQuickInput,
+    bulkParsedQuestions,
+    setBulkParsedQuestions,
+    bulkEditingIndex,
+    setBulkEditingIndex,
+    sortSequence,
+    setSortSequence,
+    quizContextTextareaRef,
+    bulkContextTextareaRef,
+  } = useUploadCenterState(dbCollections)
 
   const isSentenceBoundaryAt = (text: string, index: number) => {
     const ch = text[index]
@@ -1025,7 +1142,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     setIsSubmitting(true)
     const res = await createQuizQuestion({
       ...quizForm,
-      paperId: quizForm.categoryId,
+      paperId: quizForm.collectionId,
     })
     await dialog.alert(res.message)
     if (res.success) {
@@ -1205,8 +1322,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
       await dialog.alert('请先点击“识别多题”。')
       return
     }
-    if (!quizForm.categoryId) {
-      await dialog.alert('请先选择所属分类。')
+    if (!quizForm.collectionId) {
+      await dialog.alert('请先选择所属集合。')
       return
     }
 
@@ -1217,7 +1334,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     for (let i = 0; i < bulkParsedQuestions.length; i += 1) {
       const draft = bulkParsedQuestions[i]
       const res = await createQuizQuestion({
-        paperId: quizForm.categoryId,
+        paperId: quizForm.collectionId,
         questionType: draft.questionType,
         contextSentence: draft.contextSentence,
         targetWord: draft.targetWord || '',
@@ -1268,17 +1385,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
         ...opt,
         isCorrect: i === index,
       }))
-      let newContextSentence = prev.contextSentence
+      const newContextSentence = prev.contextSentence
 
-      if (prev.questionType === 'FILL_BLANK') {
-        const blankRegex = /[（(][\s　]*[）)]|__{2,}|～/
-        if (blankRegex.test(prev.prompt)) {
-          newContextSentence = prev.prompt.replace(
-            blankRegex,
-            newOptions[index].text,
-          )
-        }
-      }
       return {
         ...prev,
         options: newOptions,
@@ -1350,7 +1458,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     return (
       <>
         {before}
-        <span className='border-b-2 border-indigo-500 font-semibold text-indigo-700'>
+        <span className='border-b-2 border-blue-500 font-semibold text-blue-700'>
           {targetWord}
         </span>
         {after}
@@ -1373,39 +1481,43 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     dialog.toast(`已设置目标词：${selected}`, { tone: 'success' })
   }
 
-  const CategorySelector = ({
+  const CollectionSelector = ({
     value,
     onChange,
   }: {
     value: string
     onChange: (val: string) => void
   }) => {
-    const [isCreating, setIsCreating] = useState(false)
-    const [newCatData, setNewCatData] = useState({
-      levelId: dbLevels[0]?.id || '',
-      name: '',
-    })
-    const [isSavingCat, setIsSavingCat] = useState(false)
+    const {
+      isCreating,
+      setIsCreating,
+      newCatData,
+      setNewCatData,
+      isSavingCat,
+      setIsSavingCat,
+      resetNameOnly,
+    } = useCollectionCreatorState(dbLevels[0]?.id || '')
 
     const handleSaveCategory = async () => {
       if (!newCatData.name.trim()) {
-        await dialog.alert('试卷名称不能为空。')
+        await dialog.alert('集合名称不能为空。')
         return
       }
       setIsSavingCat(true)
 
       const res = await createCategory(newCatData)
       if (res.success && res.paper) {
-        const createdCategory: UploadCategoryLite = {
+        const createdCollection: UploadCollectionLite = {
           id: res.paper.id,
           name: res.paper.name,
+          collectionType: res.paper.collectionType,
           level: { title: res.paper.level.title },
           lessons: [],
         }
-        setLocalCategories(prev => [createdCategory, ...prev])
+        setLocalCollections(prev => [createdCollection, ...prev])
         onChange(res.paper.id)
         setIsCreating(false)
-        setNewCatData({ ...newCatData, name: '' })
+        resetNameOnly()
       } else {
         await dialog.alert(res.message || '创建失败')
       }
@@ -1413,16 +1525,16 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
     }
 
     return (
-      <div className='mb-6 border border-indigo-100 bg-indigo-50/40 p-4 md:p-5 transition-colors duration-300'>
+      <div className='mb-6 border border-blue-100 bg-blue-50/40 p-4 md:p-5 transition-colors duration-300'>
         <div className='flex justify-between items-center mb-3'>
-          <label className='block text-sm font-bold text-indigo-900'>
-            所属分类
+          <label className='block text-sm font-bold text-blue-900'>
+            所属集合
           </label>
           <button
             type='button'
             onClick={() => setIsCreating(!isCreating)}
-            className='border border-indigo-200 bg-white px-3 py-1.5 text-xs font-bold text-indigo-600 transition-colors hover:bg-indigo-50 hover:text-indigo-800'>
-            {isCreating ? '取消新建' : '新建分类'}
+            className='border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-800'>
+            {isCreating ? '取消新建' : '新建集合'}
           </button>
         </div>
 
@@ -1430,26 +1542,26 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
           <PanelDropdown
             value={value}
             onChange={onChange}
-            options={localCategories.map(cat => ({
+            options={localCollections.map(cat => ({
               value: cat.id,
-              label: `${cat.level?.title ?? ''} · ${cat.name}`,
+              label: `${cat.level?.title ?? ''} · ${cat.parentTitle ? `${cat.parentTitle} / ` : ''}${cat.name}`,
             }))}
-            placeholder='无可用分类，请先新建'
+            placeholder='无可用集合，请先新建'
           />
         ) : (
-          <div className='animate-in slide-in-from-top-2 flex flex-col gap-3 border border-indigo-200 bg-white p-4 fade-in'>
+          <div className='animate-in slide-in-from-top-2 flex flex-col gap-3 border border-blue-200 bg-white p-4 fade-in'>
             <div className='flex flex-col gap-2 md:flex-row md:gap-3'>
               <div className='w-full md:w-1/3'>
                 <PanelDropdown
-                  value={newCatData.levelId}
+                  value={newCatData.collectionType}
                   onChange={val =>
-                    setNewCatData({ ...newCatData, levelId: val })
+                    setNewCatData({ ...newCatData, collectionType: val })
                   }
                   options={dbLevels.map(lvl => ({
                     value: lvl.id,
                     label: lvl.title,
                   }))}
-                  placeholder='选择等级'
+                  placeholder='选择集合类型'
                 />
               </div>
               <input
@@ -1458,16 +1570,16 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 onChange={e =>
                   setNewCatData({ ...newCatData, name: e.target.value })
                 }
-                placeholder='分类名称，例如：2025-07 N1 真题'
-                className='flex-1 border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500'
+                placeholder='集合名称，例如：2025-07 N1 真题'
+                className='flex-1 border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500'
               />
             </div>
             <button
               type='button'
               onClick={handleSaveCategory}
               disabled={isSavingCat}
-              className='w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold py-2.5 transition-colors text-sm disabled:opacity-50'>
-              {isSavingCat ? '创建中...' : '确认创建并使用'}
+              className='w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-2.5 transition-colors text-sm disabled:opacity-50'>
+              {isSavingCat ? '创建中...' : '确认创建并使用该集合'}
             </button>
           </div>
         )}
@@ -1485,17 +1597,17 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
         <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-200 bg-white p-1.5 sm:grid-cols-3 md:mb-8'>
           <button
             onClick={() => setActiveTab('audio')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'audio' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'audio' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             听力语料
           </button>
           <button
             onClick={() => setActiveTab('article')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'article' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'article' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             阅读录入
           </button>
           <button
             onClick={() => setActiveTab('quiz')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'quiz' ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'quiz' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
             题库录入
           </button>
         </div>
@@ -1504,9 +1616,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
           <div className='animate-in slide-in-from-bottom-4 border border-gray-100 bg-white p-4 fade-in duration-500 md:p-8'>
             <h2 className='mb-2 text-lg font-bold md:text-xl'>录入听力语料</h2>
             <p className='mb-4 text-sm text-gray-500 md:mb-6'>
-              选择分类并上传字幕。支持手动路径、站内浏览或本地上传录音，提交后将自动保存并入库。
+              选择集合并上传字幕。支持手动路径、站内浏览或本地上传录音，提交后将自动保存并入库。
             </p>
-            <UploadForm levels={dbLevels} papers={dbCategories} />
+            <UploadForm levels={dbLevels} papers={dbCollections} />
           </div>
         )}
 
@@ -1524,7 +1636,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
             </div>
 
             <section className='space-y-5 border border-gray-200 bg-gray-50/30 p-4 md:p-5'>
-              <CategorySelector
+              <CollectionSelector
                 value={articleForm.paperId}
                 onChange={val =>
                   setArticleForm({ ...articleForm, paperId: val })
@@ -1541,7 +1653,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   onChange={e =>
                     setArticleForm({ ...articleForm, title: e.target.value })
                   }
-                  className='w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none'
+                  className='w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none'
                   placeholder='例如：2023 年 7 月 N1 阅读（可留空）'
                 />
               </div>
@@ -1557,7 +1669,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   <button
                     type='button'
                     onClick={handleMakeBlank}
-                    className='inline-flex items-center justify-center border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-600 transition-[background-color,border-color,color,transform] hover:bg-indigo-100 active:scale-95'>
+                    className='inline-flex items-center justify-center border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 transition-[background-color,border-color,color,transform] hover:bg-blue-100 active:scale-95'>
                     划词生成填空题
                   </button>
                 </div>
@@ -1569,18 +1681,18 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                     setArticleForm({ ...articleForm, content: e.target.value })
                   }
                   rows={10}
-                  className='w-full p-5 border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed resize-y'
+                  className='w-full p-5 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed resize-y'
                   placeholder='在此粘贴文章正文'
                 />
               </div>
             </section>
 
-            <section className='space-y-5 border border-indigo-100 bg-indigo-50/40 p-4 md:p-5'>
+            <section className='space-y-5 border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
               <div>
-                <h3 className='text-base font-black text-indigo-900 md:text-lg'>
+                <h3 className='text-base font-black text-blue-900 md:text-lg'>
                   阅读题（可选）
                 </h3>
-                <p className='mt-1 text-xs text-indigo-700'>
+                <p className='mt-1 text-xs text-blue-700'>
                   可通过划词自动生成，也可粘贴 1.2.3.4 格式快速导入。
                 </p>
               </div>
@@ -1590,7 +1702,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   {articleQuestions.map((q, qIndex) => (
                     <div
                       key={qIndex}
-                      className='bg-white p-4 border border-indigo-100 relative transition-colors'>
+                      className='bg-white p-4 border border-blue-100 relative transition-colors'>
                       <button
                         type='button'
                         onClick={async () => {
@@ -1611,10 +1723,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         移除题目
                       </button>
 
-                      <div className='mb-3 pr-16 text-sm font-bold text-indigo-900'>
+                      <div className='mb-3 pr-16 text-sm font-bold text-blue-900'>
                         第 {qIndex + 1} 题：
                         {q.questionType === 'FILL_BLANK' ? (
-                          <span className='ml-2 rounded bg-indigo-50 px-2 py-0.5 text-xs font-normal text-indigo-600'>
+                          <span className='ml-2 rounded bg-blue-50 px-2 py-0.5 text-xs font-normal text-blue-600'>
                             填空题
                           </span>
                         ) : null}
@@ -1651,7 +1763,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                                   }),
                                 )
                               }}
-                              className='text-indigo-600 focus:ring-indigo-500 shrink-0 cursor-pointer'
+                              className='text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer'
                             />
                             <input
                               type='text'
@@ -1680,7 +1792,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                                 )
                               }}
                               placeholder={`选项 ${optIndex + 1}`}
-                              className={`min-w-0 flex-1 rounded-md border px-3 py-2 transition-colors ${opt.isCorrect ? 'border-green-400 bg-green-50 font-bold text-green-700 ' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-indigo-300'} outline-none focus:ring-2 focus:ring-indigo-500`}
+                              className={`min-w-0 flex-1 rounded-md border px-3 py-2 transition-colors ${opt.isCorrect ? 'border-blue-400 bg-blue-50 font-bold text-blue-700 ' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-300'} outline-none focus:ring-2 focus:ring-blue-500`}
                             />
                           </div>
                         ))}
@@ -1694,7 +1806,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             handleParseCardOptions(qIndex, e.target.value)
                             e.target.value = ''
                           }}
-                          className='w-full px-4 py-2 text-xs bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-white text-indigo-700 placeholder-indigo-300 transition-colors'
+                          className='w-full px-4 py-2 text-xs bg-blue-50/50 hover:bg-blue-50 border border-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:bg-white text-blue-700 placeholder-blue-300 transition-colors'
                         />
                       </div>
                     </div>
@@ -1702,8 +1814,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 </div>
               )}
 
-              <div className='border border-indigo-100 bg-white p-4'>
-                <label className='text-sm font-black text-indigo-900 mb-2 block'>
+              <div className='border border-blue-100 bg-white p-4'>
+                <label className='text-sm font-black text-blue-900 mb-2 block'>
                   快速添加阅读题
                 </label>
                 <textarea
@@ -1711,25 +1823,25 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   onChange={e => setArticleQuickInput(e.target.value)}
                   rows={3}
                   placeholder='粘贴含 1. 2. 3. 4. 选项的题目文本'
-                  className='w-full px-4 py-3 border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-y text-sm bg-white mb-3'
+                  className='w-full px-4 py-3 border border-blue-200 focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm bg-white mb-3'
                 />
                 <button
                   type='button'
                   onClick={handleArticleAddQuestion}
-                  className='bg-white text-indigo-600 border border-indigo-200 font-bold px-4 py-2 hover:bg-indigo-100 transition-colors text-sm '>
+                  className='bg-white text-blue-600 border border-blue-200 font-bold px-4 py-2 hover:bg-blue-100 transition-colors text-sm '>
                   识别预览
                 </button>
                 {articleParsedDrafts.length > 0 && (
                   <button
                     type='button'
                     onClick={handleConfirmArticlePreviewImport}
-                    className='ml-2 bg-indigo-600 text-white border border-indigo-600 font-bold px-4 py-2 hover:bg-indigo-700 transition-colors text-sm'>
+                    className='ml-2 bg-blue-600 text-white border border-blue-600 font-bold px-4 py-2 hover:bg-blue-700 transition-colors text-sm'>
                     确认导入（{articleParsedDrafts.length}）
                   </button>
                 )}
 
                 {articleParsedPreviewRows.length > 0 && (
-                  <div className='mt-4 overflow-x-auto border border-indigo-100'>
+                  <div className='mt-4 overflow-x-auto border border-blue-100'>
                     {articleParsedPreviewRows.some(
                       row => row.isDuplicateToken,
                     ) && (
@@ -1738,7 +1850,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       </div>
                     )}
                     <table className='min-w-full text-left text-xs'>
-                      <thead className='bg-indigo-50 text-indigo-900'>
+                      <thead className='bg-blue-50 text-blue-900'>
                         <tr>
                           <th className='px-3 py-2 font-bold'>Q序号</th>
                           <th className='px-3 py-2 font-bold'>
@@ -1754,7 +1866,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             className={`border-t ${
                               row.isDuplicateToken
                                 ? 'border-rose-100 bg-rose-50/70'
-                                : 'border-indigo-100'
+                                : 'border-blue-100'
                             }`}>
                             <td className='px-3 py-2 font-semibold text-gray-700'>
                               {row.serial}
@@ -1764,7 +1876,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                                 row.isDuplicateToken ||
                                 row.placeholderToken === '未命中'
                                   ? 'text-rose-600'
-                                  : 'text-emerald-700'
+                                  : 'text-blue-700'
                               }`}>
                               {row.isDuplicateToken
                                 ? `${row.placeholderToken}（重号）`
@@ -1785,7 +1897,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
             <button
               disabled={isSubmitting}
               type='submit'
-              className='w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 transition-colors disabled:opacity-50 shadow-indigo-200 text-lg'>
+              className='w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 transition-colors disabled:opacity-50 shadow-blue-200 text-lg'>
               {isSubmitting ? '保存中...' : '保存文章与题目'}
             </button>
           </form>
@@ -1805,16 +1917,16 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               </p>
             </div>
 
-            <CategorySelector
-              value={quizForm.categoryId}
-              onChange={val => setQuizForm({ ...quizForm, categoryId: val })}
+            <CollectionSelector
+              value={quizForm.collectionId}
+              onChange={val => setQuizForm({ ...quizForm, collectionId: val })}
             />
 
-            <section className='border border-emerald-100 bg-emerald-50/40 p-4 md:p-5'>
-              <label className='mb-2 block text-sm font-black text-emerald-900'>
+            <section className='border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
+              <label className='mb-2 block text-sm font-black text-blue-900'>
                 批量粘贴多题（智能识别）
               </label>
-              <p className='mb-3 text-xs leading-relaxed text-emerald-700'>
+              <p className='mb-3 text-xs leading-relaxed text-blue-700'>
                 一次粘贴多题文本，系统会按“题干 + 4 个选项”自动拆分。 支持
                 `1.2.3.4`、`①②③④`、`A.B.C.D` 选项标记。
               </p>
@@ -1823,26 +1935,26 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 onChange={e => setBulkQuickInput(e.target.value)}
                 rows={7}
                 placeholder='在此粘贴多道题目（题与题之间建议空一行）'
-                className='w-full resize-y border border-emerald-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-500'
+                className='w-full resize-y border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500'
               />
               <div className='mt-3 flex flex-wrap items-center gap-2'>
                 <button
                   type='button'
                   onClick={handleBulkQuickParse}
-                  className='bg-white border border-emerald-200 px-4 py-2 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100'>
+                  className='bg-white border border-blue-200 px-4 py-2 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100'>
                   识别多题
                 </button>
                 <button
                   type='button'
                   disabled={isSubmitting || bulkParsedQuestions.length === 0}
                   onClick={() => void handleBulkQuizSave()}
-                  className='bg-emerald-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50'>
+                  className='bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50'>
                   {isSubmitting
                     ? '批量保存中...'
                     : `批量保存（${bulkParsedQuestions.length}）`}
                 </button>
                 {bulkParsedQuestions.length > 0 && (
-                  <span className='text-xs font-semibold text-emerald-700'>
+                  <span className='text-xs font-semibold text-blue-700'>
                     已识别 {bulkParsedQuestions.length}{' '}
                     题（可在下方逐题校对后再保存）
                   </span>
@@ -1850,7 +1962,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               </div>
 
               {bulkParsedQuestions.length > 0 && (
-                <div className='mt-4 border-t border-emerald-200 pt-4'>
+                <div className='mt-4 border-t border-blue-200 pt-4'>
                   <div className='mb-3 flex gap-2 overflow-x-auto pb-1'>
                     {bulkParsedQuestions.map((_, qIndex) => (
                       <button
@@ -1859,8 +1971,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         onClick={() => setBulkEditingIndex(qIndex)}
                         className={`h-8 shrink-0 border px-3 text-xs font-bold transition-colors ${
                           bulkEditingIndex === qIndex
-                            ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                            : 'border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50'
+                            ? 'border-blue-300 bg-blue-100 text-blue-800'
+                            : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
                         }`}>
                         第 {qIndex + 1} 题
                       </button>
@@ -1868,9 +1980,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   </div>
 
                   {bulkParsedQuestions[bulkEditingIndex] && (
-                    <div className='border border-emerald-200 bg-white p-3'>
+                    <div className='border border-blue-200 bg-white p-3'>
                       <div className='mb-2 flex items-center justify-between gap-2'>
-                        <span className='text-sm font-bold text-emerald-800'>
+                        <span className='text-sm font-bold text-blue-800'>
                           当前编辑：第 {bulkEditingIndex + 1} 题
                         </span>
                         <button
@@ -1894,11 +2006,13 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                               e.target.value as ParsedQuizDraft['questionType'],
                             )
                           }
-                          className='h-10 border border-emerald-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-emerald-400'>
+                          className='h-10 border border-blue-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-400'>
                           <option value='PRONUNCIATION'>读音题</option>
+                          <option value='SYNONYM_REPLACEMENT'>
+                            近义词替换题
+                          </option>
                           <option value='WORD_DISTINCTION'>单词辨析题</option>
                           <option value='GRAMMAR'>语法题</option>
-                          <option value='FILL_BLANK'>填空题</option>
                           <option value='SORTING'>排序题</option>
                         </select>
                         <input
@@ -1910,7 +2024,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             )
                           }
                           placeholder='题干'
-                          className='h-10 border border-emerald-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-emerald-400'
+                          className='h-10 border border-blue-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-400'
                         />
                       </div>
 
@@ -1928,7 +2042,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                             )
                           }
                           rows={2}
-                          className='w-full border border-emerald-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-400'
+                          className='w-full border border-blue-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400'
                           placeholder='语境句（建议完整句子）'
                         />
                       </div>
@@ -1936,12 +2050,14 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       {(bulkParsedQuestions[bulkEditingIndex].questionType ===
                         'PRONUNCIATION' ||
                         bulkParsedQuestions[bulkEditingIndex].questionType ===
+                          'SYNONYM_REPLACEMENT' ||
+                        bulkParsedQuestions[bulkEditingIndex].questionType ===
                           'WORD_DISTINCTION') && (
                         <div className='mt-2 flex flex-wrap items-center gap-2'>
                           <button
                             type='button'
                             onClick={handleBulkPickTargetWordFromSelection}
-                            className='h-9 border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100'>
+                            className='h-9 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100'>
                             划词设目标词
                           </button>
                           <input
@@ -1956,7 +2072,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                               )
                             }
                             placeholder='目标词（前台下划线显示）'
-                            className='h-9 min-w-0 flex-1 border border-emerald-200 px-3 text-sm outline-none focus:ring-2 focus:ring-emerald-400'
+                            className='h-9 min-w-0 flex-1 border border-blue-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-400'
                           />
                         </div>
                       )}
@@ -1988,7 +2104,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                                   )
                                 }
                                 placeholder={`选项 ${optIndex + 1}`}
-                                className='min-w-0 flex-1 border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-emerald-400'
+                                className='min-w-0 flex-1 border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400'
                               />
                             </label>
                           ),
@@ -2000,11 +2116,11 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               )}
             </section>
 
-            <section className='border border-indigo-100 bg-indigo-50/50 p-4 shadow-inner md:p-5'>
-              <label className='mb-2 block text-sm font-black text-indigo-900'>
+            <section className='border border-blue-100 bg-blue-50/50 p-4 shadow-inner md:p-5'>
+              <label className='mb-2 block text-sm font-black text-blue-900'>
                 快速粘贴（推荐）
               </label>
-              <p className='mb-3 text-xs leading-relaxed text-indigo-700'>
+              <p className='mb-3 text-xs leading-relaxed text-blue-700'>
                 粘贴包含题干和 4 个选项的文本，系统会自动拆分并填充表单。
                 <br />
                 <span className='font-mono bg-white/50 px-1 rounded'>
@@ -2017,12 +2133,12 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 onChange={e => handleQuickParse(e.target.value)}
                 rows={3}
                 placeholder='在此粘贴整题文本'
-                className='w-full px-4 py-3 border border-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-y text-sm bg-white'
+                className='w-full px-4 py-3 border border-blue-200 focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm bg-white'
               />
 
               {quizForm.questionType !== 'SORTING' && (
-                <div className='mt-4 border border-indigo-100 bg-white/75 p-3'>
-                  <span className='mb-2 block text-xs font-bold tracking-wide text-indigo-800'>
+                <div className='mt-4 border border-blue-100 bg-white/75 p-3'>
+                  <span className='mb-2 block text-xs font-bold tracking-wide text-blue-800'>
                     正确答案
                   </span>
                   <div className='flex flex-wrap gap-2'>
@@ -2031,7 +2147,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         key={num}
                         type='button'
                         onClick={() => setCorrectOption(idx)}
-                        className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-emerald-500 text-white shadow-emerald-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                        className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-blue-500 text-white shadow-blue-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
                         选项 {num}
                       </button>
                     ))}
@@ -2056,9 +2172,9 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                 <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                   {[
                     { value: 'PRONUNCIATION', label: '读音题' },
+                    { value: 'SYNONYM_REPLACEMENT', label: '近义词替换题' },
                     { value: 'WORD_DISTINCTION', label: '单词辨析题' },
                     { value: 'GRAMMAR', label: '语法题' },
-                    { value: 'FILL_BLANK', label: '填空题' },
                     { value: 'SORTING', label: '排序题' },
                   ].map(type => (
                     <button
@@ -2070,7 +2186,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       }}
                       className={`border px-3 py-2 text-sm font-bold transition-colors ${
                         quizForm.questionType === type.value
-                          ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+                          ? 'border-blue-300 bg-blue-50 text-blue-700'
                           : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                       }`}>
                       {type.label}
@@ -2092,13 +2208,13 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   onChange={e =>
                     setQuizForm({ ...quizForm, prompt: e.target.value })
                   }
-                  className='w-full border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500'
+                  className='w-full border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500'
                   placeholder='例如：チームの(　　　)を強めよう。（可留空）'
                 />
               </div>
             </section>
 
-            <section className='border border-indigo-100 bg-indigo-50/40 p-4'>
+            <section className='border border-blue-100 bg-blue-50/40 p-4'>
               {quizForm.questionType === 'SORTING' && (
                 <div className='mb-4 border border-orange-200 bg-orange-50 p-4'>
                   <label className='mb-2 block text-sm font-bold text-orange-800'>
@@ -2126,7 +2242,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                     })}
                   </div>
                   {sortSequence.length === 4 ? (
-                    <div className='text-sm text-green-600 font-bold flex justify-between items-center'>
+                    <div className='text-sm text-blue-600 font-bold flex justify-between items-center'>
                       <span>
                         语序组装完成，系统已自动提取星号答案与完整句子。
                       </span>
@@ -2144,10 +2260,10 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   )}
                 </div>
               )}
-              <label className='mb-2 block text-sm font-bold text-indigo-900'>
+              <label className='mb-2 block text-sm font-bold text-blue-900'>
                 语境句
               </label>
-              <p className='mb-2 text-xs text-indigo-700'>
+              <p className='mb-2 text-xs text-blue-700'>
                 用于生词与复习展示，建议填写完整句子。
               </p>
               <textarea
@@ -2157,17 +2273,18 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   setQuizForm({ ...quizForm, contextSentence: e.target.value })
                 }
                 rows={2}
-                className='w-full border border-indigo-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-indigo-500'
+                className='w-full border border-blue-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500'
                 placeholder='例如：チームの結束を強めよう。（可留空）'
               />
               {(quizForm.questionType === 'PRONUNCIATION' ||
+                quizForm.questionType === 'SYNONYM_REPLACEMENT' ||
                 quizForm.questionType === 'WORD_DISTINCTION') && (
-                <div className='mt-3 border border-indigo-200 bg-white p-3'>
+                <div className='mt-3 border border-blue-200 bg-white p-3'>
                   <div className='mb-2 flex flex-wrap items-center gap-2'>
                     <button
                       type='button'
                       onClick={handlePickTargetWordFromSelection}
-                      className='h-9 border border-indigo-200 bg-indigo-50 px-3 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100'>
+                      className='h-9 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100'>
                       从语境句划词设为读音目标
                     </button>
                     <input
@@ -2180,7 +2297,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         })
                       }
                       placeholder='或手动输入目标词'
-                      className='h-9 min-w-0 flex-1 border border-indigo-200 px-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500'
+                      className='h-9 min-w-0 flex-1 border border-blue-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500'
                     />
                   </div>
                   <div className='text-sm leading-relaxed text-gray-700'>
@@ -2212,7 +2329,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                       name='correctOption'
                       checked={opt.isCorrect}
                       onChange={() => setCorrectOption(idx)}
-                      className='w-5 h-5 text-indigo-600 focus:ring-indigo-500 border-gray-300'
+                      className='w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300'
                     />
                     <input
                       type='text'
@@ -2222,7 +2339,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                         newOptions[idx].text = e.target.value
                         setQuizForm({ ...quizForm, options: newOptions })
                       }}
-                      className='min-w-0 flex-1 border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-500'
+                      className='min-w-0 flex-1 border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500'
                       placeholder={`选项 ${idx + 1}`}
                     />
                   </div>
@@ -2240,7 +2357,7 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
                   setQuizForm({ ...quizForm, explanation: e.target.value })
                 }
                 rows={2}
-                className='w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-indigo-500 outline-none bg-gray-50'
+                className='w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50'
                 placeholder='可补充解题思路或易错点。'
               />
             </section>
@@ -2261,8 +2378,8 @@ export default function UploadCenterUI({ dbLevels, dbCategories }: Props) {
               type={bulkParsedQuestions.length > 0 ? 'button' : 'submit'}
               className={`w-full font-black py-4 transition-colors disabled:opacity-50 text-white ${
                 bulkParsedQuestions.length > 0
-                  ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200'
-                  : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
+                  : 'bg-blue-600 hover:bg-blue-700 shadow-blue-200'
               }`}>
               {isSubmitting
                 ? '保存中...'

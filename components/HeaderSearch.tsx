@@ -12,7 +12,7 @@ import {
 const SEARCH_TYPES: Array<{ key: GlobalSearchType; label: string }> = [
   { key: 'vocabulary', label: '单词' },
   { key: 'sentence', label: '句子' },
-  { key: 'article', label: '阅读' },
+  { key: 'passage', label: '阅读' },
   { key: 'quiz', label: '题库' },
   { key: 'question', label: '题目' },
   { key: 'dialogue', label: '听力' },
@@ -21,10 +21,25 @@ const SEARCH_TYPES: Array<{ key: GlobalSearchType; label: string }> = [
 const typeLabelMap: Record<GlobalSearchType, string> = {
   vocabulary: '单词',
   sentence: '句子',
-  article: '阅读',
+  passage: '阅读',
   quiz: '题库',
   question: '题目',
   dialogue: '听力',
+}
+
+const highlightKeyword = (text: string, keyword?: string) => {
+  if (!keyword || !text) return text
+
+  const parts = text.split(new RegExp(`(${keyword})`, 'gi'))
+  return parts.map((part, i) =>
+    part.toLowerCase() === keyword.toLowerCase() ? (
+      <mark key={i} className='bg-yellow-200 font-medium'>
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  )
 }
 
 export default function HeaderSearch() {
@@ -200,11 +215,15 @@ export default function HeaderSearch() {
         <div className='ui-pop ui-pop-surface absolute left-0 right-0 top-[calc(100%+0.55rem)] z-[120] overflow-hidden'>
           <div className='flex items-center justify-between border-b border-gray-100 dark:border-slate-800 px-3 py-2 text-[11px] font-semibold text-gray-500 dark:text-slate-400'>
             <div className='flex flex-wrap items-center gap-1.5'>
-              <span>{isSearching ? '搜索中...' : `结果 ${results.length}`}</span>
+              <span>
+                {isSearching ? '搜索中...' : `结果 ${results.length}`}
+              </span>
               {Object.entries(grouped)
                 .slice(0, 3)
                 .map(([type, count]) => (
-                  <span key={`header-search-meta-${type}`} className='ui-tag ui-tag-muted h-5 px-2 text-[10px]'>
+                  <span
+                    key={`header-search-meta-${type}`}
+                    className='ui-tag ui-tag-muted h-5 px-2 text-[10px]'>
                     {typeLabelMap[type as GlobalSearchType]} {count}
                   </span>
                 ))}
@@ -235,14 +254,14 @@ export default function HeaderSearch() {
                     {typeLabelMap[item.type]}
                   </span>
                   <p className='truncate text-sm font-semibold text-gray-900 dark:text-slate-100'>
-                    {item.title}
+                    {highlightKeyword(item.title, item.keyword)}
                   </p>
                   <span className='truncate text-[11px] text-gray-400 dark:text-slate-500'>
                     {item.meta}
                   </span>
                 </div>
                 <p className='mt-1 line-clamp-2 text-xs text-gray-600 dark:text-slate-300'>
-                  {item.snippet}
+                  {highlightKeyword(item.snippet, item.keyword)}
                 </p>
               </Link>
             ))}

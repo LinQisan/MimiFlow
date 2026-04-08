@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
@@ -11,7 +11,8 @@
     "clean:next": "rm -rf .next",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate --config prisma.config.ts",
-    "db:push": "prisma db push --config prisma.config.ts"
+    "db:push": "prisma db push --config prisma.config.ts",
+    "dev:turbopack": "next dev --turbopack"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

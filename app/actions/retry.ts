@@ -1,12 +1,14 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import prisma from '@/lib/prisma'
+import {
+  getDueRetryQuestionRows,
+  getRetryQueueSummarySnapshot,
+  submitRetryAnswerWithSchedule,
+} from '@/lib/repositories/retry.repo'
+import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
 
 const RETRY_HOURS = [24, 72, 168] as const
-
-const addHours = (from: Date, hours: number) =>
-  new Date(from.getTime() + hours * 60 * 60 * 1000)
 
 export type RetryQueueItem = {
   retryId: string
@@ -31,56 +33,31 @@ const mapRetrySource = (item: {
   if (item.question.quiz) {
     return {
       sourceTitle: `题库 · ${item.question.quiz.title || '未命名题库'}`,
-      sourceUrl: `/quizzes/${item.question.quiz.id}`,
+      sourceUrl: '/practice',
     }
   }
+
   if (item.question.passage) {
     return {
       sourceTitle: `阅读 · ${item.question.passage.title || '未命名文章'}`,
-      sourceUrl: `/articles/${item.question.passage.id}`,
+      sourceUrl: `/articles/${toLegacyMaterialId(item.question.passage.id)}`,
     }
   }
+
   return {
     sourceTitle: '题目来源已失效',
-    sourceUrl: '/quizzes',
+    sourceUrl: '/practice',
   }
 }
 
 export async function getRetryQueueSummary() {
-  const now = new Date()
-  const [dueCount, totalCount, nextDue] = await Promise.all([
-    prisma.questionRetry.count({ where: { dueAt: { lte: now } } }),
-    prisma.questionRetry.count(),
-    prisma.questionRetry.findFirst({
-      orderBy: { dueAt: 'asc' },
-      select: { dueAt: true },
-    }),
-  ])
-  return {
-    dueCount,
-    totalCount,
-    nextDueAt: nextDue?.dueAt || null,
-  }
+  return getRetryQueueSummarySnapshot(new Date())
 }
 
 export async function getDueRetryQuestions(
   limit = 20,
 ): Promise<RetryQueueItem[]> {
-  const now = new Date()
-  const rows = await prisma.questionRetry.findMany({
-    where: { dueAt: { lte: now } },
-    orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
-    take: limit,
-    include: {
-      question: {
-        include: {
-          options: true,
-          quiz: { select: { id: true, title: true } },
-          passage: { select: { id: true, title: true } },
-        },
-      },
-    },
-  })
+  const rows = await getDueRetryQuestionRows(new Date(), limit)
 
   return rows.map(row => {
     const source = mapRetrySource(row)
@@ -93,11 +70,7 @@ export async function getDueRetryQuestions(
       questionType: row.question.questionType,
       prompt: row.question.prompt || '',
       contextSentence: row.question.contextSentence,
-      options: row.question.options.map(option => ({
-        id: option.id,
-        text: option.text,
-        isCorrect: option.isCorrect,
-      })),
+      options: row.question.options,
       sourceTitle: source.sourceTitle,
       sourceUrl: source.sourceUrl,
     }
@@ -109,98 +82,28 @@ export async function submitRetryAnswer(
   selectedOptionId: string,
 ) {
   try {
-    const now = new Date()
-    const row = await prisma.questionRetry.findUnique({
-      where: { id: retryId },
-      include: {
-        question: {
-          include: {
-            options: { select: { id: true, isCorrect: true } },
-          },
-        },
-      },
-    })
-    if (!row) {
-      return { success: false, message: '回流题目不存在或已完成' }
-    }
-
-    const selected = row.question.options.find(
-      item => item.id === selectedOptionId,
-    )
-    if (!selected) {
-      return { success: false, message: '未选择有效选项' }
-    }
-    const isCorrect = selected.isCorrect
-    const correctOptionId =
-      row.question.options.find(item => item.isCorrect)?.id || null
-
-    await prisma.$transaction(async tx => {
-      await tx.questionAttempt.create({
-        data: {
-          questionId: row.questionId,
-          isCorrect,
-          timeSpentMs: 0,
-        },
-      })
-
-      if (!isCorrect) {
-        await tx.questionRetry.update({
-          where: { id: retryId },
-          data: {
-            stage: 0,
-            dueAt: addHours(now, RETRY_HOURS[0]),
-            wrongCount: { increment: 1 },
-          },
-        })
-        return
-      }
-
-      const nextStage = row.stage + 1
-      if (nextStage >= RETRY_HOURS.length) {
-        await tx.questionRetry.delete({ where: { id: retryId } })
-        return
-      }
-
-      await tx.questionRetry.update({
-        where: { id: retryId },
-        data: {
-          stage: nextStage,
-          dueAt: addHours(now, RETRY_HOURS[nextStage]),
-        },
-      })
+    const result = await submitRetryAnswerWithSchedule({
+      retryId,
+      selectedOptionId,
+      now: new Date(),
+      retryHours: RETRY_HOURS,
     })
 
-    revalidatePath('/retry')
+    if (!result.ok) {
+      return { success: false, message: result.message }
+    }
+
+    revalidatePath('/review')
+    revalidatePath('/practice')
     revalidatePath('/today')
     revalidatePath('/')
 
-    if (!isCorrect) {
-      return {
-        success: true,
-        isCorrect: false,
-        correctOptionId,
-        nextInHours: RETRY_HOURS[0],
-        done: false,
-      }
-    }
-
-    const nextStage = row.stage + 1
-    if (nextStage >= RETRY_HOURS.length) {
-      return {
-        success: true,
-        isCorrect: true,
-        correctOptionId,
-        nextInHours: null,
-        done: true,
-      }
-    }
-
     return {
       success: true,
-      isCorrect: true,
-      correctOptionId,
-      nextInHours: RETRY_HOURS[nextStage],
-      done: false,
+      isCorrect: result.isCorrect,
+      correctOptionId: result.correctOptionId,
+      nextInHours: result.nextInHours,
+      done: result.done,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '提交失败'

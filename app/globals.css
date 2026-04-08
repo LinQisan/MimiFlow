@@ -445,6 +445,35 @@ html {
   display: none;
 }
 
+/* Reading passage typography in PracticePlayer:
+   prioritize scanability for long-form text. */
+.reading-passage-body {
+  letter-spacing: 0.012em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.reading-passage-body p {
+  margin-top: 0;
+  margin-bottom: 1.15em;
+}
+
+.reading-passage-body p:last-child {
+  margin-bottom: 0;
+}
+
+.reading-passage-body h1,
+.reading-passage-body h2,
+.reading-passage-body h3 {
+  margin-top: 0.6em;
+  margin-bottom: 0.55em;
+  line-height: 1.5;
+}
+
+.reading-passage-body li + li {
+  margin-top: 0.45em;
+}
+
 /* Page-level dark refinement: reading / quiz / vocabulary */
 html.dark .theme-page-article,
 html.dark .theme-page-quiz,

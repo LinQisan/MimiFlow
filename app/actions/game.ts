@@ -1,9 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { GameDifficultyPreset, StudyTimeKind } from '@prisma/client'
+import { GameDifficultyPreset, MaterialType, StudyTimeKind } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { getTodayStudyPlan, type TodayTaskItem } from '@/app/actions/studyPlan'
+import { getTopMaterialSnapshots } from '@/lib/repositories/materials.repo'
 
 const DAY = 24 * 60 * 60 * 1000
 const PROFILE_ID = 'default'
@@ -576,9 +577,18 @@ const getDailyMetrics = async (dateKey: string): Promise<DailyMetrics> => {
     groupedAttempts,
     outputPractice,
   ] = await Promise.all([
-    prisma.lesson.count({ where: { createdAt: { gte: start, lt: end } } }),
-    prisma.passage.count({ where: { createdAt: { gte: start, lt: end } } }),
-    prisma.quiz.count({ where: { createdAt: { gte: start, lt: end } } }),
+    prisma.material.count({
+      where: { type: MaterialType.LISTENING, createdAt: { gte: start, lt: end } },
+    }),
+    prisma.material.count({
+      where: { type: MaterialType.READING, createdAt: { gte: start, lt: end } },
+    }),
+    prisma.material.count({
+      where: {
+        type: MaterialType.VOCAB_GRAMMAR,
+        createdAt: { gte: start, lt: end },
+      },
+    }),
     prisma.studyTimeDaily.findUnique({
       where: {
         dateKey_kind: {
@@ -908,38 +918,28 @@ const syncProgressByData = async (dateKey: string, defs: GameTaskDef[]) => {
 }
 
 const getMixedPlan = async () => {
-  const [topLesson, topArticle, topQuiz, dueRetryCount] = await Promise.all([
-    prisma.lesson.findFirst({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, title: true },
-    }),
-    prisma.passage.findFirst({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, title: true },
-    }),
-    prisma.quiz.findFirst({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      select: { id: true, title: true },
-    }),
+  const [topMaterials, dueRetryCount] = await Promise.all([
+    getTopMaterialSnapshots(),
     prisma.questionRetry.count({ where: { dueAt: { lte: new Date() } } }),
   ])
+  const { topLesson, topArticle, topQuiz } = topMaterials
 
   const plan: { title: string; href: string }[] = []
   if (dueRetryCount > 0) {
-    plan.push({ title: `先做错题回流（${dueRetryCount}）`, href: '/retry' })
+    plan.push({ title: `先做错题回流（${dueRetryCount}）`, href: '/review' })
   } else {
     plan.push({ title: '先做口语复习', href: '/review' })
   }
   if (topQuiz) {
     plan.push({
       title: `刷题：${topQuiz.title || '题库'}`,
-      href: `/quizzes/${topQuiz.id}`,
+      href: `/practice`,
     })
   }
   if (topLesson) {
     plan.push({
       title: `听力朗诵：${topLesson.title}`,
-      href: `/lessons/${topLesson.id}`,
+      href: `/shadowing/${topLesson.id}`,
     })
   } else if (topArticle) {
     plan.push({

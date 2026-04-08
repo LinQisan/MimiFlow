@@ -16,6 +16,21 @@ const typeLabelMap: Record<GlobalSearchResult['type'], string> = {
   dialogue: '听力',
 }
 
+const highlightKeyword = (text: string, keyword?: string) => {
+  if (!keyword || !text) return text
+
+  const parts = text.split(new RegExp(`(${keyword})`, 'gi'))
+  return parts.map((part, i) =>
+    part.toLowerCase() === keyword.toLowerCase() ? (
+      <mark key={i} className='bg-blue-200 font-bold'>
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  )
+}
+
 export default function SearchPage() {
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<GlobalSearchResult[]>([])
@@ -103,15 +118,14 @@ export default function SearchPage() {
                     href={item.href}
                     className='block border-b border-gray-100 px-1 py-2 hover:bg-gray-50'>
                     <div className='flex flex-wrap items-center gap-2'>
-                      <span className='ui-tag ui-tag-info'>
-                        {typeLabelMap[item.type]}
-                      </span>
                       <p className='text-sm font-bold text-gray-900'>
-                        {item.title}
+                        {highlightKeyword(item.title, item.keyword)}
                       </p>
                       <span className='text-xs text-gray-400'>{item.meta}</span>
                     </div>
-                    <p className='mt-1 text-sm text-gray-600'>{item.snippet}</p>
+                    <p className='mt-1 text-sm text-gray-600'>
+                      {highlightKeyword(item.snippet, item.keyword)}
+                    </p>
                   </Link>
                 ))}
               </div>

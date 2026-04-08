@@ -1,5 +1,6 @@
 'use server'
 
+import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -30,6 +31,17 @@ type AudioRecord = {
 type RefUpdateResult = {
   lessonRefUpdated: number
   subtitleRefUpdated: number
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return {}
+}
+
+function asString(value: unknown): string {
+  return typeof value === 'string' ? value : ''
 }
 
 function toSafeFilename(name: string) {
@@ -90,38 +102,37 @@ async function replaceAudioReference(
     return { lessonRefUpdated: 0, subtitleRefUpdated: 0 }
   }
 
-  const lessonUpdate = await prisma.lesson.updateMany({
-    where: { audioFile: oldPath },
-    data: { audioFile: nextPath },
+  const listeningMaterials = await prisma.material.findMany({
+    where: { type: MaterialType.LISTENING },
+    select: { id: true, contentPayload: true },
   })
 
-  const dialoguesWithAudioRef = await prisma.dialogue.findMany({
-    where: { text: { contains: oldPath } },
-    select: { id: true, text: true },
+  const updates = listeningMaterials.flatMap(material => {
+    const payload = asRecord(material.contentPayload)
+    const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
+    if (audioFile !== oldPath) return []
+
+    return [
+      prisma.material.update({
+        where: { id: material.id },
+        data: {
+          contentPayload: {
+            ...payload,
+            audioFile: nextPath,
+            audioUrl: nextPath,
+          },
+        },
+      }),
+    ]
   })
 
-  let subtitleRefUpdated = 0
-  if (dialoguesWithAudioRef.length > 0) {
-    const updates: ReturnType<typeof prisma.dialogue.update>[] = []
-    for (const row of dialoguesWithAudioRef) {
-      const replaced = row.text.replaceAll(oldPath, nextPath)
-      if (replaced === row.text) continue
-      updates.push(
-        prisma.dialogue.update({
-          where: { id: row.id },
-          data: { text: replaced },
-        }),
-      )
-    }
-    if (updates.length > 0) {
-      await prisma.$transaction(updates)
-      subtitleRefUpdated = updates.length
-    }
+  if (updates.length > 0) {
+    await prisma.$transaction(updates)
   }
 
   return {
-    lessonRefUpdated: lessonUpdate.count,
-    subtitleRefUpdated,
+    lessonRefUpdated: updates.length,
+    subtitleRefUpdated: 0,
   }
 }
 
@@ -170,13 +181,16 @@ export async function listAudioFilesAdmin(
     const files = await walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR)
     const uniquePaths = Array.from(new Set(files.map(item => item.webPath)))
 
-    const lessons = await prisma.lesson.findMany({
-      where: { audioFile: { in: uniquePaths } },
-      select: { audioFile: true },
+    const lessons = await prisma.material.findMany({
+      where: { type: MaterialType.LISTENING },
+      select: { contentPayload: true },
     })
     const usageMap = new Map<string, number>()
     for (const lesson of lessons) {
-      usageMap.set(lesson.audioFile, (usageMap.get(lesson.audioFile) || 0) + 1)
+      const payload = asRecord(lesson.contentPayload)
+      const audioPath = asString(payload.audioFile) || asString(payload.audioUrl)
+      if (!audioPath || !uniquePaths.includes(audioPath)) continue
+      usageMap.set(audioPath, (usageMap.get(audioPath) || 0) + 1)
     }
 
     const rows = await Promise.all(
@@ -273,7 +287,15 @@ export async function deleteAudioFileAdmin(audioPath: string) {
       return { success: false, message: '非法路径。' }
     }
 
-    const linkedCount = await prisma.lesson.count({ where: { audioFile: audioPath } })
+    const lessons = await prisma.material.findMany({
+      where: { type: MaterialType.LISTENING },
+      select: { contentPayload: true },
+    })
+    const linkedCount = lessons.reduce((count, lesson) => {
+      const payload = asRecord(lesson.contentPayload)
+      const currentPath = asString(payload.audioFile) || asString(payload.audioUrl)
+      return count + (currentPath === audioPath ? 1 : 0)
+    }, 0)
     if (linkedCount > 0) {
       return { success: false, message: `该录音仍被 ${linkedCount} 个听力语料使用，无法删除。` }
     }
@@ -319,7 +341,7 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
 
     revalidatePath('/manage/audio')
     revalidatePath('/manage/upload')
-    revalidatePath('/manage/level')
+    revalidatePath('/manage/collection')
 
     return {
       success: true,
@@ -391,7 +413,7 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
 
     revalidatePath('/manage/audio')
     revalidatePath('/manage/upload')
-    revalidatePath('/manage/level')
+    revalidatePath('/manage/collection')
     return {
       success: true,
       message: `文件已重命名为 ${nextName}。`,

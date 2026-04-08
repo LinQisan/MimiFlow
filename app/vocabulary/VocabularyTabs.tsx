@@ -167,8 +167,9 @@ const stripLeadingIcons = (text: string) =>
 const getSentenceSourceType = (sentence: SentenceItem) => {
   const sourceText = stripLeadingIcons(sentence.source || '')
   if (sourceText.includes('题目')) return '题目'
-  if (sentence.sourceUrl.startsWith('/quizzes/')) return '题目'
+  if (sentence.sourceUrl.startsWith('/practice')) return '题目'
   if (sentence.sourceUrl.startsWith('/articles/')) return '文章'
+  if (sentence.sourceUrl.startsWith('/shadowing/')) return '听力'
   if (sentence.sourceUrl.startsWith('/lessons/')) return '听力'
   if (sourceText.includes('阅读')) return '文章'
   if (sourceText.includes('听力')) return '听力'
@@ -1450,6 +1451,7 @@ export default function VocabularyTabs({
     if (sentence.audioFile) return true
     if (!vocab.audioData) return false
     return (
+      sentence.sourceUrl.startsWith('/shadowing/') ||
       sentence.sourceUrl.startsWith('/lessons/') ||
       sentence.source.includes('听力')
     )
@@ -1815,40 +1817,37 @@ export default function VocabularyTabs({
     <div className='theme-page-vocab max-w-7xl mx-auto'>
       {/* 头部导航 */}
       <div className={viewMode === 'flashcard' ? 'mb-3' : 'mb-6'}>
-        <div
-          className={`flex w-full flex-wrap gap-2 overflow-x-auto border-b border-gray-200 pb-3 scrollbar-hide ${
-            viewMode === 'flashcard' ? 'mb-2' : 'mb-3'
-          }`}>
-          {allExistingGroups.map(name => (
+        {viewMode !== 'flashcard' && (
+          <div className='flex w-full flex-wrap gap-2 overflow-x-auto border-b border-gray-200 pb-3 mb-3 scrollbar-hide'>
+            {allExistingGroups.map(name => (
+              <button
+                key={name}
+                onClick={() => {
+                  setActiveTab(name)
+                  setCurrentIndex(0)
+                  setViewMode('list')
+                }}
+                className={`rounded-full font-bold whitespace-nowrap transition-colors px-4 py-2 ${
+                  activeTab === name
+                    ? 'border border-indigo-200 bg-indigo-50 text-indigo-700'
+                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                }`}>
+                {LANG_NAMES[name] || name}
+                <span className='ml-1 opacity-75'>
+                  ({groupedTotals[name] || 0})
+                </span>
+              </button>
+            ))}
             <button
-              key={name}
-              onClick={() => {
-                setActiveTab(name)
-                setCurrentIndex(0)
-                setViewMode('list')
-              }}
-              className={`rounded-full font-bold whitespace-nowrap transition-colors ${
-                viewMode === 'flashcard' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2'
-              } ${
-                activeTab === name
-                  ? 'border border-indigo-200 bg-indigo-50 text-indigo-700'
-                  : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-              }`}>
-              {LANG_NAMES[name] || name}
-              <span className='ml-1 opacity-75'>
-                ({groupedTotals[name] || 0})
-              </span>
+              type='button'
+              onClick={() => void handleRenameGroup()}
+              className='ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
+              重命名分组
             </button>
-          ))}
-          <button
-            type='button'
-            onClick={() => void handleRenameGroup()}
-            className='ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
-            重命名分组
-          </button>
-        </div>
+          </div>
+        )}
 
-        <div className='space-y-2 border-b border-gray-200 pb-3'>
+        <div className={`space-y-2 pb-3 ${viewMode !== 'flashcard' ? 'border-b border-gray-200' : ''}`}>
           <div className='flex flex-wrap items-center justify-between gap-3'>
             <div className='flex flex-wrap items-center gap-2'>
               <button
@@ -3452,6 +3451,42 @@ export default function VocabularyTabs({
               </button>
             </div>
           )}
+
+          <div className='mt-6 flex flex-col items-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500'>
+            <div className='flex items-center p-1.5 bg-gray-100/90 backdrop-blur-xl border border-gray-200/50 rounded-2xl shadow-sm overflow-x-auto max-w-full scrollbar-hide'>
+              {allExistingGroups.map(name => {
+                const isActive = activeTab === name;
+                return (
+                  <button
+                    key={name}
+                    onClick={() => {
+                      setActiveTab(name)
+                      setCurrentIndex(0)
+                    }}
+                    className={`relative flex items-center justify-center gap-1.5 px-5 py-2.5 min-w-[5rem] rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${
+                      isActive
+                        ? 'bg-white text-indigo-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)] ring-1 ring-black/5'
+                        : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
+                    }`}>
+                    {LANG_NAMES[name] || name}
+                    <span
+                      className={`text-[10px] font-black px-1.5 py-0.5 rounded-md transition-colors ${
+                        isActive ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-200/80 text-gray-400'
+                      }`}>
+                      {groupedTotals[name] || 0}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              type='button'
+              onClick={() => void handleRenameGroup()}
+              className='text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors bg-white/50 border border-gray-200/50 px-3 py-1 rounded-full'
+            >
+              重命名组: {LANG_NAMES[activeTab] || activeTab}
+            </button>
+          </div>
         </div>
       )}
     </div>

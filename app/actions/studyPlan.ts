@@ -2,6 +2,7 @@
 
 import { GameDifficultyPreset } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { getTopMaterialSnapshots } from '@/lib/repositories/materials.repo'
 
 export type TodayTaskItem = {
   id: 'review' | 'listening' | 'reading' | 'retry' | 'output'
@@ -42,24 +43,9 @@ const countParagraphs = (content: string) => {
 
 export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
   const now = new Date()
-  const [_dueReviewCount, topLesson, topArticle, dueRetryCount, gameProfile] = await Promise.all([
+  const [_dueReviewCount, topMaterials, dueRetryCount, gameProfile] = await Promise.all([
     prisma.sentenceReview.count({ where: { due: { lte: now } } }),
-    prisma.lesson.findFirst({
-      orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }],
-      select: {
-        id: true,
-        title: true,
-        _count: { select: { dialogues: true } },
-      },
-    }),
-    prisma.passage.findFirst({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      select: {
-        id: true,
-        title: true,
-        content: true,
-      },
-    }),
+    getTopMaterialSnapshots(),
     prisma.questionRetry.count({
       where: { dueAt: { lte: now } },
     }),
@@ -80,8 +66,13 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
     Math.max(min, Math.round(value * targetScale))
 
   const reviewCount = _dueReviewCount > 0 ? Math.min(20, _dueReviewCount) : 0
+  const topLesson = topMaterials.topLesson
+  const topArticle = topMaterials.topArticle
   const listeningCount = topLesson
-    ? Math.min(16, scaleTarget(Math.min(12, Math.max(6, topLesson._count.dialogues)), 4))
+    ? Math.min(
+        16,
+        scaleTarget(Math.min(12, Math.max(6, topLesson._count.dialogues)), 4),
+      )
     : 0
   const readingParagraphCount = topArticle
     ? Math.min(12, scaleTarget(Math.min(8, Math.max(3, countParagraphs(topArticle.content))), 2))
@@ -105,7 +96,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
     description: topLesson
       ? `推荐从《${topLesson.title}》开始。`
       : '暂无听力语料，请先在管理端录入。',
-    href: topLesson ? `/lessons/${topLesson.id}` : '/manage/upload',
+    href: topLesson ? `/shadowing/${topLesson.id}` : '/manage/upload',
     disabled: !topLesson,
   }
 
@@ -130,7 +121,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
       dueRetryCount > 0
         ? '按 24h/72h/7d 节奏做二次巩固。'
         : '当前没有到期错题，可先完成主线任务。',
-    href: '/retry',
+    href: '/review',
     disabled: dueRetryCount === 0,
   }
 
