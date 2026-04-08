@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import {
   getDueRetryQuestionRows,
   getRetryQueueSummarySnapshot,
+  softResetRetryAccuracy,
   submitRetryAnswerWithSchedule,
 } from '@/lib/repositories/retry.repo'
 import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
@@ -20,6 +21,28 @@ export type RetryQueueItem = {
   prompt: string
   contextSentence: string
   options: { id: string; text: string; isCorrect: boolean }[]
+  passageId: string | null
+  passage: { id: string; content: string } | null
+  lessonId: string | null
+  lesson: {
+    id: string
+    audioFile: string | null
+    dialogues: {
+      id: number
+      text: string
+      start: number
+      end: number
+      sequenceId?: number
+    }[]
+  } | null
+  stats: {
+    attemptTotal: number
+    correctTotal: number
+    accuracy: number
+    optimizedAccuracy: number
+    recentStreak: number
+    resetEligible: boolean
+  }
   sourceTitle: string
   sourceUrl: string
 }
@@ -27,7 +50,7 @@ export type RetryQueueItem = {
 const mapRetrySource = (item: {
   question: {
     quiz: { id: string; title: string | null } | null
-    passage: { id: string; title: string | null } | null
+    readingSource: { id: string; title: string | null } | null
   }
 }) => {
   if (item.question.quiz) {
@@ -37,10 +60,10 @@ const mapRetrySource = (item: {
     }
   }
 
-  if (item.question.passage) {
+  if (item.question.readingSource) {
     return {
-      sourceTitle: `阅读 · ${item.question.passage.title || '未命名文章'}`,
-      sourceUrl: `/articles/${toLegacyMaterialId(item.question.passage.id)}`,
+      sourceTitle: `阅读 · ${item.question.readingSource.title || '未命名文章'}`,
+      sourceUrl: `/articles/${toLegacyMaterialId(item.question.readingSource.id)}`,
     }
   }
 
@@ -71,6 +94,11 @@ export async function getDueRetryQuestions(
       prompt: row.question.prompt || '',
       contextSentence: row.question.contextSentence,
       options: row.question.options,
+      passageId: row.question.passageId,
+      passage: row.question.passage,
+      lessonId: row.question.lessonId,
+      lesson: row.question.lesson,
+      stats: row.question.stats,
       sourceTitle: source.sourceTitle,
       sourceUrl: source.sourceUrl,
     }
@@ -107,6 +135,29 @@ export async function submitRetryAnswer(
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '提交失败'
+    return { success: false, message }
+  }
+}
+
+export async function resetRetryQuestionAccuracy(questionId: string) {
+  try {
+    const result = await softResetRetryAccuracy(questionId)
+    if (!result.ok) {
+      return { success: false, message: result.message }
+    }
+
+    revalidatePath('/review')
+    revalidatePath('/practice')
+    revalidatePath('/today')
+    revalidatePath('/')
+
+    return {
+      success: true,
+      message: `已轻度重置错误历史（移除 ${result.removed} 条旧错误记录）。`,
+      stats: result.stats,
+    }
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : '重置失败'
     return { success: false, message }
   }
 }
