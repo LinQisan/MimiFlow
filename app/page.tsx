@@ -3,6 +3,7 @@ import Link from 'next/link'
 import prisma from '@/lib/prisma'
 import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
+import HomeHeaderSearch from '@/components/HomeHeaderSearch'
 
 export const revalidate = 60
 
@@ -249,12 +250,18 @@ export default async function HomePage() {
               className='text-xl font-black tracking-tight text-slate-900'>
               MimiFlow
             </Link>
+            <Link
+              href='/shadowing'
+              className='rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700'>
+              开始学习
+            </Link>
+            <Link
+              href='/manage/upload'
+              className='rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100'>
+              上传新内容
+            </Link>
             <div className='ml-auto flex items-center gap-2'>
-              <Link
-                href='/search'
-                className='rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
-                搜索
-              </Link>
+              <HomeHeaderSearch />
               <Link
                 href='/vocabulary'
                 className='rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
@@ -270,27 +277,6 @@ export default async function HomePage() {
         </header>
 
         <section className='mb-8 grid gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-[1.25fr_0.75fr] md:p-8'>
-          <div>
-            <h1 className='text-2xl font-semibold leading-snug text-slate-900 md:text-3xl'>
-              统一入口，专注学习。
-            </h1>
-            <p className='mt-3 max-w-2xl text-sm leading-relaxed text-slate-600 md:text-base'>
-              首页已整合为学习、管理、资产三类入口。减少跳转重复，让你更快进入下一步。
-            </p>
-            <div className='mt-5 flex flex-wrap gap-3'>
-              <Link
-                href='/shadowing'
-                className='rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700'>
-                开始学习
-              </Link>
-              <Link
-                href='/manage/upload'
-                className='rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100'>
-                上传新内容
-              </Link>
-            </div>
-          </div>
-
           <div className='grid grid-cols-2 gap-3'>
             <article className='rounded-2xl border border-slate-200 bg-slate-50 p-4'>
               <p className='text-xs text-slate-500'>本周学习</p>

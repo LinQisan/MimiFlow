@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import {
   batchUpdateVocabularyMetaAdmin,
   deleteVocabularyAdmin,
@@ -350,6 +351,11 @@ export default function VocabularyManagePage() {
     <div className='mx-auto max-w-6xl p-4 pb-24 md:p-8'>
       <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
         <div>
+          <Link
+            href='/manage'
+            className='mb-1 inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 md:text-sm'>
+            返回管理中心
+          </Link>
           <h1 className='text-2xl font-black text-gray-900'>词库管理</h1>
           <p className='mt-1 text-sm text-gray-500'>
             维护单词注音和释义，可多值保存。

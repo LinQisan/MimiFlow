@@ -394,6 +394,7 @@ export async function getSpeakingByLegacyId(legacyId: string) {
 
   return {
     id: resolvedLegacyId,
+    materialId: material.id,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
@@ -569,6 +570,7 @@ export async function listListeningMaterialsForShadowing() {
       id: toLegacyMaterialId(material.id),
       materialId: material.id,
       materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
+      chapterName: (material.chapterName || '').trim(),
       title: getMaterialDisplayTitle(
         material.type,
         material.title,
@@ -636,6 +638,7 @@ export async function getListeningMaterialEditorByLegacyId(legacyId: string) {
     id: toLegacyMaterialId(material.id),
     materialId: material.id,
     materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
+    chapterName: (material.chapterName || '').trim(),
     title: material.title,
     displayTitle: getMaterialDisplayTitle(
       material.type,

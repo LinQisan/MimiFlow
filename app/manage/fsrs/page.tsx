@@ -1,4 +1,5 @@
 import { getFsrsAdminDashboard } from '@/app/actions/fsrs'
+import Link from 'next/link'
 
 const ratingLabel = (rating: number) => {
   if (rating === 1) return 'Again'
@@ -32,6 +33,11 @@ export default async function ManageFsrsPage() {
     <main className='min-h-screen bg-gray-50 px-4 py-6 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl'>
         <section className='border-b border-gray-200 pb-5'>
+          <Link
+            href='/manage'
+            className='mb-2 inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-700'>
+            返回管理中心
+          </Link>
           <h1 className='text-3xl font-black text-gray-900'>FSRS 参数面板</h1>
           <p className='mt-2 text-sm text-gray-500'>
             查看当前个性化参数、最近拟合时间与回退状态，判断调度器是否稳定运行。

@@ -27,11 +27,22 @@ export function useTextSelection() {
   })
 
   useEffect(() => {
+    const extractSelectedText = (windowSelection: Selection) => {
+      if (windowSelection.rangeCount === 0) return ''
+      const range = windowSelection.getRangeAt(0)
+      const fragment = range.cloneContents()
+
+      // 划词结果里不包含 <rt> 注音，避免 WordTooltip 词条被注音污染。
+      fragment.querySelectorAll('rt').forEach(node => node.remove())
+
+      return (fragment.textContent || '').trim()
+    }
+
     const handleMouseUp = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('.ui-pop')) return
 
       const windowSelection = window.getSelection()
-      const text = windowSelection?.toString().trim()
+      const text = windowSelection ? extractSelectedText(windowSelection) : ''
 
       if (text && text.length > 0 && text.length <= 30) {
         const range = windowSelection!.getRangeAt(0)

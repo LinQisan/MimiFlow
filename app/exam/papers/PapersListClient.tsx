@@ -10,6 +10,30 @@ type Props = {
 }
 
 export default function PapersListClient({ levels, totalPaperCount }: Props) {
+  const getLanguageLabel = (value: string | null) => (value || '未设置').trim()
+  const getLevelLabel = (value: string | null) => (value || '未设置').trim()
+
+  const groupByLanguageAndLevel = (papers: ExamHubLevelSummary['papers']) => {
+    const languageMap = new Map<
+      string,
+      Map<string, ExamHubLevelSummary['papers']>
+    >()
+    for (const paper of papers) {
+      const language = getLanguageLabel(paper.language)
+      const level = getLevelLabel(paper.level)
+      if (!languageMap.has(language)) {
+        languageMap.set(language, new Map())
+      }
+      const levelMap = languageMap.get(language)!
+      const bucket = levelMap.get(level) || []
+      bucket.push(paper)
+      levelMap.set(level, bucket)
+    }
+    return Array.from(languageMap.entries()).sort((a, b) =>
+      a[0].localeCompare(b[0], 'zh-CN'),
+    )
+  }
+
   return (
     <div className='min-h-screen bg-slate-50 font-sans pb-12'>
       <div className='sticky top-0 z-10 flex items-center border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur'>
@@ -49,52 +73,91 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
               </h2>
             </div>
 
-            <div className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
-              {level.papers.map(paper => (
-                <article
-                  key={paper.id}
-                  className='border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-blue-200'>
-                  <div className='mb-3 flex items-start justify-between gap-3'>
-                    <h3 className='line-clamp-2 text-lg font-bold leading-snug text-slate-900'>
-                      {paper.name}
+            <div className='space-y-8'>
+              {groupByLanguageAndLevel(level.papers).map(([language, levelMap]) => (
+                <section key={`${level.id}-${language}`} className='space-y-4'>
+                  <div className='flex items-center gap-2'>
+                    <h3 className='text-sm font-semibold text-slate-600'>
+                      语言：{language}
                     </h3>
-                    <span className='text-xs font-semibold text-slate-500'>
-                      模块 {paper.moduleCount} · 总题 {paper.questionCount}
+                    <span className='rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500'>
+                      {Array.from(levelMap.values()).reduce(
+                        (sum, papers) => sum + papers.length,
+                        0,
+                      )}{' '}
+                      套
                     </span>
                   </div>
-                  <div className='mb-3 flex flex-wrap gap-2 text-[11px] font-semibold'>
-                    <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
-                      语言: {paper.language || '未设置'}
-                    </span>
-                    <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
-                      等级: {paper.level || '未设置'}
-                    </span>
-                  </div>
-                  {paper.description ? (
-                    <p className='line-clamp-2 text-xs leading-relaxed text-slate-500'>
-                      {paper.description}
-                    </p>
-                  ) : null}
 
-                  <div className='mt-4 border-t border-slate-100 pt-4'>
-                    <div className='mb-3 text-[13px] font-medium text-slate-500'>
-                      {paper.passageCount} 阅读 · {paper.lessonCount} 听力 ·{' '}
-                      {paper.quizQuestionCount} 语法
-                    </div>
-                    <div className='flex items-center gap-2'>
-                      <Link
-                        href={`/exam/papers/${encodeURIComponent(paper.id)}`}
-                        className='inline-flex h-9 items-center border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700'>
-                        查看详情
-                      </Link>
-                      <Link
-                        href={`/exam/papers/${encodeURIComponent(paper.id)}/do`}
-                        className='inline-flex h-9 items-center bg-blue-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700'>
-                        开始答题
-                      </Link>
-                    </div>
-                  </div>
-                </article>
+                  {Array.from(levelMap.entries())
+                    .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
+                    .map(([paperLevel, papers]) => (
+                      <div key={`${level.id}-${language}-${paperLevel}`} className='space-y-3'>
+                        <div className='text-xs font-semibold text-slate-500'>
+                          等级：{paperLevel}
+                        </div>
+                        <div className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
+                          {papers.map(paper => (
+                            <article
+                              key={paper.id}
+                              className='border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-blue-200'>
+                              <div className='mb-3 flex items-start justify-between gap-3'>
+                                <h3 className='line-clamp-2 text-lg font-bold leading-snug text-slate-900'>
+                                  {paper.name}
+                                </h3>
+                                <span className='text-xs font-semibold text-slate-500'>
+                                  模块 {paper.moduleCount} · 总题 {paper.questionCount}
+                                </span>
+                              </div>
+                              <div className='mb-3 flex flex-wrap gap-2 text-[11px] font-semibold'>
+                                <span className='rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700'>
+                                  做题 {paper.attemptCount} 次
+                                </span>
+                                <span className='rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700'>
+                                  总体正确率{' '}
+                                  {paper.attemptAccuracyPct !== null
+                                    ? `${paper.attemptAccuracyPct}%`
+                                    : '--'}
+                                </span>
+                              </div>
+                              <div className='mb-3 flex flex-wrap gap-2 text-[11px] font-semibold'>
+                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
+                                  语言: {paper.language || '未设置'}
+                                </span>
+                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
+                                  等级: {paper.level || '未设置'}
+                                </span>
+                              </div>
+                              {paper.description ? (
+                                <p className='line-clamp-2 text-xs leading-relaxed text-slate-500'>
+                                  {paper.description}
+                                </p>
+                              ) : null}
+
+                              <div className='mt-4 border-t border-slate-100 pt-4'>
+                                <div className='mb-3 text-[13px] font-medium text-slate-500'>
+                                  {paper.passageCount} 阅读 · {paper.lessonCount} 听力 ·{' '}
+                                  {paper.quizQuestionCount} 语法
+                                </div>
+                                <div className='flex items-center gap-2'>
+                                  <Link
+                                    href={`/exam/papers/${encodeURIComponent(paper.id)}`}
+                                    className='inline-flex h-9 items-center border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700'>
+                                    查看详情
+                                  </Link>
+                                  <Link
+                                    href={`/exam/papers/${encodeURIComponent(paper.id)}/do`}
+                                    className='inline-flex h-9 items-center bg-blue-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700'>
+                                    开始答题
+                                  </Link>
+                                </div>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                </section>
               ))}
             </div>
           </section>

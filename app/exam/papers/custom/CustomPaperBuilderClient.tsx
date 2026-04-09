@@ -18,6 +18,8 @@ type SavedPreset = {
 
 type Props = {
   options: ReadonlyArray<RandomTypeOption>
+  languageOptions: string[]
+  levelOptions: string[]
 }
 
 const STORAGE_COUNTS_KEY = 'custom_practice_counts_v1'
@@ -57,16 +59,25 @@ function normalizeCounts(
   return base
 }
 
-function toQueryFromCounts(counts: Record<string, number>) {
+function toQueryFromCounts(
+  counts: Record<string, number>,
+  filters: { language: string; level: string },
+) {
   const params = new URLSearchParams()
   Object.entries(counts).forEach(([key, value]) => {
     const next = Math.max(0, Math.floor(value || 0))
     if (next > 0) params.set(`count_${key}`, String(next))
   })
+  if (filters.language) params.set('language', filters.language)
+  if (filters.level) params.set('level', filters.level)
   return params.toString()
 }
 
-export default function CustomPaperBuilderClient({ options }: Props) {
+export default function CustomPaperBuilderClient({
+  options,
+  languageOptions,
+  levelOptions,
+}: Props) {
   const router = useRouter()
   const [counts, setCounts] = useState<Record<string, number>>(() =>
     createEmptyCounts(options),
@@ -74,6 +85,8 @@ export default function CustomPaperBuilderClient({ options }: Props) {
   const [presets, setPresets] = useState<SavedPreset[]>([])
   const [presetName, setPresetName] = useState('')
   const [errorText, setErrorText] = useState('')
+  const [selectedLanguage, setSelectedLanguage] = useState('')
+  const [selectedLevel, setSelectedLevel] = useState('')
 
   useEffect(() => {
     try {
@@ -168,7 +181,10 @@ export default function CustomPaperBuilderClient({ options }: Props) {
   }
 
   const handleStart = () => {
-    const query = toQueryFromCounts(counts)
+    const query = toQueryFromCounts(counts, {
+      language: selectedLanguage,
+      level: selectedLevel,
+    })
     if (!query) {
       setErrorText('请至少选择 1 题。')
       return
@@ -189,6 +205,40 @@ export default function CustomPaperBuilderClient({ options }: Props) {
         <p className='mb-4 text-sm text-gray-500'>
           会自动记住你上次的题型数量；你也可以把常用组合保存为命名预设。
         </p>
+
+        <div className='mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'>
+          <p className='mb-3 text-xs font-bold tracking-wide text-gray-500'>筛选范围</p>
+          <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+            <label className='flex flex-col gap-1 text-sm text-gray-600'>
+              语言
+              <select
+                value={selectedLanguage}
+                onChange={event => setSelectedLanguage(event.target.value)}
+                className='h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-400'>
+                <option value=''>全部语言</option>
+                {languageOptions.map(item => (
+                  <option key={`lang-${item}`} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className='flex flex-col gap-1 text-sm text-gray-600'>
+              等级
+              <select
+                value={selectedLevel}
+                onChange={event => setSelectedLevel(event.target.value)}
+                className='h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-400'>
+                <option value=''>全部等级</option>
+                {levelOptions.map(item => (
+                  <option key={`level-${item}`} value={item}>
+                    {item}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
 
         <div className='mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'>
           <p className='mb-3 text-xs font-bold tracking-wide text-gray-500'>快速预设</p>

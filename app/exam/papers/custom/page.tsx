@@ -1,6 +1,16 @@
-import { randomPracticeTypeOptions } from '@/lib/repositories/exam.repo'
+import {
+  getRandomPracticeFilterOptions,
+  randomPracticeTypeOptions,
+} from '@/lib/repositories/exam.repo'
 import CustomPaperBuilderClient from './CustomPaperBuilderClient'
 
-export default function CustomPaperBuilderPage() {
-  return <CustomPaperBuilderClient options={randomPracticeTypeOptions} />
+export default async function CustomPaperBuilderPage() {
+  const filterOptions = await getRandomPracticeFilterOptions()
+  return (
+    <CustomPaperBuilderClient
+      options={randomPracticeTypeOptions}
+      languageOptions={filterOptions.languages}
+      levelOptions={filterOptions.levels}
+    />
+  )
 }

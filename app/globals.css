@@ -451,6 +451,8 @@ html {
   letter-spacing: 0.012em;
   word-break: break-word;
   overflow-wrap: anywhere;
+  text-align: justify;
+  text-justify: inter-ideograph;
 }
 
 .reading-passage-body p {
@@ -472,6 +474,20 @@ html {
 
 .reading-passage-body li + li {
   margin-top: 0.45em;
+}
+
+/* Japanese-focused typography for exam question content and reading passages. */
+.exam-japanese .reading-passage-body,
+.exam-japanese-text {
+  font-family:
+    'Hiragino Sans',
+    'Hiragino Kaku Gothic ProN',
+    'Yu Gothic',
+    'YuGothic',
+    'Noto Sans JP',
+    'Meiryo',
+    'MS PGothic',
+    sans-serif;
 }
 
 /* Page-level dark refinement: reading / quiz / vocabulary */

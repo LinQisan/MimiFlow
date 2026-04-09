@@ -56,11 +56,15 @@ type CreateArticlePayload = {
   content?: string | null
   paperId?: string | null
   description?: string | null
+  language?: string | null
+  level?: string | null
   questions?: ArticleQuestionInput[] | null
 }
 
 type CreateQuizQuestionPayload = {
   paperId?: string | null
+  language?: string | null
+  level?: string | null
   questionType?: string | null
   prompt?: string | null
   contextSentence?: string | null
@@ -413,6 +417,16 @@ export async function createArticle(data: CreateArticlePayload) {
       return { success: false, message: '所属集合不存在，请刷新后重试。' }
     }
 
+    const nextLanguage = (data.language || '').trim()
+    const nextLevel = (data.level || '').trim()
+    await prisma.collection.update({
+      where: { id: collectionId },
+      data: {
+        language: nextLanguage || null,
+        level: nextLevel || null,
+      },
+    })
+
     await prisma.material.create({
       data: {
         type: MaterialType.READING,
@@ -462,6 +476,16 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       select: { id: true, title: true },
     })
     if (!collection) return { success: false, message: '集合不存在，请刷新后重试。' }
+
+    const nextLanguage = (data.language || '').trim()
+    const nextLevel = (data.level || '').trim()
+    await prisma.collection.update({
+      where: { id: data.paperId },
+      data: {
+        language: nextLanguage || null,
+        level: nextLevel || null,
+      },
+    })
 
     let quizMaterialId =
       (

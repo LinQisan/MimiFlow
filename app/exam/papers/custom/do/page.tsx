@@ -20,6 +20,7 @@ function toFirstValue(
 function buildTitleFromCounts(
   countMap: RandomPracticeCountMap,
   sourceCollections: string[] = [],
+  filters?: { language?: string; level?: string },
 ): string {
   const parts = randomPracticeTypeOptions
     .map(option => {
@@ -32,13 +33,19 @@ function buildTitleFromCounts(
   const core =
     parts.length === 0 ? '自定义随机练习' : `自定义随机练习 · ${parts.join(' + ')}`
 
-  if (sourceCollections.length === 0) return core
+  const filterParts: string[] = []
+  if (filters?.language) filterParts.push(`语言=${filters.language}`)
+  if (filters?.level) filterParts.push(`等级=${filters.level}`)
+  const coreWithFilter =
+    filterParts.length > 0 ? `${core}（${filterParts.join('，')}）` : core
+
+  if (sourceCollections.length === 0) return coreWithFilter
   const preview = sourceCollections.slice(0, 3).join(' / ')
   const suffix =
     sourceCollections.length > 3
       ? `（来自：${preview} 等 ${sourceCollections.length} 套）`
       : `（来自：${preview}）`
-  return `${core} ${suffix}`
+  return `${coreWithFilter} ${suffix}`
 }
 
 export default async function CustomPaperDoingPage({
@@ -67,7 +74,12 @@ export default async function CustomPaperDoingPage({
     redirect('/exam/papers/custom')
   }
 
-  const examData = await getRandomExamQuestionsByTypeCounts(countMap)
+  const language = toFirstValue(resolved.language)?.trim() || ''
+  const level = toFirstValue(resolved.level)?.trim() || ''
+  const examData = await getRandomExamQuestionsByTypeCounts(countMap, {
+    language,
+    level,
+  })
 
   if (examData.questions.length === 0) {
     return (
@@ -88,7 +100,11 @@ export default async function CustomPaperDoingPage({
   return (
     <PracticePlayer
       questions={examData.questions}
-      paperTitle={buildTitleFromCounts(countMap, examData.sourceCollections)}
+      paperTitle={buildTitleFromCounts(countMap, examData.sourceCollections, {
+        language,
+        level,
+      })}
+      paperLanguage={examData.paperLanguage}
       mode='random'
       pronunciationMap={examData.pronunciationMap}
       vocabularyMetaMap={examData.vocabularyMetaMap}

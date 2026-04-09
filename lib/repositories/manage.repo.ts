@@ -12,7 +12,10 @@ type UploadPageCollectionLite = {
   id: string
   name: string
   collectionType: CollectionType
+  materialType: MaterialType
   parentTitle?: string
+  language?: string
+  examLevel?: string
   level: { title: string }
   lessons: { title: string; audioFile: string }[]
 }
@@ -75,6 +78,8 @@ export async function getUploadPageSeedData(): Promise<{
       id: true,
       title: true,
       collectionType: true,
+      language: true,
+      level: true,
       parent: {
         select: {
           title: true,
@@ -104,6 +109,52 @@ export async function getUploadPageSeedData(): Promise<{
     { id: CollectionType.FAVORITES, title: '收藏夹（FAVORITES）' },
   ]
 
+  const collectionIds = collections.map(item => item.id)
+  const collectionMaterialTypes = await prisma.collectionMaterial.findMany({
+    where: { collectionId: { in: collectionIds } },
+    select: {
+      collectionId: true,
+      material: {
+        select: {
+          type: true,
+        },
+      },
+    },
+  })
+
+  const priorityByType: Record<MaterialType, number> = {
+    [MaterialType.LISTENING]: 4,
+    [MaterialType.READING]: 3,
+    [MaterialType.VOCAB_GRAMMAR]: 2,
+    [MaterialType.SPEAKING]: 1,
+  }
+  const dominantMaterialTypeByCollection = new Map<string, MaterialType>()
+  const typeCountByCollection = new Map<
+    string,
+    Record<MaterialType, number>
+  >()
+  for (const row of collectionMaterialTypes) {
+    const current = typeCountByCollection.get(row.collectionId) || {
+      [MaterialType.LISTENING]: 0,
+      [MaterialType.READING]: 0,
+      [MaterialType.VOCAB_GRAMMAR]: 0,
+      [MaterialType.SPEAKING]: 0,
+    }
+    current[row.material.type] += 1
+    typeCountByCollection.set(row.collectionId, current)
+  }
+  for (const [collectionId, countMap] of typeCountByCollection.entries()) {
+    const ranked = (Object.keys(countMap) as MaterialType[]).sort((a, b) => {
+      const countDiff = countMap[b] - countMap[a]
+      if (countDiff !== 0) return countDiff
+      return priorityByType[b] - priorityByType[a]
+    })
+    dominantMaterialTypeByCollection.set(
+      collectionId,
+      ranked[0] || MaterialType.LISTENING,
+    )
+  }
+
   const dbCollections: UploadPageCollectionLite[] = collections.map(collection => {
     const lessons = collection.materials.map(row => {
       const payload =
@@ -127,7 +178,12 @@ export async function getUploadPageSeedData(): Promise<{
       id: collection.id,
       name: collection.title,
       collectionType: collection.collectionType,
+      materialType:
+        dominantMaterialTypeByCollection.get(collection.id) ||
+        MaterialType.LISTENING,
       parentTitle: collection.parent?.title || undefined,
+      language: collection.language || undefined,
+      examLevel: collection.level || undefined,
       level: { title: toCollectionTypeLabel(collection.collectionType) },
       lessons,
     }

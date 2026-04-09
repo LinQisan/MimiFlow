@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import type { CollectionType } from '@prisma/client'
+import type { CollectionType, MaterialType } from '@prisma/client'
 import { listPublicAudioFiles, uploadAssAndSaveData } from './action'
 import { useDialog } from '@/context/DialogContext'
 
@@ -203,6 +203,7 @@ type Props = {
     name: string
     parentTitle?: string
     collectionType?: CollectionType
+    materialType?: MaterialType
     level: { title: string }
     lessons: {
       title: string
@@ -223,6 +224,7 @@ type UploadStatus = {
 
 type LastUploadResult = {
   lessonIds: string[]
+  materialType?: MaterialType
 }
 
 type AudioMatchPreviewRow = PickedFileMeta & {
@@ -265,6 +267,13 @@ const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
   return `${trimmed}${baseName}.mp3`
 }
 
+const MATERIAL_TYPE_LABEL: Record<MaterialType, string> = {
+  LISTENING: 'LISTENING（听力）',
+  READING: 'READING（阅读）',
+  VOCAB_GRAMMAR: 'VOCAB_GRAMMAR（题库）',
+  SPEAKING: 'SPEAKING（跟读）',
+}
+
 function useUploadFormState(hasPapers: boolean) {
   const [mode, setMode] = useState<'existing' | 'new'>(
     hasPapers ? 'existing' : 'new',
@@ -294,6 +303,8 @@ function useUploadFormState(hasPapers: boolean) {
   const [materialLanguage, setMaterialLanguage] = useState('')
   const [materialTags, setMaterialTags] = useState('')
   const [materialDifficulty, setMaterialDifficulty] = useState('')
+  const [materialChapterName, setMaterialChapterName] = useState('')
+  const [materialType, setMaterialType] = useState<MaterialType>('LISTENING')
 
   const [isDragging, setIsDragging] = useState(false)
   const [isAudioDragging, setIsAudioDragging] = useState(false)
@@ -346,6 +357,10 @@ function useUploadFormState(hasPapers: boolean) {
     setMaterialTags,
     materialDifficulty,
     setMaterialDifficulty,
+    materialChapterName,
+    setMaterialChapterName,
+    materialType,
+    setMaterialType,
     isDragging,
     setIsDragging,
     isAudioDragging,
@@ -406,6 +421,10 @@ export default function UploadForm({ levels, papers }: Props) {
     setMaterialTags,
     materialDifficulty,
     setMaterialDifficulty,
+    materialChapterName,
+    setMaterialChapterName,
+    materialType,
+    setMaterialType,
     isDragging,
     setIsDragging,
     isAudioDragging,
@@ -440,16 +459,29 @@ export default function UploadForm({ levels, papers }: Props) {
   useEffect(() => {
     if (mode === 'existing' && selectedPaperId) {
       const targetPaper = papers.find(paper => paper.id === selectedPaperId)
+      const latest = targetPaper?.lessons?.[0]
       if (targetPaper && targetPaper.lessons.length > 0) {
-        const latest = targetPaper.lessons[0]
-        setTitle(autoIncrementString(latest.title))
-        setAudioFile(autoIncrementString(latest.audioFile))
+        setTitle(autoIncrementString(latest?.title || ''))
+        setAudioFile(autoIncrementString(latest?.audioFile || ''))
       } else {
         setTitle('')
         setAudioFile('/audios/')
       }
+      setMaterialType(targetPaper?.materialType || 'LISTENING')
+      if ((targetPaper?.materialType || 'LISTENING') === 'SPEAKING') {
+        setMaterialChapterName(latest?.title || '')
+      } else {
+        setMaterialChapterName('')
+      }
     }
-  }, [mode, selectedPaperId, papers])
+  }, [mode, selectedPaperId, papers, setMaterialType])
+
+  useEffect(() => {
+    if (mode === 'new') {
+      setMaterialType('LISTENING')
+      setMaterialChapterName('')
+    }
+  }, [mode, setMaterialType, setMaterialChapterName])
 
   useEffect(() => {
     const loadAudioFiles = async () => {
@@ -694,6 +726,7 @@ export default function UploadForm({ levels, papers }: Props) {
     if (result.success) {
       setLastUpload({
         lessonIds: (result as { lessonIds?: string[] }).lessonIds || [],
+        materialType: (result as { materialType?: MaterialType }).materialType,
       })
       setPickedAssFiles([])
       setSelectedFileNames([])
@@ -815,6 +848,7 @@ export default function UploadForm({ levels, papers }: Props) {
       <input type='hidden' name='uploadMode' value={mode} />
       <input type='hidden' name='audioSourceType' value={audioSourceType} />
       <input type='hidden' name='addQuestions' value={addQuestions ? 'yes' : 'no'} />
+      <input type='hidden' name='materialType' value={materialType} />
       <input
         type='hidden'
         name='assAudioOverrides'
@@ -942,12 +976,35 @@ export default function UploadForm({ levels, papers }: Props) {
           <div className='mb-4 border border-blue-100 bg-blue-50/70 px-4 py-3 text-xs text-blue-800 md:mb-5'>
             <p className='font-black'>批量录入说明</p>
             <p className='mt-1'>
-              已进入批量模式。只需选择目标集合并上传多个字幕，系统会自动按顺序创建多条听力语料并分配排序。
+              已进入批量模式。只需选择目标集合并上传多个字幕，系统会自动按顺序创建多条语料并分配排序。
             </p>
           </div>
         )}
 
         <div className='pl-1 md:pl-2'>
+          <div className='mb-4'>
+            <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
+              MaterialType
+            </label>
+            <select
+              value={materialType}
+              onChange={e => setMaterialType(e.currentTarget.value as MaterialType)}
+              className='w-full border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'>
+              <option value='LISTENING'>{MATERIAL_TYPE_LABEL.LISTENING}</option>
+              <option value='READING'>{MATERIAL_TYPE_LABEL.READING}</option>
+              <option value='VOCAB_GRAMMAR'>{MATERIAL_TYPE_LABEL.VOCAB_GRAMMAR}</option>
+              <option value='SPEAKING'>{MATERIAL_TYPE_LABEL.SPEAKING}</option>
+            </select>
+            {mode === 'existing' && selectedPaperId && (
+              <p className='mt-1 text-xs font-semibold text-blue-600'>
+                集合当前主类型：{MATERIAL_TYPE_LABEL[
+                  papers.find(item => item.id === selectedPaperId)?.materialType ||
+                    'LISTENING'
+                ]}
+              </p>
+            )}
+          </div>
+
           <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
             音频来源
           </label>
@@ -1154,6 +1211,15 @@ export default function UploadForm({ levels, papers }: Props) {
           <p className='mb-3 text-xs font-black uppercase tracking-wider text-blue-700'>
             扩展材料属性（可选）
           </p>
+          {materialType === 'SPEAKING' && (
+            <input
+              name='materialChapterName'
+              value={materialChapterName}
+              onChange={e => setMaterialChapterName(e.target.value)}
+              placeholder='跟读章节名（例：Section 01 / 会話 1）'
+              className='mb-2 w-full border border-indigo-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
+            />
+          )}
           <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
             <input
               name='materialSource'
@@ -1407,14 +1473,20 @@ export default function UploadForm({ levels, papers }: Props) {
                   : 'border-gray-200 bg-gray-50 text-gray-600'
             }`}>
           {status.message}
-          {status.type === 'success' && lastUpload && lastUpload.lessonIds.length > 0 && addQuestions && (
+          {status.type === 'success' &&
+            lastUpload &&
+            lastUpload.lessonIds.length > 0 &&
+            addQuestions &&
+            (!lastUpload.materialType ||
+              lastUpload.materialType === 'LISTENING' ||
+              lastUpload.materialType === 'SPEAKING') && (
             <div className='mt-2 flex flex-wrap gap-2'>
               {lastUpload.lessonIds.map((id, i) => (
                 <a
                   key={id}
                   href={`/manage/collection/lesson/${id}`}
                   className='inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors'>
-                  {lastUpload.lessonIds.length > 1 ? `编辑听力题 ${i + 1}` : '前往添加听力题'}
+                  {lastUpload.lessonIds.length > 1 ? `编辑题目 ${i + 1}` : '前往添加题目'}
                   <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M13 7l5 5m0 0l-5 5m5-5H6' />
                   </svg>

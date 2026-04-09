@@ -18,9 +18,7 @@ export default function RootLayout({
     <html lang='zh'>
       <body>
         <I18nProvider>
-          <DialogProvider>
-            {children}
-          </DialogProvider>
+          <DialogProvider>{children}</DialogProvider>
         </I18nProvider>
       </body>
     </html>

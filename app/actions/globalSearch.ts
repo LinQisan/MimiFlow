@@ -17,6 +17,7 @@ export type GlobalSearchResult = {
   href: string
   meta: string
   keyword?: string
+  targetHref?: string
 }
 
 export type GlobalSearchType = GlobalSearchResult['type']
@@ -36,7 +37,17 @@ const shortText = (text: string, max = 96) => {
   return `${value.slice(0, max)}...`
 }
 
-const normalizeKeyword = (keyword: string) => keyword.trim()
+const normalizeKeyword = (keyword: string) =>
+  keyword
+    .replace(/\u3000/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const tokenizeKeyword = (keyword: string) =>
+  normalizeKeyword(keyword)
+    .split(' ')
+    .map(item => item.trim())
+    .filter(Boolean)
 
 const buildTypeSet = (types?: GlobalSearchType[]) =>
   new Set<GlobalSearchType>(types && types.length > 0 ? types : DEFAULT_TYPES)
@@ -45,19 +56,34 @@ const getMatchScore = (
   keyword: string,
   fields: Array<string | null | undefined>,
 ) => {
-  const q = keyword.toLowerCase()
+  const tokens = tokenizeKeyword(keyword).map(item => item.toLowerCase())
+  if (tokens.length === 0) return 0
   let score = 0
 
   for (const raw of fields) {
     if (!raw) continue
     const value = raw.toLowerCase()
-
-    if (value === q) score += 120
-    else if (value.startsWith(q)) score += 80
-    else if (value.includes(q)) score += 40
+    for (const token of tokens) {
+      if (value === token) score += 120
+      else if (value.startsWith(token)) score += 80
+      else if (value.includes(token)) score += 40
+    }
   }
 
   return score
+}
+
+const includesAllTokens = (
+  fields: Array<string | null | undefined>,
+  tokens: string[],
+) => {
+  if (tokens.length === 0) return false
+  const normalizedFields = fields
+    .filter(Boolean)
+    .map(item => String(item).toLowerCase())
+  return tokens.every(token =>
+    normalizedFields.some(field => field.includes(token.toLowerCase())),
+  )
 }
 
 const sortByScore = <T>(
@@ -78,12 +104,23 @@ const formatPassageMeta = (item: { collectionTitle?: string | null }) => {
   return '文章'
 }
 
+const buildSearchDetailHref = (resultId: string, type: GlobalSearchType, q: string) => {
+  const params = new URLSearchParams()
+  params.set('rid', resultId)
+  params.set('type', type)
+  if (q) params.set('q', q)
+  return `/search/result?${params.toString()}`
+}
+
 export async function searchGlobalContent(
   keyword: string,
   options?: { types?: GlobalSearchType[] },
 ): Promise<GlobalSearchResult[]> {
   const q = normalizeKeyword(keyword)
+  const tokens = tokenizeKeyword(q)
   if (!q) return []
+  if (tokens.length === 0) return []
+  const primaryToken = tokens[0]
 
   const typeSet = buildTypeSet(options?.types)
 
@@ -99,10 +136,10 @@ export async function searchGlobalContent(
       ? prisma.vocabulary.findMany({
           where: {
             OR: [
-              { word: { contains: q } },
-              { pronunciations: { contains: q } },
-              { partsOfSpeech: { contains: q } },
-              { meanings: { contains: q } },
+              { word: { contains: primaryToken } },
+              { pronunciations: { contains: primaryToken } },
+              { partsOfSpeech: { contains: primaryToken } },
+              { meanings: { contains: primaryToken } },
             ],
           },
           include: {
@@ -120,7 +157,10 @@ export async function searchGlobalContent(
     typeSet.has('sentence')
       ? prisma.vocabularySentence.findMany({
           where: {
-            OR: [{ text: { contains: q } }, { source: { contains: q } }],
+            OR: [
+              { text: { contains: primaryToken } },
+              { source: { contains: primaryToken } },
+            ],
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -131,7 +171,15 @@ export async function searchGlobalContent(
       ? prisma.material.findMany({
         where: {
           type: MaterialType.READING,
-          OR: [{ title: { contains: q } }, { contentPayload: { path: ['text'], string_contains: q } }],
+          OR: [
+            { title: { contains: primaryToken } },
+            {
+              contentPayload: {
+                path: ['text'],
+                string_contains: primaryToken,
+              },
+            },
+          ],
         },
         include: {
           collectionMaterials: {
@@ -148,7 +196,15 @@ export async function searchGlobalContent(
       ? prisma.material.findMany({
         where: {
           type: MaterialType.VOCAB_GRAMMAR,
-          OR: [{ title: { contains: q } }, { contentPayload: { path: ['description'], string_contains: q } }],
+          OR: [
+            { title: { contains: primaryToken } },
+            {
+              contentPayload: {
+                path: ['description'],
+                string_contains: primaryToken,
+              },
+            },
+          ],
         },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -158,7 +214,10 @@ export async function searchGlobalContent(
     typeSet.has('question')
       ? prisma.question.findMany({
         where: {
-          OR: [{ prompt: { contains: q } }, { context: { contains: q } }],
+          OR: [
+            { prompt: { contains: primaryToken } },
+            { context: { contains: primaryToken } },
+          ],
           },
           include: {
           material: {
@@ -171,7 +230,10 @@ export async function searchGlobalContent(
 
     typeSet.has('dialogue')
       ? prisma.vocabularySentence.findMany({
-          where: { sourceType: 'AUDIO_DIALOGUE', text: { contains: q } },
+          where: {
+            sourceType: 'AUDIO_DIALOGUE',
+            text: { contains: primaryToken },
+          },
           orderBy: { createdAt: 'desc' },
           take: 20,
         })
@@ -182,13 +244,18 @@ export async function searchGlobalContent(
     vocabRows,
     item => [item.word, item.pronunciations, item.partsOfSpeech, item.meanings],
     q,
+  ).filter(item =>
+    includesAllTokens(
+      [item.word, item.pronunciations, item.partsOfSpeech, item.meanings],
+      tokens,
+    ),
   )
 
   const rankedSentenceRows = sortByScore(
     sentenceRows,
     item => [item.text, item.source],
     q,
-  )
+  ).filter(item => includesAllTokens([item.text, item.source], tokens))
 
   const rankedPassageRows = sortByScore(
     passageRows,
@@ -198,12 +265,23 @@ export async function searchGlobalContent(
       item.collectionMaterials[0]?.collection.title,
     ],
     q,
+  ).filter(item =>
+    includesAllTokens(
+      [
+        item.title,
+        String(item.contentPayload),
+        item.collectionMaterials[0]?.collection.title,
+      ],
+      tokens,
+    ),
   )
 
   const rankedQuizRows = sortByScore(
     quizRows,
     item => [item.title, String(item.contentPayload)],
     q,
+  ).filter(item =>
+    includesAllTokens([item.title, String(item.contentPayload)], tokens),
   )
 
   const rankedQuestionRows = sortByScore(
@@ -215,13 +293,23 @@ export async function searchGlobalContent(
       ...normalizeQuestionOptions(item.options, item.answer).map(opt => opt.text),
     ],
     q,
+  ).filter(item =>
+    includesAllTokens(
+      [
+        item.prompt,
+        item.context,
+        item.material?.title,
+        ...normalizeQuestionOptions(item.options, item.answer).map(opt => opt.text),
+      ],
+      tokens,
+    ),
   )
 
   const rankedDialogueRows = sortByScore(
     dialogueRows,
     item => [item.text, item.source],
     q,
-  )
+  ).filter(item => includesAllTokens([item.text, item.source], tokens))
 
   const vocabularyResults: GlobalSearchResult[] = rankedVocabRows.map(item => {
     const firstSentence = item.sentenceLinks[0]?.sentence
@@ -241,7 +329,8 @@ export async function searchGlobalContent(
         meanings.length > 0
           ? meanings.join('；')
           : shortText(firstSentence?.text || '暂无释义', 80),
-      href: `/vocabulary?${focusParams.toString()}`,
+      href: buildSearchDetailHref(`vocab-${item.id}`, 'vocabulary', q),
+      targetHref: `/vocabulary?${focusParams.toString()}`,
       meta: pronunciations.length > 0 ? pronunciations.join(' / ') : '单词',
     }
   })
@@ -252,7 +341,8 @@ export async function searchGlobalContent(
       type: 'sentence',
       title: item.text,
       snippet: '',
-      href: item.sourceUrl || '/sentences',
+      href: buildSearchDetailHref(`sentence-${item.id}`, 'sentence', q),
+      targetHref: item.sourceUrl || '/search',
       meta: item.source || '句子来源',
       keyword: q,
     }),
@@ -273,7 +363,8 @@ export async function searchGlobalContent(
       type: 'passage',
       title: item.title?.trim() || '',
       snippet: displaySnippet,
-      href: `/articles/${toLegacyMaterialId(item.id)}`,
+      href: buildSearchDetailHref(`passage-${item.id}`, 'passage', q),
+      targetHref: '/exam/papers',
       meta: formatPassageMeta({
         collectionTitle: item.collectionMaterials[0]?.collection.title,
       }),
@@ -286,7 +377,8 @@ export async function searchGlobalContent(
     type: 'quiz',
     title: item.title || '',
     snippet: shortText(String((item.contentPayload as Record<string, unknown>).description || '')),
-    href: `/practice`,
+    href: buildSearchDetailHref(`quiz-${item.id}`, 'quiz', q),
+    targetHref: '/exam/papers',
     meta: '题库',
     keyword: q,
   }))
@@ -297,10 +389,8 @@ export async function searchGlobalContent(
       type: 'question',
       title: shortText(normalizeQuestionContext(item.prompt, item.context), 52),
       snippet: shortText(normalizeQuestionContext(item.prompt, item.context), 100),
-      href:
-        item.material?.type === MaterialType.READING
-          ? `/articles/${toLegacyMaterialId(item.material.id)}`
-          : '/practice',
+      href: buildSearchDetailHref(`question-${item.id}`, 'question', q),
+      targetHref: '/exam/papers',
       meta: item.material?.title || '题目',
       keyword: q,
     }),
@@ -312,7 +402,8 @@ export async function searchGlobalContent(
       type: 'dialogue',
       title: shortText(item.text, 48),
       snippet: shortText(item.text, 100),
-      href: item.sourceUrl || '/shadowing',
+      href: buildSearchDetailHref(`dialogue-${item.sourceId}`, 'dialogue', q),
+      targetHref: item.sourceUrl || '/shadowing',
       meta: item.source,
       keyword: q,
     }),
@@ -326,4 +417,132 @@ export async function searchGlobalContent(
     ...questionResults,
     ...dialogueResults,
   ].slice(0, 50)
+}
+
+export async function getGlobalSearchResultDetail(
+  resultId: string,
+  type: GlobalSearchType,
+) {
+  const rid = (resultId || '').trim()
+  if (!rid) return null
+
+  if (type === 'vocabulary' && rid.startsWith('vocab-')) {
+    const id = rid.slice('vocab-'.length)
+    const row = await prisma.vocabulary.findUnique({
+      where: { id },
+      include: {
+        sentenceLinks: {
+          include: { sentence: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
+    })
+    if (!row) return null
+    const focusParams = new URLSearchParams()
+    focusParams.set('focus', row.id)
+    if (row.groupName) focusParams.set('group', row.groupName)
+    focusParams.set('q', row.word)
+    return {
+      title: row.word,
+      type,
+      targetHref: `/vocabulary?${focusParams.toString()}`,
+      raw: row,
+    }
+  }
+
+  if (type === 'sentence' && rid.startsWith('sentence-')) {
+    const id = rid.slice('sentence-'.length)
+    const row = await prisma.vocabularySentence.findUnique({ where: { id } })
+    if (!row) return null
+    return {
+      title: row.text,
+      type,
+      targetHref: row.sourceUrl || '/search',
+      raw: row,
+    }
+  }
+
+  if (type === 'passage' && rid.startsWith('passage-')) {
+    const id = rid.slice('passage-'.length)
+    const row = await prisma.material.findUnique({
+      where: { id },
+      include: {
+        collectionMaterials: {
+          include: { collection: true },
+        },
+        questions: true,
+      },
+    })
+    if (!row) return null
+    return {
+      title: row.title || toLegacyMaterialId(row.id),
+      type,
+      targetHref: '/exam/papers',
+      raw: row,
+    }
+  }
+
+  if (type === 'quiz' && rid.startsWith('quiz-')) {
+    const id = rid.slice('quiz-'.length)
+    const row = await prisma.material.findUnique({
+      where: { id },
+      include: {
+        collectionMaterials: {
+          include: { collection: true },
+        },
+        questions: true,
+      },
+    })
+    if (!row) return null
+    return {
+      title: row.title || toLegacyMaterialId(row.id),
+      type,
+      targetHref: '/exam/papers',
+      raw: row,
+    }
+  }
+
+  if (type === 'question' && rid.startsWith('question-')) {
+    const id = rid.slice('question-'.length)
+    const row = await prisma.question.findUnique({
+      where: { id },
+      include: {
+        material: {
+          include: {
+            collectionMaterials: {
+              include: { collection: true },
+            },
+          },
+        },
+      },
+    })
+    if (!row) return null
+    return {
+      title: normalizeQuestionContext(row.prompt, row.context),
+      type,
+      targetHref: '/exam/papers',
+      raw: row,
+    }
+  }
+
+  if (type === 'dialogue' && rid.startsWith('dialogue-')) {
+    const sourceId = rid.slice('dialogue-'.length)
+    const rows = await prisma.vocabularySentence.findMany({
+      where: {
+        sourceType: 'AUDIO_DIALOGUE',
+        sourceId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    })
+    if (rows.length === 0) return null
+    return {
+      title: rows[0].text,
+      type,
+      targetHref: rows[0].sourceUrl || '/shadowing',
+      raw: rows,
+    }
+  }
+
+  return null
 }

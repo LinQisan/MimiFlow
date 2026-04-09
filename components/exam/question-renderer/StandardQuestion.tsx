@@ -15,6 +15,7 @@ type StandardQuestionProps = {
   currentAnswer?: string
   onSelect: OnSelectOption
   isSubmitted?: boolean
+  isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
 
@@ -34,6 +35,7 @@ export function StandardQuestion({
   currentAnswer,
   onSelect,
   isSubmitted = false,
+  isJapanesePaper = false,
   annotation,
 }: StandardQuestionProps) {
   const questionType = question.questionType || 'UNKNOWN'
@@ -59,6 +61,7 @@ export function StandardQuestion({
           currentAnswer={currentAnswer}
           onSelect={onSelect}
           isSubmitted={isSubmitted}
+          isJapanesePaper={isJapanesePaper}
           annotation={annotation}
         />
       </div>
@@ -77,6 +80,7 @@ export function StandardQuestion({
           onSelect={onSelect}
           sourceId={question.id}
           isSubmitted={isSubmitted}
+          isJapanesePaper={isJapanesePaper}
           annotation={annotation}
         />
       </div>
@@ -133,7 +137,9 @@ export function StandardQuestion({
         data-source-id={question.id}
         data-context-block='true'
         data-context-role='question-context'
-        className='text-xl font-medium leading-relaxed text-gray-900'
+        className={`text-xl font-medium leading-relaxed text-gray-900 ${
+          isJapanesePaper ? 'exam-japanese-text' : ''
+        }`}
         dangerouslySetInnerHTML={{
           __html:
             (questionType === 'FILL_BLANK' ||
@@ -166,6 +172,7 @@ export function StandardQuestion({
         onSelect={onSelect}
         sourceId={question.id}
         isSubmitted={isSubmitted}
+        isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
     </div>

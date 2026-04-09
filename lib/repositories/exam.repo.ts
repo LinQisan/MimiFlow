@@ -22,6 +22,9 @@ export type ExamHubPaperSummary = {
   questionCount: number
   lessonQuestionCount: number
   quizQuestionCount: number
+  attemptCount: number
+  attemptCorrectCount: number
+  attemptAccuracyPct: number | null
 }
 
 export type ExamHubLevelSummary = {
@@ -37,6 +40,10 @@ export const randomPracticeTypeOptions = [
 ] as const
 
 export type RandomPracticeCountMap = Partial<Record<MaterialType, number>>
+export type RandomPracticeFilters = {
+  language?: string
+  level?: string
+}
 
 function shuffleList<T>(list: T[]): T[] {
   const copied = [...list]
@@ -122,6 +129,7 @@ function buildQuestionView(
   row: {
     id: string
     note: string | null
+    attempts?: Array<{ isCorrect: boolean }>
     templateType: QuestionTemplate
     content: unknown
     prompt: string | null
@@ -159,6 +167,7 @@ function buildQuestionView(
   const base = {
     id: row.id,
     note: row.note,
+    attempts: row.attempts || [],
     order: toQuestionOrder(content, row.sortOrder || fallbackOrder),
     questionType,
     prompt: row.prompt,
@@ -251,6 +260,11 @@ export async function findLevelsWithPapersAndCounts(): Promise<
               questions: {
                 select: {
                   id: true,
+                  attempts: {
+                    select: {
+                      isCorrect: true,
+                    },
+                  },
                 },
               },
             },
@@ -290,6 +304,21 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         lessonQuestionCount + quizQuestionCount + readingQuestionCount
       const moduleCount =
         lessonMaterials.length + readingMaterials.length + quizMaterials.length
+      const allQuestions = materials.flatMap(item => item.questions || [])
+      const attemptCount = allQuestions.reduce(
+        (sum, question) => sum + (question.attempts?.length || 0),
+        0,
+      )
+      const attemptCorrectCount = allQuestions.reduce(
+        (sum, question) =>
+          sum +
+          (question.attempts?.filter(attempt => attempt.isCorrect).length || 0),
+        0,
+      )
+      const attemptAccuracyPct =
+        attemptCount > 0
+          ? Math.round((attemptCorrectCount / attemptCount) * 100)
+          : null
 
       return {
         id: collection.id,
@@ -309,6 +338,9 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         questionCount,
         lessonQuestionCount,
         quizQuestionCount,
+        attemptCount,
+        attemptCorrectCount,
+        attemptAccuracyPct,
       }
     })
     .filter(item => item.questionCount > 0 || item.moduleCount > 0)
@@ -472,6 +504,11 @@ export async function getExamQuestionsByPaperId(paperId: string) {
                 select: {
                   id: true,
                   note: true,
+                  attempts: {
+                    select: {
+                      isCorrect: true,
+                    },
+                  },
                   templateType: true,
                   content: true,
                   prompt: true,
@@ -527,6 +564,7 @@ export async function getExamQuestionsByPaperId(paperId: string) {
 
   return {
     paperTitle: collection.title,
+    paperLanguage: collection.language,
     questions: allQuestions,
     pronunciationMap,
     vocabularyMetaMap,
@@ -535,7 +573,12 @@ export async function getExamQuestionsByPaperId(paperId: string) {
 
 export async function getRandomExamQuestionsByTypeCounts(
   countMap: RandomPracticeCountMap,
+  filters?: RandomPracticeFilters,
 ) {
+  const normalizedLanguage = (filters?.language || '').trim()
+  const normalizedLevel = (filters?.level || '').trim()
+  const hasCollectionFilter = Boolean(normalizedLanguage || normalizedLevel)
+
   const selectedQuestionIds: string[] = []
   const pickedByType: Array<{
     materialType: MaterialType
@@ -551,6 +594,20 @@ export async function getRandomExamQuestionsByTypeCounts(
       where: {
         material: {
           type: key,
+          ...(hasCollectionFilter
+            ? {
+                collectionMaterials: {
+                  some: {
+                    collection: {
+                      ...(normalizedLanguage
+                        ? { language: normalizedLanguage }
+                        : {}),
+                      ...(normalizedLevel ? { level: normalizedLevel } : {}),
+                    },
+                  },
+                },
+              }
+            : {}),
         },
       },
       select: { id: true },
@@ -581,6 +638,7 @@ export async function getRandomExamQuestionsByTypeCounts(
   if (uniqueIds.length === 0) {
     return {
       paperTitle: '自定义练习',
+      paperLanguage: normalizedLanguage || null,
       sourceCollections: [] as string[],
       questions: [],
       pronunciationMap: {},
@@ -592,6 +650,11 @@ export async function getRandomExamQuestionsByTypeCounts(
   const questionRows = await prisma.question.findMany({
     where: { id: { in: uniqueIds } },
     include: {
+      attempts: {
+        select: {
+          isCorrect: true,
+        },
+      },
       material: {
         select: {
           id: true,
@@ -622,6 +685,7 @@ export async function getRandomExamQuestionsByTypeCounts(
         {
           id: row.id,
           note: row.note,
+          attempts: row.attempts,
           templateType: row.templateType,
           content: row.content,
           prompt: row.prompt,
@@ -651,10 +715,34 @@ export async function getRandomExamQuestionsByTypeCounts(
 
   return {
     paperTitle: '自定义练习',
+    paperLanguage: normalizedLanguage || null,
     sourceCollections,
     questions,
     pronunciationMap,
     vocabularyMetaMap,
     pickedByType,
   }
+}
+
+export async function getRandomPracticeFilterOptions() {
+  const collections = await prisma.collection.findMany({
+    where: {
+      materials: {
+        some: {},
+      },
+    },
+    select: {
+      language: true,
+      level: true,
+    },
+  })
+
+  const languages = Array.from(
+    new Set(collections.map(item => (item.language || '').trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b))
+  const levels = Array.from(
+    new Set(collections.map(item => (item.level || '').trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b))
+
+  return { languages, levels }
 }

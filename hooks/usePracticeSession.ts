@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 type PracticeOptionLike = {
   id: string
@@ -16,10 +16,14 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   questions: TQuestion[],
   initialIndex = 0,
 ) {
-  const [currentIndex, setCurrentIndex] = useState(initialIndex)
+  const [currentIndex, setCurrentIndexState] = useState(initialIndex)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [showSheet, setShowSheet] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [timeSpentByQuestionId, setTimeSpentByQuestionId] = useState<
+    Record<string, number>
+  >({})
+  const questionEnterAtRef = useRef<number>(Date.now())
 
   const getCorrectOptionId = (question: TQuestion) =>
     question.options?.find(option => option.isCorrect)?.id
@@ -60,20 +64,47 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
     })
   }
 
+  const accumulateCurrentQuestionTime = () => {
+    const currentQuestion = questions[currentIndex]
+    if (!currentQuestion) return
+    const now = Date.now()
+    const delta = Math.max(0, now - questionEnterAtRef.current)
+    questionEnterAtRef.current = now
+    if (delta <= 0) return
+    setTimeSpentByQuestionId(prev => ({
+      ...prev,
+      [currentQuestion.id]: (prev[currentQuestion.id] || 0) + delta,
+    }))
+  }
+
+  const setCurrentIndex = (nextIndex: number) => {
+    if (nextIndex === currentIndex) return
+    accumulateCurrentQuestionTime()
+    setCurrentIndexState(nextIndex)
+  }
+
   const submit = () => {
     if (isSubmitted) return
+    accumulateCurrentQuestionTime()
     setIsSubmitted(true)
     setShowSheet(true)
-    if (wrongIndexes.length > 0) {
-      setCurrentIndex(wrongIndexes[0])
+    // 仅在整卷已作答的情况下自动跳到第一道错题，
+    // 避免“只做了少量题就交卷”时被强制切换题目。
+    if (answeredCount >= questions.length && wrongIndexes.length > 0) {
+      setCurrentIndexState(wrongIndexes[0])
     }
   }
+
+  useEffect(() => {
+    questionEnterAtRef.current = Date.now()
+  }, [currentIndex, questions.length])
 
   return {
     currentIndex,
     setCurrentIndex,
     answers,
     answeredCount,
+    timeSpentByQuestionId,
     showSheet,
     setShowSheet,
     isSubmitted,

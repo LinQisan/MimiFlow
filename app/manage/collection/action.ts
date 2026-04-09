@@ -1,6 +1,6 @@
 'use server'
 
-import { MaterialType } from '@prisma/client'
+import { CollectionType, MaterialType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
@@ -62,3 +62,64 @@ export async function updateCollectionMaterialTitle(
   }
 }
 
+export async function clearEmptyCollections() {
+  try {
+    const result = await prisma.collection.deleteMany({
+      where: {
+        collectionType: CollectionType.PAPER,
+        materials: {
+          none: {},
+        },
+        children: {
+          none: {},
+        },
+      },
+    })
+    revalidatePath('/manage')
+    revalidatePath('/manage/collection')
+    revalidatePath('/exam/papers')
+    return { success: true, message: `已清理 ${result.count} 个空集合` }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '清理失败'
+    return { success: false, message }
+  }
+}
+
+export async function updateCollectionAttributes(formData: FormData) {
+  try {
+    const collectionId = String(formData.get('collectionId') || '').trim()
+    const title = String(formData.get('title') || '').trim()
+    const description = String(formData.get('description') || '').trim()
+    const language = String(formData.get('language') || '').trim()
+    const level = String(formData.get('level') || '').trim()
+    const sortOrderRaw = String(formData.get('sortOrder') || '').trim()
+
+    if (!collectionId) return { success: false, message: 'collectionId 缺失。' }
+    if (!title) return { success: false, message: '名称不能为空。' }
+
+    const parsedSortOrder = Number.parseInt(sortOrderRaw || '0', 10)
+    const sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0
+
+    await prisma.collection.update({
+      where: { id: collectionId },
+      data: {
+        title,
+        description: description || null,
+        language: language || null,
+        level: level || null,
+        sortOrder,
+      },
+    })
+
+    revalidatePath('/manage')
+    revalidatePath('/manage/collection')
+    revalidatePath(`/manage/collection/${collectionId}`)
+    revalidatePath('/exam/papers')
+    revalidatePath(`/exam/papers/${collectionId}`)
+
+    return { success: true, message: '集合属性已保存' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存失败'
+    return { success: false, message }
+  }
+}

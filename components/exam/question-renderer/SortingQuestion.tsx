@@ -19,6 +19,7 @@ type SortingQuestionProps = {
   currentAnswer?: string
   onSelect: OnSelectOption
   isSubmitted?: boolean
+  isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
 
@@ -61,6 +62,7 @@ export function SortingQuestion({
   currentAnswer,
   onSelect,
   isSubmitted = false,
+  isJapanesePaper = false,
   annotation,
 }: SortingQuestionProps) {
   const options = question.options || []
@@ -155,7 +157,9 @@ export function SortingQuestion({
         data-source-id={question.id}
         data-context-block='true'
         data-context-role='sorting-sentence'
-        className='mb-6 border-b border-orange-200 pb-4 text-base font-medium leading-10 text-gray-800 md:text-lg'>
+        className={`mb-6 border-b border-orange-200 pb-4 text-base font-medium leading-10 text-gray-800 md:text-lg ${
+          isJapanesePaper ? 'exam-japanese-text' : ''
+        }`}>
         {renderedSegments.map((segment, index) => {
           const isAutoSlot = segment.startsWith('__AUTO_SLOT_')
           const shouldRenderSlot = isAutoSlot || isSlotToken(segment)
@@ -185,7 +189,7 @@ export function SortingQuestion({
               key={`sorting-slot-${slotIndex}-${index}`}
               type='button'
               onClick={() => filled && moveBackToPool(filled, slotIndex)}
-              disabled={isSubmitted}
+              aria-disabled={isSubmitted}
               data-source-type='QUIZ_QUESTION'
               data-source-id={question.id}
               data-context-block='true'
@@ -241,13 +245,14 @@ export function SortingQuestion({
               key={option.id}
               type='button'
               onClick={() => moveToSlot(option)}
-              disabled={isSubmitted}
+              aria-disabled={isSubmitted}
               data-source-type='QUIZ_QUESTION'
               data-source-id={question.id}
               data-context-block='true'
               data-context-role='sorting-option'
               className='select-none border border-orange-200 bg-white px-6 py-3 font-semibold text-orange-700 transition-colors hover:border-orange-400 active:scale-95'>
               <span
+                className={isJapanesePaper ? 'exam-japanese-text' : ''}
                 dangerouslySetInnerHTML={{
                   __html: annotateExamText({
                     text: option.text || '',

@@ -36,6 +36,7 @@ export default async function ExamDoingPage({
       <PracticePlayer
         questions={examData.questions}
         paperTitle={examData.paperTitle}
+        paperLanguage={examData.paperLanguage}
         mode='exam'
         initialIndex={initialIndex}
         pronunciationMap={examData.pronunciationMap}

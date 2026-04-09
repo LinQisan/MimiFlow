@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import UploadForm from './UploadForm'
-import type { CollectionType } from '@prisma/client'
+import type { CollectionType, MaterialType } from '@prisma/client'
 import {
   createArticle,
   createQuizQuestion,
@@ -26,6 +26,9 @@ type UploadCollectionLite = {
   name: string
   parentTitle?: string
   collectionType?: CollectionType
+  materialType?: MaterialType
+  language?: string
+  examLevel?: string
   level: { title: string }
   lessons: { title: string; audioFile: string }[]
 }
@@ -71,6 +74,8 @@ type ArticleFormState = {
   title: string
   description: string
   content: string
+  language: string
+  examLevel: string
 }
 
 type QuizFormState = {
@@ -80,6 +85,8 @@ type QuizFormState = {
   targetWord: string
   prompt: string
   explanation: string
+  language: string
+  examLevel: string
   options: QuestionOptionDraft[]
 }
 
@@ -93,6 +100,8 @@ function useUploadCenterState(dbCollections: UploadCollectionLite[]) {
     title: '',
     description: '',
     content: '',
+    language: dbCollections[0]?.language || '',
+    examLevel: dbCollections[0]?.examLevel || '',
   })
   const [articleQuestions, setArticleQuestions] = useState<
     ArticleImportedQuestionDraft[]
@@ -114,6 +123,8 @@ function useUploadCenterState(dbCollections: UploadCollectionLite[]) {
     targetWord: '',
     prompt: '',
     explanation: '',
+    language: dbCollections[0]?.language || '',
+    examLevel: dbCollections[0]?.examLevel || '',
     options: [
       { text: '', isCorrect: true },
       { text: '', isCorrect: false },
@@ -205,7 +216,7 @@ const detectQuestionType = (
   const text = `${prompt}\n${options.join('\n')}`
   const isSorting = /★|＊/.test(text)
   const isFillBlank =
-    /[（(][\s　]*[）)]|__{2,}|～|\[\d+\]|［\d+］|【\d+】|「\d+」|『\d+』/.test(
+    /[（(][\s　]*[）)]|__{2,}|[＿_]{2,}|～|\[\d+\]|［\d+］|【\d+】|「\d+」|『\d+』/.test(
       prompt,
     )
   const grammarHint = /文法|語法|语法|助詞|助词|接続|接续|活用/.test(prompt)
@@ -339,6 +350,8 @@ const parseQuestionHeaderLine = (rawLine: string) => {
   if (!line) return { isHeader: false, text: '' }
 
   const patterns = [
+    // (7) 题干
+    /^\s*[（(]\d+[）)]\s*([\s\S]*)$/,
     // 1. / 1、 / 1， / 1) / （1）
     /^\s*[（(]?\d+[）)]?[．.、，:：)\-]\s*([\s\S]*)$/,
     // 第1题 / 第 1 問
@@ -356,10 +369,40 @@ const parseQuestionHeaderLine = (rawLine: string) => {
 }
 
 const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
-  const lines = input
+  const rawLines = input
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
     .split('\n')
+
+  const splitLineByOptionMarkers = (rawLine: string) => {
+    const line = rawLine.trim()
+    if (!line) return [] as string[]
+
+    const markerRegex = /(^|[\s　])(①|②|③|④|[1-4][．.、，:：)\-]|[A-Da-d][．.、，:：)\-])\s*/g
+    const markers: Array<{ start: number }> = []
+    let match: RegExpExecArray | null
+
+    while ((match = markerRegex.exec(line)) !== null) {
+      const markerStart = match.index + match[1].length
+      markers.push({ start: markerStart })
+    }
+
+    if (markers.length <= 1) return [line]
+
+    const parts: string[] = []
+    const prefix = line.slice(0, markers[0].start).trim()
+    if (prefix) parts.push(prefix)
+
+    markers.forEach((marker, idx) => {
+      const next = markers[idx + 1]
+      const chunk = line.slice(marker.start, next ? next.start : line.length).trim()
+      if (chunk) parts.push(chunk)
+    })
+
+    return parts.length > 0 ? parts : [line]
+  }
+
+  const lines = rawLines.flatMap(splitLineByOptionMarkers)
 
   const results: ParsedQuizDraft[] = []
   let promptLines: string[] = []
@@ -392,7 +435,9 @@ const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
   }
 
   const stripLooseQuestionNumber = (line: string) =>
-    line.replace(/^\s*\d+\s+/, '').trim()
+    line
+      .replace(/^\s*[（(]?\d+[）)]?[．.、，:：)\-]?\s*/, '')
+      .trim()
 
   const isLikelySentencePrompt = (text: string) => {
     if (!text) return false
@@ -1114,6 +1159,7 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
     setIsSubmitting(true)
     const res = await createArticle({
       ...articleForm,
+      level: articleForm.examLevel,
       questions: articleQuestions,
     })
     await dialog.alert(res.message)
@@ -1143,6 +1189,7 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
     const res = await createQuizQuestion({
       ...quizForm,
       paperId: quizForm.collectionId,
+      level: quizForm.examLevel,
     })
     await dialog.alert(res.message)
     if (res.success) {
@@ -1340,6 +1387,8 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
         targetWord: draft.targetWord || '',
         prompt: draft.prompt,
         explanation: draft.explanation,
+        language: quizForm.language,
+        level: quizForm.examLevel,
         options: draft.options,
       })
       if (res.success) {
@@ -1479,6 +1528,26 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
     if (!selected) return
     setQuizForm(prev => ({ ...prev, targetWord: selected }))
     dialog.toast(`已设置目标词：${selected}`, { tone: 'success' })
+  }
+
+  const applyArticleCollection = (collectionId: string) => {
+    const matched = localCollections.find(item => item.id === collectionId)
+    setArticleForm(prev => ({
+      ...prev,
+      paperId: collectionId,
+      language: matched?.language || '',
+      examLevel: matched?.examLevel || '',
+    }))
+  }
+
+  const applyQuizCollection = (collectionId: string) => {
+    const matched = localCollections.find(item => item.id === collectionId)
+    setQuizForm(prev => ({
+      ...prev,
+      collectionId,
+      language: matched?.language || '',
+      examLevel: matched?.examLevel || '',
+    }))
   }
 
   const CollectionSelector = ({
@@ -1638,10 +1707,41 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
             <section className='space-y-5 border border-gray-200 bg-gray-50/30 p-4 md:p-5'>
               <CollectionSelector
                 value={articleForm.paperId}
-                onChange={val =>
-                  setArticleForm({ ...articleForm, paperId: val })
-                }
+                onChange={applyArticleCollection}
               />
+
+              <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+                <label className='block text-sm font-bold text-gray-700'>
+                  语言
+                  <input
+                    type='text'
+                    value={articleForm.language}
+                    onChange={e =>
+                      setArticleForm({
+                        ...articleForm,
+                        language: e.target.value,
+                      })
+                    }
+                    className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
+                    placeholder='例如：ja / en / zh'
+                  />
+                </label>
+                <label className='block text-sm font-bold text-gray-700'>
+                  等级
+                  <input
+                    type='text'
+                    value={articleForm.examLevel}
+                    onChange={e =>
+                      setArticleForm({
+                        ...articleForm,
+                        examLevel: e.target.value,
+                      })
+                    }
+                    className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
+                    placeholder='例如：N1 / B2'
+                  />
+                </label>
+              </div>
 
               <div>
                 <label className='block text-sm font-bold text-gray-700 mb-2'>
@@ -1919,8 +2019,41 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
 
             <CollectionSelector
               value={quizForm.collectionId}
-              onChange={val => setQuizForm({ ...quizForm, collectionId: val })}
+              onChange={applyQuizCollection}
             />
+
+            <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+              <label className='block text-sm font-bold text-gray-700'>
+                语言
+                <input
+                  type='text'
+                  value={quizForm.language}
+                  onChange={e =>
+                    setQuizForm({
+                      ...quizForm,
+                      language: e.target.value,
+                    })
+                  }
+                  className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
+                  placeholder='例如：ja / en / zh'
+                />
+              </label>
+              <label className='block text-sm font-bold text-gray-700'>
+                等级
+                <input
+                  type='text'
+                  value={quizForm.examLevel}
+                  onChange={e =>
+                    setQuizForm({
+                      ...quizForm,
+                      examLevel: e.target.value,
+                    })
+                  }
+                  className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
+                  placeholder='例如：N1 / B2'
+                />
+              </label>
+            </div>
 
             <section className='border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
               <label className='mb-2 block text-sm font-black text-blue-900'>

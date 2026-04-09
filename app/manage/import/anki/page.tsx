@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { previewAnkiImport, runAnkiImport } from '@/app/actions/ankiImporter'
 import { useDialog } from '@/context/DialogContext'
 
@@ -164,6 +165,11 @@ export default function ManageAnkiImportPage() {
     <main className='min-h-screen bg-gray-50 px-4 py-6 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl'>
         <section className='border-b border-gray-200 pb-5'>
+          <Link
+            href='/manage'
+            className='mb-2 inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-700'>
+            返回管理中心
+          </Link>
           <h1 className='text-3xl font-black text-gray-900'>Anki 导入器</h1>
           <p className='mt-2 text-sm text-gray-500'>
             先识别 TXT/TSV，再批量上传音频并自动匹配。支持字段：单词、单词注音、单词释义、例句、例句翻译、用法、单词发音、句子发音。

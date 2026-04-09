@@ -15,6 +15,27 @@ const SECTION_HINT_CLASS = 'text-[10px] text-gray-400 mt-1 leading-relaxed'
 const BASE_INPUT_CLASS =
   'w-full h-8 px-2.5 text-xs border border-gray-200 rounded-lg bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-all placeholder:text-gray-300'
 
+const splitListInput = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/[\n,，；;]+/)
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  )
+
+const splitPronunciationInput = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        // 不按空格和 | 分割，避免把「にん げん / にん|げん」这种单个注音误拆。
+        .split(/[\/／\n,，；;]+/)
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  )
+
 export default function WordTooltip({
   word,
   x,
@@ -51,7 +72,7 @@ export default function WordTooltip({
 
   useEffect(() => {
     setSaveState('idle')
-    const initialPron = initialMeta?.pronunciations?.[0] || ''
+    const initialPron = (initialMeta?.pronunciations || []).join(' / ')
     setPronunciationValue(initialPron)
     setPartOfSpeechValue(initialMeta?.partsOfSpeech?.[0] || '')
     setMeaningValue((initialMeta?.meanings || []).join('; '))
@@ -96,9 +117,9 @@ export default function WordTooltip({
     if (saveState === 'saving' || saveState === 'saved') return
     setSaveState('saving')
 
-    const pronList = pronunciationValue.split(/[| ]+/).filter(Boolean)
-    const meaningList = meaningValue.split(/[;；]+/).filter(Boolean)
-    const posList = partOfSpeechValue ? [partOfSpeechValue] : []
+    const pronList = splitPronunciationInput(pronunciationValue)
+    const meaningList = splitListInput(meaningValue)
+    const posList = splitListInput(partOfSpeechValue)
 
     try {
       const res = await saveVocabulary(
@@ -192,11 +213,11 @@ export default function WordTooltip({
           <input
             value={pronunciationValue}
             onChange={e => setPronunciationValue(e.target.value)}
-            placeholder='如: べんきょう / benkyou'
+            placeholder='如: 言:い い 訳:わけ / にん げん（或 にん|げん）'
             className={BASE_INPUT_CLASS}
           />
           <p className={SECTION_HINT_CLASS}>
-            支持假名或罗马音。多个读音可用空格或 | 分隔。
+            支持假名或罗马音。多个读音请用 /、逗号、分号或换行分隔。
           </p>
         </section>
 

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
 import {
   bulkDeleteAudioFilesAdmin,
@@ -388,6 +389,11 @@ export default function ManageAudioPage() {
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-4 md:space-y-6'>
         <section className='border border-gray-200 bg-white p-4 md:p-8'>
+          <Link
+            href='/manage'
+            className='mb-2 inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 md:text-sm'>
+            返回管理中心
+          </Link>
           <h1 className='text-xl font-black text-gray-900 md:text-3xl'>录音管理</h1>
           <p className='mt-2 text-xs text-gray-500 md:text-sm'>
             管理站内录音文件，支持筛选、试听、上传和删除。

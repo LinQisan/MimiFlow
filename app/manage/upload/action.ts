@@ -272,6 +272,74 @@ function pickAudioByStem(
   return shiftStemCandidate(stem, globalMap)
 }
 
+function getMaterialIdPrefix(type: MaterialType) {
+  if (type === MaterialType.READING) return 'passage:'
+  if (type === MaterialType.VOCAB_GRAMMAR) return 'quiz:'
+  return 'lesson:'
+}
+
+function getLegacyModelByMaterialType(type: MaterialType) {
+  if (type === MaterialType.READING) return 'Passage'
+  if (type === MaterialType.VOCAB_GRAMMAR) return 'Quiz'
+  return 'Lesson'
+}
+
+function parseRequestedMaterialType(
+  raw: FormDataEntryValue | null,
+): MaterialType | null {
+  if (typeof raw !== 'string') return null
+  const value = raw.trim()
+  if (
+    value === MaterialType.LISTENING ||
+    value === MaterialType.READING ||
+    value === MaterialType.VOCAB_GRAMMAR ||
+    value === MaterialType.SPEAKING
+  ) {
+    return value
+  }
+  return null
+}
+
+async function inferCollectionMaterialType(collectionId: string) {
+  const [listeningCount, readingCount, vocabCount, speakingCount] =
+    await Promise.all([
+      prisma.material.count({
+        where: {
+          type: MaterialType.LISTENING,
+          collectionMaterials: { some: { collectionId } },
+        },
+      }),
+      prisma.material.count({
+        where: {
+          type: MaterialType.READING,
+          collectionMaterials: { some: { collectionId } },
+        },
+      }),
+      prisma.material.count({
+        where: {
+          type: MaterialType.VOCAB_GRAMMAR,
+          collectionMaterials: { some: { collectionId } },
+        },
+      }),
+      prisma.material.count({
+        where: {
+          type: MaterialType.SPEAKING,
+          collectionMaterials: { some: { collectionId } },
+        },
+      }),
+    ])
+
+  const ranked: Array<{ type: MaterialType; count: number }> = [
+    { type: MaterialType.LISTENING, count: listeningCount },
+    { type: MaterialType.READING, count: readingCount },
+    { type: MaterialType.VOCAB_GRAMMAR, count: vocabCount },
+    { type: MaterialType.SPEAKING, count: speakingCount },
+  ].sort((a, b) => b.count - a.count)
+
+  if (ranked[0].count > 0) return ranked[0].type
+  return MaterialType.LISTENING
+}
+
 async function ensureTargetCategory(formData: FormData) {
   const uploadMode = formData.get('uploadMode') as string
   const paperId = (formData.get('paperId') as string)?.trim()
@@ -371,6 +439,12 @@ async function saveUploadedAudio(file: File) {
 export async function uploadAssAndSaveData(formData: FormData) {
   try {
     const collectionId = await ensureTargetCategory(formData)
+    const requestedMaterialType = parseRequestedMaterialType(
+      formData.get('materialType'),
+    )
+    const matchedMaterialType =
+      requestedMaterialType ||
+      (await inferCollectionMaterialType(collectionId))
     const title = (formData.get('title') as string)?.trim()
     const audioSourceType = (formData.get('audioSourceType') as string) || 'manual'
     const audioFileField = formData.get('audioFile')
@@ -447,6 +521,8 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const materialSource = (formData.get('materialSource') as string)?.trim() || ''
     const materialLanguage = (formData.get('materialLanguage') as string)?.trim() || ''
     const materialDifficulty = (formData.get('materialDifficulty') as string)?.trim() || ''
+    const materialChapterName =
+      (formData.get('materialChapterName') as string)?.trim() || ''
     const materialTags = ((formData.get('materialTags') as string) || '')
       .split(/[，,]/)
       .map(item => item.trim())
@@ -529,7 +605,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
         continue
       }
 
-      const materialId = `lesson:${randomUUID()}`
+      const materialId = `${getMaterialIdPrefix(matchedMaterialType)}${randomUUID()}`
       const nextSortOrder = sequencePlan.startSortOrder + createdCount
       const contentPayload: Record<string, unknown> = {
         audioUrl: finalAudioFile,
@@ -545,7 +621,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
       const metadata: Record<string, unknown> = {
         legacy: {
-          model: 'Lesson',
+          model: getLegacyModelByMaterialType(matchedMaterialType),
           paperId: collectionId,
           sortOrder: nextSortOrder,
         },
@@ -567,8 +643,12 @@ export async function uploadAssAndSaveData(formData: FormData) {
       await prisma.material.create({
         data: {
           id: materialId,
-          type: MaterialType.LISTENING,
+          type: matchedMaterialType,
           title: finalTitle,
+          chapterName:
+            matchedMaterialType === MaterialType.SPEAKING
+              ? materialChapterName || finalTitle
+              : null,
           contentPayload: contentPayload as Prisma.InputJsonValue,
           metadata: metadata as Prisma.InputJsonValue,
           collectionMaterials: {
@@ -606,9 +686,10 @@ export async function uploadAssAndSaveData(formData: FormData) {
     return {
       success: true,
       message: isBatch
-        ? `批量导入完成：${createdMaterials.length} 个字幕文件已写入 [${collectionId}]。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
-        : `成功导入 ${createdMaterials[0].name} 至 [${collectionId}]。`,
-      lessonIds: createdMaterials.map(item => item.id.replace(/^lesson:/, '')),
+        ? `批量导入完成：${createdMaterials.length} 个字幕文件已写入 [${collectionId}]（MaterialType=${matchedMaterialType}）。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
+        : `成功导入 ${createdMaterials[0].name} 至 [${collectionId}]（MaterialType=${matchedMaterialType}）。`,
+      lessonIds: createdMaterials.map(item => item.id.split(':').slice(1).join(':')),
+      materialType: matchedMaterialType,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '未知错误'

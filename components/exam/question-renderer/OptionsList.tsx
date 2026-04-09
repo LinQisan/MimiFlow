@@ -14,6 +14,7 @@ type OptionsListProps = {
   onSelect: OnSelectOption
   sourceId: string
   isSubmitted?: boolean
+  isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
 
@@ -28,6 +29,7 @@ export function OptionsList({
   onSelect,
   sourceId,
   isSubmitted = false,
+  isJapanesePaper = false,
   annotation,
 }: OptionsListProps) {
   if (options.length === 0) {
@@ -43,33 +45,19 @@ export function OptionsList({
         const isSelected = currentAnswer === option.id
         const isCorrect = correctOptionId === option.id
         const isWrongSelected = isSubmitted && isSelected && !isCorrect
-
-        return (
-          <button
-            key={option.id}
-            type='button'
-            onClick={() => {
-              const selectedText = window.getSelection()?.toString().trim() || ''
-              // 当用户在选项文本上划词时，不触发选项选择，优先弹出 WordTooltip。
-              if (selectedText.length > 0) return
-              onSelect(option.id)
-            }}
-            disabled={isSubmitted}
-            data-source-type='QUIZ_QUESTION'
-            data-source-id={sourceId}
-            data-context-block='true'
-            data-context-role='question-option'
-            className={`group flex items-start rounded-xl border px-5 py-4 text-left transition-all duration-200 ${
-              isSubmitted
-                ? isCorrect
-                  ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                  : isWrongSelected
-                    ? 'border-rose-300 bg-rose-50 text-rose-900'
-                    : 'border-gray-200 bg-white text-gray-500'
-                : isSelected
-                  ? 'border-blue-500 bg-blue-50 text-blue-800 shadow-sm ring-1 ring-blue-500'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-gray-50'
-            }`}>
+        const optionClassName = `group flex items-start rounded-xl border px-5 py-4 text-left transition-all duration-200 ${
+          isSubmitted
+            ? isCorrect
+              ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+              : isWrongSelected
+                ? 'border-rose-300 bg-rose-50 text-rose-900'
+                : 'border-gray-200 bg-white text-gray-500'
+            : isSelected
+              ? 'border-blue-500 bg-blue-50 text-blue-800 shadow-sm ring-1 ring-blue-500'
+              : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-gray-50'
+        }`
+        const content = (
+          <>
             <span
               className={`mr-3 mt-0.5 font-semibold ${
                 isSubmitted
@@ -85,10 +73,15 @@ export function OptionsList({
               {optionLabel(index)}.
             </span>
             {audioOnly ? (
-              <span className='cursor-text select-text leading-relaxed'>{`选项 ${optionLabel(index)}`}</span>
+              <span
+                className={`cursor-text select-text leading-relaxed ${
+                  isJapanesePaper ? 'exam-japanese-text' : ''
+                }`}>{`选项 ${optionLabel(index)}`}</span>
             ) : (
               <span
-                className='cursor-text select-text leading-relaxed'
+                className={`cursor-text select-text leading-relaxed ${
+                  isJapanesePaper ? 'exam-japanese-text' : ''
+                }`}
                 dangerouslySetInnerHTML={{
                   __html: annotateExamText({
                     text: option.text || '',
@@ -107,6 +100,41 @@ export function OptionsList({
                 你的选择
               </span>
             )}
+          </>
+        )
+
+        if (isSubmitted) {
+          return (
+            <div
+              key={option.id}
+              data-source-type='QUIZ_QUESTION'
+              data-source-id={sourceId}
+              data-context-block='true'
+              data-context-role='question-option'
+              className={optionClassName}>
+              {content}
+            </div>
+          )
+        }
+
+        return (
+          <button
+            key={option.id}
+            type='button'
+            onClick={() => {
+              if (isSubmitted) return
+              const selectedText = window.getSelection()?.toString().trim() || ''
+              // 当用户在选项文本上划词时，不触发选项选择，优先弹出 WordTooltip。
+              if (selectedText.length > 0) return
+              onSelect(option.id)
+            }}
+            aria-disabled={isSubmitted}
+            data-source-type='QUIZ_QUESTION'
+            data-source-id={sourceId}
+            data-context-block='true'
+            data-context-role='question-option'
+            className={optionClassName}>
+            {content}
           </button>
         )
       })}

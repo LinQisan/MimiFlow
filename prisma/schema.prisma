@@ -53,6 +53,7 @@ model Material {
   id             String       @id @default(uuid())
   type           MaterialType
   title          String
+  chapterName    String?      @map("chapter_name")
   contentPayload Json         @map("content_payload")
   metadata       Json?
   createdAt      DateTime     @default(now()) @map("created_at")
@@ -61,6 +62,7 @@ model Material {
   questions           Question[]
   collectionMaterials CollectionMaterial[]
   studyProgresses     MaterialStudyProgress[]
+  playtimeStats       MaterialPlaytimeStat[]
 
   @@map("materials")
 }
@@ -287,6 +289,7 @@ model GameProfile {
   reviewEvents     ReviewEvent[]
   outputPractices  OutputPractice[]
   studyProgresses  MaterialStudyProgress[]
+  playtimeStats    MaterialPlaytimeStat[]
 }
 
 model MaterialStudyProgress {
@@ -304,6 +307,23 @@ model MaterialStudyProgress {
   @@unique([profileId, materialId, learningMode])
   @@index([updatedAt])
   @@map("material_study_progresses")
+}
+
+model MaterialPlaytimeStat {
+  id           String      @id @default(uuid())
+  profileId    String      @default("default") @map("profile_id")
+  materialId   String      @map("material_id")
+  totalSeconds Int         @default(0) @map("total_seconds")
+  playedDays   Int         @default(0) @map("played_days")
+  lastPlayedAt DateTime?   @map("last_played_at")
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  profile      GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material     Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, materialId])
+  @@index([materialId, updatedAt])
+  @@map("material_playtime_stats")
 }
 
 enum GameDifficultyPreset {

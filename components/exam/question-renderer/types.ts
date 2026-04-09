@@ -9,6 +9,9 @@ export type ExamQuestionOption = {
 export type ExamQuestion = {
   id: string
   note?: string | null
+  attempts?: {
+    isCorrect: boolean
+  }[]
   order?: number | null
   questionType?: string | null
   prompt?: string | null

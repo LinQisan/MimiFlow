@@ -102,8 +102,13 @@ export async function getCollectionManageList() {
     select: {
       id: true,
       title: true,
+      description: true,
+      language: true,
+      level: true,
+      sortOrder: true,
+      collectionType: true,
       createdAt: true,
-      _count: { select: { materials: true } },
+      _count: { select: { materials: true, children: true } },
     },
   })
 }
