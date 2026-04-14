@@ -1,8 +1,8 @@
 import prisma from '@/lib/prisma'
 import { CollectionType, MaterialType, QuestionTemplate } from '@prisma/client'
-import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
-import { reorderExamOptionsForSession } from '@/lib/repositories/exam-option-order'
-import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabularyMeta'
+import { getMaterialDisplayTitle } from '../materials/material-title'
+import { reorderExamOptionsForSession } from './exam-option-order'
+import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 export type ExamHubPaperSummary = {
   id: string
@@ -485,6 +485,93 @@ export async function findPaperDetailById(id: string) {
     quizzes,
     lessons,
     passages,
+  }
+}
+
+export async function getManagePaperEditData(paperId: string) {
+  const collection = await prisma.collection.findUnique({
+    where: { id: paperId },
+    include: {
+      materials: {
+        orderBy: { sortOrder: 'asc' },
+        include: {
+          material: {
+            include: {
+              questions: {
+                orderBy: { sortOrder: 'asc' },
+                select: {
+                  id: true,
+                  templateType: true,
+                  content: true,
+                  prompt: true,
+                  context: true,
+                  options: true,
+                  answer: true,
+                  analysis: true,
+                  sortOrder: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!collection) return null
+
+  const materials = collection.materials.map(relation => {
+    const material = relation.material
+    const contentPayload = asRecord(material.contentPayload)
+    return {
+      id: material.id,
+      materialType: material.type,
+      title: getMaterialDisplayTitle(
+        material.type,
+        material.title,
+        material.contentPayload,
+        material.id,
+      ),
+      sortOrder: relation.sortOrder,
+      questionCount: material.questions.length,
+      questions: material.questions.map((row, index) => {
+        const content = asRecord(row.content)
+        const answerIds = new Set(toAnswerIds(row.answer))
+        const options = asArray<Record<string, unknown>>(row.options).map(
+          (item, optionIndex) => {
+            const id = asString(item.id) || `opt_${optionIndex + 1}`
+            return {
+              id,
+              text: asString(item.text) || '',
+              isCorrect: answerIds.has(id),
+            }
+          },
+        )
+
+        return {
+          id: row.id,
+          questionType: toLegacyQuestionType({
+            materialType: material.type,
+            templateType: row.templateType,
+            content,
+          }),
+          prompt: row.prompt || '',
+          contextSentence: row.context || asString(content.contextSentence) || '',
+          explanation: row.analysis || asString(content.explanation) || '',
+          sortOrder: toQuestionOrder(content, row.sortOrder || index + 1),
+          options,
+        }
+      }),
+    }
+  })
+
+  return {
+    id: collection.id,
+    title: collection.title,
+    description: collection.description,
+    language: collection.language,
+    level: collection.level,
+    materials,
   }
 }
 

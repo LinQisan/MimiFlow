@@ -1,6 +1,6 @@
 // app/exam/papers/[id]/do/page.tsx
 import { notFound } from 'next/navigation'
-import { getExamQuestionsByPaperId } from '@/lib/repositories/exam.repo'
+import { getExamQuestionsByPaperId } from '@/lib/repositories/exam'
 import { PracticePlayer } from '@/components/exam/PracticePlayer'
 // Next.js 页面接收路由参数
 export default async function ExamDoingPage({
@@ -29,7 +29,7 @@ export default async function ExamDoingPage({
   }
 
   return (
-    <div className='bg-gray-50 min-h-screen'>
+    <div className='min-h-screen bg-slate-50'>
       {/* 这里将获取到的题目数据传给客户端组件。
         PracticePlayer 内部包含了 useState 和上一题/下一题的交互逻辑。
       */}

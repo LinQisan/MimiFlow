@@ -1,5 +1,5 @@
-import { parseJsonStringList } from '@/utils/jsonList'
-import { sanitizePronunciations } from '@/utils/pronunciation'
+import { parseJsonStringList } from '../text/jsonList'
+import { sanitizePronunciations } from '../text/pronunciation'
 
 export type VocabularyMeta = {
   pronunciations: string[]

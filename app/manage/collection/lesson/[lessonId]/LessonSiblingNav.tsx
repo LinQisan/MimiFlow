@@ -1,4 +1,4 @@
-// app/manage/level/lesson/[lessonId]/LessonSiblingNav.tsx
+// app/manage/collection/lesson/[lessonId]/LessonSiblingNav.tsx
 'use client'
 
 import Link from 'next/link'

@@ -3,17 +3,17 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { saveVocabulary } from '@/app/actions/content'
 import { SourceType } from '@prisma/client'
-import type { VocabularyMeta } from '@/utils/vocabularyMeta'
+import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 // --- 预设的常用词性选项 (可根据需要修改) ---
 const POS_OPTIONS = ['名词', '动词', '形容词', '副词', '助词', '接续词']
 
-// --- UI 样式常量 (保持你原来的设计风格) ---
+// --- UI 样式常量 ---
 const TOOLTIP_WIDTH_CLASS = 'w-[260px]'
-const SECTION_TITLE_CLASS = 'text-xs font-bold text-gray-700'
-const SECTION_HINT_CLASS = 'text-[10px] text-gray-400 mt-1 leading-relaxed'
+const SECTION_TITLE_CLASS = 'text-xs font-bold text-slate-700'
+const SECTION_HINT_CLASS = 'mt-1 text-[10px] leading-relaxed text-slate-400'
 const BASE_INPUT_CLASS =
-  'w-full h-8 px-2.5 text-xs border border-gray-200 rounded-lg bg-white focus:border-blue-400 focus:ring-1 focus:ring-blue-400 outline-none transition-all placeholder:text-gray-300'
+  'w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs outline-none transition-all placeholder:text-slate-300 focus:border-slate-400 focus:ring-1 focus:ring-slate-200'
 
 const splitListInput = (value: string) =>
   Array.from(
@@ -64,11 +64,11 @@ export default function WordTooltip({
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
   const [pronunciationValue, setPronunciationValue] = useState('')
-  const [saveWithPronunciation, setSaveWithPronunciation] = useState(true)
+  const [saveWithPronunciation, setSaveWithPronunciation] = useState(false)
   const [meaningValue, setMeaningValue] = useState('')
-  const [saveWithMeaning, setSaveWithMeaning] = useState(false)
+  const [saveWithMeaning, setSaveWithMeaning] = useState(true)
   const [partOfSpeechValue, setPartOfSpeechValue] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(true)
 
   useEffect(() => {
     setSaveState('idle')
@@ -80,33 +80,44 @@ export default function WordTooltip({
 
   // --- 2. 动态计算样式与位置 ---
   const estimatedHeight = showAdvanced ? 320 : 180
+  const tooltipHalfWidth = 130
+  const viewportPadding = 12
+  const maxX = typeof window === 'undefined' ? x : window.innerWidth - tooltipHalfWidth - viewportPadding
+  const minX = tooltipHalfWidth + viewportPadding
+  const clampedX = Math.min(Math.max(x, minX), maxX)
   const shouldOpenDown = isTop && y < estimatedHeight + 16
-  const topOffset = shouldOpenDown ? y + 12 : y
+  const maxY =
+    typeof window === 'undefined'
+      ? y
+      : window.innerHeight - viewportPadding - (shouldOpenDown ? estimatedHeight : 0)
+  const topOffset = shouldOpenDown
+    ? Math.min(y + 12, maxY)
+    : Math.max(y, estimatedHeight + viewportPadding)
 
   const saveBtnConfig = useMemo(() => {
     switch (saveState) {
       case 'saving':
         return {
           text: '保存中...',
-          bg: 'bg-blue-100 text-blue-500 cursor-wait',
+          bg: 'bg-slate-100 text-slate-500 cursor-wait',
           disabled: true,
         }
       case 'saved':
         return {
           text: '已保存',
-          bg: 'bg-green-100 text-green-700',
+          bg: 'bg-slate-100 text-slate-700',
           disabled: true,
         }
       case 'error':
         return {
           text: '重试',
-          bg: 'bg-red-100 text-red-600 hover:bg-red-200',
+          bg: 'bg-rose-100 text-rose-700 hover:bg-rose-200',
           disabled: false,
         }
       default:
         return {
           text: '保存',
-          bg: 'bg-blue-600 text-white hover:bg-blue-700 shadow-sm',
+          bg: 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm',
           disabled: false,
         }
     }
@@ -173,16 +184,16 @@ export default function WordTooltip({
       onMouseDown={e => e.stopPropagation()}
       style={{
         top: topOffset,
-        left: x,
+        left: clampedX,
         transform:
           shouldOpenDown || !isTop
             ? 'translate(-50%, 0)'
             : 'translate(-50%, -100%)',
       }}
-      className={`ui-pop absolute z-50 ${TOOLTIP_WIDTH_CLASS} bg-white overflow-hidden rounded-xl shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200`}>
+      className={`ui-pop fixed z-50 ${TOOLTIP_WIDTH_CLASS} bg-white overflow-hidden rounded-xl shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200`}>
       {/* --- 头部区块 --- */}
-      <div className='flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2.5 bg-gray-50/50'>
-        <span className='max-w-[60%] truncate text-base font-bold text-gray-900'>
+      <div className='flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 px-3 py-2.5'>
+        <span className='max-w-[60%] truncate text-base font-bold tracking-tight text-slate-900'>
           {word}
         </span>
         <button
@@ -200,10 +211,10 @@ export default function WordTooltip({
         <section className='space-y-2'>
           <div className='flex items-center justify-between'>
             <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
-            <label className='flex items-center gap-1.5 text-[10px] text-gray-500 cursor-pointer hover:text-blue-600 transition-colors'>
+            <label className='flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500 transition-colors hover:text-slate-800'>
               <input
                 type='checkbox'
-                className='accent-blue-500'
+                className='accent-slate-900'
                 checked={saveWithPronunciation}
                 onChange={e => setSaveWithPronunciation(e.target.checked)}
               />
@@ -222,18 +233,18 @@ export default function WordTooltip({
         </section>
 
         {/* 2. 展开高级选项按钮 */}
-        <div className='border-t border-gray-100 pt-3'>
+        <div className='border-t border-slate-100 pt-3'>
           <button
             type='button'
             onClick={() => setShowAdvanced(v => !v)}
-            className='inline-flex h-7 items-center rounded-md border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800 w-full justify-center'>
+            className='inline-flex h-7 w-full items-center justify-center rounded-md border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800'>
             {showAdvanced ? '收起释义与词性' : '添加释义与词性 (可选)'}
           </button>
         </div>
 
         {/* 3. 高级选项 (词性 & 释义) */}
         {showAdvanced && (
-          <div className='space-y-4 rounded-lg border border-blue-50 bg-blue-50/30 p-2.5 animate-in slide-in-from-top-2 duration-200'>
+          <div className='animate-in slide-in-from-top-2 space-y-4 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 duration-200'>
             {/* 词性 */}
             <section className='space-y-2'>
               <p className={SECTION_TITLE_CLASS}>词性</p>
@@ -247,8 +258,8 @@ export default function WordTooltip({
                       onClick={() => handleTogglePosOption(option)}
                       className={`rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
                         active
-                          ? 'border-blue-300 bg-blue-100 text-blue-700'
-                          : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                          ? 'border-slate-900 bg-slate-900 text-white'
+                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
                       }`}>
                       {option}
                     </button>
@@ -267,10 +278,10 @@ export default function WordTooltip({
             <section className='space-y-2'>
               <div className='flex items-center justify-between'>
                 <p className={SECTION_TITLE_CLASS}>释义</p>
-                <label className='flex items-center gap-1.5 text-[10px] text-gray-500 cursor-pointer hover:text-blue-600'>
+                <label className='flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500 transition-colors hover:text-slate-800'>
                   <input
                     type='checkbox'
-                    className='accent-blue-500'
+                    className='accent-slate-900'
                     checked={saveWithMeaning}
                     onChange={e => setSaveWithMeaning(e.target.checked)}
                   />
@@ -293,7 +304,7 @@ export default function WordTooltip({
 
       {/* --- 小箭头 (Triangle) --- */}
       <div
-        className={`absolute left-1/2 h-2.5 w-2.5 rotate-45 -translate-x-1/2 border border-gray-100 bg-white ${
+        className={`absolute left-1/2 h-2.5 w-2.5 rotate-45 -translate-x-1/2 border border-slate-100 bg-white ${
           shouldOpenDown || !isTop ? '-top-1' : '-bottom-1'
         }`}
         style={{

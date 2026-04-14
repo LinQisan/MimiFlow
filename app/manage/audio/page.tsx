@@ -390,9 +390,19 @@ export default function ManageAudioPage() {
       <div className='mx-auto max-w-6xl space-y-4 md:space-y-6'>
         <section className='border border-gray-200 bg-white p-4 md:p-8'>
           <Link
-            href='/manage'
-            className='mb-2 inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 md:text-sm'>
-            返回管理中心
+            href='/'
+            className='mb-2 inline-flex items-center gap-1.5 text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900 md:text-sm'
+            aria-label='返回首页'
+            title='返回首页'>
+            <span>MimiFlow</span>
+            <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M15 19l-7-7 7-7'
+              />
+            </svg>
           </Link>
           <h1 className='text-xl font-black text-gray-900 md:text-3xl'>录音管理</h1>
           <p className='mt-2 text-xs text-gray-500 md:text-sm'>

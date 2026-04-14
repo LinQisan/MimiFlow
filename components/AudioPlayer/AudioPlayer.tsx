@@ -14,15 +14,15 @@ import VocabularyTooltip, {
   TooltipSaveState,
   SaveStatusIcon,
   SAVE_BG_COLORS,
-} from '@/components/VocabularyTooltip'
+} from '@/components/vocabulary/VocabularyTooltip'
 import ToggleSwitch from '@/components/ToggleSwitch'
-import WordMetaPanel from '@/components/WordMetaPanel'
+import WordMetaPanel from '@/components/vocabulary/WordMetaPanel'
 import {
   useShowMeaning,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
-import { annotateJapaneseText } from '@/utils/japaneseRuby'
-import { getPosOptions, inferContextualPos } from '@/utils/posTagger'
+import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
+import { getPosOptions, inferContextualPos } from '@/utils/language/posTagger'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useAudioController } from './useAudioController'
 
@@ -102,13 +102,15 @@ const formatDurationCompact = (seconds: number) => {
   const day = Math.floor(safe / 86400)
   const hour = Math.floor((safe % 86400) / 3600)
   const minute = Math.floor((safe % 3600) / 60)
+  const sec = safe % 60
 
   if (day > 0) {
     if (hour > 0) return `${day}天 ${hour}小时`
-    return `${day}天 ${Math.max(1, minute)}分钟`
+    return `${day}天 ${minute}分钟`
   }
-  if (hour > 0) return `${hour}小时 ${Math.max(1, minute)}分钟`
-  return `${Math.max(1, minute)}分钟`
+  if (hour > 0) return `${hour}小时 ${minute}分钟`
+  if (minute > 0) return `${minute}分钟`
+  return `${sec}秒`
 }
 
 // ================= 主控组件 =================
@@ -117,7 +119,7 @@ export default function AudioPlayer({
   lessonGroup,
   prevId,
   nextId,
-  lessonSwitcher,
+  lessonSwitcher: _lessonSwitcher,
   initialTotalPlaySeconds = 0,
   initialPlayedDays = 0,
   vocabularyMetaMap,
@@ -157,8 +159,6 @@ export default function AudioPlayer({
   const { showMeaning, setShowMeaning } = useShowMeaning()
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     useState(vocabularyMetaMap)
-  const [saveWithPronunciation, setSaveWithPronunciation] = useState(false)
-  const [saveWithMeaning, setSaveWithMeaning] = useState(false)
   const [tooltipPronunciation, setTooltipPronunciation] = useState('')
   const [tooltipPartOfSpeech, setTooltipPartOfSpeech] = useState('')
   const [tooltipMeaning, setTooltipMeaning] = useState('')
@@ -217,7 +217,6 @@ export default function AudioPlayer({
   const activeSentenceEntries = activeId
     ? sentenceMetaMap.get(activeId) || []
     : []
-  const [selectedLessonId, setSelectedLessonId] = useState(lesson.id)
   const isSentenceMeaningMatched = (sentenceId: number) => {
     if (!showMeaning) return true
     const entries = sentenceMetaMap.get(sentenceId) || []
@@ -246,8 +245,8 @@ export default function AudioPlayer({
       {},
     )
     const html = annotateJapaneseText(text, pronMap, {
-      rubyClassName: 'text-indigo-700 dark:text-indigo-300',
-      rtClassName: 'text-[10px] font-bold text-indigo-500 dark:text-indigo-300',
+      rubyClassName: 'text-slate-900 dark:text-slate-100',
+      rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
     })
     return <span dangerouslySetInnerHTML={{ __html: html }} />
   }
@@ -306,8 +305,6 @@ export default function AudioPlayer({
         setTooltipPronunciation((existingMeta?.pronunciations || []).join('\n'))
         setTooltipPartOfSpeech(inferredPos.join('\n'))
         setTooltipMeaning((existingMeta?.meanings || []).join('\n'))
-        setSaveWithPronunciation(true)
-        setSaveWithMeaning(true)
         setWordSaveState('idle')
       } else {
         setActiveTooltip(null)
@@ -333,9 +330,9 @@ export default function AudioPlayer({
         activeTooltip.contextSentence,
         'AUDIO_DIALOGUE',
         String(activeTooltip.dialogueId),
-        saveWithPronunciation ? firstPron : undefined,
-        saveWithPronunciation ? pronunciationList : [],
-        saveWithMeaning ? meaningList : [],
+        firstPron,
+        pronunciationList,
+        meaningList,
         partOfSpeechList[0],
         partOfSpeechList,
       )
@@ -343,12 +340,12 @@ export default function AudioPlayer({
         setLocalVocabularyMetaMap(prev => ({
           ...prev,
           [word]: {
-            pronunciations: saveWithPronunciation ? pronunciationList : [],
+            pronunciations: pronunciationList,
             partsOfSpeech:
               partOfSpeechList.length > 0
                 ? partOfSpeechList
                 : existingMeta.partsOfSpeech,
-            meanings: saveWithMeaning ? meaningList : [],
+            meanings: meaningList,
           },
         }))
         setWordSaveState('success')
@@ -357,12 +354,12 @@ export default function AudioPlayer({
         setLocalVocabularyMetaMap(prev => ({
           ...prev,
           [word]: {
-            pronunciations: saveWithPronunciation ? pronunciationList : [],
+            pronunciations: pronunciationList,
             partsOfSpeech:
               partOfSpeechList.length > 0
                 ? partOfSpeechList
                 : existingMeta.partsOfSpeech,
-            meanings: saveWithMeaning ? meaningList : [],
+            meanings: meaningList,
           },
         }))
         setWordSaveState('already_exists')
@@ -398,10 +395,6 @@ export default function AudioPlayer({
   }
 
   const handleBackToPrevious = () => {
-    if (window.history.length > 1) {
-      router.back()
-      return
-    }
     router.push('/shadowing')
   }
 
@@ -411,10 +404,6 @@ export default function AudioPlayer({
       setIsBlindMode(forceBlindMode)
     }
   }, [forceBlindMode])
-
-  useEffect(() => {
-    setSelectedLessonId(lesson.id)
-  }, [lesson.id])
 
   useEffect(() => {
     // 仅在切换材料时重置会话计时，避免上报后 props 回流导致每 10s 清零。
@@ -505,7 +494,7 @@ export default function AudioPlayer({
 
   return (
     <div
-      className={`relative bg-[radial-gradient(circle_at_top,#eef2ff_0%,#f8fafc_42%,#f8fafc_100%)] dark:bg-[radial-gradient(circle_at_top,#0b1220_0%,#020617_45%,#020617_100%)] ${
+      className={`relative bg-slate-50 dark:bg-slate-950 ${
         isEmbedded ? 'min-h-full h-full overflow-y-auto' : 'min-h-screen'
       }`}
       onClick={() => setActiveTooltip(null)}>
@@ -521,9 +510,7 @@ export default function AudioPlayer({
           onSaveWord={handleSaveWord}
           enablePronunciation
           pronunciationValue={tooltipPronunciation}
-          saveWithPronunciation={saveWithPronunciation}
           onPronunciationChange={setTooltipPronunciation}
-          onSaveWithPronunciationChange={setSaveWithPronunciation}
           partOfSpeechValue={tooltipPartOfSpeech}
           onPartOfSpeechChange={setTooltipPartOfSpeech}
           partOfSpeechOptions={
@@ -532,25 +519,42 @@ export default function AudioPlayer({
               : []
           }
           meaningValue={tooltipMeaning}
-          saveWithMeaning={saveWithMeaning}
           onMeaningChange={setTooltipMeaning}
-          onSaveWithMeaningChange={setSaveWithMeaning}
         />
       )}
 
-      <header className='sticky top-0 z-30 border-b border-gray-200/70 bg-gray-50/85 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80'>
-        <div className='mx-auto w-full max-w-5xl space-y-3 px-4 py-3 md:px-6 md:py-4'>
-          <div className='grid gap-3 md:grid-cols-3'>
-            <section className='flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900'>
-              <button
-                type='button'
-                onClick={handleBackToPrevious}
-                className='inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
-                <svg
-                  className='h-4 w-4'
-                  fill='none'
-                  stroke='currentColor'
-                  viewBox='0 0 24 24'>
+      <header className='sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950/80'>
+        <div className='mx-auto w-full max-w-5xl px-3 py-2 md:px-6 md:py-3'>
+          <div className='flex items-center gap-2'>
+            <button
+              type='button'
+              onClick={handleBackToPrevious}
+              className='inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
+              <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M15 19l-7-7 7-7'
+                />
+              </svg>
+              返回
+            </button>
+
+            <div className='min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900'>
+              <h1 className='truncate text-sm font-bold text-slate-900 dark:text-slate-100'>
+                {lesson.title}
+              </h1>
+              <p className='hidden truncate text-[11px] font-semibold text-slate-500 md:block'>
+                {lessonGroup.name}
+              </p>
+            </div>
+
+            {prevId ? (
+              <Link
+                href={`/shadowing/${prevId}`}
+                className='inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'>
+                <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                   <path
                     strokeLinecap='round'
                     strokeLinejoin='round'
@@ -558,177 +562,84 @@ export default function AudioPlayer({
                     d='M15 19l-7-7 7-7'
                   />
                 </svg>
-                返回上一级
-              </button>
-              <span className='truncate pl-2 text-xs font-semibold uppercase tracking-wide text-indigo-500'>
-                {lessonGroup.name}
+              </Link>
+            ) : null}
+            {nextId ? (
+              <Link
+                href={`/shadowing/${nextId}`}
+                className='inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'>
+                <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                  <path
+                    strokeLinecap='round'
+                    strokeLinejoin='round'
+                    strokeWidth={2}
+                    d='M9 5l7 7-7 7'
+                  />
+                </svg>
+              </Link>
+            ) : null}
+          </div>
+
+          <div className='mt-2 overflow-x-auto'>
+            <div className='flex min-w-max items-center gap-2 pb-0.5'>
+              <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
+                本次 {formatDuration(sessionPlaySeconds)}
               </span>
-            </section>
+              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
+                累计 {formatDurationCompact(totalPlaySeconds)}
+              </span>
+              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
+                {Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)} 天
+              </span>
 
-            <section className='rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center dark:border-slate-700 dark:bg-slate-900'>
-              <h1 className='truncate text-xl font-semibold leading-tight text-gray-900 dark:text-slate-100 md:text-2xl'>
-                {lesson.title}
-              </h1>
-              <div className='mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold'>
-                <span className='rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-cyan-800 dark:border-cyan-400/30 dark:bg-cyan-500/15 dark:text-cyan-200'>
-                  本次 {formatDuration(sessionPlaySeconds)}
-                </span>
-                <span className='rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-800 dark:border-emerald-400/30 dark:bg-emerald-500/15 dark:text-emerald-200'>
-                  累计 {formatDurationCompact(totalPlaySeconds)}
-                </span>
-                <span className='rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
-                  {Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)} 天
-                </span>
-              </div>
-            </section>
-
-            <section className='flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900'>
               <button
                 onClick={toggleTrackLoop}
                 aria-pressed={isTrackLoop}
                 title='整段循环播放'
-                className={`h-10 rounded-xl border px-3 text-sm font-semibold transition-colors ${
+                className={`h-7 rounded-lg border px-2 text-xs font-semibold transition-colors ${
                   isTrackLoop
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/40 dark:bg-indigo-500/20 dark:text-indigo-200'
-                    : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+                    ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
                 }`}>
-                全曲循环
+                循环
               </button>
               <button
                 onClick={togglePlaybackRate}
                 title='切换播放速度'
-                className='h-10 min-w-[4rem] rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
+                className='h-7 min-w-[3.3rem] rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
                 {playbackRate}x
               </button>
-            </section>
-          </div>
 
-          <div className='grid gap-3 md:grid-cols-[1fr_1.3fr]'>
-            <section className='flex flex-wrap items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900 md:justify-start'>
-              <ToggleSwitch
-                label='注音'
-                checked={showPronunciation}
-                onChange={setShowPronunciation}
-              />
-              <ToggleSwitch
-                label='释义'
-                checked={showMeaning}
-                onChange={setShowMeaning}
-              />
-              <ToggleSwitch
-                label='盲听'
-                checked={isBlindMode}
-                onChange={setIsBlindMode}
-              />
-            </section>
-
-            <section className='rounded-2xl border border-slate-200 bg-white px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900'>
-              <div className='grid items-end gap-2 sm:grid-cols-[40px_1fr_40px]'>
-                <div className='flex justify-center'>
-                  {prevId ? (
-                    <Link
-                      href={`/shadowing/${prevId}`}
-                      className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200'>
-                      <svg
-                        className='h-5 w-5'
-                        fill='none'
-                        stroke='currentColor'
-                        viewBox='0 0 24 24'>
-                        <path
-                          strokeLinecap='round'
-                          strokeLinejoin='round'
-                          strokeWidth={2}
-                          d='M15 19l-7-7 7-7'
-                        />
-                      </svg>
-                    </Link>
-                  ) : (
-                    <span className='block h-10 w-10' />
-                  )}
-                </div>
-
-                {lessonSwitcher && lessonSwitcher?.groups?.length > 0 ? (
-                  <div className='min-w-0'>
-                    <label className='mb-1.5 block text-center text-[11px] font-semibold tracking-wide text-slate-500 dark:text-slate-400'>
-                      章节跳转
-                    </label>
-                    <div className='relative'>
-                      <select
-                        value={selectedLessonId}
-                        onChange={event => {
-                          const nextId = event.target.value
-                          setSelectedLessonId(nextId)
-                          if (nextId && nextId !== lesson.id) {
-                            router.push(`/shadowing/${nextId}`)
-                          }
-                        }}
-                        className='h-10 w-full appearance-none rounded-full border border-indigo-100 bg-white px-4 pr-10 text-sm font-semibold text-slate-700 shadow-sm outline-none transition-colors focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 dark:border-indigo-400/30 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-indigo-400 dark:focus:ring-indigo-500/20'>
-                        {lessonSwitcher.groups.map(group => (
-                          <optgroup key={group.id} label={group.label}>
-                            {group.items.map(item => (
-                              <option key={item.id} value={item.id}>
-                                {item.title}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ))}
-                      </select>
-                      <div className='pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-400'>
-                        <svg
-                          className='h-4 w-4'
-                          fill='none'
-                          stroke='currentColor'
-                          viewBox='0 0 24 24'>
-                          <path
-                            strokeLinecap='round'
-                            strokeLinejoin='round'
-                            strokeWidth={2}
-                            d='M19 9l-7 7-7-7'
-                          />
-                        </svg>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div />
-                )}
-
-                <div className='flex justify-center'>
-                  {nextId ? (
-                    <Link
-                      href={`/shadowing/${nextId}`}
-                      className='inline-flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 transition-colors hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200'>
-                      <svg
-                        className='h-5 w-5'
-                        fill='none'
-                        stroke='currentColor'
-                        viewBox='0 0 24 24'>
-                        <path
-                          strokeLinecap='round'
-                          strokeLinejoin='round'
-                          strokeWidth={2}
-                          d='M9 5l7 7-7 7'
-                        />
-                      </svg>
-                    </Link>
-                  ) : (
-                    <span className='block h-10 w-10' />
-                  )}
-                </div>
+              <div className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-900'>
+                <ToggleSwitch
+                  label='注音'
+                  checked={showPronunciation}
+                  onChange={setShowPronunciation}
+                />
+                <ToggleSwitch
+                  label='释义'
+                  checked={showMeaning}
+                  onChange={setShowMeaning}
+                />
+                <ToggleSwitch
+                  label='盲听'
+                  checked={isBlindMode}
+                  onChange={setIsBlindMode}
+                />
               </div>
-            </section>
+            </div>
           </div>
         </div>
       </header>
 
       <div className='mx-auto w-full max-w-5xl px-4 py-4 md:px-6 md:py-5'>
         {activeSentenceEntries.length > 0 && (
-          <div className='mb-4 border border-gray-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4 '>
+          <div className='mb-4 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] dark:border dark:border-slate-700 dark:bg-slate-900 md:p-4 '>
             <div className='mb-2 flex items-center justify-between'>
-              <h2 className='text-sm font-bold text-gray-800 dark:text-slate-100'>
+              <h2 className='text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100'>
                 词条区
               </h2>
-              <span className='text-[11px] text-gray-400 dark:text-slate-400'>
+              <span className='text-[11px] text-slate-400 dark:text-slate-400'>
                 {activeId ? `当前句：${activeSentenceNo}` : '先点击句子'}
               </span>
             </div>
@@ -822,7 +733,7 @@ function SentenceRow({
   const currentState = savingDialogueId === item.id ? dialogueSaveState : 'idle'
   const currentBgClass =
     currentState === 'idle'
-      ? 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600'
+      ? 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900'
       : SAVE_BG_COLORS[currentState]
   const blurClass = blindState === 'blur' ? 'blur-sm opacity-50' : ''
 
@@ -835,13 +746,13 @@ function SentenceRow({
         onClick={onClick}
         onMouseUp={onMouseUp}
         onTouchEnd={onMouseUp}
-        className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-[background-color,border-color,color,box-shadow,filter,opacity] duration-300 select-text wrap-break-word md:p-5 md:text-xl
+          className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-[background-color,border-color,color,box-shadow,filter,opacity] duration-300 select-text wrap-break-word md:p-5 md:text-xl
           ${
             isActive
-              ? 'scale-[1.01] border-indigo-200 bg-indigo-50 text-indigo-700 font-bold shadow-sm dark:border-indigo-400/40 dark:bg-indigo-500/12 dark:text-indigo-200'
-              : 'border-gray-200 bg-white text-gray-800 hover:border-indigo-100 hover:bg-indigo-50/30 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-indigo-500/40 dark:hover:bg-slate-800'
+              ? 'scale-[1.01] border-slate-900 bg-slate-100 text-slate-900 font-bold shadow-sm dark:border-slate-100 dark:bg-slate-800 dark:text-slate-100'
+              : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800'
           }
-          ${isBlindMode && blindState === 'clear' ? 'border-indigo-200/80 bg-white text-gray-900 dark:border-indigo-400/50 dark:bg-slate-900 dark:text-slate-100' : ''}
+          ${isBlindMode && blindState === 'clear' ? 'border-slate-400/80 bg-white text-slate-900 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-100' : ''}
         `}>
         <div
           className={`min-w-0 transition-[filter,opacity] duration-300 ${blurClass}`}>
@@ -851,13 +762,13 @@ function SentenceRow({
 
       {/* 右侧操作区 */}
       <div className='flex w-9 shrink-0 flex-col gap-2 md:w-10'>
-        <button
-          onClick={onAddToReview}
-          title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
-          disabled={savingDialogueId === item.id || !canAddToReview}
-          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
-            ${isActive && currentState === 'idle' ? 'scale-110 bg-indigo-600 text-white hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400' : currentBgClass}
-            ${isActive || currentState !== 'idle' ? 'ring-2 ring-indigo-100 dark:ring-indigo-400/30' : ''}
+          <button
+            onClick={onAddToReview}
+            title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
+            disabled={savingDialogueId === item.id || !canAddToReview}
+            className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
+            ${isActive && currentState === 'idle' ? 'scale-110 bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200' : currentBgClass}
+            ${isActive || currentState !== 'idle' ? 'ring-2 ring-slate-200 dark:ring-slate-500/30' : ''}
           `}>
           <SaveStatusIcon
             state={currentState}
@@ -865,11 +776,11 @@ function SentenceRow({
           />
         </button>
 
-        <button
-          onClick={onToggleLoop}
-          title='单句复读'
-          className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
-            ${isLooping ? 'scale-110 bg-indigo-600 text-white ring-2 ring-indigo-200 dark:bg-indigo-500 dark:ring-indigo-400/40' : isActive ? 'scale-105 bg-indigo-500 text-white hover:bg-indigo-600 dark:bg-indigo-500 dark:hover:bg-indigo-400' : 'border border-gray-200 bg-white text-gray-500 hover:bg-indigo-50 hover:text-indigo-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-indigo-200'}
+          <button
+            onClick={onToggleLoop}
+            title='单句复读'
+            className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
+            ${isLooping ? 'scale-110 bg-slate-900 text-white ring-2 ring-slate-200 dark:bg-slate-100 dark:text-slate-900 dark:ring-slate-400/40' : isActive ? 'scale-105 bg-slate-800 text-white hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-100' : 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'}
           `}>
           <svg
             className='h-4 w-4 md:h-5 md:w-5'

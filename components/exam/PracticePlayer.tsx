@@ -12,7 +12,7 @@ import { QuestionRenderer } from './QuestionRenderer'
 import WordTooltip from './WordTooltip'
 import QuestionNoteEditor from './QuestionNoteEditor'
 import type { ExamQuestion } from './question-renderer/types'
-import type { VocabularyMeta } from '@/utils/vocabularyMeta'
+import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 interface PracticePlayerProps {
   questions: ExamQuestion[]
@@ -244,29 +244,28 @@ export function PracticePlayer({
 
   return (
     <div
-      className={`relative flex min-h-screen flex-col bg-gray-50 pb-24 font-sans ${
+      className={`relative flex min-h-screen flex-col bg-slate-50 pb-32 font-sans md:pb-24 ${
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
-      <header className='sticky top-0 z-40 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-4 shadow-sm md:px-8'>
-        <div className='flex items-center gap-4'>
-          <div className='max-w-[60vw] truncate text-sm font-bold text-gray-800 md:max-w-none md:text-lg'>
+      <header className='sticky top-0 z-40 border-b border-slate-200/80 bg-white px-3 py-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:px-8 md:py-4'>
+        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+          <div className='max-w-full truncate text-sm font-bold tracking-tight text-slate-900 md:max-w-none md:text-lg'>
             {paperTitle}
           </div>
-        </div>
 
-        <div className='flex flex-col items-end gap-2'>
           {!isSingleMode && (
-            <div className='flex flex-wrap items-center justify-end gap-2 text-sm font-medium tracking-widest text-gray-400'>
+            <div className='flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 md:justify-end md:text-sm md:tracking-widest'>
               <span>- 第 {session.currentIndex + 1} 题 -</span>
-              <span className='rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold tracking-normal text-emerald-700'>
+              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tracking-normal text-slate-700'>
                 正确率 {currentStats.total > 0 ? `${currentAccuracy}%` : '--'}
               </span>
-              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tracking-normal text-slate-700'>
+              <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tracking-normal text-slate-700'>
                 做题 {currentStats.total} 次
               </span>
             </div>
           )}
-          <div className='flex flex-wrap items-center justify-end gap-3'>
+
+          <div className='flex flex-wrap items-center gap-2 md:justify-end md:gap-3'>
             <ToggleSwitch
               checked={showPronunciation}
               onChange={setShowPronunciation}
@@ -277,16 +276,16 @@ export function PracticePlayer({
               onChange={setShowMeaning}
               label='注释'
             />
-            <div className='rounded-full bg-gray-100 px-3 py-1 text-sm font-medium text-gray-500'>
+            <div className='rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 md:px-3 md:text-sm'>
               进度:{' '}
-              <span className='text-blue-600'>{session.answeredCount}</span> /{' '}
+              <span className='text-slate-900'>{session.answeredCount}</span> /{' '}
               {questions.length}
             </div>
             {mode !== 'single' && (
               <button
                 onClick={() => void handleSubmit()}
                 disabled={session.isSubmitted || persistState === 'saving'}
-                className='rounded-lg bg-blue-600 px-5 py-2 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50'>
+                className='ui-btn ui-btn-primary h-10 px-4 text-sm disabled:cursor-not-allowed disabled:opacity-50 md:px-5'>
                 {session.isSubmitted
                   ? '已交卷'
                   : persistState === 'saving'
@@ -302,7 +301,7 @@ export function PracticePlayer({
         onMouseDown={handleQuestionAreaMouseDown}
         className='flex w-full flex-1 flex-col justify-center p-4 md:p-8'>
         {session.isSubmitted && (
-          <div className='mb-6 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-800'>
+          <div className='mb-6 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.3),0_0_0_1px_rgba(15,23,42,0.06),0_4px_10px_rgba(15,23,42,0.03)]'>
             <div className='flex flex-wrap items-center gap-3'>
               <span className='font-semibold'>
                 已交卷：答对 {session.correctCount} / {session.gradableCount}
@@ -313,23 +312,23 @@ export function PracticePlayer({
                   <button
                     type='button'
                     disabled={prevWrongIndex === null}
-                    onClick={() => {
+                  onClick={() => {
                       if (prevWrongIndex !== null) {
                         session.setCurrentIndex(prevWrongIndex)
                       }
                     }}
-                    className='rounded-md border border-amber-200 px-2.5 py-1 text-xs hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40'>
+                    className='ui-btn ui-btn-sm disabled:cursor-not-allowed disabled:opacity-40'>
                     上一道错题
                   </button>
                   <button
                     type='button'
                     disabled={nextWrongIndex === null}
-                    onClick={() => {
+                  onClick={() => {
                       if (nextWrongIndex !== null) {
                         session.setCurrentIndex(nextWrongIndex)
                       }
                     }}
-                    className='rounded-md border border-amber-200 px-2.5 py-1 text-xs hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40'>
+                    className='ui-btn ui-btn-sm disabled:cursor-not-allowed disabled:opacity-40'>
                     下一道错题
                   </button>
                 </>
@@ -344,8 +343,8 @@ export function PracticePlayer({
                     onClick={() => session.setCurrentIndex(index)}
                     className={`rounded-md border px-2.5 py-1 text-xs ${
                       index === session.currentIndex
-                        ? 'border-red-500 bg-red-100 text-red-700'
-                        : 'border-red-200 bg-white text-red-600 hover:bg-red-50'
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                     }`}>
                     错题 #{index + 1}
                   </button>
@@ -404,14 +403,14 @@ export function PracticePlayer({
       </main>
 
       {!isSingleMode && (
-        <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-4 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur'>
-          <div className='mx-auto flex max-w-5xl items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 md:px-4'>
-            <div className='flex items-center gap-2'>
+        <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-2 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur md:p-4'>
+          <div className='mx-auto flex max-w-5xl flex-col gap-2 rounded-[18px] bg-white px-2 py-2 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:flex-row md:items-center md:justify-between md:px-4'>
+            <div className='flex items-center justify-between gap-2 md:justify-start'>
               <button
                 onClick={() => session.setShowSheet(!session.showSheet)}
-                className='flex items-center gap-2 rounded-lg px-2.5 py-2 font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-blue-600'>
+                className='flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 md:px-2.5 md:py-2'>
                 <svg
-                  className='h-5 w-5'
+                  className='h-4 w-4 md:h-5 md:w-5'
                   fill='none'
                   viewBox='0 0 24 24'
                   stroke='currentColor'>
@@ -424,18 +423,18 @@ export function PracticePlayer({
                 </svg>
                 答题卡
               </button>
-              <span className='text-xs font-medium text-slate-400'>
+              <span className='text-[11px] font-medium text-slate-400 md:text-xs'>
                 第 {session.currentIndex + 1} / {questions.length} 题
               </span>
             </div>
 
-            <div className='flex gap-2 md:gap-3'>
+            <div className='grid w-full grid-cols-3 gap-2 md:flex md:w-auto md:gap-3'>
               <button
                 type='button'
                 onClick={() => void handleCopyCurrentQuestion()}
-                className={`rounded-xl border px-4 py-2.5 font-medium transition-colors md:px-5 ${
+                className={`rounded-xl border px-2 py-2 text-sm font-medium transition-colors md:px-5 md:py-2.5 ${
                   copyState === 'copied'
-                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                    ? 'border-slate-300 bg-slate-100 text-slate-900'
                     : copyState === 'error'
                       ? 'border-rose-300 bg-rose-50 text-rose-700'
                       : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
@@ -444,7 +443,7 @@ export function PracticePlayer({
                   ? '已复制'
                   : copyState === 'error'
                     ? '复制失败'
-                    : '复制题目'}
+                    : '复制'}
               </button>
               <button
                 disabled={session.currentIndex === 0}
@@ -452,7 +451,7 @@ export function PracticePlayer({
                   session.setCurrentIndex(session.currentIndex - 1)
                   session.setShowSheet(false)
                 }}
-                className='rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-6'>
+                className='rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:py-2.5'>
                 上一题
               </button>
               <button
@@ -461,7 +460,7 @@ export function PracticePlayer({
                   session.setCurrentIndex(session.currentIndex + 1)
                   session.setShowSheet(false)
                 }}
-                className='rounded-xl bg-blue-600 px-4 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40 md:px-6'>
+                className='ui-btn ui-btn-primary rounded-xl px-2 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:py-2.5'>
                 下一题
               </button>
             </div>
@@ -470,18 +469,20 @@ export function PracticePlayer({
       )}
 
       {session.showSheet && !isSingleMode && (
-        <div className='animate-fade-in-up fixed bottom-19 left-0 z-30 w-full transform border-t border-gray-100 bg-white p-6 shadow-2xl transition-transform'>
+        <div className='animate-fade-in-up fixed bottom-[76px] left-0 z-30 w-full transform border-t border-slate-100 bg-white p-3 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] transition-transform md:bottom-19 md:p-6'>
           <div className='mx-auto max-w-4xl'>
-            <div className='mb-4 flex items-center justify-between'>
-              <h4 className='font-bold text-gray-800'>答题进度</h4>
+            <div className='mb-3 flex items-center justify-between md:mb-4'>
+              <h4 className='text-sm font-bold tracking-tight text-slate-900 md:text-base'>
+                答题进度
+              </h4>
               <button
                 onClick={() => session.setShowSheet(false)}
-                className='text-gray-400 hover:text-gray-600'>
+                className='text-sm text-slate-400 hover:text-slate-600'>
                 关闭
               </button>
             </div>
 
-            <div className='custom-scrollbar grid max-h-[40vh] grid-cols-5 gap-3 overflow-y-auto py-2 sm:grid-cols-8 md:grid-cols-10'>
+            <div className='custom-scrollbar grid max-h-[46vh] grid-cols-6 gap-2 overflow-y-auto py-1 sm:grid-cols-8 md:max-h-[40vh] md:grid-cols-10 md:gap-3 md:py-2'>
               {questions.map((question, index) => {
                 const isCurrent = session.currentIndex === index
                 const isAnswered = !!session.answers[question.id]
@@ -498,14 +499,14 @@ export function PracticePlayer({
                       session.setCurrentIndex(index)
                       session.setShowSheet(false)
                     }}
-                    className={`h-12 rounded-lg border-2 font-medium transition-all duration-200 ${
+                    className={`h-10 rounded-lg border-2 text-sm font-medium transition-all duration-200 md:h-12 ${
                       isCurrent
-                        ? 'border-blue-500 text-blue-600 ring-2 ring-blue-100 ring-offset-1'
+                        ? 'border-slate-900 text-slate-900 ring-2 ring-slate-200 ring-offset-1'
                         : isWrong
                           ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
                           : isAnswered
-                            ? 'border-transparent bg-blue-100 text-blue-700 hover:bg-blue-200'
-                            : 'border-gray-200 bg-white text-gray-500 hover:border-blue-300'
+                            ? 'border-transparent bg-slate-200 text-slate-900 hover:bg-slate-300'
+                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300'
                     }`}>
                     {index + 1}
                   </button>

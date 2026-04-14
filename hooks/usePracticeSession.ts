@@ -51,7 +51,10 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
 
   const selectOption = (questionId: string, optionId: string) => {
     if (isSubmitted) return
-    setAnswers(prev => ({ ...prev, [questionId]: optionId }))
+    setAnswers(prev => {
+      if (prev[questionId] === optionId) return prev
+      return { ...prev, [questionId]: optionId }
+    })
   }
 
   const clearOption = (questionId: string) => {

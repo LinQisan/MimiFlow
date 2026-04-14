@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 
-import type { ExamHubLevelSummary } from '@/lib/repositories/exam.repo'
+import type { ExamHubLevelSummary } from '@/lib/repositories/exam'
 
 type Props = {
   levels: ExamHubLevelSummary[]
@@ -36,25 +36,25 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
 
   return (
     <div className='min-h-screen bg-slate-50 font-sans pb-12'>
-      <div className='sticky top-0 z-10 flex items-center border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur'>
+      <div className='sticky top-0 z-10 flex items-center border-b border-slate-200/80 bg-white/95 px-6 py-4 backdrop-blur'>
         <Link
           href='/exam'
-          className='p-2 -ml-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600'>
+          className='ui-btn ui-btn-sm -ml-2 w-9 px-0 text-slate-500'>
           ←
         </Link>
-        <h1 className='ml-2 text-xl font-bold text-slate-800'>全部试卷</h1>
-        <Link
-          href='/exam/papers/custom'
-          className='ml-4 rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100'>
-          自定义抽题
-        </Link>
-        <Link
-          href='/manage/exam/papers'
-          className='ml-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-600 hover:bg-slate-50'>
-          去管理
-        </Link>
+        <h1 className='ml-3 text-xl font-bold tracking-tight text-slate-900'>
+          全部试卷
+        </h1>
+        <div className='ml-4 flex items-center gap-2'>
+          <Link href='/exam/papers/custom' className='ui-btn ui-btn-sm'>
+            自定义抽题
+          </Link>
+          <Link href='/manage/exam/papers' className='ui-btn ui-btn-sm'>
+            去管理
+          </Link>
+        </div>
         <div className='ml-auto flex items-center gap-3'>
-          <span className='rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-600'>
+          <span className='ui-tag'>
             共 {totalPaperCount} 套
           </span>
         </div>
@@ -64,10 +64,10 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
         {levels.map(level => (
           <section key={level.id} className='scroll-mt-20'>
             <div className='mb-4 flex items-center gap-2'>
-              <div className='h-6 w-1.5 rounded-full bg-blue-500'></div>
-              <h2 className='flex items-center gap-2 text-xl font-bold text-slate-900'>
+              <div className='h-6 w-1.5 rounded-full bg-slate-900'></div>
+              <h2 className='flex items-center gap-2 text-xl font-bold tracking-tight text-slate-900'>
                 {level.title}
-                <span className='rounded-md bg-slate-100 px-2 py-0.5 text-sm font-normal text-slate-500'>
+                <span className='ui-tag'>
                   {level.papers.length} 套
                 </span>
               </h2>
@@ -77,10 +77,10 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
               {groupByLanguageAndLevel(level.papers).map(([language, levelMap]) => (
                 <section key={`${level.id}-${language}`} className='space-y-4'>
                   <div className='flex items-center gap-2'>
-                    <h3 className='text-sm font-semibold text-slate-600'>
+                    <h3 className='text-sm font-semibold text-slate-700'>
                       语言：{language}
                     </h3>
-                    <span className='rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500'>
+                    <span className='ui-tag'>
                       {Array.from(levelMap.values()).reduce(
                         (sum, papers) => sum + papers.length,
                         0,
@@ -93,16 +93,16 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                     .sort((a, b) => a[0].localeCompare(b[0], 'zh-CN'))
                     .map(([paperLevel, papers]) => (
                       <div key={`${level.id}-${language}-${paperLevel}`} className='space-y-3'>
-                        <div className='text-xs font-semibold text-slate-500'>
+                        <div className='text-xs font-semibold tracking-wide text-slate-500'>
                           等级：{paperLevel}
                         </div>
                         <div className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
                           {papers.map(paper => (
                             <article
                               key={paper.id}
-                              className='border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-blue-200'>
+                              className='rounded-[18px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
                               <div className='mb-3 flex items-start justify-between gap-3'>
-                                <h3 className='line-clamp-2 text-lg font-bold leading-snug text-slate-900'>
+                                <h3 className='line-clamp-2 text-lg font-bold leading-snug tracking-tight text-slate-900'>
                                   {paper.name}
                                 </h3>
                                 <span className='text-xs font-semibold text-slate-500'>
@@ -110,10 +110,10 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                                 </span>
                               </div>
                               <div className='mb-3 flex flex-wrap gap-2 text-[11px] font-semibold'>
-                                <span className='rounded border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700'>
+                                <span className='ui-tag'>
                                   做题 {paper.attemptCount} 次
                                 </span>
-                                <span className='rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700'>
+                                <span className='ui-tag'>
                                   总体正确率{' '}
                                   {paper.attemptAccuracyPct !== null
                                     ? `${paper.attemptAccuracyPct}%`
@@ -121,10 +121,10 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                                 </span>
                               </div>
                               <div className='mb-3 flex flex-wrap gap-2 text-[11px] font-semibold'>
-                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
+                                <span className='ui-tag'>
                                   语言: {paper.language || '未设置'}
                                 </span>
-                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600'>
+                                <span className='ui-tag'>
                                   等级: {paper.level || '未设置'}
                                 </span>
                               </div>
@@ -142,12 +142,12 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                                 <div className='flex items-center gap-2'>
                                   <Link
                                     href={`/exam/papers/${encodeURIComponent(paper.id)}`}
-                                    className='inline-flex h-9 items-center border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700'>
+                                    className='ui-btn ui-btn-sm'>
                                     查看详情
                                   </Link>
                                   <Link
                                     href={`/exam/papers/${encodeURIComponent(paper.id)}/do`}
-                                    className='inline-flex h-9 items-center bg-blue-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700'>
+                                    className='ui-btn ui-btn-sm ui-btn-primary'>
                                     开始答题
                                   </Link>
                                 </div>

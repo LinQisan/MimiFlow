@@ -1,13 +1,15 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { parseJsonStringList } from '@/utils/jsonList'
+import { revalidatePath } from 'next/cache'
+import { parseJsonStringList } from '@/utils/text/jsonList'
 import {
   normalizeQuestionContext,
   normalizeQuestionOptions,
   toLegacyMaterialId,
-} from '@/lib/repositories/materials.repo'
+} from '@/lib/repositories/materials'
 import { MaterialType } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 export type GlobalSearchResult = {
   id: string
@@ -21,6 +23,42 @@ export type GlobalSearchResult = {
 }
 
 export type GlobalSearchType = GlobalSearchResult['type']
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+
+const asStringOrNull = (value: unknown) => {
+  if (value === null || value === undefined) return null
+  return typeof value === 'string' ? value : String(value)
+}
+
+const asNumberOrDefault = (value: unknown, fallback = 0) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
+  if (typeof value === 'string') {
+    const num = Number(value)
+    if (Number.isFinite(num)) return Math.floor(num)
+  }
+  return fallback
+}
+
+const toJsonValue = (
+  value: unknown,
+  fallback: Prisma.InputJsonValue,
+): Prisma.InputJsonValue =>
+  value === undefined ? fallback : (value as Prisma.InputJsonValue)
+
+const toNullableJsonValue = (
+  value: unknown,
+):
+  | Prisma.InputJsonValue
+  | Prisma.NullableJsonNullValueInput
+  | undefined => {
+  if (value === undefined) return undefined
+  if (value === null) return Prisma.JsonNull
+  return value as Prisma.InputJsonValue
+}
 
 const DEFAULT_TYPES: GlobalSearchType[] = [
   'vocabulary',
@@ -545,4 +583,147 @@ export async function getGlobalSearchResultDetail(
   }
 
   return null
+}
+
+export async function updateGlobalSearchResultDetail(input: {
+  resultId: string
+  type: GlobalSearchType
+  rawJson: string
+}) {
+  const rid = (input.resultId || '').trim()
+  const type = input.type
+  const rawJson = (input.rawJson || '').trim()
+
+  if (!rid || !type) {
+    return { success: false, message: '参数缺失，无法保存。' }
+  }
+  if (!rawJson) {
+    return { success: false, message: 'JSON 不能为空。' }
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(rawJson)
+  } catch {
+    return { success: false, message: 'JSON 格式错误，请检查后重试。' }
+  }
+
+  try {
+    if (type === 'vocabulary' && rid.startsWith('vocab-')) {
+      const id = rid.slice('vocab-'.length)
+      const payload = asRecord(parsed)
+      if (!payload) return { success: false, message: '单词数据必须是对象。' }
+      await prisma.vocabulary.update({
+        where: { id },
+        data: {
+          word: asStringOrNull(payload.word) || '',
+          sourceType: (asStringOrNull(payload.sourceType) as
+            | 'AUDIO_DIALOGUE'
+            | 'ARTICLE_TEXT'
+            | 'QUIZ_QUESTION') || 'QUIZ_QUESTION',
+          sourceId: asStringOrNull(payload.sourceId) || '',
+          groupName: asStringOrNull(payload.groupName),
+          wordAudio: asStringOrNull(payload.wordAudio),
+          pronunciations: asStringOrNull(payload.pronunciations),
+          partsOfSpeech: asStringOrNull(payload.partsOfSpeech),
+          meanings: asStringOrNull(payload.meanings),
+          folderId: asStringOrNull(payload.folderId),
+        },
+      })
+      revalidatePath('/vocabulary')
+      revalidatePath('/search')
+      revalidatePath('/search/result')
+      return { success: true, message: '单词数据已保存。' }
+    }
+
+    if (type === 'sentence' && rid.startsWith('sentence-')) {
+      const id = rid.slice('sentence-'.length)
+      const payload = asRecord(parsed)
+      if (!payload) return { success: false, message: '句子数据必须是对象。' }
+      const text = asStringOrNull(payload.text) || ''
+      await prisma.vocabularySentence.update({
+        where: { id },
+        data: {
+          text,
+          normalizedText: (asStringOrNull(payload.normalizedText) || text).trim(),
+          translation: asStringOrNull(payload.translation),
+          audioFile: asStringOrNull(payload.audioFile),
+          source: asStringOrNull(payload.source) || '',
+          sourceUrl: asStringOrNull(payload.sourceUrl) || '',
+          sourceType: asStringOrNull(payload.sourceType) as
+            | 'AUDIO_DIALOGUE'
+            | 'ARTICLE_TEXT'
+            | 'QUIZ_QUESTION'
+            | null,
+          sourceId: asStringOrNull(payload.sourceId),
+        },
+      })
+      revalidatePath('/search')
+      revalidatePath('/search/result')
+      return { success: true, message: '句子数据已保存。' }
+    }
+
+    if (
+      (type === 'passage' && rid.startsWith('passage-')) ||
+      (type === 'quiz' && rid.startsWith('quiz-'))
+    ) {
+      const id = rid.slice(type === 'passage' ? 'passage-'.length : 'quiz-'.length)
+      const payload = asRecord(parsed)
+      if (!payload) return { success: false, message: '材料数据必须是对象。' }
+      const materialUpdateData: Prisma.MaterialUpdateInput = {
+        title: asStringOrNull(payload.title) || '',
+        chapterName: asStringOrNull(payload.chapterName),
+        contentPayload: toJsonValue(payload.contentPayload, {}),
+      }
+      if ('metadata' in payload) {
+        materialUpdateData.metadata =
+          payload.metadata === null ? Prisma.JsonNull : payload.metadata
+      }
+      await prisma.material.update({
+        where: { id },
+        data: materialUpdateData,
+      })
+      revalidatePath('/exam')
+      revalidatePath('/exam/papers')
+      revalidatePath('/search')
+      revalidatePath('/search/result')
+      return { success: true, message: '材料数据已保存。' }
+    }
+
+    if (type === 'question' && rid.startsWith('question-')) {
+      const id = rid.slice('question-'.length)
+      const payload = asRecord(parsed)
+      if (!payload) return { success: false, message: '题目数据必须是对象。' }
+      await prisma.question.update({
+        where: { id },
+        data: {
+          prompt: asStringOrNull(payload.prompt),
+          context: asStringOrNull(payload.context),
+          content: toJsonValue(payload.content, {}),
+          options: toNullableJsonValue(payload.options),
+          answer: toJsonValue(payload.answer, {}),
+          analysis: asStringOrNull(payload.analysis),
+          note: asStringOrNull(payload.note),
+          sortOrder: asNumberOrDefault(payload.sortOrder, 0),
+        },
+      })
+      revalidatePath('/exam')
+      revalidatePath('/exam/papers')
+      revalidatePath('/search')
+      revalidatePath('/search/result')
+      return { success: true, message: '题目数据已保存。' }
+    }
+
+    if (type === 'dialogue') {
+      return {
+        success: false,
+        message: '当前暂不支持在此页直接修改听力聚合结果，请到对应管理页修改。',
+      }
+    }
+
+    return { success: false, message: '不支持的类型或结果 ID。' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '保存失败'
+    return { success: false, message }
+  }
 }

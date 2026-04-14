@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import EditArticleUI from './EditArticleUI'
-import { getReadingEditData } from '@/lib/repositories/collection-manage.repo'
+import { getReadingEditData } from '@/lib/repositories/collection/manage'
 
 export default async function ManageCollectionArticleEditPage({
   params,
@@ -13,4 +13,3 @@ export default async function ManageCollectionArticleEditPage({
   if (!article) return notFound()
   return <EditArticleUI article={article} />
 }
-

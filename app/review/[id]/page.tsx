@@ -1,6 +1,10 @@
 import { notFound, redirect } from 'next/navigation'
 
-import { getDueRetryQuestions, getRetryQueueSummary } from '@/app/actions/retry'
+import {
+  getDueRetryQuestions,
+  getRetryQuestionById,
+  getRetryQueueSummary,
+} from '@/app/actions/retry'
 import ReviewQuestionClient from './ReviewQuestionClient'
 
 export const dynamic = 'force-dynamic'
@@ -16,19 +20,31 @@ export default async function ReviewQuestionPage({
     getDueRetryQuestions(100),
   ])
 
-  if (items.length === 0) {
-    redirect('/review')
-  }
+  const foundIndex = items.findIndex(item => item.retryId === id)
+  if (foundIndex === -1) {
+    const currentItem = await getRetryQuestionById(id)
+    if (currentItem) {
+      const queue = [
+        { retryId: currentItem.retryId },
+        ...items.map(item => ({ retryId: item.retryId })),
+      ]
+      return (
+        <ReviewQuestionClient
+          initialSummary={summary}
+          currentItem={currentItem}
+          queue={queue}
+          currentIndex={0}
+        />
+      )
+    }
 
-  const currentIndex = items.findIndex(item => item.retryId === id)
-  if (currentIndex === -1) {
-    if (items[0]?.retryId) {
-      redirect(`/review/${items[0].retryId}`)
+    if (items.length === 0) {
+      redirect('/review')
     }
     notFound()
   }
 
-  const currentItem = items[currentIndex]
+  const currentItem = items[foundIndex]
   const queue = items.map(item => ({ retryId: item.retryId }))
 
   return (
@@ -36,7 +52,7 @@ export default async function ReviewQuestionPage({
       initialSummary={summary}
       currentItem={currentItem}
       queue={queue}
-      currentIndex={currentIndex}
+      currentIndex={foundIndex}
     />
   )
 }

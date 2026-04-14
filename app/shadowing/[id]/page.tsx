@@ -1,10 +1,12 @@
 import AudioPlayer from '@/components/AudioPlayer/AudioPlayer'
 import prisma from '@/lib/prisma'
 import {
+  getLessonByLegacyId,
   getSpeakingByLegacyId,
+  listListeningLessonsForShadowing,
   listListeningMaterialsForShadowing,
-} from '@/lib/repositories/materials.repo'
-import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabularyMeta'
+} from '@/lib/repositories/materials'
+import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 export default async function ShadowingDetailPage({
   params,
@@ -12,15 +14,25 @@ export default async function ShadowingDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const lessonData = await getSpeakingByLegacyId(id)
+  const speakingData = await getSpeakingByLegacyId(id)
+  const listeningData = speakingData ? null : await getLessonByLegacyId(id)
+  const lessonData = speakingData || listeningData
 
   if (!lessonData) {
-    return <div className='mt-20 text-center text-gray-500'>找不到该跟读材料</div>
+    return <div className='mt-20 text-center text-slate-500'>找不到该跟读材料</div>
   }
+
+  const isSpeaking = Boolean(speakingData)
+  const allShadowingRows = isSpeaking
+    ? await listListeningMaterialsForShadowing()
+    : await listListeningLessonsForShadowing()
+  const currentShadowingRow = allShadowingRows.find(item => item.id === lessonData.id)
+  const currentMaterialId =
+    speakingData?.materialId || currentShadowingRow?.materialId || `lesson:${lessonData.id}`
 
   const lesson = {
     id: lessonData.id,
-    materialId: lessonData.materialId,
+    materialId: currentMaterialId,
     title: lessonData.title,
     audioFile: lessonData.audioFile,
     dialogue: lessonData.dialogues.map(item => ({
@@ -38,8 +50,6 @@ export default async function ShadowingDetailPage({
     levelId: lessonData.paper.levelId || 'collections',
   }
 
-  const allShadowingRows = await listListeningMaterialsForShadowing()
-  const currentShadowingRow = allShadowingRows.find(item => item.id === lessonData.id)
   const sameBookRows = currentShadowingRow?.bookId
     ? allShadowingRows.filter(item => item.bookId === currentShadowingRow.bookId)
     : []
@@ -88,18 +98,12 @@ export default async function ShadowingDetailPage({
   const lessonSwitcherGroups = Array.from(groupedMap.entries())
     .map(([id, group]) => ({
       id,
-      label: group.isCurrentChapter
-        ? `当前章节 · ${group.chapterTitle}`
-        : `其他章节 · ${group.chapterTitle}`,
+      label: group.chapterTitle,
+      chapterTitle: group.chapterTitle,
       items: group.items.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN')),
       isCurrentChapter: group.isCurrentChapter,
     }))
-    .sort((a, b) => {
-      if (a.isCurrentChapter !== b.isCurrentChapter) {
-        return a.isCurrentChapter ? -1 : 1
-      }
-      return a.label.localeCompare(b.label, 'zh-CN')
-    })
+    .sort((a, b) => a.chapterTitle.localeCompare(b.chapterTitle, 'zh-CN'))
 
   const dialogueIds = lessonData.dialogues.map(item => String(item.id))
   const relatedVocab = await prisma.vocabulary.findMany({
@@ -135,7 +139,7 @@ export default async function ShadowingDetailPage({
       where: {
         profileId_materialId: {
           profileId: 'default',
-          materialId: lessonData.materialId,
+          materialId: currentMaterialId,
         },
       },
       select: {

@@ -3,23 +3,26 @@
 import { revalidatePath } from 'next/cache'
 import {
   getDueRetryQuestionRows,
+  getRetryQuestionRowById,
   getRetryQueueSummarySnapshot,
   softResetRetryAccuracy,
   submitRetryAnswerWithSchedule,
-} from '@/lib/repositories/retry.repo'
-import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
+} from '@/lib/repositories/review/retry'
+import { toLegacyMaterialId } from '@/lib/repositories/materials'
 
 const RETRY_HOURS = [24, 72, 168] as const
 
 export type RetryQueueItem = {
   retryId: string
   questionId: string
+  questionOrder: number
   stage: number
   dueAt: Date
   wrongCount: number
   questionType: string
   prompt: string
   contextSentence: string
+  targetWord: string | null
   options: { id: string; text: string; isCorrect: boolean }[]
   passageId: string | null
   passage: { id: string; content: string } | null
@@ -87,12 +90,14 @@ export async function getDueRetryQuestions(
     return {
       retryId: row.id,
       questionId: row.questionId,
+      questionOrder: row.question.sortOrder,
       stage: row.stage,
       dueAt: row.dueAt,
       wrongCount: row.wrongCount,
       questionType: row.question.questionType,
       prompt: row.question.prompt || '',
       contextSentence: row.question.contextSentence,
+      targetWord: row.question.targetWord,
       options: row.question.options,
       passageId: row.question.passageId,
       passage: row.question.passage,
@@ -103,6 +108,35 @@ export async function getDueRetryQuestions(
       sourceUrl: source.sourceUrl,
     }
   })
+}
+
+export async function getRetryQuestionById(
+  retryId: string,
+): Promise<RetryQueueItem | null> {
+  const row = await getRetryQuestionRowById(retryId)
+  if (!row) return null
+
+  const source = mapRetrySource(row)
+  return {
+    retryId: row.id,
+    questionId: row.questionId,
+    questionOrder: row.question.sortOrder,
+    stage: row.stage,
+    dueAt: row.dueAt,
+    wrongCount: row.wrongCount,
+    questionType: row.question.questionType,
+    prompt: row.question.prompt || '',
+    contextSentence: row.question.contextSentence,
+    targetWord: row.question.targetWord,
+    options: row.question.options,
+    passageId: row.question.passageId,
+    passage: row.question.passage,
+    lessonId: row.question.lessonId,
+    lesson: row.question.lesson,
+    stats: row.question.stats,
+    sourceTitle: source.sourceTitle,
+    sourceUrl: source.sourceUrl,
+  }
 }
 
 export async function submitRetryAnswer(
@@ -121,7 +155,6 @@ export async function submitRetryAnswer(
       return { success: false, message: result.message }
     }
 
-    revalidatePath('/review')
     revalidatePath('/practice')
     revalidatePath('/today')
     revalidatePath('/')

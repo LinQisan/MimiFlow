@@ -4,7 +4,27 @@ import { CollectionType, MaterialType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
-import { resolveMaterialIdByAny } from '@/lib/repositories/collection-manage.repo'
+import { resolveMaterialIdByAny } from '@/lib/repositories/collection/manage'
+
+async function isCollectionMoveValid(
+  collectionId: string,
+  nextParentId: string | null,
+) {
+  if (!nextParentId) return true
+  if (nextParentId === collectionId) return false
+
+  let cursor: string | null = nextParentId
+  while (cursor) {
+    if (cursor === collectionId) return false
+    const parent: { parentId: string | null } | null =
+      await prisma.collection.findUnique({
+        where: { id: cursor },
+        select: { parentId: true },
+      })
+    cursor = parent?.parentId || null
+  }
+  return true
+}
 
 export async function deleteCollection(collectionId: string) {
   try {
@@ -13,7 +33,8 @@ export async function deleteCollection(collectionId: string) {
     })
     revalidatePath('/manage')
     revalidatePath('/manage/collection')
-    return { success: true, message: '分组已删除' }
+    revalidatePath('/manage/upload')
+    return { success: true, message: '集合已删除' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
     return { success: false, message }
@@ -78,6 +99,7 @@ export async function clearEmptyCollections() {
     revalidatePath('/manage')
     revalidatePath('/manage/collection')
     revalidatePath('/exam/papers')
+    revalidatePath('/manage/upload')
     return { success: true, message: `已清理 ${result.count} 个空集合` }
   } catch (error) {
     const message = error instanceof Error ? error.message : '清理失败'
@@ -92,13 +114,19 @@ export async function updateCollectionAttributes(formData: FormData) {
     const description = String(formData.get('description') || '').trim()
     const language = String(formData.get('language') || '').trim()
     const level = String(formData.get('level') || '').trim()
+    const parentIdRaw = String(formData.get('parentId') || '').trim()
     const sortOrderRaw = String(formData.get('sortOrder') || '').trim()
 
     if (!collectionId) return { success: false, message: 'collectionId 缺失。' }
     if (!title) return { success: false, message: '名称不能为空。' }
 
+    const nextParentId = parentIdRaw || null
     const parsedSortOrder = Number.parseInt(sortOrderRaw || '0', 10)
     const sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0
+    const validMove = await isCollectionMoveValid(collectionId, nextParentId)
+    if (!validMove) {
+      return { success: false, message: '不能移动到自身或子集合下。' }
+    }
 
     await prisma.collection.update({
       where: { id: collectionId },
@@ -107,6 +135,7 @@ export async function updateCollectionAttributes(formData: FormData) {
         description: description || null,
         language: language || null,
         level: level || null,
+        parentId: nextParentId,
         sortOrder,
       },
     })
@@ -116,6 +145,7 @@ export async function updateCollectionAttributes(formData: FormData) {
     revalidatePath(`/manage/collection/${collectionId}`)
     revalidatePath('/exam/papers')
     revalidatePath(`/exam/papers/${collectionId}`)
+    revalidatePath('/manage/upload')
 
     return { success: true, message: '集合属性已保存' }
   } catch (error) {

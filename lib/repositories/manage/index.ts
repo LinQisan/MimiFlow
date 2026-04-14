@@ -1,7 +1,7 @@
 import { CollectionType, MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
-import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
+import { getMaterialDisplayTitle } from '../materials/material-title'
 
 type UploadPageLevelLite = {
   id: string
@@ -11,13 +11,19 @@ type UploadPageLevelLite = {
 type UploadPageCollectionLite = {
   id: string
   name: string
+  parentId?: string | null
   collectionType: CollectionType
   materialType: MaterialType
-  parentTitle?: string
+  sortOrder?: number
   language?: string
   examLevel?: string
   level: { title: string }
-  lessons: { title: string; audioFile: string }[]
+  lessons: {
+    title: string
+    audioFile: string
+    chapterName: string
+    materialType: MaterialType
+  }[]
 }
 
 function toCollectionTypeLabel(type: CollectionType) {
@@ -77,24 +83,20 @@ export async function getUploadPageSeedData(): Promise<{
     select: {
       id: true,
       title: true,
+      parentId: true,
+      sortOrder: true,
       collectionType: true,
       language: true,
       level: true,
-      parent: {
-        select: {
-          title: true,
-        },
-      },
       materials: {
-        where: {
-          material: { type: MaterialType.LISTENING },
-        },
         orderBy: { sortOrder: 'desc' },
-        take: 1,
+        take: 30,
         select: {
           material: {
             select: {
               title: true,
+              chapterName: true,
+              type: true,
               contentPayload: true,
             },
           },
@@ -165,11 +167,13 @@ export async function getUploadPageSeedData(): Promise<{
 
       return {
         title: getMaterialDisplayTitle(
-          MaterialType.LISTENING,
+          row.material.type,
           row.material.title,
           row.material.contentPayload,
           row.material.title,
         ),
+        chapterName: row.material.chapterName || '',
+        materialType: row.material.type,
         audioFile: String(payload.audioFile || payload.audioUrl || ''),
       }
     })
@@ -177,11 +181,12 @@ export async function getUploadPageSeedData(): Promise<{
     return {
       id: collection.id,
       name: collection.title,
+      parentId: collection.parentId,
+      sortOrder: collection.sortOrder,
       collectionType: collection.collectionType,
       materialType:
         dominantMaterialTypeByCollection.get(collection.id) ||
         MaterialType.LISTENING,
-      parentTitle: collection.parent?.title || undefined,
       language: collection.language || undefined,
       examLevel: collection.level || undefined,
       level: { title: toCollectionTypeLabel(collection.collectionType) },

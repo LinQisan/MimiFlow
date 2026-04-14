@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo } from 'react'
-import { getReadingFontClass } from '@/utils/readingTypography'
-import { inferContextualPos, posWordHighlightClass } from '@/utils/posTagger'
+import { getReadingFontClass } from '@/utils/language/readingTypography'
+import { inferContextualPos, posWordHighlightClass } from '@/utils/language/posTagger'
 
 type QuestionAttempt = {
   isCorrect: boolean

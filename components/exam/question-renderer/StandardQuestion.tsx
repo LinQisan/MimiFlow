@@ -52,8 +52,8 @@ export function StandardQuestion({
 
   if (questionType === 'SORTING') {
     return (
-      <div className='mx-auto w-full max-w-3xl rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8'>
-        <div className='mb-4 inline-block rounded-md border border-orange-100 bg-orange-50 px-3 py-1 text-sm font-medium text-orange-600'>
+      <div className='mx-auto w-full max-w-3xl rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8'>
+        <div className='mb-4 inline-block rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
           {typeLabel}
         </div>
         <SortingQuestion
@@ -70,8 +70,8 @@ export function StandardQuestion({
 
   if (isReadingFillBlank) {
     return (
-      <div className='mx-auto w-full max-w-3xl rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8'>
-        <div className='mb-4 inline-block rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-600'>
+      <div className='mx-auto w-full max-w-3xl rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8'>
+        <div className='mb-4 inline-block rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
           {typeLabel}
         </div>
         <OptionsList
@@ -127,8 +127,8 @@ export function StandardQuestion({
   })()
 
   return (
-    <div className='mx-auto w-full max-w-3xl rounded-2xl border border-gray-100 bg-white p-6 shadow-sm md:p-8'>
-      <div className='mb-4 inline-block rounded-md border border-blue-100 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-600'>
+    <div className='mx-auto w-full max-w-3xl rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8'>
+      <div className='mb-4 inline-block rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
         {typeLabel}
       </div>
 
@@ -137,7 +137,7 @@ export function StandardQuestion({
         data-source-id={question.id}
         data-context-block='true'
         data-context-role='question-context'
-        className={`text-xl font-medium leading-relaxed text-gray-900 ${
+        className={`text-xl font-medium leading-relaxed text-slate-900 ${
           isJapanesePaper ? 'exam-japanese-text' : ''
         }`}
         dangerouslySetInnerHTML={{

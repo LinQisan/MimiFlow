@@ -1,14 +1,18 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useMemo, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 
 import {
   batchAssignShadowingMaterials,
   createShadowingBook,
   createShadowingChapter,
 } from './actions'
-import { updateSpeakingMeta } from '@/app/manage/shadowing/actions'
+import {
+  deleteSpeakingMaterial,
+  updateSpeakingMeta,
+} from '@/app/manage/shadowing/actions'
 import ShadowingQuickClassifyForm from './ShadowingQuickClassifyForm'
 
 type ShadowingRow = {
@@ -66,11 +70,16 @@ function InlineMetaEditor({
   id,
   title,
   chapterName,
+  audioFile,
 }: {
   id: string
   title: string
   chapterName: string
+  audioFile: string
 }) {
+  const router = useRouter()
+  const [removeState, setRemoveState] = useState('')
+  const [isDeleting, startDeleteTransition] = useTransition()
   const [state, formAction, pending] = useActionState(
     async (_prev: typeof inlineEditInitialState, formData: FormData) =>
       updateSpeakingMeta(formData),
@@ -87,28 +96,58 @@ function InlineMetaEditor({
           name='chapterName'
           defaultValue={chapterName}
           placeholder='章节名（显示徽章）'
-          className='h-9 border border-indigo-200 bg-indigo-50/30 px-3 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'
+          className='h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='title'
           defaultValue={title}
           placeholder='标题'
-          className='h-9 border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
       </div>
+      <input
+        name='audioFile'
+        defaultValue={audioFile}
+        placeholder='音频路径（如 /audios/xxx.mp3）'
+        className='h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+      />
       <div className='flex items-center justify-between gap-2'>
         <p
           className={`text-[11px] font-semibold ${
-            state.success ? 'text-blue-700' : 'text-rose-600'
+            state.success ? 'text-slate-700' : 'text-rose-600'
           }`}>
-          {state.message || '可直接编辑并保存章节名与标题'}
+          {state.message || removeState || '可直接编辑并保存章节名、标题、音频路径'}
         </p>
-        <button
-          type='submit'
-          disabled={pending}
-          className='h-8 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60'>
-          {pending ? '保存中...' : '保存文案'}
-        </button>
+        <div className='flex items-center gap-2'>
+          <button
+            type='submit'
+            disabled={pending || isDeleting}
+            className='ui-btn ui-btn-sm ui-btn-primary h-8 px-3 disabled:cursor-not-allowed disabled:opacity-60'>
+            {pending ? '保存中...' : '保存'}
+          </button>
+          <button
+            type='button'
+            disabled={pending || isDeleting}
+            onClick={() => {
+              const ok = window.confirm('确认删除该跟读材料？此操作不可恢复。')
+              if (!ok) return
+              startDeleteTransition(() => {
+                const formData = new FormData()
+                formData.set('id', id)
+                void deleteSpeakingMaterial(formData).then(res => {
+                  if (res.success) {
+                    setRemoveState('删除成功，正在刷新列表...')
+                    router.refresh()
+                    return
+                  }
+                  setRemoveState(res.message || '删除失败')
+                })
+              })
+            }}
+            className='h-8 border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60'>
+            {isDeleting ? '删除中...' : '删除'}
+          </button>
+        </div>
       </div>
     </form>
   )
@@ -124,6 +163,9 @@ export default function ShadowingListClient({
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<
     'all' | 'classified' | 'unclassified'
+  >('all')
+  const [materialTypeFilter, setMaterialTypeFilter] = useState<
+    'all' | 'SPEAKING' | 'LISTENING'
   >('all')
   const [bookFilter, setBookFilter] = useState<string>('all')
   const [chapterFilter, setChapterFilter] = useState<string>('all')
@@ -234,6 +276,8 @@ export default function ShadowingListClient({
 
       if (statusFilter === 'classified' && !row.isClassified) return false
       if (statusFilter === 'unclassified' && row.isClassified) return false
+      if (materialTypeFilter !== 'all' && row.materialType !== materialTypeFilter)
+        return false
 
       if (bookFilter !== 'all' && row.bookId !== bookFilter) return false
       if (chapterFilter !== 'all' && row.chapterId !== chapterFilter)
@@ -241,7 +285,7 @@ export default function ShadowingListClient({
 
       return true
     })
-  }, [rows, search, statusFilter, bookFilter, chapterFilter])
+  }, [rows, search, statusFilter, materialTypeFilter, bookFilter, chapterFilter])
 
   const chapterSortedRows = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
@@ -287,17 +331,18 @@ export default function ShadowingListClient({
   }
 
   const unclassifiedCount = rows.filter(item => !item.isClassified).length
+  const listeningCount = rows.filter(item => item.materialType === 'LISTENING').length
 
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl'>
-        <div className='mb-5 border border-slate-200 bg-white p-4 md:p-5'>
+        <div className='mb-5 rounded-[20px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-5'>
           <div className='mb-4 flex flex-wrap items-end justify-between gap-3'>
             <div>
               {isManageMode && (
                 <Link
                   href='/shadowing'
-                  className='mb-1 inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-700'>
+                  className='mb-1 inline-flex items-center text-sm font-semibold text-slate-500 hover:text-slate-900'>
                   返回跟读
                 </Link>
               )}
@@ -311,18 +356,18 @@ export default function ShadowingListClient({
             <div className='flex items-center gap-3'>
               <Link
                 href='/manage/upload'
-                className='inline-flex h-10 items-center bg-blue-600 px-4 text-sm font-bold text-white transition-colors hover:bg-blue-700'>
+                className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
                 继续上传
               </Link>
             </div>
           </div>
 
-          <div className='grid grid-cols-1 gap-2 md:grid-cols-[1.2fr_repeat(4,minmax(0,1fr))]'>
+          <div className='grid grid-cols-1 gap-2 md:grid-cols-[1.2fr_repeat(5,minmax(0,1fr))]'>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder='搜索标题 / 音频 / 路径'
-              className='h-10 border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
             />
             <select
               value={statusFilter}
@@ -331,10 +376,22 @@ export default function ShadowingListClient({
                   e.target.value as 'all' | 'classified' | 'unclassified',
                 )
               }
-              className='h-10 border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
               <option value='all'>全部状态</option>
               <option value='unclassified'>未归类</option>
               <option value='classified'>已归类</option>
+            </select>
+            <select
+              value={materialTypeFilter}
+              onChange={e =>
+                setMaterialTypeFilter(
+                  e.target.value as 'all' | 'SPEAKING' | 'LISTENING',
+                )
+              }
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
+              <option value='all'>全部类型</option>
+              <option value='SPEAKING'>跟读材料</option>
+              <option value='LISTENING'>听力材料</option>
             </select>
             <select
               value={bookFilter}
@@ -342,7 +399,7 @@ export default function ShadowingListClient({
                 setBookFilter(e.target.value)
                 setChapterFilter('all')
               }}
-              className='h-10 border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
               <option value='all'>全部书籍</option>
               {books.map(item => (
                 <option key={item.id} value={item.id}>
@@ -353,7 +410,7 @@ export default function ShadowingListClient({
             <select
               value={chapterFilter}
               onChange={e => setChapterFilter(e.target.value)}
-              className='h-10 border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
               <option value='all'>全部章节</option>
               {filteredChapterOptions.map(item => (
                 <option key={item.id} value={item.id}>
@@ -366,27 +423,28 @@ export default function ShadowingListClient({
               onClick={() => {
                 setSearch('')
                 setStatusFilter('all')
+                setMaterialTypeFilter('all')
                 setBookFilter('all')
                 setChapterFilter('all')
               }}
-              className='h-10 border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 hover:bg-slate-100'>
+              className='ui-btn ui-btn-sm h-10 px-3 text-sm font-semibold'>
               重置筛选
             </button>
           </div>
 
           <p className='mt-2 text-xs font-semibold text-slate-500'>
-            共 {rows.length} 条 · 未归类 {unclassifiedCount} 条 · 当前显示{' '}
+            共 {rows.length} 条 · 听力 {listeningCount} 条 · 未归类 {unclassifiedCount} 条 · 当前显示{' '}
             {filteredRows.length} 条
           </p>
         </div>
 
         {isEditMode ? (
           <div className='mb-4 space-y-3'>
-            <div className='grid grid-cols-1 gap-2 border border-blue-100 bg-blue-50/50 p-3 md:grid-cols-[1fr_1fr_auto]'>
+            <div className='grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1fr_1fr_auto]'>
               <form action={createBookAction} className='contents'>
                 <select
                   name='rootId'
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none'>
+                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
                   <option value=''>选择上级分类（LIBRARY_ROOT）</option>
                   {roots.map(item => (
                     <option key={item.id} value={item.id}>
@@ -397,28 +455,28 @@ export default function ShadowingListClient({
                 <input
                   name='bookTitle'
                   placeholder='新建书名（BOOK）'
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none'
+                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'
                 />
                 <button
                   type='submit'
                   disabled={creatingBook}
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-60'>
+                  className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:opacity-60'>
                   {creatingBook ? '创建中...' : '新建书'}
                 </button>
               </form>
               {bookState.message ? (
                 <p
-                  className={`text-xs font-semibold ${bookState.success ? 'text-blue-700' : 'text-rose-600'}`}>
+                  className={`text-xs font-semibold ${bookState.success ? 'text-slate-700' : 'text-rose-600'}`}>
                   {bookState.message}
                 </p>
               ) : null}
             </div>
 
-            <div className='grid grid-cols-1 gap-2 border border-blue-100 bg-blue-50/50 p-3 md:grid-cols-[1fr_1fr_auto]'>
+            <div className='grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1fr_1fr_auto]'>
               <form action={createChapterAction} className='contents'>
                 <select
                   name='bookId'
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none'>
+                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
                   <option value=''>选择所属书（BOOK）</option>
                   {books.map(item => (
                     <option key={item.id} value={item.id}>
@@ -429,18 +487,18 @@ export default function ShadowingListClient({
                 <input
                   name='chapterTitle'
                   placeholder='新建章节名（CHAPTER）'
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none'
+                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'
                 />
                 <button
                   type='submit'
                   disabled={creatingChapter}
-                  className='h-9 border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-60'>
+                  className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:opacity-60'>
                   {creatingChapter ? '创建中...' : '新建章节'}
                 </button>
               </form>
               {chapterState.message ? (
                 <p
-                  className={`text-xs font-semibold ${chapterState.success ? 'text-blue-700' : 'text-rose-600'}`}>
+                  className={`text-xs font-semibold ${chapterState.success ? 'text-slate-700' : 'text-rose-600'}`}>
                   {chapterState.message}
                 </p>
               ) : null}
@@ -451,7 +509,7 @@ export default function ShadowingListClient({
         {isEditMode && selectedIds.length > 0 ? (
           <form
             action={batchAction}
-            className='mb-4 grid grid-cols-1 gap-2 border border-amber-200 bg-amber-50 p-3 md:grid-cols-[1.4fr_auto_auto]'>
+            className='mb-4 grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1.4fr_auto_auto]'>
             <input
               type='hidden'
               name='materialIds'
@@ -461,7 +519,7 @@ export default function ShadowingListClient({
               name='chapterId'
               value={batchChapterId}
               onChange={e => setBatchChapterId(e.target.value)}
-              className='h-9 border border-amber-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none'>
+              className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
               <option value=''>选择目标章节</option>
               {chapterOptions.map(item => (
                 <option key={item.id} value={item.id}>
@@ -474,7 +532,7 @@ export default function ShadowingListClient({
               name='mode'
               value='assign'
               disabled={batching || !batchChapterId}
-              className='h-9 border border-amber-300 bg-white px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60'>
+              className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:opacity-60'>
               {batching ? '处理中...' : `批量归类（${selectedIds.length}）`}
             </button>
             <button
@@ -482,12 +540,12 @@ export default function ShadowingListClient({
               name='mode'
               value='clear'
               disabled={batching}
-              className='h-9 border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-60'>
+              className='ui-btn ui-btn-sm h-9 px-3 disabled:opacity-60'>
               设为未归类
             </button>
             {batchState.message ? (
               <p
-                className={`text-xs font-semibold ${batchState.success ? 'text-blue-700' : 'text-rose-600'}`}>
+                className={`text-xs font-semibold ${batchState.success ? 'text-slate-700' : 'text-rose-600'}`}>
                 {batchState.message}
               </p>
             ) : null}
@@ -524,10 +582,10 @@ export default function ShadowingListClient({
                 {groupedByChapterRows.map(([chapterName, items]) => (
                   <section
                     key={chapterName}
-                    className='border border-slate-200 bg-white'>
+                    className='rounded-[18px] bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
                     <header className='flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3'>
                       <div className='flex items-center gap-2'>
-                        <span className='inline-flex rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700'>
+                        <span className='inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700'>
                           {chapterName}
                         </span>
                         <span className='text-xs font-semibold text-slate-500'>
@@ -551,6 +609,18 @@ export default function ShadowingListClient({
                                 <h2 className='text-base font-black text-slate-900'>
                                   {item.title}
                                 </h2>
+                                <p className='mt-1'>
+                                  <span
+                                    className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                      item.materialType === 'LISTENING'
+                                        ? 'border-slate-200 bg-slate-50 text-slate-700'
+                                        : 'border-slate-200 bg-white text-slate-700'
+                                    }`}>
+                                    {item.materialType === 'LISTENING'
+                                      ? '听力材料'
+                                      : '跟读材料'}
+                                  </span>
+                                </p>
                                 <p className='mt-1 text-xs text-slate-500'>
                                   路径：{item.pathLabel}
                                 </p>
@@ -587,14 +657,16 @@ export default function ShadowingListClient({
                                         : item.materialId,
                                     )
                                   }
-                                  className='text-xs font-semibold text-blue-700 hover:text-blue-800'>
+                                  className='text-xs font-semibold text-slate-600 hover:text-slate-900'>
                                   {item.isClassified ? '重新归类' : '立即归类'}
                                 </button>
-                                <Link
-                                  href={`/manage/shadowing/${item.id}`}
-                                  className='text-xs font-semibold text-slate-600 hover:text-slate-900'>
-                                  详情编辑
-                                </Link>
+                                {item.materialType === 'SPEAKING' ? (
+                                  <Link
+                                    href={`/manage/shadowing/${item.id}`}
+                                    className='text-xs font-semibold text-slate-600 hover:text-slate-900'>
+                                    详情编辑
+                                  </Link>
+                                ) : null}
                               </div>
                             </div>
 
@@ -602,6 +674,7 @@ export default function ShadowingListClient({
                               id={item.id}
                               title={item.title}
                               chapterName={item.chapterName}
+                              audioFile={item.audioFile}
                             />
 
                             {openAssignMaterialId === item.materialId ? (
@@ -642,14 +715,14 @@ export default function ShadowingListClient({
                 return (
                   <div
                     key={book.id}
-                    className='mb-2 border border-slate-100 p-2'>
+                    className='mb-2 rounded-xl border border-slate-100 p-2'>
                     <button
                       type='button'
                       onClick={() => {
                         setBookFilter(book.id)
                         setChapterFilter('all')
                       }}
-                      className='w-full text-left text-sm font-bold text-slate-800 hover:text-blue-700'>
+                      className='w-full text-left text-sm font-bold text-slate-800 hover:text-slate-900'>
                       {book.title}
                     </button>
                     <div className='mt-1 space-y-1 pl-2'>
@@ -661,7 +734,7 @@ export default function ShadowingListClient({
                             setBookFilter(book.id)
                             setChapterFilter(ch.id)
                           }}
-                          className='block w-full text-left text-xs text-slate-600 hover:text-blue-700'>
+                          className='block w-full text-left text-xs text-slate-600 hover:text-slate-900'>
                           {ch.title}
                         </button>
                       ))}
@@ -699,12 +772,22 @@ export default function ShadowingListClient({
                   return (
                     <article
                       key={item.id}
-                      className='border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-blue-200'>
+                      className='rounded-[18px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
                       <div className='mb-2 flex items-start justify-between gap-2'>
                         <div className='min-w-0'>
                           <div className='flex items-center gap-2'>
-                            <span className='inline-flex shrink-0 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-700'>
+                            <span className='inline-flex shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-700'>
                               {(item.chapterName || '').trim() || '未设置章节'}
+                            </span>
+                            <span
+                              className={`inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                item.materialType === 'LISTENING'
+                                  ? 'border-slate-200 bg-slate-50 text-slate-700'
+                                  : 'border-slate-200 bg-white text-slate-700'
+                              }`}>
+                              {item.materialType === 'LISTENING'
+                                ? '听力'
+                                : '跟读'}
                             </span>
                             <h2 className='line-clamp-2 text-base font-black text-slate-900'>
                               {item.title}
@@ -738,28 +821,30 @@ export default function ShadowingListClient({
                           className={`rounded border px-2 py-0.5 text-[11px] font-bold ${statusStyle}`}>
                           {statusText}
                         </span>
-                        <button
-                          type='button'
-                          onClick={() =>
-                            setOpenAssignMaterialId(prev =>
-                              prev === item.materialId ? null : item.materialId,
-                            )
-                          }
-                          className='text-xs font-semibold text-blue-700 hover:text-blue-800'>
-                          {item.isClassified ? '重新归类' : '立即归类'}
-                        </button>
+                          <button
+                            type='button'
+                            onClick={() =>
+                              setOpenAssignMaterialId(prev =>
+                                prev === item.materialId ? null : item.materialId,
+                              )
+                            }
+                            className='text-xs font-semibold text-slate-600 hover:text-slate-900'>
+                            {item.isClassified ? '重新归类' : '立即归类'}
+                          </button>
                       </div>
 
                       <div className='mt-3'>
-                        <Link
-                          href={
-                            isManageMode
-                              ? `/manage/shadowing/${item.id}`
-                              : `/shadowing/${item.id}`
-                          }
-                          className='inline-flex h-10 w-full items-center justify-center bg-blue-600 px-4 text-sm font-bold text-white transition-colors hover:bg-blue-700'>
-                          {isManageMode ? '继续编辑听力材料' : '开始跟读'}
-                        </Link>
+                          <Link
+                            href={
+                              isManageMode && item.materialType === 'SPEAKING'
+                                ? `/manage/shadowing/${item.id}`
+                                : `/shadowing/${item.id}`
+                            }
+                            className='ui-btn ui-btn-primary h-10 w-full px-4 text-sm font-bold'>
+                            {isManageMode && item.materialType === 'SPEAKING'
+                              ? '继续编辑听力材料'
+                              : '开始跟读'}
+                          </Link>
                       </div>
 
                       {isManageMode ? (
@@ -767,6 +852,7 @@ export default function ShadowingListClient({
                           id={item.id}
                           title={item.title}
                           chapterName={item.chapterName}
+                          audioFile={item.audioFile}
                         />
                       ) : null}
 

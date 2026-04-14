@@ -193,28 +193,33 @@ export default function CustomPaperBuilderClient({
   }
 
   return (
-    <div className='min-h-screen bg-[#f7f8fc] p-6'>
-      <div className='mx-auto max-w-3xl'>
-        <div className='mb-5 flex items-center justify-between'>
-          <h1 className='text-2xl font-bold text-gray-900'>自定义随机练习</h1>
-          <Link href='/exam/papers' className='text-sm text-blue-600 hover:underline'>
+    <div className='min-h-screen bg-slate-50 px-6 py-8 font-sans'>
+      <div className='mx-auto max-w-4xl'>
+        <div className='mb-5 flex items-center justify-between rounded-[20px] bg-white px-5 py-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+          <div>
+            <h1 className='text-2xl font-black tracking-tight text-slate-900'>
+              自定义随机练习
+            </h1>
+            <p className='mt-1 text-sm text-slate-500'>
+              组合题型、筛选范围和常用预设，快速生成一套练习。
+            </p>
+          </div>
+          <Link href='/exam/papers' className='ui-btn ui-btn-sm'>
             返回试卷列表
           </Link>
         </div>
 
-        <p className='mb-4 text-sm text-gray-500'>
-          会自动记住你上次的题型数量；你也可以把常用组合保存为命名预设。
-        </p>
-
-        <div className='mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'>
-          <p className='mb-3 text-xs font-bold tracking-wide text-gray-500'>筛选范围</p>
+        <div className='mb-6 rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+          <p className='mb-3 text-xs font-bold tracking-[0.18em] text-slate-500'>
+            筛选范围
+          </p>
           <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-            <label className='flex flex-col gap-1 text-sm text-gray-600'>
+            <label className='flex flex-col gap-1 text-sm font-medium text-slate-600'>
               语言
               <select
                 value={selectedLanguage}
                 onChange={event => setSelectedLanguage(event.target.value)}
-                className='h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-400'>
+                className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
                 <option value=''>全部语言</option>
                 {languageOptions.map(item => (
                   <option key={`lang-${item}`} value={item}>
@@ -223,12 +228,12 @@ export default function CustomPaperBuilderClient({
                 ))}
               </select>
             </label>
-            <label className='flex flex-col gap-1 text-sm text-gray-600'>
+            <label className='flex flex-col gap-1 text-sm font-medium text-slate-600'>
               等级
               <select
                 value={selectedLevel}
                 onChange={event => setSelectedLevel(event.target.value)}
-                className='h-10 rounded-lg border border-gray-200 bg-white px-3 text-sm text-gray-700 outline-none focus:border-blue-400'>
+                className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
                 <option value=''>全部等级</option>
                 {levelOptions.map(item => (
                   <option key={`level-${item}`} value={item}>
@@ -240,56 +245,60 @@ export default function CustomPaperBuilderClient({
           </div>
         </div>
 
-        <div className='mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'>
-          <p className='mb-3 text-xs font-bold tracking-wide text-gray-500'>快速预设</p>
+        <div className='mb-6 rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+          <p className='mb-3 text-xs font-bold tracking-[0.18em] text-slate-500'>
+            快速预设
+          </p>
           <div className='flex flex-wrap gap-2'>
             {defaultQuickPresets.map(preset => (
               <button
                 key={preset.title}
                 type='button'
                 onClick={() => applyCounts(preset.counts)}
-                className='rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-100'>
+                className='ui-btn ui-btn-sm'>
                 {preset.title}
               </button>
             ))}
           </div>
         </div>
 
-        <div className='mb-6 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm'>
-          <p className='mb-3 text-xs font-bold tracking-wide text-gray-500'>我的预设</p>
+        <div className='mb-6 rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+          <p className='mb-3 text-xs font-bold tracking-[0.18em] text-slate-500'>
+            我的预设
+          </p>
           <div className='mb-3 flex gap-2'>
             <input
               value={presetName}
               onChange={event => setPresetName(event.target.value)}
               placeholder='预设名称（例如：晚间 15 题）'
-              className='h-10 flex-1 rounded-lg border border-gray-200 px-3 text-sm text-gray-700 outline-none focus:border-blue-400'
+              className='h-10 flex-1 rounded-xl border border-slate-200 px-3 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
             />
             <button
               type='button'
               onClick={handleSavePreset}
-              className='h-10 rounded-lg bg-blue-600 px-4 text-sm font-semibold text-white hover:bg-blue-700'>
+              className='ui-btn ui-btn-primary h-10 px-4'>
               保存预设
             </button>
           </div>
 
           {presets.length === 0 ? (
-            <p className='text-sm text-gray-400'>还没有保存的预设。</p>
+            <p className='text-sm text-slate-400'>还没有保存的预设。</p>
           ) : (
             <div className='space-y-2'>
               {presets.map(preset => (
                 <div
                   key={preset.id}
-                  className='flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2'>
+                  className='flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2 shadow-[inset_0_1px_1px_rgba(15,23,42,0.05)]'>
                   <button
                     type='button'
                     onClick={() => applyCounts(preset.counts)}
-                    className='min-w-0 flex-1 truncate text-left text-sm font-medium text-gray-700 hover:text-blue-700'>
+                    className='min-w-0 flex-1 truncate text-left text-sm font-medium text-slate-700 hover:text-slate-900'>
                     {preset.name}
                   </button>
                   <button
                     type='button'
                     onClick={() => handleDeletePreset(preset.id)}
-                    className='ml-3 text-xs font-semibold text-gray-400 hover:text-red-500'>
+                    className='ml-3 text-xs font-semibold text-slate-400 hover:text-rose-500'>
                     删除
                   </button>
                 </div>
@@ -298,34 +307,34 @@ export default function CustomPaperBuilderClient({
           )}
         </div>
 
-        <div className='rounded-2xl border border-gray-100 bg-white p-5 shadow-sm'>
+        <div className='rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
           <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
             {options.map(option => (
               <label key={option.key} className='flex items-center justify-between gap-4'>
-                <span className='font-medium text-gray-700'>{option.label}</span>
+                <span className='font-medium text-slate-700'>{option.label}</span>
                 <input
                   type='number'
                   min={0}
                   max={50}
                   value={counts[option.key] || 0}
                   onChange={event => updateCount(option.key, event.target.value)}
-                  className='w-24 rounded-lg border border-gray-200 px-3 py-1.5 text-right text-gray-700 outline-none transition-colors focus:border-blue-400'
+                  className='w-24 rounded-xl border border-slate-200 px-3 py-1.5 text-right text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
                 />
               </label>
             ))}
           </div>
 
           <div className='mt-4 flex items-center justify-between text-sm'>
-            <span className='text-gray-500'>
-              总计 <strong className='text-gray-800'>{totalRequested}</strong> 题
+            <span className='text-slate-500'>
+              总计 <strong className='text-slate-900'>{totalRequested}</strong> 题
             </span>
-            {errorText ? <span className='text-red-500'>{errorText}</span> : null}
+            {errorText ? <span className='text-rose-600'>{errorText}</span> : null}
           </div>
 
           <button
             type='button'
             onClick={handleStart}
-            className='mt-5 w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white transition-colors hover:bg-blue-700'>
+            className='ui-btn ui-btn-primary mt-5 w-full h-12 rounded-xl text-base font-semibold'>
             开始随机答题
           </button>
         </div>

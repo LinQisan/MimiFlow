@@ -10,17 +10,17 @@ import {
 } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
-import { parseJsonStringList, toJsonStringList } from '@/utils/jsonList'
+import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import {
   buildVocabularyCanonicalKeys,
   normalizeVocabularyHeadword,
-} from '@/utils/vocabularyCanonical'
-import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
+} from '@/utils/vocabulary/vocabularyCanonical'
+import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 import {
   sanitizePronunciation,
   sanitizePronunciations,
-} from '@/utils/pronunciation'
-import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
+} from '@/utils/text/pronunciation'
+import { toLegacyMaterialId } from '@/lib/repositories/materials'
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(

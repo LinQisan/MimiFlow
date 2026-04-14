@@ -1,4 +1,4 @@
-import { guessLanguageCode } from '@/utils/langDetector'
+import { guessLanguageCode } from './langDetector'
 
 const detectReadingLanguage = (text: string) => {
   const sample = text.trim()

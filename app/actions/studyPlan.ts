@@ -2,7 +2,7 @@
 
 import { GameDifficultyPreset } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { getTopMaterialSnapshots } from '@/lib/repositories/materials.repo'
+import { getTopMaterialSnapshots } from '@/lib/repositories/materials'
 
 export type TodayTaskItem = {
   id: 'review' | 'listening' | 'reading' | 'retry' | 'output'

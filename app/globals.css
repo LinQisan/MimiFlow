@@ -227,14 +227,14 @@ html.dark .ui-btn:hover {
 }
 
 .ui-btn-primary {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
+  border-color: #242424;
+  background: #242424;
   color: #fff;
 }
 
 .ui-btn-primary:hover {
-  background: var(--color-primary-strong);
-  border-color: var(--color-primary-strong);
+  background: #111111;
+  border-color: #111111;
 }
 
 .ui-btn-danger {
@@ -389,6 +389,71 @@ html.dark .ui-tag-warn {
   border-color: #92400e;
   background: rgba(180, 83, 9, 0.18);
   color: #fde68a;
+}
+
+.manage-upload-surface [class*='text-blue-'],
+.manage-upload-surface [class*='text-indigo-'] {
+  color: #334155;
+}
+
+.manage-upload-surface [class*='border-blue-'],
+.manage-upload-surface [class*='border-indigo-'] {
+  border-color: #d1d5db;
+}
+
+.manage-upload-surface [class*='ring-blue-'],
+.manage-upload-surface [class*='ring-indigo-'] {
+  --tw-ring-color: rgba(15, 23, 42, 0.14);
+}
+
+.manage-upload-surface [class*='shadow-blue-'],
+.manage-upload-surface [class*='shadow-indigo-'] {
+  --tw-shadow-color: rgba(15, 23, 42, 0.12);
+}
+
+.manage-upload-surface [class~='bg-blue-50'],
+.manage-upload-surface [class~='bg-blue-100'],
+.manage-upload-surface [class~='bg-blue-200'],
+.manage-upload-surface [class~='bg-blue-300'],
+.manage-upload-surface [class~='bg-blue-400'],
+.manage-upload-surface [class~='bg-indigo-50'],
+.manage-upload-surface [class~='bg-indigo-100'],
+.manage-upload-surface [class~='bg-indigo-200'],
+.manage-upload-surface [class~='bg-indigo-300'],
+.manage-upload-surface [class~='bg-indigo-400'],
+.manage-upload-surface [class*='bg-blue-50/'],
+.manage-upload-surface [class*='bg-indigo-50/'] {
+  background-color: #f8fafc;
+}
+
+.manage-upload-surface [class~='bg-blue-500'],
+.manage-upload-surface [class~='bg-blue-600'],
+.manage-upload-surface [class~='bg-blue-700'],
+.manage-upload-surface [class~='bg-blue-800'],
+.manage-upload-surface [class~='bg-blue-900'],
+.manage-upload-surface [class~='bg-indigo-500'],
+.manage-upload-surface [class~='bg-indigo-600'],
+.manage-upload-surface [class~='bg-indigo-700'],
+.manage-upload-surface [class~='bg-indigo-800'],
+.manage-upload-surface [class~='bg-indigo-900'] {
+  background-color: #242424;
+  border-color: #242424;
+  color: #fff;
+}
+
+.manage-upload-surface [class*='hover:bg-blue-']:hover,
+.manage-upload-surface [class*='hover:bg-indigo-']:hover {
+  background-color: #f3f4f6;
+}
+
+.manage-upload-surface [class*='hover:text-blue-']:hover,
+.manage-upload-surface [class*='hover:text-indigo-']:hover {
+  color: #111827;
+}
+
+.manage-upload-surface [class*='focus:ring-blue-'],
+.manage-upload-surface [class*='focus:ring-indigo-'] {
+  --tw-ring-color: rgba(15, 23, 42, 0.14);
 }
 
 .ui-mobile-py-sm {
@@ -666,6 +731,86 @@ html.dark .theme-page-vocab .border-gray-100\/50 {
 html.dark .theme-page-vocab .bg-gradient-to-b.from-white.to-gray-50 {
   background-image: none !important;
   background-color: #0f172a !important;
+}
+
+.theme-page-vocab [class*='text-blue-'],
+.theme-page-vocab [class*='text-indigo-'] {
+  color: #334155 !important;
+}
+
+.theme-page-vocab [class*='border-blue-'],
+.theme-page-vocab [class*='border-indigo-'] {
+  border-color: #d1d5db !important;
+}
+
+.theme-page-vocab [class*='ring-blue-'],
+.theme-page-vocab [class*='ring-indigo-'] {
+  --tw-ring-color: rgba(15, 23, 42, 0.14) !important;
+}
+
+.theme-page-vocab [class*='shadow-blue-'],
+.theme-page-vocab [class*='shadow-indigo-'] {
+  --tw-shadow-color: rgba(15, 23, 42, 0.12) !important;
+}
+
+.theme-page-vocab [class*='bg-blue-50'],
+.theme-page-vocab [class*='bg-indigo-50'] {
+  background-color: #f8fafc !important;
+}
+
+.theme-page-vocab [class*='bg-blue-100'],
+.theme-page-vocab [class*='bg-indigo-100'],
+.theme-page-vocab [class*='bg-blue-200'],
+.theme-page-vocab [class*='bg-indigo-200'],
+.theme-page-vocab [class*='bg-blue-300'],
+.theme-page-vocab [class*='bg-indigo-300'],
+.theme-page-vocab [class*='bg-blue-400'],
+.theme-page-vocab [class*='bg-indigo-400'] {
+  background-color: #eef2f7 !important;
+}
+
+.theme-page-vocab [class*='bg-blue-500'],
+.theme-page-vocab [class*='bg-indigo-500'] {
+  background-color: #242424 !important;
+  border-color: #242424 !important;
+  color: #ffffff !important;
+}
+
+.theme-page-vocab [class*='bg-blue-600'],
+.theme-page-vocab [class*='bg-blue-700'],
+.theme-page-vocab [class*='bg-blue-800'],
+.theme-page-vocab [class*='bg-blue-900'],
+.theme-page-vocab [class*='bg-indigo-600'],
+.theme-page-vocab [class*='bg-indigo-700'],
+.theme-page-vocab [class*='bg-indigo-800'],
+.theme-page-vocab [class*='bg-indigo-900'] {
+  background-color: #242424 !important;
+  border-color: #242424 !important;
+  color: #ffffff !important;
+}
+
+.theme-page-vocab [class*='hover:bg-blue-']:hover,
+.theme-page-vocab [class*='hover:bg-indigo-']:hover {
+  background-color: #f3f4f6 !important;
+}
+
+.theme-page-vocab [class*='hover:text-blue-']:hover,
+.theme-page-vocab [class*='hover:text-indigo-']:hover {
+  color: #111827 !important;
+}
+
+.theme-page-vocab [class*='focus:border-blue-'],
+.theme-page-vocab [class*='focus:border-indigo-'] {
+  border-color: #d1d5db !important;
+}
+
+.theme-page-vocab [class*='focus:ring-blue-'],
+.theme-page-vocab [class*='focus:ring-indigo-'] {
+  --tw-ring-color: rgba(15, 23, 42, 0.14) !important;
+}
+
+.theme-page-vocab .accent-blue-600 {
+  accent-color: #242424 !important;
 }
 
 /* Readability fallback for pages outside theme-page-* wrappers */

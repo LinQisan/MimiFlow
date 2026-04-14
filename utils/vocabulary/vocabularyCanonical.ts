@@ -1,4 +1,4 @@
-import { guessLanguageCode } from '@/utils/langDetector'
+import { guessLanguageCode } from '../language/langDetector'
 
 const unique = (list: string[]) => Array.from(new Set(list.filter(Boolean)))
 

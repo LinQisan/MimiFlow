@@ -1,10 +1,11 @@
 // app/vocabulary/page.tsx
+import Link from 'next/link'
 import prisma from '@/lib/prisma'
 import VocabularyTabs from './VocabularyTabs'
-import { guessLanguageCode } from '@/utils/langDetector'
-import { parseJsonStringList } from '@/utils/jsonList'
-import { toVocabularyMeta } from '@/utils/vocabularyMeta'
-import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
+import { guessLanguageCode } from '@/utils/language/langDetector'
+import { parseJsonStringList } from '@/utils/text/jsonList'
+import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 
 type SentenceSource = {
   text: string
@@ -65,6 +66,24 @@ const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
   ).slice(0, 1)
+
+const DEFAULT_GROUP_NAMES: Record<string, string> = {
+  ja: '日语',
+  en: '英语',
+  ko: '韩语',
+  zh: '中文',
+  other: '未分类',
+}
+
+const resolveVocabularyGroupName = (
+  word: string,
+  groupName?: string | null,
+) => {
+  const explicitGroup = (groupName || '').trim()
+  if (explicitGroup) return explicitGroup
+  const languageCode = guessLanguageCode(word) || 'other'
+  return DEFAULT_GROUP_NAMES[languageCode] || '未分类'
+}
 
 export default async function VocabularyPage({
   searchParams,
@@ -130,19 +149,9 @@ export default async function VocabularyPage({
         ? { folderId: null as null }
         : { folderId: { in: folderFilterIds } }
 
-  const totalCount = await prisma.vocabulary.count({
-    where: whereClause,
-  })
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const normalizedPage = Math.min(currentPage, totalPages)
-  const skip = (normalizedPage - 1) * PAGE_SIZE
-
-  // 获取生词及关联句子
-  let rawVocabularies = await prisma.vocabulary.findMany({
+  const rawVocabularies = await prisma.vocabulary.findMany({
     where: whereClause,
     orderBy: { createdAt: 'desc' },
-    skip,
-    take: PAGE_SIZE,
     include: {
       folder: {
         select: { id: true, name: true },
@@ -171,7 +180,33 @@ export default async function VocabularyPage({
       },
     },
   })
-  if (focusId && !rawVocabularies.some(item => item.id === focusId)) {
+
+  const groupedCountRows: Record<string, number> = {}
+  rawVocabularies.forEach(vocab => {
+    const finalGroupName = resolveVocabularyGroupName(
+      vocab.word,
+      vocab.groupName,
+    )
+    groupedCountRows[finalGroupName] =
+      (groupedCountRows[finalGroupName] || 0) + 1
+  })
+
+  const filteredVocabularies = groupValue
+    ? rawVocabularies.filter(
+        vocab =>
+          resolveVocabularyGroupName(vocab.word, vocab.groupName) ===
+          groupValue,
+      )
+    : rawVocabularies
+
+  const totalCount = filteredVocabularies.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const normalizedPage = Math.min(currentPage, totalPages)
+  const skip = (normalizedPage - 1) * PAGE_SIZE
+
+  let pageVocabularies = filteredVocabularies.slice(skip, skip + PAGE_SIZE)
+
+  if (focusId && !pageVocabularies.some(item => item.id === focusId)) {
     const focusedVocabulary = await prisma.vocabulary.findUnique({
       where: { id: focusId },
       include: {
@@ -202,40 +237,24 @@ export default async function VocabularyPage({
         },
       },
     })
-    if (focusedVocabulary) {
-      rawVocabularies = [focusedVocabulary, ...rawVocabularies]
+    if (
+      focusedVocabulary &&
+      (!groupValue ||
+        resolveVocabularyGroupName(
+          focusedVocabulary.word,
+          focusedVocabulary.groupName,
+        ) === groupValue)
+    ) {
+      pageVocabularies = [focusedVocabulary, ...pageVocabularies]
     }
   }
   const folders = allFolders
-  const groupedCountRows = await prisma.vocabulary.groupBy({
-    by: ['groupName'],
-    where: whereClause,
-    _count: { _all: true },
-  })
-  const nullGroupWords = await prisma.vocabulary.findMany({
-    where: { ...whereClause, groupName: null },
-    select: { word: true },
-  })
-
-  const defaultNames: Record<string, string> = {
-    ja: '日语',
-    en: '英语',
-    ko: '韩语',
-    zh: '中文',
-    other: '未分类',
-  }
   const groupedTotals: Record<string, number> = {}
-  groupedCountRows.forEach(row => {
-    if (!row.groupName) return
-    groupedTotals[row.groupName] =
-      (groupedTotals[row.groupName] || 0) + row._count._all
-  })
-  nullGroupWords.forEach(item => {
-    const code = guessLanguageCode(item.word) || 'other'
-    const groupName = defaultNames[code] || '未分类'
+  rawVocabularies.forEach(vocab => {
+    const groupName = resolveVocabularyGroupName(vocab.word, vocab.groupName)
     groupedTotals[groupName] = (groupedTotals[groupName] || 0) + 1
   })
-  const vocabularyIds = rawVocabularies.map(item => item.id)
+  const vocabularyIds = pageVocabularies.map(item => item.id)
   const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
     where: { vocabularyId: { in: vocabularyIds } },
     include: { sentence: true },
@@ -262,7 +281,7 @@ export default async function VocabularyPage({
   const groupedData: Record<string, GroupedVocabItem[]> = {}
 
   // 组装页面数据
-  rawVocabularies.forEach(vocab => {
+  pageVocabularies.forEach(vocab => {
     let sourceName = '未知来源'
     let sourceUrl = '#'
     let audioData: AudioData | null = null
@@ -285,8 +304,10 @@ export default async function VocabularyPage({
 
     // 分组
     const defaultLang = guessLanguageCode(vocab.word) || 'other'
-    const finalGroupName =
-      vocab.groupName || defaultNames[defaultLang] || '未分类'
+    const finalGroupName = resolveVocabularyGroupName(
+      vocab.word,
+      vocab.groupName,
+    )
     if (!groupedData[finalGroupName]) groupedData[finalGroupName] = []
     const meta = toVocabularyMeta(vocab)
     groupedData[finalGroupName].push({
@@ -317,18 +338,66 @@ export default async function VocabularyPage({
   })
 
   return (
-    <main className='min-h-screen bg-gray-50 p-4 md:p-8'>
-      <div className='max-w-7xl mx-auto'>
+    <main className='min-h-screen bg-slate-50 pb-16'>
+      <div className='mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8'>
+        <section className='mb-6 rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)] md:p-5'>
+          <div className='flex flex-col gap-4 md:flex-row md:items-end md:justify-between'>
+            <div>
+              <p className='text-xs font-semibold uppercase tracking-[0.24em] text-slate-500'>
+                Vocabulary
+              </p>
+              <h1 className='mt-2 text-3xl font-black tracking-tight text-slate-900 md:text-4xl'>
+                词汇复习
+              </h1>
+            </div>
+            <div className='grid w-full grid-cols-2 gap-2 sm:w-auto sm:grid-cols-4 sm:items-stretch'>
+              <Link
+                href='/'
+                className='inline-flex h-[5.5rem] items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50'>
+                返回首页
+              </Link>
+              <div className='flex h-[5.5rem] flex-col justify-center rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm'>
+                <p className='text-[11px] font-semibold uppercase tracking-wider'>
+                  词条总数
+                </p>
+                <p className='mt-1 text-2xl font-black'>{totalCount}</p>
+              </div>
+              <div className='flex h-[5.5rem] flex-col justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
+                <p className='text-[11px] font-semibold uppercase tracking-wider'>
+                  当前页
+                </p>
+                <p className='mt-1 text-2xl font-black'>
+                  {normalizedPage}/{totalPages}
+                </p>
+              </div>
+              <div className='flex h-[5.5rem] flex-col justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
+                <p className='text-[11px] font-semibold uppercase tracking-wider'>
+                  收藏夹
+                </p>
+                <p className='mt-1 max-w-[14rem] truncate text-base font-bold'>
+                  {folderFilter === 'all'
+                    ? '全部收藏夹'
+                    : folderFilter === 'none'
+                      ? '未收藏'
+                      : '已筛选收藏夹'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <VocabularyTabs
           groupedData={groupedData}
           groupedTotals={groupedTotals}
           folders={folders as FolderItem[]}
           initialFolderFilter={folderFilter}
+          initialGroupFilter={groupValue || undefined}
           initialFocusId={focusId || undefined}
           initialFocusGroup={initialFocusGroup || undefined}
           totalCount={totalCount}
           currentPage={normalizedPage}
           totalPages={totalPages}
+          pageSize={PAGE_SIZE}
         />
       </div>
     </main>

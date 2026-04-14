@@ -1,4 +1,4 @@
-// app/manage/level/lesson/[lessonId]/LessonQuestionsPanel.tsx
+// app/manage/collection/lesson/[lessonId]/LessonQuestionsPanel.tsx
 'use client'
 
 import { useState, useEffect } from 'react'

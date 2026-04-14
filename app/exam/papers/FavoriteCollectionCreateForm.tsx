@@ -16,22 +16,22 @@ export default function FavoriteCollectionCreateForm() {
   return (
     <form
       action={action}
-      className='mt-3 grid grid-cols-1 gap-2 border border-blue-100 bg-blue-50/50 p-3 md:grid-cols-[1fr_auto]'>
+      className='mt-3 grid grid-cols-1 gap-2 rounded-[18px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1fr_auto]'>
       <input
         name='favoriteName'
         placeholder='新建收藏夹（例如：精听收藏）'
-        className='h-9 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
       />
       <button
         type='submit'
         disabled={pending}
-        className='h-9 border border-blue-200 bg-white px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60'>
+        className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:cursor-not-allowed disabled:opacity-60'>
         {pending ? '创建中...' : '新建收藏夹'}
       </button>
       {state.message ? (
         <p
           className={`text-xs font-semibold ${
-            state.success ? 'text-blue-700' : 'text-rose-600'
+            state.success ? 'text-slate-700' : 'text-rose-600'
           }`}>
           {state.message}
         </p>

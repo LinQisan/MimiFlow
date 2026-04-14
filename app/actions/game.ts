@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { GameDifficultyPreset, MaterialType, StudyTimeKind } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { getTodayStudyPlan, type TodayTaskItem } from '@/app/actions/studyPlan'
-import { getTopMaterialSnapshots } from '@/lib/repositories/materials.repo'
+import { getTopMaterialSnapshots } from '@/lib/repositories/materials'
 
 const DAY = 24 * 60 * 60 * 1000
 const PROFILE_ID = 'default'

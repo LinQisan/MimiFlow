@@ -75,6 +75,25 @@ export function useTextSelection() {
       }
     }
 
+    const updateSelectionPosition = () => {
+      const windowSelection = window.getSelection()
+      if (!windowSelection || windowSelection.rangeCount === 0) return
+      const text = extractSelectedText(windowSelection)
+      if (!text) return
+      const range = windowSelection.getRangeAt(0)
+      const rect = range.getBoundingClientRect()
+      setSelection(prev => {
+        if (!prev.isVisible) return prev
+        if (prev.text !== text) return prev
+        return {
+          ...prev,
+          x: rect.left + rect.width / 2,
+          y: rect.top,
+          isTop: rect.top > 250,
+        }
+      })
+    }
+
     const handleMouseDown = (e: MouseEvent) => {
       if (!(e.target as HTMLElement).closest('.ui-pop')) {
         setSelection(prev => ({ ...prev, isVisible: false }))
@@ -83,9 +102,13 @@ export function useTextSelection() {
 
     document.addEventListener('mouseup', handleMouseUp)
     document.addEventListener('mousedown', handleMouseDown)
+    window.addEventListener('scroll', updateSelectionPosition, { passive: true })
+    window.addEventListener('resize', updateSelectionPosition)
     return () => {
       document.removeEventListener('mouseup', handleMouseUp)
       document.removeEventListener('mousedown', handleMouseDown)
+      window.removeEventListener('scroll', updateSelectionPosition)
+      window.removeEventListener('resize', updateSelectionPosition)
     }
   }, [])
 

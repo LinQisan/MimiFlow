@@ -1,7 +1,7 @@
 'use client'
 
-import WordPronunciation from '@/components/WordPronunciation'
-import { inferContextualPos, posBadgeClass } from '@/utils/posTagger'
+import WordPronunciation from '@/components/vocabulary/WordPronunciation'
+import { inferContextualPos, posBadgeClass } from '@/utils/language/posTagger'
 
 export type WordMetaEntry = {
   word: string
@@ -46,7 +46,7 @@ export default function WordMetaPanel({
         return (
         <div
           key={`meta-${entry.word}`}
-          className='border border-gray-200 bg-gray-50 px-3 py-2'>
+          className='rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2 shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
           <div className='flex flex-wrap items-center gap-2'>
             <WordPronunciation
               word={entry.word}
@@ -54,9 +54,9 @@ export default function WordMetaPanel({
               meanings={entry.meanings || []}
               showPronunciation={showPronunciation}
               showMeaning={showMeaning}
-              wordClassName='text-sm font-bold text-indigo-700'
-              hintClassName='text-[10px] font-bold text-indigo-500'
-              meaningClassName='mt-1 text-[11px] font-semibold text-emerald-700'
+              wordClassName='text-sm font-bold text-slate-900'
+              hintClassName='text-[10px] font-bold text-slate-500'
+              meaningClassName='mt-1 text-[11px] font-semibold text-slate-600'
             />
             {showPronunciation &&
               (entry.pronunciations || [])
@@ -64,7 +64,7 @@ export default function WordMetaPanel({
                 .map(pron => (
                   <span
                     key={`meta-${entry.word}-${pron}`}
-                    className='rounded-md bg-indigo-100 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-600'>
+                    className='rounded-md bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'>
                     {pron}
                   </span>
                 ))}
@@ -89,11 +89,11 @@ export default function WordMetaPanel({
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-[11px] transition-colors ${
                       enableMeaningMatch
                         ? active
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-white text-gray-700 hover:bg-emerald-50'
-                        : 'bg-white text-gray-700'
+                          ? 'bg-slate-900 text-white'
+                          : 'bg-white text-slate-700 hover:bg-slate-50'
+                        : 'bg-white text-slate-700'
                     }`}>
-                    <span className='inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-bold text-white'>
+                    <span className='inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-bold text-white'>
                       {no}
                     </span>
                     <span className='font-medium'>{meaning}</span>
@@ -101,7 +101,7 @@ export default function WordMetaPanel({
                 )
               })}
               {enableMeaningMatch && !matchedMeaningMap[entry.word] && (
-                <p className='text-[10px] font-semibold text-rose-500'>
+                <p className='text-[10px] font-semibold text-slate-500'>
                   请选择本句对应释义
                 </p>
               )}

@@ -4,14 +4,14 @@
 import { revalidatePath } from 'next/cache'
 import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
-import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
+import { getMaterialDisplayTitle } from '@/lib/repositories/materials/material-title'
 import {
   normalizeStringList,
   parseJsonStringList,
   toJsonStringList,
-} from '@/utils/jsonList'
-import { buildVocabularyCanonicalKeys } from '@/utils/vocabularyCanonical'
-import { dedupeAndRankSentences } from '@/utils/sentenceQuality'
+} from '@/utils/text/jsonList'
+import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
+import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 
 type VocabularyMetaPayload = {
   pronunciations: string[]

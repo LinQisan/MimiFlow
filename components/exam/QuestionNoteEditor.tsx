@@ -48,9 +48,11 @@ export default function QuestionNoteEditor({
   }
 
   return (
-    <section className='mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+    <section className='mt-4 rounded-[18px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
       <div className='mb-2 flex items-center justify-between'>
-        <h4 className='text-sm font-semibold text-slate-800'>题目笔记</h4>
+        <h4 className='text-sm font-semibold tracking-tight text-slate-900'>
+          题目笔记
+        </h4>
         <div className='flex items-center gap-2'>
           {isEditing ? (
             <>
@@ -62,7 +64,7 @@ export default function QuestionNoteEditor({
                     setIsEditing(false)
                     setStatus('idle')
                   }}
-                  className='rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50'>
+                  className='ui-btn ui-btn-sm'>
                   取消
                 </button>
               ) : null}
@@ -70,7 +72,7 @@ export default function QuestionNoteEditor({
                 type='button'
                 onClick={handleSave}
                 disabled={saving}
-                className='rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50'>
+                className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-50'>
                 {saving ? '保存中...' : '保存笔记'}
               </button>
             </>
@@ -82,7 +84,7 @@ export default function QuestionNoteEditor({
                 setIsEditing(true)
                 setStatus('idle')
               }}
-              className='rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50'>
+              className='ui-btn ui-btn-sm'>
               编辑
             </button>
           )}
@@ -94,15 +96,15 @@ export default function QuestionNoteEditor({
           onChange={event => setNote(event.target.value)}
           placeholder='记录本题思路、错因、语法要点...'
           rows={4}
-          className='w-full resize-y rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-blue-400'
+          className='w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] transition-colors focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
       ) : (
-        <div className='min-h-16 whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-7 text-slate-700'>
+        <div className='min-h-16 whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm leading-7 text-slate-700'>
           {savedNote || '暂无笔记'}
         </div>
       )}
       {status === 'saved' ? (
-        <p className='mt-2 text-xs text-emerald-600'>已保存</p>
+        <p className='mt-2 text-xs text-slate-600'>已保存</p>
       ) : null}
       {status === 'error' ? (
         <p className='mt-2 text-xs text-rose-600'>保存失败，请重试</p>

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation'
 
 import LessonQuestionsPanel from '@/app/manage/collection/lesson/[lessonId]/LessonQuestionsPanel'
 import LessonSiblingNav from '@/app/manage/collection/lesson/[lessonId]/LessonSiblingNav'
-import { getSpeakingEditData } from '@/lib/repositories/collection-manage.repo'
+import { getSpeakingEditData } from '@/lib/repositories/collection/manage'
 import ShadowingTitleForm from '@/app/manage/shadowing/ShadowingTitleForm'
 
 export default async function ManageShadowingEditPage({

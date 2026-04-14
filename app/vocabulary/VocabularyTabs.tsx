@@ -25,21 +25,21 @@ import {
 } from '@/app/actions/content'
 import { rateVocabularyMemory } from '@/app/actions/fsrs'
 import { useDialog } from '@/context/DialogContext'
-import WordPronunciation from '@/components/WordPronunciation'
+import WordPronunciation from '@/components/vocabulary/WordPronunciation'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
 import ToggleSwitch from '@/components/ToggleSwitch'
 import {
   hasJapanese,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
-import { buildJapaneseRubyHtml } from '@/utils/japaneseRuby'
+import { buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
 import {
   inferContextualPos,
   posBadgeClass,
   getPosOptions,
   posWordHighlightClass,
-} from '@/utils/posTagger'
-import { normalizeVocabularyHeadword } from '@/utils/vocabularyCanonical'
+} from '@/utils/language/posTagger'
+import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
 import { Rating } from 'ts-fsrs'
 
 type SentenceItem = {
@@ -349,7 +349,7 @@ function ControlDropdown({
         aria-label={ariaLabel}
         aria-expanded={open}
         onClick={() => setOpen(prev => !prev)}
-        className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus-visible:border-indigo-300 focus-visible:ring-2 focus-visible:ring-indigo-100'>
+        className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus-visible:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-100'>
         <span className='truncate'>{selected?.label || ''}</span>
         <span
           className={`ml-2 text-[11px] font-black text-gray-400 transition-transform ${
@@ -373,7 +373,7 @@ function ControlDropdown({
                   }}
                   className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
                     active
-                      ? 'bg-indigo-50 text-indigo-700'
+                      ? 'bg-slate-100 text-slate-800'
                       : 'text-gray-700 hover:bg-gray-50'
                   }`}>
                   {option.label}
@@ -392,27 +392,31 @@ export default function VocabularyTabs({
   groupedTotals,
   folders,
   initialFolderFilter = 'all',
+  initialGroupFilter,
   initialFocusId,
   initialFocusGroup,
   totalCount,
   currentPage,
   totalPages,
+  pageSize = 48,
 }: {
   groupedData: Record<string, VocabItem[]>
   groupedTotals: Record<string, number>
   folders: FolderItem[]
   initialFolderFilter?: string
+  initialGroupFilter?: string
   initialFocusId?: string
   initialFocusGroup?: string
   totalCount: number
   currentPage: number
   totalPages: number
+  pageSize?: number
 }) {
   const dialog = useDialog()
   const router = useRouter()
   const pathname = usePathname()
   const [activeTab, setActiveTab] = useState(
-    Object.keys(groupedData)[0] || '未分类',
+    initialGroupFilter || Object.keys(groupedData)[0] || '未分类',
   )
   const [localData, setLocalData] = useState(groupedData)
   const [viewMode, setViewMode] = useState<'list' | 'flashcard'>('list')
@@ -444,6 +448,9 @@ export default function VocabularyTabs({
   const [selectedPosFilter, setSelectedPosFilter] = useState('all')
   const [selectedFolderFilter, setSelectedFolderFilter] =
     useState(initialFolderFilter)
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState(
+    initialGroupFilter || '',
+  )
   const [folderList, setFolderList] = useState(folders)
   const [selectedFolderManageId, setSelectedFolderManageId] = useState<
     string | null
@@ -511,6 +518,28 @@ export default function VocabularyTabs({
   const bumpShuffleSeed = () => {
     shuffleSeedRef.current += 1
     setShuffleSeed(shuffleSeedRef.current)
+  }
+
+  const effectiveGroupFilter = selectedGroupFilter || initialGroupFilter || activeTab
+  const effectiveGroupTotalPages = useMemo(() => {
+    const groupCount = effectiveGroupFilter
+      ? groupedTotals[effectiveGroupFilter] || 0
+      : totalCount
+    return Math.max(1, Math.ceil(groupCount / pageSize))
+  }, [effectiveGroupFilter, groupedTotals, pageSize, totalCount])
+
+  const buildVocabularySearchParams = (overrides: {
+    page?: string
+    folder?: string
+    group?: string | null
+  }) => {
+    const params = new URLSearchParams()
+    params.set('page', overrides.page || '1')
+    params.set('folder', overrides.folder || selectedFolderFilter)
+    const nextGroup =
+      overrides.group === undefined ? effectiveGroupFilter : overrides.group
+    if (nextGroup) params.set('group', nextGroup)
+    return params
   }
 
   // 🌟 修复后的音频播放逻辑
@@ -1256,12 +1285,11 @@ export default function VocabularyTabs({
   }, [visibleList, memoryMode, memoryNowMs, randomOrder, shuffleSeed])
   const currentFlashVocab = flashList[currentIndex] || null
   const allExistingGroups = useMemo(() => {
-    const totalGroups = Object.keys(groupedTotals).filter(
+    return Object.keys(groupedTotals).filter(
       name => (groupedTotals[name] || 0) > 0,
     )
-    if (totalGroups.length > 0) return totalGroups
-    return Object.keys(localData).filter(g => localData[g].length > 0)
-  }, [groupedTotals, localData])
+  }, [groupedTotals])
+  const currentGroupCountMap = useMemo(() => groupedTotals, [groupedTotals])
 
   useEffect(() => {
     if (viewMode !== 'flashcard') return
@@ -1315,11 +1343,19 @@ export default function VocabularyTabs({
     setLocalData(groupedData)
     const groups = Object.keys(groupedData)
     if (groups.length === 0) {
-      if (activeTab !== '未分类') setActiveTab('未分类')
+      if (initialGroupFilter && activeTab !== initialGroupFilter) {
+        setActiveTab(initialGroupFilter)
+      } else if (!initialGroupFilter && activeTab !== '未分类') {
+        setActiveTab('未分类')
+      }
+      return
+    }
+    if (initialGroupFilter && groups.includes(initialGroupFilter)) {
+      if (activeTab !== initialGroupFilter) setActiveTab(initialGroupFilter)
       return
     }
     if (!groups.includes(activeTab)) setActiveTab(groups[0])
-  }, [groupedData, activeTab])
+  }, [groupedData, initialGroupFilter, activeTab])
 
   useEffect(() => {
     setFolderList(folders)
@@ -1334,6 +1370,10 @@ export default function VocabularyTabs({
   useEffect(() => {
     setSelectedFolderFilter(initialFolderFilter || 'all')
   }, [initialFolderFilter])
+
+  useEffect(() => {
+    setSelectedGroupFilter(initialGroupFilter || '')
+  }, [initialGroupFilter])
 
   useEffect(() => {
     if (!initialFocusId) return
@@ -1356,6 +1396,14 @@ export default function VocabularyTabs({
       appliedFocusIdRef.current = initialFocusId
     }
   }, [initialFocusId, initialFocusGroup, localData])
+
+  const pushVocabularyGroup = (groupName: string | null) => {
+    const params = buildVocabularySearchParams({
+      page: '1',
+      group: groupName,
+    })
+    router.push(`${pathname}?${params.toString()}`)
+  }
 
   useEffect(() => {
     if (currentIndex >= flashList.length) {
@@ -1814,445 +1862,460 @@ export default function VocabularyTabs({
   const cardTransitionOpacity = cardTransitionState === 'idle' ? 1 : 0.14
 
   return (
-    <div className='theme-page-vocab max-w-7xl mx-auto'>
-      {/* 头部导航 */}
-      <div className={viewMode === 'flashcard' ? 'mb-3' : 'mb-6'}>
-        {viewMode !== 'flashcard' && (
-          <div className='flex w-full flex-wrap gap-2 overflow-x-auto border-b border-gray-200 pb-3 mb-3 scrollbar-hide'>
-            {allExistingGroups.map(name => (
-              <button
-                key={name}
-                onClick={() => {
-                  setActiveTab(name)
-                  setCurrentIndex(0)
-                  setViewMode('list')
-                }}
-                className={`rounded-full font-bold whitespace-nowrap transition-colors px-4 py-2 ${
-                  activeTab === name
-                    ? 'border border-indigo-200 bg-indigo-50 text-indigo-700'
-                    : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                }`}>
-                {LANG_NAMES[name] || name}
-                <span className='ml-1 opacity-75'>
-                  ({groupedTotals[name] || 0})
-                </span>
-              </button>
-            ))}
+    <div className='theme-page-vocab space-y-6'>
+      <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5'>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700'>
+              当前分组 {LANG_NAMES[activeTab] || activeTab}
+            </span>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600'>
+              本页 {visibleList.length} 条
+            </span>
+            <span className='rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600'>
+              闪卡 {flashList.length} 条
+            </span>
+          </div>
+          <div className='flex flex-wrap items-center gap-2'>
             <button
-              type='button'
-              onClick={() => void handleRenameGroup()}
-              className='ml-auto rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
-              重命名分组
+              onClick={() => setIsEditMode(prev => !prev)}
+              className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
+                isEditMode
+                  ? 'border-rose-200 bg-rose-50 text-rose-700'
+                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}>
+              {isEditMode ? '退出编辑' : '编辑'}
             </button>
-          </div>
-        )}
-
-        <div className={`space-y-2 pb-3 ${viewMode !== 'flashcard' ? 'border-b border-gray-200' : ''}`}>
-          <div className='flex flex-wrap items-center justify-between gap-3'>
-            <div className='flex flex-wrap items-center gap-2'>
+            {viewMode !== 'flashcard' && (
               <button
-                onClick={() => setIsEditMode(prev => !prev)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                  isEditMode
-                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                    : 'bg-gray-50 text-gray-600 border border-gray-200 hover:bg-gray-100'
-                }`}>
-                {isEditMode ? '退出编辑' : '编辑'}
+                type='button'
+                onClick={() => void handleRenameGroup()}
+                className='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50'>
+                重命名分组
               </button>
-              {isEditMode && (
-                <div className='flex items-center gap-2 rounded-lg bg-indigo-50 px-3 py-1.5 border border-indigo-200'>
-                  <label className='flex items-center gap-2 cursor-pointer'>
-                    <input
-                      type='checkbox'
-                      checked={isSelectAllChecked}
-                      onChange={e => {
-                        setIsSelectAllChecked(e.target.checked)
-                        if (e.target.checked) {
-                          const allIds = new Set(
-                            visibleList.map(item => item.id),
-                          )
-                          setSelectedVocabIds(allIds)
-                        } else {
-                          setSelectedVocabIds(new Set())
-                        }
-                      }}
-                      className='w-4 h-4 rounded border-gray-300 cursor-pointer accent-indigo-600'
-                    />
-                    <span className='text-xs text-indigo-700 font-medium'>
-                      全选
-                    </span>
-                  </label>
-                  {selectedVocabIds.size > 0 && (
-                    <>
-                      <span className='border-l border-indigo-200 h-4'></span>
-                      <span className='text-xs text-indigo-700 font-medium'>
-                        已选 {selectedVocabIds.size}/{visibleList.length} 个
-                      </span>
-                      <button
-                        type='button'
-                        onClick={() => setBulkTagPanelOpen(prev => !prev)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all ${
-                          bulkTagPanelOpen
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                            : 'border border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50'
-                        }`}>
-                        {bulkTagPanelOpen ? '收起标签面板' : '批量添加标签'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setSelectedVocabIds(new Set())
-                          setIsSelectAllChecked(false)
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5'>
+        <div className='flex flex-col gap-4'>
+          {viewMode !== 'flashcard' ? (
+            <div className='flex w-full flex-wrap gap-2 overflow-x-auto border-b border-slate-100 pb-3 scrollbar-hide'>
+              {allExistingGroups.map(name => (
+                <button
+                  key={name}
+                  onClick={() => {
+                    const shouldClearGroup = selectedGroupFilter === name
+                    setSelectedGroupFilter(shouldClearGroup ? '' : name)
+                    setActiveTab(name)
+                    pushVocabularyGroup(shouldClearGroup ? null : name)
+                    setCurrentIndex(0)
+                    setViewMode('list')
+                  }}
+                  className={`rounded-full whitespace-nowrap px-4 py-2 font-bold transition-colors ${
+                    activeTab === name
+                      ? 'border border-slate-200 bg-slate-900 text-white'
+                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}>
+                  {LANG_NAMES[name] || name}
+                  <span className='ml-1 opacity-75'>
+                    ({currentGroupCountMap[name] || 0})
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          <div
+            className={`space-y-4 ${viewMode !== 'flashcard' ? 'border-b border-slate-200 pb-4' : ''}`}>
+            <div className='flex flex-wrap items-center justify-between gap-3'>
+              <div className='flex flex-wrap items-center gap-2'>
+                {isEditMode && (
+                  <div className='flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2'>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <input
+                        type='checkbox'
+                        checked={isSelectAllChecked}
+                        onChange={e => {
+                          setIsSelectAllChecked(e.target.checked)
+                          if (e.target.checked) {
+                            const allIds = new Set(
+                              visibleList.map(item => item.id),
+                            )
+                            setSelectedVocabIds(allIds)
+                          } else {
+                            setSelectedVocabIds(new Set())
+                          }
                         }}
-                        className='px-2 py-1 rounded-md text-xs font-bold text-indigo-700 hover:bg-indigo-100 transition-colors'>
-                        清空选择
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
-              {!(viewMode === 'flashcard' && memoryMode) && (
-                <ToggleSwitch
-                  label='注音'
-                  checked={showPronunciation}
-                  onChange={setShowPronunciation}
-                />
-              )}
-            </div>
-            <div className='flex items-center gap-2 rounded-lg bg-gray-100 p-1'>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === 'list' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                列表
-              </button>
-              <button
-                onClick={() => {
-                  setViewMode('flashcard')
-                  setCurrentIndex(0)
-                }}
-                className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-colors ${viewMode === 'flashcard' ? 'bg-indigo-50 text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}>
-                闪卡
-              </button>
-            </div>
-          </div>
-
-          {isEditMode && bulkTagPanelOpen && (
-            <div className='rounded-2xl border border-indigo-100 bg-gradient-to-br from-white to-indigo-50/70 p-4 shadow-sm'>
-              <div className='flex flex-col gap-3'>
-                <div className='flex flex-wrap items-center gap-2'>
-                  <span className='inline-flex items-center rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700'>
-                    已选 {selectedVocabIds.size} 个单词
-                  </span>
-                  <span className='text-xs text-slate-500'>
-                    支持换行、逗号、分号分隔
-                  </span>
-                </div>
-
-                <textarea
-                  value={bulkTagsInput}
-                  onChange={event =>
-                    setBulkTagsInput(event.currentTarget.value)
-                  }
-                  rows={3}
-                  placeholder='例如：N1重点\n抽象表达\n易混'
-                  className='w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-inner outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
-                />
-
-                {splitListInput(bulkTagsInput).length > 0 && (
-                  <div className='flex flex-wrap gap-1.5'>
-                    {splitListInput(bulkTagsInput).map(tag => (
-                      <span
-                        key={`bulk-draft-tag-${tag}`}
-                        className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
-                        #{tag}
+                        className='h-4 w-4 cursor-pointer rounded border-gray-300 accent-slate-900'
+                      />
+                      <span className='text-xs font-medium text-slate-700'>
+                        全选
                       </span>
-                    ))}
+                    </label>
+                    {selectedVocabIds.size > 0 && (
+                      <>
+                        <span className='h-4 border-l border-slate-200' />
+                        <span className='text-xs font-medium text-slate-700'>
+                          已选 {selectedVocabIds.size}/{visibleList.length} 个
+                        </span>
+                        <button
+                          type='button'
+                          onClick={() => setBulkTagPanelOpen(prev => !prev)}
+                          className={`rounded-md px-2.5 py-1 text-xs font-bold transition-all ${
+                            bulkTagPanelOpen
+                              ? 'bg-slate-900 text-white shadow-md'
+                              : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                          }`}>
+                          {bulkTagPanelOpen ? '收起标签面板' : '批量添加标签'}
+                        </button>
+                        <button
+                          type='button'
+                          onClick={() => {
+                            setSelectedVocabIds(new Set())
+                            setIsSelectAllChecked(false)
+                          }}
+                          className='rounded-md px-2 py-1 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-100'>
+                          清空选择
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
-
-                <div className='flex flex-wrap items-center justify-end gap-2'>
-                  <button
-                    type='button'
-                    onClick={() => {
-                      setBulkTagsInput('')
-                      setBulkTagPanelOpen(false)
-                    }}
-                    className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
-                    取消
-                  </button>
-                  <button
-                    type='button'
-                    onClick={() => void handleBulkEditTagsInline()}
-                    className='rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700'>
-                    保存批量标签
-                  </button>
-                </div>
+                {!(viewMode === 'flashcard' && memoryMode) && (
+                  <ToggleSwitch
+                    label='注音'
+                    checked={showPronunciation}
+                    onChange={setShowPronunciation}
+                  />
+                )}
               </div>
-            </div>
-          )}
-
-          {viewMode === 'flashcard' && (
-            <div className='flex flex-wrap items-center gap-2 pt-1'>
-              <button
-                type='button'
-                onClick={() => {
-                  setMemoryMode(prev => !prev)
-                  setMemoryNowMs(prev => prev + 1)
-                  setCurrentIndex(0)
-                }}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
-                  memoryMode
-                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                }`}>
-                记忆模式
-              </button>
-              <button
-                type='button'
-                onClick={() => {
-                  setRandomOrder(prev => !prev)
-                  bumpShuffleSeed()
-                  setCurrentIndex(0)
-                }}
-                className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
-                  randomOrder
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                    : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                }`}>
-                随机顺序
-              </button>
-              {randomOrder && (
+              <div className='flex items-center gap-2 rounded-xl bg-slate-100 p-1'>
+                <button
+                  type='button'
+                  onClick={() => setViewMode('list')}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
+                    viewMode === 'list'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}>
+                  列表
+                </button>
                 <button
                   type='button'
                   onClick={() => {
+                    setViewMode('flashcard')
+                    setCurrentIndex(0)
+                  }}
+                  className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
+                    viewMode === 'flashcard'
+                      ? 'bg-slate-900 text-white'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}>
+                  闪卡
+                </button>
+              </div>
+            </div>
+
+            {isEditMode && bulkTagPanelOpen && (
+              <div className='rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-sm'>
+                <div className='flex flex-col gap-3'>
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <span className='inline-flex items-center rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700'>
+                      已选 {selectedVocabIds.size} 个单词
+                    </span>
+                    <span className='text-xs text-slate-500'>
+                      支持换行、逗号、分号分隔
+                    </span>
+                  </div>
+
+                  <textarea
+                    value={bulkTagsInput}
+                    onChange={event =>
+                      setBulkTagsInput(event.currentTarget.value)
+                    }
+                    rows={3}
+                    placeholder='例如：N1重点\n抽象表达\n易混'
+                    className='w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-inner outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100'
+                  />
+
+                  {splitListInput(bulkTagsInput).length > 0 && (
+                    <div className='flex flex-wrap gap-1.5'>
+                      {splitListInput(bulkTagsInput).map(tag => (
+                        <span
+                          key={`bulk-draft-tag-${tag}`}
+                          className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700'>
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className='flex flex-wrap items-center justify-end gap-2'>
+                    <button
+                      type='button'
+                      onClick={() => {
+                        setBulkTagsInput('')
+                        setBulkTagPanelOpen(false)
+                      }}
+                      className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
+                      取消
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() => void handleBulkEditTagsInline()}
+                      className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-slate-800'>
+                      保存批量标签
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {viewMode === 'flashcard' ? (
+              <div className='flex flex-wrap items-center gap-2'>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setMemoryMode(prev => !prev)
+                    setMemoryNowMs(prev => prev + 1)
+                    setCurrentIndex(0)
+                  }}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                    memoryMode
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}>
+                  记忆模式
+                </button>
+                <button
+                  type='button'
+                  onClick={() => {
+                    setRandomOrder(prev => !prev)
                     bumpShuffleSeed()
                     setCurrentIndex(0)
                   }}
-                  className='rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
-                  重新打乱
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                    randomOrder
+                      ? 'border-slate-200 bg-slate-100 text-slate-800'
+                      : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                  }`}>
+                  随机顺序
                 </button>
-              )}
-              {memoryMode && (
-                <span className='ui-tag ui-tag-muted'>到期优先 + 新词优先</span>
-              )}
-            </div>
-          )}
-
-          {viewMode === 'list' && (
-            <div className='space-y-2 pt-1'>
-              <div className='flex flex-wrap items-center gap-2'>
-                <span className='text-xs font-bold text-gray-500'>排序</span>
-                {(
-                  [
-                    { value: 'recent', label: '最新' },
-                    { value: 'word', label: '词汇 A-Z' },
-                    { value: 'pos', label: '词性' },
-                  ] as const
-                ).map(item => (
-                  <button
-                    key={`sort-chip-${item.value}`}
-                    type='button'
-                    onClick={() => setSortMode(item.value)}
-                    className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
-                      sortMode === item.value
-                        ? 'border-indigo-200 bg-indigo-50 text-indigo-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                    }`}>
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className='grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] sm:items-center'>
-                <span className='text-xs font-bold text-gray-500'>词性</span>
-                <ControlDropdown
-                  ariaLabel='按词性筛选'
-                  value={selectedPosFilter}
-                  onChange={setSelectedPosFilter}
-                  className='w-full'
-                  options={[
-                    { value: 'all', label: '全部词性' },
-                    ...posFilterOptions.map(pos => ({
-                      value: pos,
-                      label: pos,
-                    })),
-                  ]}
-                />
-              </div>
-
-              <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
-                <ControlDropdown
-                  ariaLabel='收藏夹筛选'
-                  value={selectedFolderFilter}
-                  onChange={value => {
-                    setSelectedFolderFilter(value)
-                    setSelectedFolderManageId(
-                      value !== 'all' && value !== 'none' ? value : null,
-                    )
-                    const params = new URLSearchParams()
-                    params.set('page', '1')
-                    params.set('folder', value)
-                    router.push(`${pathname}?${params.toString()}`)
-                  }}
-                  className='w-full'
-                  options={[
-                    { value: 'all', label: '全部收藏夹' },
-                    { value: 'none', label: '未收藏' },
-                    ...flatFolders.map(folder => ({
-                      value: folder.id,
-                      label: folder.pathLabel,
-                    })),
-                  ]}
-                />
-                <button
-                  type='button'
-                  onClick={() =>
-                    void handleCreateFolder(activeFolderContextId || null)
-                  }
-                  className='h-10 rounded-xl border border-indigo-200 bg-indigo-50 px-3 text-sm font-bold text-indigo-700 transition-colors hover:bg-indigo-100'>
-                  {activeFolderContextId ? '新建子收藏夹' : '新建收藏夹'}
-                </button>
-              </div>
-
-              <div className='flex flex-wrap items-center gap-2'>
-                <span className='text-xs font-bold text-gray-500'>
-                  收藏夹管理
-                </span>
-                <ControlDropdown
-                  ariaLabel='选择要管理的收藏夹'
-                  value={activeFolderContextId || 'none'}
-                  onChange={value =>
-                    setSelectedFolderManageId(value === 'none' ? null : value)
-                  }
-                  className='w-full sm:max-w-sm'
-                  options={[
-                    { value: 'none', label: '未选择' },
-                    ...flatFolders.map(folder => ({
-                      value: folder.id,
-                      label: folder.pathLabel,
-                    })),
-                  ]}
-                />
-                <button
-                  type='button'
-                  disabled={!activeFolderContextId}
-                  onClick={() =>
-                    activeFolderContextId &&
-                    void handleCreateFolder(activeFolderContextId)
-                  }
-                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                  新建子收藏夹
-                </button>
-                <button
-                  type='button'
-                  disabled={!activeFolderContextId}
-                  onClick={() =>
-                    activeFolderContextId &&
-                    void handleRenameFolder(activeFolderContextId)
-                  }
-                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                  重命名
-                </button>
-                <button
-                  type='button'
-                  disabled={!activeFolderContextId}
-                  onClick={() =>
-                    activeFolderContextId &&
-                    void handleMoveFolder(activeFolderContextId)
-                  }
-                  className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                  移动
-                </button>
-              </div>
-
-              <div className='flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 text-xs text-gray-600'>
-                <span>
-                  本页 {visibleList.length} 条 · 第 {currentPage}/{totalPages}{' '}
-                  页
-                </span>
-                <div className='flex items-center gap-2'>
+                {randomOrder && (
                   <button
                     type='button'
                     onClick={() => {
-                      if (currentPage <= 1) return
-                      const params = new URLSearchParams()
-                      params.set('page', String(currentPage - 1))
-                      params.set('folder', selectedFolderFilter)
+                      bumpShuffleSeed()
+                      setCurrentIndex(0)
+                    }}
+                    className='rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
+                    重新打乱
+                  </button>
+                )}
+                {memoryMode && (
+                  <span className='ui-tag ui-tag-muted'>
+                    到期优先 + 新词优先
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className='space-y-2'>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className='text-xs font-bold text-gray-500'>排序</span>
+                  {(
+                    [
+                      { value: 'recent', label: '最新' },
+                      { value: 'word', label: '词汇 A-Z' },
+                      { value: 'pos', label: '词性' },
+                    ] as const
+                  ).map(item => (
+                    <button
+                      key={`sort-chip-${item.value}`}
+                      type='button'
+                      onClick={() => setSortMode(item.value)}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                        sortMode === item.value
+                          ? 'border-slate-200 bg-slate-100 text-slate-800'
+                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                      }`}>
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] sm:items-center'>
+                  <span className='text-xs font-bold text-gray-500'>词性</span>
+                  <ControlDropdown
+                    ariaLabel='按词性筛选'
+                    value={selectedPosFilter}
+                    onChange={setSelectedPosFilter}
+                    className='w-full'
+                    options={[
+                      { value: 'all', label: '全部词性' },
+                      ...posFilterOptions.map(pos => ({
+                        value: pos,
+                        label: pos,
+                      })),
+                    ]}
+                  />
+                </div>
+
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                  <ControlDropdown
+                    ariaLabel='收藏夹筛选'
+                    value={selectedFolderFilter}
+                    onChange={value => {
+                      setSelectedFolderFilter(value)
+                      setSelectedFolderManageId(
+                        value !== 'all' && value !== 'none' ? value : null,
+                      )
+                      const params = buildVocabularySearchParams({
+                        page: '1',
+                        folder: value,
+                      })
                       router.push(`${pathname}?${params.toString()}`)
                     }}
-                    disabled={currentPage <= 1}
-                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    上一页
-                  </button>
+                    className='w-full'
+                    options={[
+                      { value: 'all', label: '全部收藏夹' },
+                      { value: 'none', label: '未收藏' },
+                      ...flatFolders.map(folder => ({
+                        value: folder.id,
+                        label: folder.pathLabel,
+                      })),
+                    ]}
+                  />
                   <button
                     type='button'
-                    onClick={() => {
-                      if (currentPage >= totalPages) return
-                      const params = new URLSearchParams()
-                      params.set('page', String(currentPage + 1))
-                      params.set('folder', selectedFolderFilter)
-                      router.push(`${pathname}?${params.toString()}`)
-                    }}
-                    disabled={currentPage >= totalPages}
-                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    下一页
+                    onClick={() =>
+                      void handleCreateFolder(activeFolderContextId || null)
+                    }
+                    className='h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100'>
+                    {activeFolderContextId ? '新建子收藏夹' : '新建收藏夹'}
                   </button>
                 </div>
+
+                <div className='flex flex-wrap items-center gap-2'>
+                  <span className='text-xs font-bold text-gray-500'>
+                    收藏夹管理
+                  </span>
+                  <ControlDropdown
+                    ariaLabel='选择要管理的收藏夹'
+                    value={activeFolderContextId || 'none'}
+                    onChange={value =>
+                      setSelectedFolderManageId(value === 'none' ? null : value)
+                    }
+                    className='w-full sm:max-w-sm'
+                    options={[
+                      { value: 'none', label: '未选择' },
+                      ...flatFolders.map(folder => ({
+                        value: folder.id,
+                        label: folder.pathLabel,
+                      })),
+                    ]}
+                  />
+                  <button
+                    type='button'
+                    disabled={!activeFolderContextId}
+                    onClick={() =>
+                      activeFolderContextId &&
+                      void handleCreateFolder(activeFolderContextId)
+                    }
+                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                    新建子收藏夹
+                  </button>
+                  <button
+                    type='button'
+                    disabled={!activeFolderContextId}
+                    onClick={() =>
+                      activeFolderContextId &&
+                      void handleRenameFolder(activeFolderContextId)
+                    }
+                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                    重命名
+                  </button>
+                  <button
+                    type='button'
+                    disabled={!activeFolderContextId}
+                    onClick={() =>
+                      activeFolderContextId &&
+                      void handleMoveFolder(activeFolderContextId)
+                    }
+                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                    移动
+                  </button>
+                </div>
+
+                <div className='flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 text-xs text-gray-600'>
+                  <span>
+                    本页 {visibleList.length} 条 · 第 {currentPage}/{effectiveGroupTotalPages}{' '}
+                    页
+                  </span>
+                  <div className='flex items-center gap-2'>
+                    <button
+                      type='button'
+                      onClick={() => {
+                        if (currentPage <= 1) return
+                        const params = buildVocabularySearchParams({
+                          page: String(currentPage - 1),
+                        })
+                        router.push(`${pathname}?${params.toString()}`)
+                      }}
+                      disabled={currentPage <= 1}
+                      className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                      上一页
+                    </button>
+                    <button
+                      type='button'
+                      onClick={() => {
+                        if (currentPage >= effectiveGroupTotalPages) return
+                        const params = buildVocabularySearchParams({
+                          page: String(currentPage + 1),
+                        })
+                        router.push(`${pathname}?${params.toString()}`)
+                      }}
+                      disabled={currentPage >= effectiveGroupTotalPages}
+                      className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
+                      下一页
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* 列表模式：仅显示单词和基础操作 */}
       {viewMode === 'list' && (
-        <div className='grid min-h-[56vh] auto-rows-min content-start items-start grid-cols-1 gap-4 xl:grid-cols-2'>
-          {visibleList.map((vocab, idx) => (
-            <div
-              key={vocab.id}
-              onClick={() => {
-                if (isEditMode) return // 编辑模式下不跳转
-                const nextIndex = flashList.findIndex(
-                  item => item.id === vocab.id,
-                )
-                setCurrentIndex(nextIndex >= 0 ? nextIndex : idx)
-                setViewMode('flashcard')
-              }}
-              className={`relative rounded-2xl border border-gray-200/80 bg-white/95 p-4 shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg ${
-                isEditMode ? 'pr-36 border-indigo-200 bg-indigo-50/30' : ''
-              }`}>
-              {isEditMode && (
-                <div className='absolute bottom-3 right-3'>
-                  <input
-                    type='checkbox'
-                    checked={selectedVocabIds.has(vocab.id)}
-                    onChange={e => {
-                      e.stopPropagation()
-                      const newSet = new Set(selectedVocabIds)
-                      if (e.target.checked) {
-                        newSet.add(vocab.id)
-                        // 检查是否全选
-                        if (newSet.size === visibleList.length) {
-                          setIsSelectAllChecked(true)
-                        }
-                      } else {
-                        newSet.delete(vocab.id)
-                        setIsSelectAllChecked(false)
-                      }
-                      setSelectedVocabIds(newSet)
-                    }}
-                    className='w-5 h-5 rounded border-gray-300 cursor-pointer accent-indigo-600'
-                  />
-                </div>
-              )}
-              <div className='flex items-start gap-3'>
-                <div className='min-w-0'>
+        <div className='min-h-[56vh] divide-y divide-slate-100 border-y border-slate-100 bg-white'>
+          {visibleList.map((vocab, idx) => {
+            const displayPronunciations = vocab.pronunciations || []
+
+            return (
+              <div
+                key={vocab.id}
+                onClick={() => {
+                  if (isEditMode) return
+                  const nextIndex = flashList.findIndex(
+                    item => item.id === vocab.id,
+                  )
+                  setCurrentIndex(nextIndex >= 0 ? nextIndex : idx)
+                  setViewMode('flashcard')
+                }}
+                className={`px-4 py-3 md:px-6 lg:px-8 transition-colors hover:bg-slate-50/50 ${
+                  isEditMode ? 'bg-slate-50/20' : 'bg-white'
+                }`}>
+                <div className='flex items-center justify-between gap-4'>
                   <WordPronunciation
                     word={vocab.word}
                     pronunciation={getPrimaryPronunciation(vocab)}
-                    pronunciations={vocab.pronunciations || []}
+                    pronunciations={displayPronunciations}
                     showPronunciation={shouldShowPronunciationForVocab(vocab)}
-                    wordClassName='text-2xl font-black text-slate-800 tracking-tight'
-                    hintClassName='text-xs font-bold text-gray-500 mt-1'
+                    wordClassName='text-[28px] font-black tracking-tight text-slate-900 md:text-[32px]'
+                    hintClassName='text-[11px] font-semibold text-slate-500'
                   />
                   {vocab.wordAudio && (
                     <button
@@ -2261,393 +2324,39 @@ export default function VocabularyTabs({
                         event.stopPropagation()
                         playAudioFile(vocab.wordAudio)
                       }}
-                      className='mt-1 inline-flex h-6 items-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700'>
-                      发音
-                    </button>
-                  )}
-                  {vocab.folderName && (
-                    <div className='mt-1.5'>
-                      <span className='inline-flex items-center rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700'>
-                        收藏夹:{' '}
-                        {vocab.folderId
-                          ? folderPathLabelMap[vocab.folderId] ||
-                            vocab.folderName
-                          : vocab.folderName}
-                      </span>
-                    </div>
-                  )}
-                  {!isEditMode && renderWordPosLine(vocab)}
-
-                  {vocab.tags && vocab.tags.length > 0 && (
-                    <div className='mt-3 flex flex-wrap gap-1.5'>
-                      {vocab.tags.slice(0, 6).map(tag => (
-                        <span
-                          key={`${vocab.id}-tag-${tag}`}
-                          className='inline-flex items-center rounded-full border border-slate-200/90 bg-gradient-to-b from-white to-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)]'>
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {isEditMode && (
-                    <div className='mt-3 flex flex-wrap items-center gap-2'>
-                      <button
-                        type='button'
-                        onClick={event => {
-                          event.stopPropagation()
-                          if (activeTagEditorId === vocab.id) {
-                            closeTagEditor()
-                            return
-                          }
-                          openTagEditor(vocab)
-                        }}
-                        className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
-                          activeTagEditorId === vocab.id
-                            ? 'bg-slate-900 text-white shadow-md'
-                            : 'border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
-                        }`}>
-                        {activeTagEditorId === vocab.id
-                          ? '收起标签'
-                          : '添加标签'}
-                      </button>
-                    </div>
-                  )}
-                  {vocab.meanings && vocab.meanings.length > 0 && (
-                    <div className='mt-2 space-y-1'>
-                      {vocab.meanings.slice(0, 2).map((meaning, meaningIdx) => (
-                        <div
-                          key={`${vocab.id}-list-meaning-${meaning}-${meaningIdx}`}
-                          className='flex items-start gap-1.5 text-[11px] font-semibold text-emerald-700'>
-                          <span className='mt-[1px] inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-100 px-1 text-[10px] font-bold text-emerald-800'>
-                            {meaningIdx + 1}
-                          </span>
-                          <span className='leading-4'>{meaning}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {isEditMode && (
-                    <div className='mt-1.5 flex flex-wrap gap-1.5'>
-                      {(vocab.partsOfSpeech || []).slice(0, 6).map(pos => (
-                        <button
-                          key={`${vocab.id}-list-pos-${pos}`}
-                          type='button'
-                          onClick={e => {
-                            e.stopPropagation()
-                            void handleToggleWordPos(vocab, pos)
-                          }}
-                          className={`rounded-md border px-2 py-0.5 text-[11px] font-bold transition-colors ${posBadgeClass(pos)} hover:brightness-95`}>
-                          {pos}
-                        </button>
-                      ))}
-                      {getPosOptions(vocab.word, vocab.sentences[0]?.text || '')
-                        .filter(
-                          option =>
-                            !(vocab.partsOfSpeech || []).includes(option),
-                        )
-                        .slice(0, 6)
-                        .map(option => (
-                          <button
-                            key={`${vocab.id}-list-pos-add-${option}`}
-                            type='button'
-                            onClick={e => {
-                              e.stopPropagation()
-                              void handleToggleWordPos(vocab, option)
-                            }}
-                            className='rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600 transition-colors hover:bg-gray-50'>
-                            {option}
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                  {vocab.pronunciations &&
-                    vocab.pronunciations.filter(Boolean).length > 1 &&
-                    shouldShowPronunciationForVocab(vocab) && (
-                      <div className='mt-1.5 flex flex-wrap gap-1'>
-                        {vocab.pronunciations.slice(1).map(pron => (
-                          <span
-                            key={`${vocab.id}-list-pron-${pron}`}
-                            className='rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-500'>
-                            {pron}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  {(() => {
-                    const family = inflectionByWordId.get(vocab.id)
-                    if (!family) return null
-                    const expanded = !!expandedInflectionIds[vocab.id]
-                    return (
-                      <div className='mt-2'>
-                        <button
-                          type='button'
-                          onClick={e => {
-                            e.stopPropagation()
-                            toggleInflectionExpand(vocab.id)
-                          }}
-                          className='inline-flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-100'>
-                          原形 {family.lemma}
-                          <span className='text-slate-400'>·</span>
-                          覆盖 {family.coveredVariants}/{family.totalVariants}
-                        </button>
-                        {expanded && (
-                          <div className='mt-1.5 flex flex-wrap gap-1.5'>
-                            {family.variants.map(variant => (
-                              <span
-                                key={`${vocab.id}-list-family-${variant.word}`}
-                                className='inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
-                                <span>{variant.word}</span>
-                                <span className='text-slate-400'>
-                                  {variant.sentenceHits}/
-                                  {Math.max(variant.sentenceTotal, 1)}
-                                </span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
-                </div>
-              </div>
-
-              {isEditMode && activeTagEditorId === vocab.id && (
-                <div
-                  onClick={event => event.stopPropagation()}
-                  className='mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-inner'>
-                  <div className='flex flex-col gap-3'>
-                    <div className='flex items-center justify-between gap-2'>
-                      <div>
-                        <p className='text-sm font-bold text-slate-800'>
-                          编辑标签
-                        </p>
-                        <p className='text-[11px] text-slate-500'>
-                          支持换行、逗号、分号分隔
-                        </p>
-                      </div>
-                      {(vocab.tags || []).length > 0 && (
-                        <span className='rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500'>
-                          当前 {vocab.tags?.length || 0} 个
-                        </span>
-                      )}
-                    </div>
-
-                    <textarea
-                      value={tagDraft}
-                      onChange={event => setTagDraft(event.currentTarget.value)}
-                      rows={3}
-                      placeholder='例如：高频 / 书面语 / 易错'
-                      className='w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
-                    />
-
-                    {splitListInput(tagDraft).length > 0 && (
-                      <div className='flex flex-wrap gap-1.5'>
-                        {splitListInput(tagDraft).map(tag => (
-                          <span
-                            key={`${vocab.id}-draft-${tag}`}
-                            className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
-                            #{tag}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className='flex justify-end gap-2'>
-                      <button
-                        type='button'
-                        onClick={closeTagEditor}
-                        className='rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
-                        取消
-                      </button>
-                      <button
-                        type='button'
-                        disabled={isSavingTags}
-                        onClick={() => void handleSaveTagsForVocab(vocab)}
-                        className='rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60'>
-                        {isSavingTags ? '保存中...' : '保存标签'}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {isEditMode && (
-                <div className='absolute right-3 top-3 flex items-center gap-2'>
-                  <div className='relative'>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        if (activePronEditId === vocab.id) {
-                          setActivePronEditId(null)
-                          return
-                        }
-                        handleOpenPronEditor(vocab)
-                      }}
-                      className={`p-2 rounded-lg transition-colors ${activePronEditId === vocab.id ? 'text-indigo-600 bg-indigo-50' : 'text-gray-300 hover:text-indigo-600'}`}>
-                      注
-                    </button>
-
-                    {activePronEditId === vocab.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className='absolute right-0 bottom-full mb-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 z-30'>
-                        <div className='text-[10px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
-                          编辑注音/音标
-                        </div>
-                        <input
-                          autoFocus
-                          value={pronInput}
-                          onChange={e => setPronInput(e.currentTarget.value)}
-                          placeholder='例如：言:い い 訳:わけ / にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
-                          className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 text-gray-800'
-                        />
-                        <p className='mt-1 px-1 text-[10px] text-gray-400'>
-                          日语支持「汉字:读音 + 原文段」（如 言:い い
-                          訳:わけ），也兼容空格或 | 拆分（如 にん
-                          げん）；外来语通常不需要拆分
-                        </p>
-                        <div className='mt-2 flex justify-end'>
-                          <button
-                            onClick={() => handleSavePronunciation(vocab)}
-                            className='text-xs font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700'>
-                            保存
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 🌟 简易移动分组弹出层 */}
-                  <div className='relative'>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        setActiveMoveId(null)
-                        setActivePronEditId(null)
-                        setActiveFolderEditId(
-                          activeFolderEditId === vocab.id ? null : vocab.id,
-                        )
-                      }}
-                      className={`p-2 rounded-lg transition-colors ${activeFolderEditId === vocab.id ? 'text-indigo-700 bg-indigo-50' : 'text-gray-300 hover:text-indigo-700'}`}>
-                      夹
-                    </button>
-                    {activeFolderEditId === vocab.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className='absolute right-0 bottom-full mb-2 w-56 rounded-2xl border border-gray-100 bg-white p-2 shadow-2xl z-30'>
-                        <div className='text-[10px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
-                          收藏夹
-                        </div>
-                        <div className='relative'>
-                          <select
-                            value={vocab.folderId || 'none'}
-                            onChange={event => {
-                              void handleAssignFolder(
-                                vocab.id,
-                                event.currentTarget.value,
-                              )
-                              setActiveFolderEditId(null)
-                            }}
-                            className='h-10 w-full appearance-none rounded-xl border border-gray-200 bg-gradient-to-b from-white to-gray-50 px-3 pr-8 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'>
-                            <option value='none'>不收藏</option>
-                            {flatFolders.map(folder => (
-                              <option
-                                key={`folder-option-${vocab.id}-${folder.id}`}
-                                value={folder.id}>
-                                {folder.pathLabel}
-                              </option>
-                            ))}
-                          </select>
-                          <span className='pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-gray-400'>
-                            ▾
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className='relative'>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        setActivePronEditId(null)
-                        setActiveFolderEditId(null)
-                        setActiveMoveId(
-                          activeMoveId === vocab.id ? null : vocab.id,
-                        )
-                      }}
-                      className={`p-2 rounded-lg transition-colors ${activeMoveId === vocab.id ? 'text-indigo-600 bg-indigo-50' : 'text-gray-300 hover:text-indigo-600'}`}>
+                      className='inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50'>
                       <svg
-                        className='w-5 h-5'
+                        className='h-3.5 w-3.5 text-slate-500'
                         fill='none'
                         stroke='currentColor'
-                        viewBox='0 0 24 24'>
+                        strokeWidth={1.8}
+                        viewBox='0 0 24 24'
+                        aria-hidden='true'>
                         <path
                           strokeLinecap='round'
                           strokeLinejoin='round'
-                          strokeWidth={2}
-                          d='M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4'
+                          d='M12 19a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1l-6 4H4a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h2l6 4Z'
+                        />
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          d='M16 9a4 4 0 0 1 0 6'
+                        />
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          d='M18.5 6.5a7 7 0 0 1 0 11'
                         />
                       </svg>
+                      <span>发音</span>
                     </button>
-
-                    {activeMoveId === vocab.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className='absolute right-0 bottom-full mb-2 w-48 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 z-30 animate-in fade-in slide-in-from-bottom-2 duration-200'>
-                        <div className='text-[10px] font-bold text-gray-400 px-3 py-1 uppercase tracking-wider'>
-                          移动至
-                        </div>
-                        {allExistingGroups
-                          .filter(g => g !== activeTab)
-                          .map(g => (
-                            <button
-                              key={g}
-                              onClick={() =>
-                                handleMoveGroup(vocab.id, activeTab, g)
-                              }
-                              className='w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors'>
-                              {LANG_NAMES[g] || g}
-                            </button>
-                          ))}
-                        <div className='mt-2 pt-2 border-t border-gray-50'>
-                          <input
-                            autoFocus
-                            placeholder='新分组...'
-                            className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 mb-1'
-                            value={newGroupInput}
-                            onChange={e => setNewGroupInput(e.target.value)}
-                            onKeyDown={e =>
-                              e.key === 'Enter' &&
-                              handleMoveGroup(
-                                vocab.id,
-                                activeTab,
-                                newGroupInput,
-                              )
-                            }
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div onClick={e => e.stopPropagation()}>
-                    <InlineConfirmAction
-                      message='删除后不可恢复，确认删除吗？'
-                      onConfirm={() => handleDelete(activeTab, vocab.id)}
-                      triggerLabel='删'
-                      confirmLabel='确认删除'
-                      pendingLabel='删除中...'
-                      triggerClassName='rounded-lg border border-gray-200 px-2 py-1 text-[11px] font-bold text-rose-600 hover:bg-rose-50'
-                    />
-                  </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              </div>
+            )
+          })}
           {visibleList.length === 0 && (
-            <div className='col-span-full rounded-2xl border border-dashed border-gray-200 bg-white py-12 text-center text-sm font-medium text-gray-500'>
+            <div className='py-12 text-center text-sm font-medium text-slate-500'>
               当前筛选条件下没有词条
             </div>
           )}
@@ -2662,14 +2371,14 @@ export default function VocabularyTabs({
             onPointerMove={handleFlashCardPointerMove}
             onPointerUp={handleFlashCardPointerEnd}
             onPointerCancel={handleFlashCardPointerEnd}
-            className='relative flex min-h-[calc(100vh-210px)] w-full flex-col rounded-[2rem] border border-gray-200 bg-white p-5 md:p-7 transition-[transform,opacity] duration-220 ease-out'
+            className='relative flex min-h-[calc(100vh-210px)] w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-[transform,opacity] duration-220 ease-out md:p-7'
             style={{
               transform: `translateX(${dragOffsetX + cardTransitionOffset}px)`,
               opacity: cardTransitionOpacity,
             }}>
-            <div className='mb-4 flex justify-end items-center'>
+            <div className='mb-3 flex items-center justify-end'>
               {isEditMode && (
-                <div className='flex gap-3 relative'>
+                <div className='relative flex gap-2.5'>
                   <div className='relative'>
                     <button
                       onClick={e => {
@@ -2684,14 +2393,18 @@ export default function VocabularyTabs({
                         setActiveFolderEditId(null)
                         handleOpenPronEditor(current)
                       }}
-                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-colors ${activePronEditId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
+                      className={`ui-btn ui-btn-sm px-3 text-xs font-bold transition-colors ${
+                        activePronEditId === currentFlashVocab.id
+                          ? 'bg-slate-100 text-slate-800'
+                          : 'bg-white text-slate-400 hover:text-slate-700'
+                      }`}>
                       注音
                     </button>
                     {activePronEditId === currentFlashVocab.id && (
                       <div
                         onClick={e => e.stopPropagation()}
-                        className='absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 z-50 text-left'>
-                        <div className='text-[10px] font-bold text-gray-400 px-2 py-1 uppercase tracking-wider'>
+                        className='absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm text-left'>
+                        <div className='px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400'>
                           编辑注音/音标
                         </div>
                         <input
@@ -2699,9 +2412,9 @@ export default function VocabularyTabs({
                           value={pronInput}
                           onChange={e => setPronInput(e.currentTarget.value)}
                           placeholder='例如：言:い い 訳:わけ / にん げん（或 にん|げん） / ˈlæŋɡwɪdʒ'
-                          className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 text-gray-800'
+                          className='w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100'
                         />
-                        <p className='mt-1 px-1 text-[10px] text-gray-400'>
+                        <p className='mt-1 px-1 text-[10px] text-slate-400'>
                           日语支持「汉字:读音 + 原文段」（如 言:い い
                           訳:わけ），也兼容空格或 | 拆分（如 にん
                           げん）；外来语通常不需要拆分
@@ -2711,14 +2424,14 @@ export default function VocabularyTabs({
                             onClick={() =>
                               handleSavePronunciation(currentFlashVocab)
                             }
-                            className='text-xs font-bold bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700'>
+                            className='ui-btn ui-btn-sm bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800'>
                             保存
                           </button>
                         </div>
                       </div>
                     )}
                   </div>
-                  {/* 🌟 修复：加上 relative 容器和气泡菜单 UI */}
+
                   <div className='relative'>
                     <button
                       onClick={e => {
@@ -2731,7 +2444,11 @@ export default function VocabularyTabs({
                             : currentFlashVocab.id,
                         )
                       }}
-                      className={`text-xs font-bold px-4 py-2 rounded-xl transition-colors ${activeMoveId === currentFlashVocab.id ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-indigo-600 bg-gray-50'}`}>
+                      className={`ui-btn ui-btn-sm px-3 text-xs font-bold transition-colors ${
+                        activeMoveId === currentFlashVocab.id
+                          ? 'bg-slate-100 text-slate-800'
+                          : 'bg-white text-slate-400 hover:text-slate-700'
+                      }`}>
                       移动
                     </button>
 
@@ -2739,8 +2456,8 @@ export default function VocabularyTabs({
                     {activeMoveId === currentFlashVocab.id && (
                       <div
                         onClick={e => e.stopPropagation()}
-                        className='absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 p-2 z-50 animate-in fade-in slide-in-from-top-2 duration-200 text-left'>
-                        <div className='text-[10px] font-bold text-gray-400 px-3 py-1 uppercase tracking-wider'>
+                        className='absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 text-left'>
+                        <div className='px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400'>
                           移动至
                         </div>
                         {allExistingGroups
@@ -2755,15 +2472,15 @@ export default function VocabularyTabs({
                                   g,
                                 )
                               }
-                              className='w-full text-left px-3 py-2 rounded-lg text-sm font-bold text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 transition-colors'>
+                              className='w-full rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800'>
                               {LANG_NAMES[g] || g}
                             </button>
                           ))}
-                        <div className='mt-2 pt-2 border-t border-gray-50'>
+                        <div className='mt-2 border-t border-slate-100 pt-2'>
                           <input
                             autoFocus
                             placeholder='新分组...'
-                            className='w-full px-3 py-2 text-sm bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-indigo-100 mb-1 text-gray-800'
+                            className='mb-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100'
                             value={newGroupInput}
                             onChange={e => setNewGroupInput(e.target.value)}
                             onKeyDown={e =>
@@ -2794,7 +2511,7 @@ export default function VocabularyTabs({
               )}
             </div>
 
-            <div className='mb-3 pb-3 text-center'>
+            <div className='mb-3 border-b border-slate-100 pb-4 text-center'>
               <WordPronunciation
                 word={currentFlashVocab.word}
                 pronunciation={getPrimaryPronunciation(currentFlashVocab)}
@@ -2802,8 +2519,8 @@ export default function VocabularyTabs({
                 showPronunciation={shouldShowPronunciationForVocab(
                   currentFlashVocab,
                 )}
-                wordClassName='text-4xl md:text-6xl font-black text-slate-800 mb-1'
-                hintClassName='text-xs md:text-sm font-bold text-gray-500'
+                wordClassName='text-4xl font-black tracking-tight text-slate-900 md:text-5xl'
+                hintClassName='text-xs font-semibold text-slate-500 md:text-sm'
               />
               {currentFlashVocab.wordAudio && (
                 <div className='mt-2'>
@@ -2813,14 +2530,14 @@ export default function VocabularyTabs({
                       event.stopPropagation()
                       playAudioFile(currentFlashVocab.wordAudio)
                     }}
-                    className='inline-flex h-8 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-800'>
+                    className='ui-btn ui-btn-sm h-8 px-3 text-xs font-semibold text-slate-600'>
                     发音
                   </button>
                 </div>
               )}
               {currentFlashVocab.folderName && (
                 <div className='mt-3'>
-                  <span className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600'>
+                  <span className='ui-tag ui-tag-info h-6 px-3 text-xs font-bold'>
                     收藏夹:{' '}
                     {currentFlashVocab.folderId
                       ? folderPathLabelMap[currentFlashVocab.folderId] ||
@@ -2830,14 +2547,19 @@ export default function VocabularyTabs({
                 </div>
               )}
               {currentFlashVocab.tags && currentFlashVocab.tags.length > 0 && (
-                <div className='mt-2 flex flex-wrap items-center justify-center gap-1.5'>
-                  {currentFlashVocab.tags.slice(0, 8).map(tag => (
+                <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
+                  {currentFlashVocab.tags.slice(0, 4).map(tag => (
                     <span
                       key={`${currentFlashVocab.id}-flash-tag-${tag}`}
-                      className='inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
+                      className='ui-tag ui-tag-muted h-6 px-2.5 text-[11px]'>
                       #{tag}
                     </span>
                   ))}
+                  {currentFlashVocab.tags.length > 4 && (
+                    <span className='ui-tag ui-tag-muted h-6 px-2 text-[11px]'>
+                      +{currentFlashVocab.tags.length - 4}
+                    </span>
+                  )}
                 </div>
               )}
 
@@ -2855,10 +2577,10 @@ export default function VocabularyTabs({
                       }
                       openTagEditor(currentFlashVocab)
                     }}
-                    className={`inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                    className={`ui-btn ui-btn-sm inline-flex items-center px-3 py-1.5 text-xs font-bold transition-all ${
                       activeTagEditorId === currentFlashVocab.id
                         ? 'bg-slate-900 text-white shadow-md'
-                        : 'border border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:text-indigo-700'
+                        : 'border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:text-slate-800'
                     }`}>
                     {activeTagEditorId === currentFlashVocab.id
                       ? '收起标签'
@@ -2870,7 +2592,7 @@ export default function VocabularyTabs({
               {isEditMode && activeTagEditorId === currentFlashVocab.id && (
                 <div
                   onClick={event => event.stopPropagation()}
-                  className='mx-auto mt-3 max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 shadow-inner text-left'>
+                  className='mx-auto mt-3 max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-left'>
                   <div className='flex flex-col gap-3'>
                     <div className='flex items-center justify-between gap-2'>
                       <div>
@@ -2882,7 +2604,7 @@ export default function VocabularyTabs({
                         </p>
                       </div>
                       {(currentFlashVocab.tags || []).length > 0 && (
-                        <span className='rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500'>
+                        <span className='ui-tag ui-tag-muted h-6 px-2 text-[10px] font-bold'>
                           当前 {currentFlashVocab.tags?.length || 0} 个
                         </span>
                       )}
@@ -2893,7 +2615,7 @@ export default function VocabularyTabs({
                       onChange={event => setTagDraft(event.currentTarget.value)}
                       rows={3}
                       placeholder='例如：高频 / 书面语 / 易错'
-                      className='w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-700 outline-none transition focus:border-indigo-300 focus:ring-4 focus:ring-indigo-100'
+                      className='w-full rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-4 focus:ring-slate-100'
                     />
 
                     {splitListInput(tagDraft).length > 0 && (
@@ -2901,7 +2623,7 @@ export default function VocabularyTabs({
                         {splitListInput(tagDraft).map(tag => (
                           <span
                             key={`${currentFlashVocab.id}-flash-draft-${tag}`}
-                            className='inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-700'>
+                            className='ui-tag ui-tag-info h-6 px-2.5 text-[11px]'>
                             #{tag}
                           </span>
                         ))}
@@ -2912,7 +2634,7 @@ export default function VocabularyTabs({
                       <button
                         type='button'
                         onClick={closeTagEditor}
-                        className='rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
+                        className='ui-btn ui-btn-sm border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-600 hover:bg-slate-50'>
                         取消
                       </button>
                       <button
@@ -2921,7 +2643,7 @@ export default function VocabularyTabs({
                         onClick={() =>
                           void handleSaveTagsForVocab(currentFlashVocab)
                         }
-                        className='rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-semibold text-white shadow-md shadow-indigo-200 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60'>
+                        className='ui-btn ui-btn-sm bg-slate-900 px-3.5 text-sm font-semibold text-white shadow-md transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60'>
                         {isSavingTags ? '保存中...' : '保存标签'}
                       </button>
                     </div>
@@ -2931,14 +2653,22 @@ export default function VocabularyTabs({
               {shouldShowPronunciationForVocab(currentFlashVocab) &&
                 currentFlashVocab.pronunciations &&
                 currentFlashVocab.pronunciations.filter(Boolean).length > 1 && (
-                  <div className='mt-3 flex flex-wrap items-center justify-center gap-2'>
-                    {currentFlashVocab.pronunciations.slice(1).map(pron => (
+                  <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
+                    {currentFlashVocab.pronunciations.slice(1, 3).map(pron => (
                       <span
                         key={`${currentFlashVocab.id}-flash-pron-${pron}`}
-                        className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-bold text-slate-600'>
+                        className='ui-tag ui-tag-info h-6 px-3 text-xs font-bold'>
                         {pron}
                       </span>
                     ))}
+                    {currentFlashVocab.pronunciations.filter(Boolean).length >
+                      3 && (
+                      <span className='ui-tag ui-tag-muted h-6 px-2.5 text-xs font-bold'>
+                        +
+                        {currentFlashVocab.pronunciations.filter(Boolean)
+                          .length - 3}
+                      </span>
+                    )}
                   </div>
                 )}
               {(() => {
@@ -2952,7 +2682,7 @@ export default function VocabularyTabs({
                       onClick={() =>
                         toggleInflectionExpand(currentFlashVocab.id)
                       }
-                      className='inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100'>
+                      className='ui-tag ui-tag-muted h-6 gap-2 px-3 text-xs font-semibold'>
                       原形 {family.lemma}
                       <span className='text-slate-400'>·</span>
                       覆盖 {family.coveredVariants}/{family.totalVariants}
@@ -2966,7 +2696,7 @@ export default function VocabularyTabs({
                           {family.variants.map(variant => (
                             <span
                               key={`${currentFlashVocab.id}-family-${variant.word}`}
-                              className='inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                              className='ui-tag ui-tag-muted h-6 gap-1 px-2 text-[11px] font-semibold'>
                               <span>{variant.word}</span>
                               <span className='text-slate-400'>
                                 {variant.sentenceHits}/
@@ -3015,7 +2745,7 @@ export default function VocabularyTabs({
                           onClick={() =>
                             void handleToggleWordPos(currentFlashVocab, option)
                           }
-                          className='rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50'>
+                          className='rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50'>
                           {option}
                         </button>
                       ))}
@@ -3187,7 +2917,7 @@ export default function VocabularyTabs({
                                                         }}
                                                         className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
                                                           active
-                                                            ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                                                            ? 'border-slate-200 bg-slate-100 text-slate-800'
                                                             : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                                                         }`}>
                                                         {option}
@@ -3317,7 +3047,7 @@ export default function VocabularyTabs({
                                         }}
                                         className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
                                           active
-                                            ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                                            ? 'border-slate-200 bg-slate-100 text-slate-800'
                                             : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                                         }`}>
                                         {option}
@@ -3418,7 +3148,7 @@ export default function VocabularyTabs({
                       onClick={() => void handleMemoryRateTap(item.rating)}
                       className={`rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${
                         selected
-                          ? 'border-indigo-300 bg-indigo-100 text-indigo-700'
+                          ? 'border-slate-200 bg-slate-100 text-slate-800'
                           : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
                       }`}>
                       {item.label}
@@ -3455,25 +3185,31 @@ export default function VocabularyTabs({
           <div className='mt-6 flex flex-col items-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500'>
             <div className='flex items-center p-1.5 bg-gray-100/90 backdrop-blur-xl border border-gray-200/50 rounded-2xl shadow-sm overflow-x-auto max-w-full scrollbar-hide'>
               {allExistingGroups.map(name => {
-                const isActive = activeTab === name;
+                const isActive =
+                  activeTab === name || selectedGroupFilter === name
                 return (
                   <button
                     key={name}
                     onClick={() => {
+                      const shouldClearGroup = selectedGroupFilter === name
+                      setSelectedGroupFilter(shouldClearGroup ? '' : name)
                       setActiveTab(name)
+                      pushVocabularyGroup(shouldClearGroup ? null : name)
                       setCurrentIndex(0)
                     }}
                     className={`relative flex items-center justify-center gap-1.5 px-5 py-2.5 min-w-[5rem] rounded-xl text-sm font-bold transition-all duration-300 whitespace-nowrap ${
                       isActive
-                        ? 'bg-white text-indigo-600 shadow-[0_2px_10px_rgba(0,0,0,0.06)] ring-1 ring-black/5'
+                        ? 'bg-white text-slate-900 shadow-[0_2px_10px_rgba(0,0,0,0.06)] ring-1 ring-black/5'
                         : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                     }`}>
                     {LANG_NAMES[name] || name}
                     <span
                       className={`text-[10px] font-black px-1.5 py-0.5 rounded-md transition-colors ${
-                        isActive ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-200/80 text-gray-400'
+                        isActive
+                          ? 'bg-slate-100 text-slate-700'
+                          : 'bg-gray-200/80 text-gray-400'
                       }`}>
-                      {groupedTotals[name] || 0}
+                      {currentGroupCountMap[name] || 0}
                     </span>
                   </button>
                 )
@@ -3482,8 +3218,7 @@ export default function VocabularyTabs({
             <button
               type='button'
               onClick={() => void handleRenameGroup()}
-              className='text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors bg-white/50 border border-gray-200/50 px-3 py-1 rounded-full'
-            >
+              className='text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors bg-white/50 border border-gray-200/50 px-3 py-1 rounded-full'>
               重命名组: {LANG_NAMES[activeTab] || activeTab}
             </button>
           </div>

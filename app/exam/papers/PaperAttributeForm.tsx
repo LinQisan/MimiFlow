@@ -52,12 +52,12 @@ export default function PaperAttributeForm({
           name='title'
           defaultValue={defaultTitle}
           placeholder='试卷名称'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <select
           name='collectionType'
           defaultValue={normalizedCollectionType}
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
           <option value='PAPER'>试卷（PAPER）</option>
           <option value='CUSTOM_GROUP'>分组（CUSTOM_GROUP）</option>
           <option value='FAVORITES'>收藏夹（FAVORITES）</option>
@@ -65,7 +65,7 @@ export default function PaperAttributeForm({
         <button
           type='submit'
           disabled={pending}
-          className='h-10 min-w-20 border border-blue-200 bg-blue-50 px-3 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60'>
+          className='ui-btn ui-btn-sm ui-btn-primary h-10 min-w-20 disabled:cursor-not-allowed disabled:opacity-60'>
           {pending ? '保存中...' : '保存'}
         </button>
       </div>
@@ -74,33 +74,33 @@ export default function PaperAttributeForm({
           name='language'
           defaultValue={defaultLanguage}
           placeholder='语言（例：ja / en / zh）'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='level'
           defaultValue={defaultLevel}
           placeholder='等级（例：N1 / B2）'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='sortOrder'
           type='number'
           defaultValue={defaultSortOrder}
           placeholder='排序'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
       </div>
       <input
         name='parentId'
         defaultValue={defaultParentId}
         placeholder='父级集合 ID（可选）'
-        className='h-10 w-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        className='h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
       />
       <textarea
         name='description'
         defaultValue={defaultDescription}
         placeholder='试卷描述（可选）'
-        className='min-h-20 w-full resize-y border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        className='min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
       />
       <p className='text-[11px] font-medium text-slate-400'>
         ID: {paperId} · 创建: {createdAt} · 更新: {updatedAt}
@@ -108,7 +108,7 @@ export default function PaperAttributeForm({
       {state.message ? (
         <p
           className={`text-xs font-semibold ${
-            state.success ? 'text-blue-700' : 'text-rose-600'
+            state.success ? 'text-slate-700' : 'text-rose-600'
           }`}>
           {state.message}
         </p>

@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 
 import EditQuizUI from './EditQuizUI'
-import { getQuizEditData } from '@/lib/repositories/collection-manage.repo'
+import { getQuizEditData } from '@/lib/repositories/collection/manage'
 
 export default async function ManageCollectionQuizEditPage({
   params,
@@ -13,4 +13,3 @@ export default async function ManageCollectionQuizEditPage({
   if (!quiz) return notFound()
   return <EditQuizUI quiz={quiz} />
 }
-

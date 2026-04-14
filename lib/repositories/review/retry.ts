@@ -1,9 +1,10 @@
 import prisma from '@/lib/prisma'
+import { MaterialType, QuestionTemplate } from '@prisma/client'
 import {
   materialDialogueItems,
   normalizeQuestionContext,
   normalizeQuestionOptions,
-} from './materials.repo'
+} from '../materials'
 
 export type RetryQueueRow = {
   id: string
@@ -12,9 +13,11 @@ export type RetryQueueRow = {
   dueAt: Date
   wrongCount: number
   question: {
+    sortOrder: number
     questionType: string
     prompt: string | null
     contextSentence: string
+    targetWord: string | null
     options: { id: string; text: string; isCorrect: boolean }[]
     passageId: string | null
     passage: { id: string; content: string } | null
@@ -58,6 +61,43 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function asString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
+}
+
+function toLegacyQuestionType({
+  materialType,
+  templateType,
+  content,
+}: {
+  materialType: MaterialType
+  templateType: QuestionTemplate
+  content: Record<string, unknown>
+}): string {
+  const explicitType = asString(content.questionType)
+  if (explicitType) {
+    if (
+      materialType === MaterialType.VOCAB_GRAMMAR &&
+      (explicitType === 'FILL_BLANK' || explicitType === 'READING_COMPREHENSION')
+    ) {
+      return 'GRAMMAR'
+    }
+    return explicitType
+  }
+
+  if (materialType === MaterialType.LISTENING) return 'LISTENING'
+  if (materialType === MaterialType.READING) {
+    if (
+      templateType === QuestionTemplate.FILL_BLANK ||
+      templateType === QuestionTemplate.CLOZE_TEST
+    ) {
+      return 'FILL_BLANK'
+    }
+    return 'READING_COMPREHENSION'
+  }
+
+  if (materialType === MaterialType.VOCAB_GRAMMAR) {
+    return templateType === QuestionTemplate.CLOZE_TEST ? 'SORTING' : 'GRAMMAR'
+  }
+  return 'GRAMMAR'
 }
 
 function calcRecentStreakDesc(attemptsDesc: AttemptLite[]) {
@@ -123,7 +163,14 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
     take: limit,
     include: {
       question: {
-        include: {
+        select: {
+          sortOrder: true,
+          templateType: true,
+          prompt: true,
+          context: true,
+          options: true,
+          answer: true,
+          content: true,
           material: {
             select: { id: true, title: true, type: true, contentPayload: true },
           },
@@ -142,6 +189,7 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
   })
 
   return rows.map(row => {
+    const questionContent = asRecord(row.question.content)
     const payload = asRecord(row.question.material.contentPayload)
     return {
     id: row.id,
@@ -150,12 +198,18 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
     dueAt: row.dueAt,
     wrongCount: row.wrongCount,
     question: {
-      questionType: row.question.templateType,
+      sortOrder: row.question.sortOrder,
+      questionType: toLegacyQuestionType({
+        materialType: row.question.material.type,
+        templateType: row.question.templateType,
+        content: questionContent,
+      }),
       prompt: row.question.prompt,
       contextSentence: normalizeQuestionContext(
         row.question.prompt,
         row.question.context,
       ),
+      targetWord: asString(questionContent.targetWord),
       options: normalizeQuestionOptions(row.question.options, row.question.answer),
       passageId:
         row.question.material.type === 'READING' ? row.question.material.id : null,
@@ -188,6 +242,93 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
     },
   }
   })
+}
+
+export async function getRetryQuestionRowById(retryId: string) {
+  const row = await prisma.questionRetry.findUnique({
+    where: { id: retryId },
+    include: {
+      question: {
+        select: {
+          sortOrder: true,
+          templateType: true,
+          prompt: true,
+          context: true,
+          options: true,
+          answer: true,
+          content: true,
+          material: {
+            select: { id: true, title: true, type: true, contentPayload: true },
+          },
+          attempts: {
+            orderBy: { createdAt: 'desc' },
+            take: 60,
+            select: {
+              id: true,
+              isCorrect: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!row) return null
+
+  const questionContent = asRecord(row.question.content)
+  const payload = asRecord(row.question.material.contentPayload)
+
+  return {
+    id: row.id,
+    questionId: row.questionId,
+    stage: row.stage,
+    dueAt: row.dueAt,
+    wrongCount: row.wrongCount,
+    question: {
+      sortOrder: row.question.sortOrder,
+      questionType: toLegacyQuestionType({
+        materialType: row.question.material.type,
+        templateType: row.question.templateType,
+        content: questionContent,
+      }),
+      prompt: row.question.prompt,
+      contextSentence: normalizeQuestionContext(
+        row.question.prompt,
+        row.question.context,
+      ),
+      targetWord: asString(questionContent.targetWord),
+      options: normalizeQuestionOptions(row.question.options, row.question.answer),
+      passageId:
+        row.question.material.type === 'READING' ? row.question.material.id : null,
+      passage:
+        row.question.material.type === 'READING'
+          ? {
+              id: row.question.material.id,
+              content: asString(payload.text) || asString(payload.transcript) || '',
+            }
+          : null,
+      lessonId:
+        row.question.material.type === 'LISTENING' ? row.question.material.id : null,
+      lesson:
+        row.question.material.type === 'LISTENING'
+          ? {
+              id: row.question.material.id,
+              audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+              dialogues: materialDialogueItems(row.question.material.contentPayload),
+            }
+          : null,
+      stats: buildRetryStats(row.question.attempts),
+      quiz:
+        row.question.material.type === 'VOCAB_GRAMMAR'
+          ? { id: row.question.material.id, title: row.question.material.title }
+          : null,
+      readingSource:
+        row.question.material.type === 'READING'
+          ? { id: row.question.material.id, title: row.question.material.title }
+          : null,
+    },
+  }
 }
 
 export async function softResetRetryAccuracy(questionId: string) {

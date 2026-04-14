@@ -1,4 +1,4 @@
-import { guessLanguageCode } from '@/utils/langDetector'
+import { guessLanguageCode } from './langDetector'
 
 const unique = (list: string[]) => Array.from(new Set(list.filter(Boolean)))
 
@@ -168,12 +168,12 @@ export const inferContextualPos = (
 }
 
 export const posBadgeClass = (_pos: string) => {
-  return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-indigo-500/12 dark:text-indigo-200 dark:border-indigo-400/35'
+  return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
 }
 
 export const posWordHighlightClass = (pos: string) => {
   const key = pos.toLowerCase()
-  const darkBase = 'dark:text-indigo-100 dark:bg-indigo-400/16'
+  const darkBase = 'dark:text-slate-100 dark:bg-slate-700/30'
   if (key.includes('v') || pos.includes('動詞'))
     return `text-rose-700 bg-rose-100/65 ${darkBase}`
   if (key.includes('n') || pos.includes('名詞'))

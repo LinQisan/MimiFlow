@@ -18,14 +18,14 @@ type SaveButtonConfig = {
 
 const TOOLTIP_WIDTH_CLASS = 'w-[min(82vw,20rem)]'
 const BASE_INPUT_CLASS = 'ui-input'
-const SECTION_TITLE_CLASS = 'text-[11px] font-semibold text-gray-600'
-const SECTION_HINT_CLASS = 'text-[10px] text-gray-400'
+const SECTION_TITLE_CLASS = 'text-[11px] font-semibold text-slate-600'
+const SECTION_HINT_CLASS = 'text-[10px] text-slate-400'
 
 export const SAVE_BG_COLORS: Record<TooltipSaveState, string> = {
-  idle: 'bg-indigo-600 text-white hover:bg-indigo-700',
-  saving: 'bg-indigo-100 text-indigo-500 cursor-not-allowed',
-  success: 'bg-emerald-100 text-emerald-700',
-  already_exists: 'bg-amber-100 text-amber-700',
+  idle: 'bg-slate-900 text-white hover:bg-slate-800',
+  saving: 'bg-slate-100 text-slate-500 cursor-not-allowed',
+  success: 'bg-slate-100 text-slate-700',
+  already_exists: 'bg-slate-100 text-slate-700',
   error: 'bg-rose-100 text-rose-700',
 }
 
@@ -132,14 +132,10 @@ interface VocabularyTooltipProps {
 
   enablePronunciation?: boolean
   pronunciationValue?: string
-  saveWithPronunciation?: boolean
   onPronunciationChange?: (value: string) => void
-  onSaveWithPronunciationChange?: (value: boolean) => void
 
   meaningValue?: string
-  saveWithMeaning?: boolean
   onMeaningChange?: (value: string) => void
-  onSaveWithMeaningChange?: (value: boolean) => void
 
   partOfSpeechValue?: string
   onPartOfSpeechChange?: (value: string) => void
@@ -204,14 +200,10 @@ export default function VocabularyTooltip({
 
   enablePronunciation = false,
   pronunciationValue = '',
-  saveWithPronunciation = true,
   onPronunciationChange,
-  onSaveWithPronunciationChange,
 
   meaningValue = '',
-  saveWithMeaning = false,
   onMeaningChange,
-  onSaveWithMeaningChange,
 
   partOfSpeechValue = '',
   onPartOfSpeechChange,
@@ -255,9 +247,9 @@ export default function VocabularyTooltip({
             ? 'translate(-50%, 0)'
             : 'translate(-50%, -100%)',
       }}
-      className={`ui-pop ui-pop-surface fixed z-100 ${TOOLTIP_WIDTH_CLASS} overflow-hidden rounded-xl shadow-xl animate-in fade-in zoom-in-95 duration-200`}>
-      <div className='flex items-center justify-between gap-2 border-b border-gray-100 px-3 py-2'>
-        <span className='max-w-[62%] truncate text-sm font-bold text-gray-900'>
+      className={`ui-pop ui-pop-surface fixed z-100 ${TOOLTIP_WIDTH_CLASS} overflow-hidden rounded-xl bg-white shadow-xl animate-in fade-in zoom-in-95 duration-200`}>
+      <div className='flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2'>
+        <span className='max-w-[62%] truncate text-sm font-bold tracking-tight text-slate-900'>
           {word}
         </span>
 
@@ -274,19 +266,7 @@ export default function VocabularyTooltip({
       <div className='max-h-[min(68vh,26rem)] space-y-3 overflow-y-auto px-3 py-2.5'>
         {enablePronunciation && (
           <section className='space-y-1.5'>
-            <div className='flex items-center justify-between'>
-              <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
-              <label className='flex items-center gap-1.5 text-[10px] text-gray-500'>
-                <input
-                  type='checkbox'
-                  checked={saveWithPronunciation}
-                  onChange={e =>
-                    onSaveWithPronunciationChange?.(e.currentTarget.checked)
-                  }
-                />
-                保存
-              </label>
-            </div>
+            <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
 
             <input
               value={pronunciationValue}
@@ -301,17 +281,17 @@ export default function VocabularyTooltip({
           </section>
         )}
 
-        <div className='border-t border-gray-100 pt-2'>
+        <div className='border-t border-slate-100 pt-2'>
           <button
             type='button'
             onClick={() => setShowAdvanced(v => !v)}
-            className='inline-flex h-8 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-600 transition-colors hover:bg-gray-50'>
+            className='inline-flex h-8 items-center rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 transition-colors hover:bg-slate-50'>
             {showAdvanced ? '收起其他信息' : '展开其他信息'}
           </button>
         </div>
 
         {showAdvanced && (
-          <div className='space-y-3 rounded-lg border border-gray-100 bg-gray-50/40 p-2.5'>
+          <div className='space-y-3 rounded-lg border border-slate-100 bg-slate-50/60 p-2.5'>
             <section className='space-y-1.5'>
               <div className='flex items-center justify-between'>
                 <p className={SECTION_TITLE_CLASS}>词性</p>
@@ -329,8 +309,8 @@ export default function VocabularyTooltip({
                         onClick={() => handleTogglePosOption(option)}
                         className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
                           active
-                            ? 'border-amber-300 bg-amber-100 text-amber-800'
-                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                         }`}>
                         {option}
                       </button>
@@ -348,19 +328,7 @@ export default function VocabularyTooltip({
             </section>
 
             <section className='space-y-1.5'>
-              <div className='flex items-center justify-between'>
-                <p className={SECTION_TITLE_CLASS}>释义</p>
-                <label className='flex items-center gap-1.5 text-[10px] text-gray-500'>
-                  <input
-                    type='checkbox'
-                    checked={saveWithMeaning}
-                    onChange={e =>
-                      onSaveWithMeaningChange?.(e.currentTarget.checked)
-                    }
-                  />
-                  保存
-                </label>
-              </div>
+              <p className={SECTION_TITLE_CLASS}>释义</p>
 
               <input
                 value={meaningValue}
@@ -374,7 +342,7 @@ export default function VocabularyTooltip({
       </div>
 
       <div
-        className={`absolute left-1/2 h-2.5 w-2.5 rotate-45 -translate-x-1/2 border border-gray-200 bg-white ${
+        className={`absolute left-1/2 h-2.5 w-2.5 rotate-45 -translate-x-1/2 border border-slate-200 bg-white ${
           isTop ? '-bottom-1' : '-top-1'
         }`}
         style={{

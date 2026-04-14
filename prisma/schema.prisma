@@ -152,8 +152,110 @@ model VocabularySentence {
   sourceId       String?
   createdAt      DateTime                 @default(now())
   links          VocabularySentenceLink[]
+  grammarExamples GrammarExample[]
 
   @@unique([normalizedText, sourceUrl])
+}
+
+enum GrammarExampleSource {
+  MANUAL
+  SENTENCE_DB
+}
+
+model Grammar {
+  id          String                @id @default(cuid())
+  name        String
+  meaning     String?               @db.Text
+  usageNote   String?               @map("usage_note") @db.Text
+  createdAt   DateTime              @default(now()) @map("created_at")
+  updatedAt   DateTime              @updatedAt @map("updated_at")
+  tags        GrammarTagOnGrammar[]
+  examples    GrammarExample[]
+  clusters    GrammarClusterMember[]
+  constructions GrammarConstruction[]
+
+  @@index([name])
+  @@map("grammars")
+}
+
+model GrammarConstruction {
+  id          String    @id @default(cuid())
+  grammarId   String    @map("grammar_id")
+  connection  String    @db.Text
+  meaning     String    @db.Text
+  note        String?   @db.Text
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  grammar     Grammar   @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  examples    GrammarExample[]
+
+  @@index([grammarId, sortOrder])
+  @@map("grammar_constructions")
+}
+
+model GrammarTag {
+  id         String               @id @default(cuid())
+  name       String               @unique
+  createdAt  DateTime             @default(now()) @map("created_at")
+  grammars   GrammarTagOnGrammar[]
+
+  @@map("grammar_tags")
+}
+
+model GrammarTagOnGrammar {
+  grammarId  String
+  tagId      String
+  createdAt  DateTime   @default(now()) @map("created_at")
+  grammar    Grammar    @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  tag        GrammarTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([grammarId, tagId])
+  @@index([tagId])
+  @@map("grammar_tag_on_grammar")
+}
+
+model GrammarCluster {
+  id          String                 @id @default(cuid())
+  title       String                 @unique
+  description String?                @db.Text
+  createdAt   DateTime               @default(now()) @map("created_at")
+  updatedAt   DateTime               @updatedAt @map("updated_at")
+  members     GrammarClusterMember[]
+
+  @@map("grammar_clusters")
+}
+
+model GrammarClusterMember {
+  clusterId   String
+  grammarId   String
+  createdAt   DateTime       @default(now()) @map("created_at")
+  cluster     GrammarCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  grammar     Grammar        @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+
+  @@id([clusterId, grammarId])
+  @@index([grammarId])
+  @@map("grammar_cluster_members")
+}
+
+model GrammarExample {
+  id              String               @id @default(cuid())
+  grammarId       String               @map("grammar_id")
+  source          GrammarExampleSource
+  sentenceText    String               @map("sentence_text") @db.Text
+  translation     String?              @db.Text
+  note            String?              @db.Text
+  sentenceId      String?              @map("sentence_id")
+  constructionId  String?              @map("construction_id")
+  createdAt       DateTime             @default(now()) @map("created_at")
+  grammar         Grammar              @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  sentence        VocabularySentence?  @relation(fields: [sentenceId], references: [id], onDelete: SetNull)
+  construction    GrammarConstruction? @relation(fields: [constructionId], references: [id], onDelete: SetNull)
+
+  @@index([grammarId, createdAt])
+  @@index([sentenceId])
+  @@index([constructionId])
+  @@map("grammar_examples")
 }
 
 model VocabularySentenceLink {

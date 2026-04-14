@@ -1,8 +1,11 @@
 // app/admin/upload/UploadCenterUI.tsx
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import UploadForm from './UploadForm'
+import CollectionBrowserSelect, {
+  type CollectionBrowserOption,
+} from '@/components/manage/upload/CollectionBrowserSelect'
 import type { CollectionType, MaterialType } from '@prisma/client'
 import {
   createArticle,
@@ -10,6 +13,7 @@ import {
   createCategory,
 } from '@/app/actions/content'
 import { useDialog } from '@/context/DialogContext'
+import { buildCollectionTreeOptions } from '@/lib/repositories/collection/tree'
 
 interface Props {
   dbLevels: UploadLevelLite[]
@@ -24,13 +28,19 @@ type UploadLevelLite = {
 type UploadCollectionLite = {
   id: string
   name: string
-  parentTitle?: string
+  parentId?: string | null
+  sortOrder?: number
   collectionType?: CollectionType
   materialType?: MaterialType
   language?: string
   examLevel?: string
   level: { title: string }
-  lessons: { title: string; audioFile: string }[]
+  lessons: {
+    title: string
+    audioFile: string
+    chapterName: string
+    materialType: MaterialType
+  }[]
 }
 
 type QuestionOptionDraft = { text: string; isCorrect: boolean }
@@ -590,83 +600,6 @@ const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
   return results
 }
 
-function PanelDropdown({
-  value,
-  onChange,
-  options,
-  placeholder,
-}: {
-  value: string
-  onChange: (val: string) => void
-  options: { value: string; label: string }[]
-  placeholder: string
-}) {
-  const [open, setOpen] = useState(false)
-  const wrapRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const handleOutside = (event: MouseEvent) => {
-      if (!wrapRef.current) return
-      if (!wrapRef.current.contains(event.target as Node)) setOpen(false)
-    }
-    if (open) document.addEventListener('mousedown', handleOutside)
-    return () => document.removeEventListener('mousedown', handleOutside)
-  }, [open])
-
-  const label = options.find(item => item.value === value)?.label || placeholder
-
-  return (
-    <div ref={wrapRef} className='relative w-full'>
-      <button
-        type='button'
-        onClick={() => setOpen(prev => !prev)}
-        className={`flex w-full items-center justify-between border px-4 py-3 text-sm font-semibold transition ${
-          open
-            ? 'border-blue-300 bg-white text-gray-800 ring-2 ring-blue-100'
-            : 'border-blue-200 bg-white text-gray-700 hover:bg-blue-50/30'
-        }`}>
-        <span className='truncate pr-3'>{label}</span>
-        <svg
-          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180 text-blue-500' : ''}`}
-          fill='none'
-          stroke='currentColor'
-          viewBox='0 0 24 24'>
-          <path
-            strokeLinecap='round'
-            strokeLinejoin='round'
-            strokeWidth={2.5}
-            d='M19 9l-7 7-7-7'
-          />
-        </svg>
-      </button>
-      {open && (
-        <div className='absolute z-90 mt-2 max-h-80 w-full overflow-y-auto border border-gray-100 bg-white py-1.5 '>
-          {options.length === 0 ? (
-            <div className='px-4 py-3 text-sm text-gray-400'>暂无选项</div>
-          ) : (
-            options.map(item => (
-              <button
-                key={item.value}
-                type='button'
-                onClick={() => {
-                  onChange(item.value)
-                  setOpen(false)
-                }}
-                className={`block w-full truncate px-4 py-2.5 text-left text-sm font-semibold transition ${
-                  value === item.value
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-700 hover:bg-gray-50'
-                }`}>
-                {item.label}
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
 export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
   const dialog = useDialog()
   const {
@@ -702,6 +635,24 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
     quizContextTextareaRef,
     bulkContextTextareaRef,
   } = useUploadCenterState(dbCollections)
+
+  const collectionOptions: CollectionBrowserOption[] = useMemo(
+    () =>
+      buildCollectionTreeOptions(
+        localCollections.map(collection => ({
+          ...collection,
+          title: collection.name,
+        })),
+      ).map(item => ({
+        value: item.id,
+        label: item.title,
+        searchText: item.pathLabel,
+        parentId: item.parentId,
+        depth: item.depth,
+        order: item.order,
+      })),
+    [localCollections],
+  )
 
   const isSentenceBoundaryAt = (text: string, index: number) => {
     const ch = text[index]
@@ -1579,6 +1530,8 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
         const createdCollection: UploadCollectionLite = {
           id: res.paper.id,
           name: res.paper.name,
+          parentId: null,
+          sortOrder: 0,
           collectionType: res.paper.collectionType,
           level: { title: res.paper.level.title },
           lessons: [],
@@ -1594,44 +1547,43 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
     }
 
     return (
-      <div className='mb-6 border border-blue-100 bg-blue-50/40 p-4 md:p-5 transition-colors duration-300'>
-        <div className='flex justify-between items-center mb-3'>
-          <label className='block text-sm font-bold text-blue-900'>
+      <div className='mb-6 border border-slate-200 bg-white p-4 transition-colors duration-300 md:p-5'>
+        <div className='mb-3 flex items-center justify-between'>
+          <label className='block text-sm font-bold text-slate-900'>
             所属集合
           </label>
           <button
             type='button'
             onClick={() => setIsCreating(!isCreating)}
-            className='border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-blue-600 transition-colors hover:bg-blue-50 hover:text-blue-800'>
+            className='border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900'>
             {isCreating ? '取消新建' : '新建集合'}
           </button>
         </div>
 
         {!isCreating ? (
-          <PanelDropdown
+          <CollectionBrowserSelect
             value={value}
             onChange={onChange}
-            options={localCollections.map(cat => ({
-              value: cat.id,
-              label: `${cat.level?.title ?? ''} · ${cat.parentTitle ? `${cat.parentTitle} / ` : ''}${cat.name}`,
-            }))}
+            options={collectionOptions}
             placeholder='无可用集合，请先新建'
+            recentKey='manage.upload.collection.recent'
           />
         ) : (
-          <div className='animate-in slide-in-from-top-2 flex flex-col gap-3 border border-blue-200 bg-white p-4 fade-in'>
+          <div className='animate-in slide-in-from-top-2 flex flex-col gap-3 border border-slate-200 bg-slate-50 p-4 fade-in'>
             <div className='flex flex-col gap-2 md:flex-row md:gap-3'>
               <div className='w-full md:w-1/3'>
-                <PanelDropdown
+                <select
                   value={newCatData.collectionType}
-                  onChange={val =>
-                    setNewCatData({ ...newCatData, collectionType: val })
+                  onChange={e =>
+                    setNewCatData({ ...newCatData, collectionType: e.target.value })
                   }
-                  options={dbLevels.map(lvl => ({
-                    value: lvl.id,
-                    label: lvl.title,
-                  }))}
-                  placeholder='选择集合类型'
-                />
+                  className='h-full w-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-100'>
+                  {dbLevels.map(lvl => (
+                    <option key={lvl.id} value={lvl.id}>
+                      {lvl.title}
+                    </option>
+                  ))}
+                </select>
               </div>
               <input
                 type='text'
@@ -1640,14 +1592,14 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
                   setNewCatData({ ...newCatData, name: e.target.value })
                 }
                 placeholder='集合名称，例如：2025-07 N1 真题'
-                className='flex-1 border border-gray-200 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500'
+                className='flex-1 border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-100'
               />
             </div>
             <button
               type='button'
               onClick={handleSaveCategory}
               disabled={isSavingCat}
-              className='w-full bg-blue-100 hover:bg-blue-200 text-blue-700 font-bold py-2.5 transition-colors text-sm disabled:opacity-50'>
+              className='w-full border border-slate-200 bg-slate-900 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50'>
               {isSavingCat ? '创建中...' : '确认创建并使用该集合'}
             </button>
           </div>
@@ -1657,26 +1609,26 @@ export default function UploadCenterUI({ dbLevels, dbCollections }: Props) {
   }
 
   return (
-    <div className='min-h-screen bg-gray-50 p-3 md:p-12'>
-      <div className='mx-auto max-w-5xl'>
-        <h1 className='mb-5 text-2xl font-bold text-gray-800 md:mb-8 md:text-3xl'>
+    <div className='space-y-6'>
+      <div className='w-full'>
+        <h1 className='mb-5 text-2xl font-black tracking-tight text-slate-900 md:mb-8 md:text-3xl'>
           内容录入中心
         </h1>
 
-        <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-200 bg-white p-1.5 sm:grid-cols-3 md:mb-8'>
+        <div className='mb-5 grid grid-cols-1 gap-2 border border-slate-200 bg-white p-1.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:grid-cols-3 md:mb-8'>
           <button
             onClick={() => setActiveTab('audio')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'audio' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'audio' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
             听力语料
           </button>
           <button
             onClick={() => setActiveTab('article')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'article' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'article' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
             阅读录入
           </button>
           <button
             onClick={() => setActiveTab('quiz')}
-            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'quiz' ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+            className={`px-4 py-2.5 text-sm font-semibold transition-colors duration-300 ${activeTab === 'quiz' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}>
             题库录入
           </button>
         </div>

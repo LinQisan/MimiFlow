@@ -1,8 +1,8 @@
 import { CollectionType, MaterialType, QuestionTemplate, QuestionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
-import { toLegacyMaterialId } from '@/lib/repositories/materials.repo'
-import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
+import { toLegacyMaterialId } from '../materials'
+import { getMaterialDisplayTitle } from '../materials/material-title'
 
 type JsonRecord = Record<string, unknown>
 
@@ -97,7 +97,6 @@ export async function resolveMaterialIdByAny(maybeId: string, type: MaterialType
 
 export async function getCollectionManageList() {
   return prisma.collection.findMany({
-    where: { collectionType: CollectionType.PAPER },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -106,6 +105,7 @@ export async function getCollectionManageList() {
       language: true,
       level: true,
       sortOrder: true,
+      parentId: true,
       collectionType: true,
       createdAt: true,
       _count: { select: { materials: true, children: true } },

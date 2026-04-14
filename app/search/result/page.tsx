@@ -3,6 +3,7 @@ import {
   getGlobalSearchResultDetail,
   type GlobalSearchType,
 } from '@/app/actions/globalSearch'
+import ResultJsonEditor from './ResultJsonEditor'
 
 const TYPE_LABEL: Record<GlobalSearchType, string> = {
   vocabulary: '单词',
@@ -220,16 +221,9 @@ export default async function SearchResultDetailPage({
           <div className='mt-3 rounded-xl border border-slate-200 bg-[linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] p-2.5 md:p-3'>
             <JsonTreeNode value={detail.raw} />
           </div>
-
-          <details className='mt-3 rounded-xl border border-slate-200 bg-slate-50'>
-            <summary className='cursor-pointer select-none px-3 py-2 text-xs font-semibold text-slate-600'>
-              查看原始 JSON 文本
-            </summary>
-            <pre className='overflow-x-auto border-t border-slate-200 px-3 py-3 text-xs leading-relaxed text-slate-700'>
-              {rawJson}
-            </pre>
-          </details>
         </section>
+
+        <ResultJsonEditor resultId={rid} type={type} rawJson={rawJson} />
       </div>
     </main>
   )

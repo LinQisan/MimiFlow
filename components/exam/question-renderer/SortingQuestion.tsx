@@ -25,12 +25,44 @@ type SortingQuestionProps = {
 
 const isSlotToken = (segment: string) => SLOT_TOKEN_CHECK.test(segment)
 
-const extractSegments = (question: ExamQuestion) => {
-  const sourceText = (question.prompt || question.contextSentence || '').trim()
+const extractSegments = (sourceText: string) => {
   if (!sourceText) return []
 
   const segments = sourceText.split(SORT_SLOT_TOKEN).filter(Boolean)
   return segments
+}
+
+const inferOptionOrderFromContext = (
+  contextText: string,
+  options: ExamQuestionOption[],
+) => {
+  if (!contextText || options.length === 0) return null
+
+  const remaining = [...options]
+  const ordered: ExamQuestionOption[] = []
+  let cursor = 0
+
+  while (remaining.length > 0) {
+    let bestIndex = -1
+    let bestPos = Number.POSITIVE_INFINITY
+
+    remaining.forEach((option, index) => {
+      const token = (option.text || '').trim()
+      if (!token) return
+      const pos = contextText.indexOf(token, cursor)
+      if (pos >= 0 && pos < bestPos) {
+        bestPos = pos
+        bestIndex = index
+      }
+    })
+
+    if (bestIndex === -1) return null
+    const [picked] = remaining.splice(bestIndex, 1)
+    ordered.push(picked)
+    cursor = bestPos + (picked.text || '').length
+  }
+
+  return ordered
 }
 
 const createSlotDraft = (
@@ -66,8 +98,12 @@ export function SortingQuestion({
   annotation,
 }: SortingQuestionProps) {
   const options = question.options || []
+  const correctOptionId = options.find(option => option.isCorrect)?.id
+  const promptText = (question.prompt || '').trim()
+  const contextText = (question.contextSentence || '').trim()
+  const sourceText = promptText || contextText
 
-  const segments = useMemo(() => extractSegments(question), [question])
+  const segments = useMemo(() => extractSegments(sourceText), [sourceText])
 
   const slotCount = useMemo(() => {
     const detectedSlots = segments.filter(isSlotToken).length
@@ -100,25 +136,45 @@ export function SortingQuestion({
 
   const [slots, setSlots] = useState<(ExamQuestionOption | null)[]>([])
   const [pool, setPool] = useState<ExamQuestionOption[]>([])
+  const submittedSlots = useMemo(() => {
+    if (!isSubmitted) return slots
+
+    const inferredOrder = inferOptionOrderFromContext(contextText, options)
+    const baseOrder =
+      inferredOrder && inferredOrder.length > 0 ? inferredOrder : options
+
+    const next = Array(slotCount).fill(null) as (ExamQuestionOption | null)[]
+    for (let i = 0; i < slotCount; i += 1) {
+      next[i] = baseOrder[i] || null
+    }
+    return next
+  }, [contextText, isSubmitted, options, slotCount, slots])
 
   useEffect(() => {
-    const draft = createSlotDraft(slotCount, options, currentAnswer, starIndex)
+    const initialAnswerId = isSubmitted ? correctOptionId : currentAnswer
+    const draft = createSlotDraft(slotCount, options, initialAnswerId, starIndex)
     setSlots(draft.slots)
     setPool(draft.pool)
-  }, [currentAnswer, options, slotCount, starIndex])
+  }, [question.id, options, slotCount, starIndex, isSubmitted])
 
   useEffect(() => {
     if (slots.length === 0) return
 
     if (starIndex >= 0 && slots[starIndex]) {
-      onSelect(slots[starIndex]!.id)
+      const nextAnswer = slots[starIndex]!.id
+      if (currentAnswer !== nextAnswer) {
+        onSelect(nextAnswer)
+      }
       return
     }
 
     if (starIndex === -1 && slots.every(Boolean) && slots[0]) {
-      onSelect(slots[0].id)
+      const nextAnswer = slots[0].id
+      if (currentAnswer !== nextAnswer) {
+        onSelect(nextAnswer)
+      }
     }
-  }, [onSelect, slots, starIndex])
+  }, [currentAnswer, onSelect, slots, starIndex])
 
   const moveToSlot = (option: ExamQuestionOption, slotIndex?: number) => {
     if (isSubmitted) return
@@ -181,7 +237,7 @@ export function SortingQuestion({
               .slice(0, index + 1)
               .filter(item => item.startsWith('__AUTO_SLOT_') || isSlotToken(item))
               .length - 1
-          const filled = slots[slotIndex]
+          const filled = isSubmitted ? submittedSlots[slotIndex] : slots[slotIndex]
           const isStar = slotIndex === starIndex
 
           return (
@@ -239,34 +295,63 @@ export function SortingQuestion({
           </div>
         )}
 
-        <div className='flex flex-wrap justify-center gap-3'>
-          {pool.map(option => (
-            <button
-              key={option.id}
-              type='button'
-              onClick={() => moveToSlot(option)}
-              aria-disabled={isSubmitted}
-              data-source-type='QUIZ_QUESTION'
-              data-source-id={question.id}
-              data-context-block='true'
-              data-context-role='sorting-option'
-              className='select-none border border-orange-200 bg-white px-6 py-3 font-semibold text-orange-700 transition-colors hover:border-orange-400 active:scale-95'>
-              <span
-                className={isJapanesePaper ? 'exam-japanese-text' : ''}
-                dangerouslySetInnerHTML={{
-                  __html: annotateExamText({
-                    text: option.text || '',
-                    settings: annotation,
-                  }),
-                }}
-              />
-            </button>
-          ))}
+        {!isSubmitted && (
+          <div className='flex flex-wrap justify-center gap-3'>
+            {pool.map(option => (
+              <button
+                key={option.id}
+                type='button'
+                onClick={() => moveToSlot(option)}
+                aria-disabled={isSubmitted}
+                data-source-type='QUIZ_QUESTION'
+                data-source-id={question.id}
+                data-context-block='true'
+                data-context-role='sorting-option'
+                className='select-none border border-orange-200 bg-white px-6 py-3 font-semibold text-orange-700 transition-colors hover:border-orange-400 active:scale-95'>
+                <span
+                  className={isJapanesePaper ? 'exam-japanese-text' : ''}
+                  dangerouslySetInnerHTML={{
+                    __html: annotateExamText({
+                      text: option.text || '',
+                      settings: annotation,
+                    }),
+                  }}
+                />
+              </button>
+            ))}
 
-          {pool.length === 0 && (
-            <p className='text-sm text-gray-400'>全部已填入，点击上方词块可撤回。</p>
-          )}
-        </div>
+            {pool.length === 0 && (
+              <p className='text-sm text-gray-400'>全部已填入，点击上方词块可撤回。</p>
+            )}
+          </div>
+        )}
+
+        {isSubmitted && (
+          <div className='flex flex-wrap justify-center gap-3'>
+            {options.map(option => {
+              const used = submittedSlots.some(item => item?.id === option.id)
+              return (
+                <div
+                  key={option.id}
+                  className={`select-none border px-6 py-3 font-semibold ${
+                    used
+                      ? 'border-orange-300 bg-orange-50 text-orange-700'
+                      : 'border-gray-200 bg-white text-gray-600'
+                  }`}>
+                  <span
+                    className={isJapanesePaper ? 'exam-japanese-text' : ''}
+                    dangerouslySetInnerHTML={{
+                      __html: annotateExamText({
+                        text: option.text || '',
+                        settings: annotation,
+                      }),
+                    }}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

@@ -3,21 +3,59 @@ import Link from 'next/link'
 import prisma from '@/lib/prisma'
 import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
-import HomeHeaderSearch from '@/components/HomeHeaderSearch'
+import { getTodayStudyPlan } from '@/app/actions/studyPlan'
+import HomeHeaderSearch from '@/components/search/HomeHeaderSearch'
 
 export const revalidate = 60
 
-type HomeResumeCard = {
+type HomeContinueItem =
+  | {
+      kind: 'resume'
+      id: string
+      title: string
+      metaLabel: string
+      detailLabel: string
+      primaryHref: string
+      primaryLabel: string
+      secondaryHref: string
+      secondaryLabel: string
+    }
+  | {
+      kind: 'task'
+      id: string
+      title: string
+      metaLabel: string
+      detailLabel: string
+      primaryHref: string
+      primaryLabel: string
+      disabled?: boolean
+    }
+
+type RecentStudyRow = {
   id: string
-  title: string
-  typeLabel: string
-  modeLabel: string
-  progressLabel: string
-  positionLabel: string
-  primaryHref: string
-  primaryLabel: string
-  secondaryHref: string
-  secondaryLabel: string
+  materialId: string
+  material: {
+    id: string
+    title: string
+    type: MaterialType
+  }
+  learningMode: string | null
+  progressPercent: number
+  lastPosition: string | null
+  updatedAt: Date
+}
+
+type RecentPlaytimeRow = {
+  id: string
+  materialId: string
+  material: {
+    id: string
+    title: string
+    type: MaterialType
+  }
+  totalSeconds: number
+  playedDays: number
+  updatedAt: Date
 }
 
 const coreEntrances = [
@@ -35,6 +73,11 @@ const coreEntrances = [
     title: '词汇复习',
     desc: '生词与例句复习',
     href: '/vocabulary',
+  },
+  {
+    title: '语法库',
+    desc: '标签归类 + 相似语法',
+    href: '/grammar',
   },
   {
     title: '错题回顾',
@@ -68,9 +111,9 @@ const manageEntrances = [
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <div className='mb-4 flex items-center gap-2'>
-      <div className='h-5 w-1.5 rounded-full bg-blue-500' />
-      <h2 className='text-lg font-semibold text-slate-900 md:text-xl'>
+    <div className='mb-5 flex items-center gap-2'>
+      <div className='h-5 w-1.5 rounded-full bg-slate-900' />
+      <h2 className='text-lg font-semibold tracking-tight text-slate-900 md:text-xl'>
         {title}
       </h2>
     </div>
@@ -87,11 +130,6 @@ function defaultModeByType(type: MaterialType): string {
   if (type === MaterialType.LISTENING) return '字幕精听'
   if (type === MaterialType.READING) return '文章精读'
   return '套卷训练'
-}
-
-function toLegacyId(materialId: string): string {
-  const idx = materialId.indexOf(':')
-  return idx >= 0 ? materialId.slice(idx + 1) : materialId
 }
 
 function toDateKeyInTokyo(date: Date): string {
@@ -135,8 +173,9 @@ export default async function HomePage() {
     weekStudyAgg,
     paperCount,
     questionCount,
-    recentProgressRows,
-    recentMaterialRows,
+    todayPlan,
+    recentStudyRows,
+    recentPlaytimeRows,
   ] = await Promise.all([
     prisma.vocabulary.count(),
     prisma.questionRetry.count(),
@@ -155,11 +194,12 @@ export default async function HomePage() {
     examTablesReady.has_questions
       ? prisma.question.count()
       : Promise.resolve(0),
+    getTodayStudyPlan(),
     examTablesReady.has_progresses && examTablesReady.has_materials
       ? prisma.materialStudyProgress.findMany({
           where: { profileId: 'default' },
           orderBy: { updatedAt: 'desc' },
-          take: 2,
+          take: 6,
           include: {
             material: {
               select: {
@@ -171,15 +211,22 @@ export default async function HomePage() {
           },
         })
       : Promise.resolve([]),
-    examTablesReady.has_materials
-      ? prisma.material.findMany({
-          orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
+    examTablesReady.has_progresses && examTablesReady.has_materials
+      ? prisma.materialPlaytimeStat.findMany({
+          where: {
+            profileId: 'default',
+            material: { type: MaterialType.LISTENING },
+          },
+          orderBy: { updatedAt: 'desc' },
           take: 6,
-          select: {
-            id: true,
-            title: true,
-            type: true,
-            createdAt: true,
+          include: {
+            material: {
+              select: {
+                id: true,
+                title: true,
+                type: true,
+              },
+            },
           },
         })
       : Promise.resolve([]),
@@ -188,50 +235,72 @@ export default async function HomePage() {
   const totalWeekSeconds = weekStudyAgg._sum.seconds || 0
   const weekHours = (totalWeekSeconds / 3600).toFixed(1)
 
-  const resumeCards: HomeResumeCard[] =
-    recentProgressRows.length > 0
-      ? recentProgressRows.map(row => {
-          const actions = resolveResumeActions({
-            type: row.material.type,
-            materialId: row.material.id,
-            learningMode: row.learningMode,
-            progressPercent: row.progressPercent,
-            lastPosition: row.lastPosition,
-          })
-          return {
-            id: row.id,
-            title: row.material.title,
-            typeLabel: toTypeLabel(row.material.type),
-            modeLabel: row.learningMode || defaultModeByType(row.material.type),
-            progressLabel: `${Math.max(0, Math.min(100, Math.round(row.progressPercent)))}%`,
-            positionLabel: row.lastPosition || '未记录位置',
-            primaryHref: actions.primary.href,
-            primaryLabel: actions.primary.label,
-            secondaryHref: actions.secondary.href,
-            secondaryLabel: actions.secondary.label,
-          }
-        })
-      : recentMaterialRows.slice(0, 2).map(material => {
-          const actions = resolveResumeActions({
-            type: material.type,
-            materialId: material.id,
-            progressPercent: 0,
-            lastPosition: null,
-            learningMode: null,
-          })
-          return {
-            id: material.id,
-            title: material.title,
-            typeLabel: toTypeLabel(material.type),
-            modeLabel: defaultModeByType(material.type),
-            progressLabel: '0%',
-            positionLabel: '尚未开始',
-            primaryHref: actions.primary.href,
-            primaryLabel: actions.primary.label,
-            secondaryHref: actions.secondary.href,
-            secondaryLabel: actions.secondary.label,
-          }
-        })
+  const studyRecords: HomeContinueItem[] = [
+    ...recentStudyRows.map(row => {
+      const actions = resolveResumeActions({
+        type: row.material.type,
+        materialId: row.material.id,
+        learningMode: row.learningMode,
+        progressPercent: row.progressPercent,
+        lastPosition: row.lastPosition,
+      })
+      return {
+        kind: 'resume' as const,
+        id: `study-${row.id}`,
+        title: row.material.title,
+        metaLabel: `${toTypeLabel(row.material.type)} / ${row.learningMode || defaultModeByType(row.material.type)}`,
+        detailLabel: `进度：已完成 ${Math.max(0, Math.min(100, Math.round(row.progressPercent)))}%，上次位置：${row.lastPosition || '未记录位置'}`,
+        primaryHref: actions.primary.href,
+        primaryLabel: actions.primary.label,
+        secondaryHref: actions.secondary.href,
+        secondaryLabel: actions.secondary.label,
+      }
+    }),
+    ...recentPlaytimeRows.map(row => {
+      const actions = resolveResumeActions({
+        type: row.material.type,
+        materialId: row.material.id,
+        learningMode: 'shadowing',
+        progressPercent: Math.min(
+          95,
+          Math.max(10, Math.round(row.totalSeconds / 60)),
+        ),
+        lastPosition: `${Math.max(0, row.playedDays)} 天已收听`,
+      })
+      return {
+        kind: 'resume' as const,
+        id: `playtime-${row.id}`,
+        title: row.material.title,
+        metaLabel: '听力 / 跟读记录',
+        detailLabel: `累计收听 ${Math.max(1, Math.round(row.totalSeconds / 60))} 分钟，最近活跃 ${Math.max(1, row.playedDays)} 天`,
+        primaryHref: actions.primary.href,
+        primaryLabel: '继续跟读',
+        secondaryHref: actions.secondary.href,
+        secondaryLabel: actions.secondary.label,
+      }
+    }),
+    ...todayPlan.tasks
+      .filter(task => !task.disabled)
+      .map(task => ({
+        kind: 'task' as const,
+        id: `task-${task.id}`,
+        title: task.title,
+        metaLabel: `${task.targetCount}${task.unit}`,
+        detailLabel: task.description,
+        primaryHref: task.href,
+        primaryLabel:
+          task.id === 'review'
+            ? '去复习'
+            : task.id === 'listening'
+              ? '去听力'
+              : task.id === 'reading'
+                ? '去阅读'
+                : task.id === 'retry'
+                  ? '去回流'
+                  : '去输出',
+        disabled: task.disabled,
+      })),
+  ].slice(0, 6)
 
   const assets = [
     { title: '生词本', count: `${vocabCount} 个`, href: '/vocabulary' },
@@ -241,137 +310,151 @@ export default async function HomePage() {
   ]
 
   return (
-    <main className='min-h-screen bg-slate-50 pb-16'>
-      <div className='relative mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8'>
-        <header className='mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5'>
+    <main className='min-h-screen bg-white text-slate-900'>
+      <div className='mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8'>
+        <header className='mb-7 border-b border-slate-200 pb-6'>
           <div className='flex flex-wrap items-center gap-3'>
             <Link
               href='/'
-              className='text-xl font-black tracking-tight text-slate-900'>
+              className='text-sm font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900'>
               MimiFlow
             </Link>
-            <Link
-              href='/shadowing'
-              className='rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700'>
-              开始学习
-            </Link>
-            <Link
-              href='/manage/upload'
-              className='rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100'>
-              上传新内容
-            </Link>
-            <div className='ml-auto flex items-center gap-2'>
+            <div className='ml-auto flex flex-wrap items-center gap-2'>
+              <Link href='/shadowing' className='ui-btn ui-btn-primary'>
+                开始学习
+              </Link>
+              <Link href='/manage/upload' className='ui-btn'>
+                上传内容
+              </Link>
               <HomeHeaderSearch />
-              <Link
-                href='/vocabulary'
-                className='rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
-                生词本
-              </Link>
-              <Link
-                href='/settings'
-                className='inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-sm font-semibold text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
-                我
-              </Link>
+            </div>
+          </div>
+
+          <div className='grid gap-5 pt-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
+            <div className='grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-200 pt-5 md:grid-cols-4 md:pt-0'>
+              <div>
+                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+                  本周学习
+                </p>
+                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+                  {weekHours}h
+                </p>
+              </div>
+              <div>
+                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+                  生词总量
+                </p>
+                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+                  {vocabCount}
+                </p>
+              </div>
+              <div>
+                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+                  套卷数量
+                </p>
+                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+                  {paperCount}
+                </p>
+              </div>
+              <div>
+                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+                  错题待复习
+                </p>
+                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+                  {wrongCount}
+                </p>
+              </div>
             </div>
           </div>
         </header>
 
-        <section className='mb-8 grid gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:grid-cols-[1.25fr_0.75fr] md:p-8'>
-          <div className='grid grid-cols-2 gap-3'>
-            <article className='rounded-2xl border border-slate-200 bg-slate-50 p-4'>
-              <p className='text-xs text-slate-500'>本周学习</p>
-              <p className='mt-1 text-2xl font-bold text-slate-900'>
-                {weekHours}h
-              </p>
-            </article>
-            <article className='rounded-2xl border border-slate-200 bg-slate-50 p-4'>
-              <p className='text-xs text-slate-500'>生词总量</p>
-              <p className='mt-1 text-2xl font-bold text-slate-900'>
-                {vocabCount}
-              </p>
-            </article>
-            <article className='rounded-2xl border border-slate-200 bg-slate-50 p-4'>
-              <p className='text-xs text-slate-500'>套卷数量</p>
-              <p className='mt-1 text-2xl font-bold text-slate-900'>
-                {paperCount}
-              </p>
-            </article>
-            <article className='rounded-2xl border border-slate-200 bg-slate-50 p-4'>
-              <p className='text-xs text-slate-500'>错题待复习</p>
-              <p className='mt-1 text-2xl font-bold text-slate-900'>
-                {wrongCount}
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section className='mb-8'>
+        <section className='mb-6'>
           <SectionTitle title='今日继续' />
-          {resumeCards.length === 0 ? (
-            <article className='rounded-2xl border border-dashed border-slate-300 bg-white/75 p-5 text-sm text-slate-500'>
-              暂无学习进度记录，可从下方学习入口直接开始。
-            </article>
+          {studyRecords.length === 0 ? (
+            <div className='border-t border-slate-200 py-5'>
+              <p className='text-sm text-slate-500'>
+                暂无学习进度记录，可从下方学习入口直接开始。
+              </p>
+            </div>
           ) : (
-            <div className='space-y-4'>
-              {resumeCards.map(card => (
-                <article
+            <div className='space-y-4 border-t border-slate-200 pt-4'>
+              {studyRecords.map(card => (
+                <div
                   key={card.id}
-                  className='rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_10px_30px_-24px_rgba(15,23,42,0.45)]'>
-                  <h3 className='text-lg font-semibold text-slate-900'>
-                    {card.title}
-                  </h3>
-                  <p className='mt-1 text-sm text-slate-500'>
-                    {card.typeLabel} / {card.modeLabel}
-                  </p>
-                  <p className='mt-2 text-sm text-slate-600'>
-                    进度：已完成 {card.progressLabel}，上次位置：
-                    {card.positionLabel}
-                  </p>
-                  <div className='mt-4 flex flex-wrap gap-2'>
+                  className='flex flex-col gap-4 border-b border-slate-200 pb-4 md:flex-row md:items-start md:justify-between'>
+                  <div className='min-w-0'>
+                    <h3 className='truncate text-lg font-semibold tracking-tight text-slate-900'>
+                      {card.title}
+                    </h3>
+                    <p className='mt-2 text-sm text-slate-500'>
+                      {card.metaLabel}
+                    </p>
+                    <p className='mt-2 text-sm leading-6 text-slate-600'>
+                      {card.detailLabel}
+                    </p>
+                  </div>
+                  <div className='flex flex-wrap gap-2'>
                     <Link
                       href={card.primaryHref}
-                      className='rounded-lg bg-blue-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-blue-700'>
+                      className={`ui-btn ui-btn-primary ${
+                        card.kind === 'task' && card.disabled
+                          ? 'pointer-events-none opacity-50'
+                          : ''
+                      }`}>
                       {card.primaryLabel}
                     </Link>
-                    <Link
-                      href={card.secondaryHref}
-                      className='rounded-lg border border-slate-300 px-3.5 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
-                      {card.secondaryLabel}
-                    </Link>
+                    {card.kind === 'resume' ? (
+                      <Link href={card.secondaryHref} className='ui-btn'>
+                        {card.secondaryLabel}
+                      </Link>
+                    ) : null}
                   </div>
-                </article>
+                </div>
               ))}
             </div>
           )}
         </section>
 
-        <section className='mb-8'>
+        <section className='mb-6'>
           <SectionTitle title='学习入口' />
-          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 lg:grid-cols-2'>
             {coreEntrances.map(card => (
               <Link
                 key={card.title}
                 href={card.href}
-                className='group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200'>
-                <h3 className='font-semibold text-slate-900 group-hover:text-blue-800'>
-                  {card.title}
-                </h3>
-                <p className='mt-1 text-sm text-slate-500'>{card.desc}</p>
+                className='group flex items-start justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div>
+                    <h3 className='text-base font-semibold tracking-tight text-slate-900'>
+                      {card.title}
+                    </h3>
+                    <p className='mt-2 text-sm leading-6 text-slate-500'>
+                      {card.desc}
+                    </p>
+                  </div>
+                  <span className='rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
+                    进入
+                  </span>
+                </div>
               </Link>
             ))}
           </div>
         </section>
 
-        <section className='mb-8'>
+        <section className='mb-6'>
           <SectionTitle title='管理入口' />
-          <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 md:grid-cols-2'>
             {manageEntrances.map(item => (
               <Link
                 key={item.title}
                 href={item.href}
-                className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200'>
-                <h3 className='font-semibold text-slate-900'>{item.title}</h3>
-                <p className='mt-1 text-sm text-slate-500'>{item.desc}</p>
+                className='group flex items-start justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
+                <h3 className='text-base font-semibold tracking-tight text-slate-900'>
+                  {item.title}
+                </h3>
+                <p className='mt-2 text-sm leading-6 text-slate-500'>
+                  {item.desc}
+                </p>
               </Link>
             ))}
           </div>
@@ -379,19 +462,22 @@ export default async function HomePage() {
 
         <section>
           <SectionTitle title='学习资产' />
-          <div className='grid grid-cols-2 gap-3 md:grid-cols-4'>
+          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 md:grid-cols-2 xl:grid-cols-4'>
             {assets.map(item => (
-              <article
+              <Link
                 key={item.title}
-                className='rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_-24px_rgba(15,23,42,0.45)]'>
-                <h3 className='font-semibold text-slate-900'>{item.title}</h3>
-                <p className='mt-1 text-sm text-slate-500'>{item.count}</p>
-                <Link
-                  href={item.href}
-                  className='mt-3 inline-block rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:border-blue-300 hover:text-blue-700'>
+                href={item.href}
+                className='flex items-center justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
+                <div>
+                  <h3 className='text-sm font-semibold tracking-tight text-slate-900'>
+                    {item.title}
+                  </h3>
+                  <p className='mt-1 text-sm text-slate-500'>{item.count}</p>
+                </div>
+                <span className='rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
                   查看
-                </Link>
-              </article>
+                </span>
+              </Link>
             ))}
           </div>
         </section>

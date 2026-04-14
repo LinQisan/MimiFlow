@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-import { findLevelsWithPapersAndCounts } from '@/lib/repositories/exam.repo'
+import { findLevelsWithPapersAndCounts } from '@/lib/repositories/exam'
 import PapersListClient from './PapersListClient'
 
 export default async function AllPapersPage() {
@@ -8,11 +8,16 @@ export default async function AllPapersPage() {
 
   if (levels.length === 0) {
     return (
-      <div className='min-h-screen bg-[#f7f8fc] p-6 flex flex-col items-center justify-center text-gray-500'>
-        <p>暂无试卷数据</p>
-        <Link href='/exam' className='mt-4 text-blue-500 hover:underline'>
-          返回训练中心
-        </Link>
+      <div className='min-h-screen bg-slate-50 px-6 py-10 font-sans'>
+        <div className='mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center rounded-[20px] bg-white px-6 py-10 text-center shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+          <p className='text-base font-semibold text-slate-700'>暂无试卷数据</p>
+          <p className='mt-2 text-sm text-slate-500'>
+            先去训练中心补一些试卷，或者稍后再来看看。
+          </p>
+          <Link href='/exam' className='ui-btn ui-btn-primary mt-6'>
+            返回训练中心
+          </Link>
+        </div>
       </div>
     )
   }

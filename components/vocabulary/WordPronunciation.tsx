@@ -1,7 +1,7 @@
 'use client'
 
-import { guessLanguageCode } from '@/utils/langDetector'
-import { buildJapaneseRubyHtml } from '@/utils/japaneseRuby'
+import { guessLanguageCode } from '@/utils/language/langDetector'
+import { buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
 
 export default function WordPronunciation({
   word,

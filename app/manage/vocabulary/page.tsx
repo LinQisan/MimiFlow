@@ -14,7 +14,7 @@ import {
 } from '../searchActions'
 import { useDialog } from '@/context/DialogContext'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
-import WordPronunciation from '@/components/WordPronunciation'
+import WordPronunciation from '@/components/vocabulary/WordPronunciation'
 
 type VocabularyRecord = {
   id: string
@@ -85,7 +85,7 @@ const SourceBadge = ({ type }: { type: VocabularyRecord['sourceType'] }) => {
 }
 
 const deleteButtonClassName =
-  'bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 hover:bg-red-100'
+  'ui-btn ui-btn-sm ui-btn-danger'
 
 export default function VocabularyManagePage() {
   const PAGE_SIZE = 30
@@ -158,7 +158,7 @@ export default function VocabularyManagePage() {
 
   useEffect(() => {
     if (window.matchMedia('(max-width: 768px)').matches) {
-      setViewMode('card')
+      setViewMode('table')
     }
   }, [])
 
@@ -352,9 +352,19 @@ export default function VocabularyManagePage() {
       <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
         <div>
           <Link
-            href='/manage'
-            className='mb-1 inline-flex items-center text-xs font-semibold text-indigo-600 hover:text-indigo-700 md:text-sm'>
-            返回管理中心
+            href='/'
+            className='mb-1 inline-flex items-center gap-1.5 text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900 md:text-sm'
+            aria-label='返回首页'
+            title='返回首页'>
+            <span>MimiFlow</span>
+            <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M15 19l-7-7 7-7'
+              />
+            </svg>
           </Link>
           <h1 className='text-2xl font-black text-gray-900'>词库管理</h1>
           <p className='mt-1 text-sm text-gray-500'>
@@ -373,22 +383,22 @@ export default function VocabularyManagePage() {
             </div>
           </div>
           <div className='inline-flex w-full border border-gray-200 bg-white p-1 md:w-auto'>
-            <button
-              type='button'
-              onClick={() => setViewMode('card')}
-              className={`flex-1 px-3 py-1.5 text-xs font-bold transition ${
+              <button
+                type='button'
+                onClick={() => setViewMode('card')}
+                className={`flex-1 px-3 py-1.5 text-xs font-bold transition ${
                 viewMode === 'card'
-                  ? 'bg-indigo-50 text-indigo-700'
+                  ? 'bg-slate-900 text-white'
                   : 'text-gray-500 hover:bg-gray-50'
               }`}>
               卡片
             </button>
-            <button
-              type='button'
-              onClick={() => setViewMode('table')}
-              className={`flex-1 px-3 py-1.5 text-xs font-bold transition ${
+              <button
+                type='button'
+                onClick={() => setViewMode('table')}
+                className={`flex-1 px-3 py-1.5 text-xs font-bold transition ${
                 viewMode === 'table'
-                  ? 'bg-indigo-50 text-indigo-700'
+                  ? 'bg-slate-900 text-white'
                   : 'text-gray-500 hover:bg-gray-50'
               }`}>
               表格
@@ -754,12 +764,12 @@ export default function VocabularyManagePage() {
                           <button
                             onClick={() => handleSave(item)}
                             disabled={isSaving}
-                            className='bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60'>
+                            className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-60'>
                             {isSaving ? '保存中...' : '保存'}
                           </button>
                           <button
                             onClick={() => setEditingId(null)}
-                            className='border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600'>
+                            className='ui-btn ui-btn-sm'>
                             取消
                           </button>
                         </>
@@ -767,7 +777,7 @@ export default function VocabularyManagePage() {
                         <>
                           <button
                             onClick={() => openEditor(item)}
-                            className='border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700'>
+                            className='ui-btn ui-btn-sm'>
                             编辑
                           </button>
                           <InlineConfirmAction
@@ -1038,383 +1048,191 @@ export default function VocabularyManagePage() {
             )}
           </div>
         ) : (
-          <div className='overflow-x-auto'>
-            <table className='w-full min-w-[920px] text-left text-sm text-gray-700'>
-              <colgroup>
-                <col className='w-[4%]' />
-                <col className='w-[30%]' />
-                <col className='w-[16%]' />
-                <col className='w-[14%]' />
-                <col className='w-[20%]' />
-                <col className='w-[8%]' />
-                <col className='w-[12%]' />
-              </colgroup>
-              <thead className='sticky top-0 z-10 bg-gray-50 text-[11px] uppercase tracking-wide text-gray-500'>
-                <tr>
-                  <th className='border-b border-gray-200 px-3 py-3.5 font-bold'>
-                    <input
-                      type='checkbox'
-                      checked={allInViewSelected}
-                      onChange={event =>
-                        toggleSelectAllVisible(event.currentTarget.checked)
-                      }
-                      className='h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400'
-                      aria-label='全选当前筛选词条'
-                    />
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
-                    单词
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
-                    注音
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
-                    词性
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
-                    释义
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 font-bold'>
-                    来源
-                  </th>
-                  <th className='border-b border-gray-200 px-4 py-3.5 text-right font-bold'>
-                    操作
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredList.map(item => {
-                  const displayPronunciations = item.pronunciations
-                  const displayPartsOfSpeech = item.partsOfSpeech
-                  const displayMeanings = item.meanings
-                  const isEditing = editingId === item.id
-                  const isSaving = savingId === item.id
+          <div className='divide-y divide-gray-200 border-t border-gray-200'>
+            {filteredList.map(item => {
+              const displayPronunciations = item.pronunciations
+              const displayPartsOfSpeech = item.partsOfSpeech
+              const displayMeanings = item.meanings
+              const isEditing = editingId === item.id
+              const isSaving = savingId === item.id
+              const sentenceList = item.sentences || []
+              const previewSentence = sentenceList[0]?.text || ''
 
-                  return (
-                    <tr
-                      key={item.id}
-                      className='border-b border-gray-100 align-top odd:bg-white even:bg-gray-50/45 hover:bg-indigo-50/30'>
-                      <td className='px-3 py-3.5'>
-                        <input
-                          type='checkbox'
-                          checked={selectedIds.includes(item.id)}
-                          onChange={event =>
-                            toggleSelectId(item.id, event.currentTarget.checked)
-                          }
-                          className='h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-400'
-                          aria-label={`选择词条 ${item.word}`}
-                        />
-                      </td>
-                      <td className='px-4 py-3.5'>
-                        <WordPronunciation
-                          word={item.word}
-                          pronunciation={displayPronunciations[0] || ''}
-                          pronunciations={displayPronunciations}
-                          showPronunciation={true}
-                          wordClassName='font-bold text-gray-900'
-                          hintClassName='text-[11px] font-bold text-gray-500'
-                        />
-                        {(() => {
-                          const sentenceList = item.sentences || []
-                          if (sentenceList.length === 0) {
-                            return (
-                              <p className='mt-1 text-xs text-gray-400'>
-                                暂无例句
-                              </p>
-                            )
-                          }
-                          return (
-                            <div className='mt-2 space-y-1.5 max-w-md'>
-                              {sentenceList.slice(0, 2).map((sentence, idx) => (
-                                <div
-                                  key={`${item.id}-sentence-${idx}`}
-                                  className='border border-gray-200 bg-gray-50 px-2.5 py-2'>
-                                  <p className='text-xs text-gray-700 leading-relaxed line-clamp-2'>
-                                    {sentence.text}
-                                  </p>
-                                  <div className='mt-1.5 flex flex-wrap items-center gap-1.5'>
-                                    <span className='rounded-md bg-white border border-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500'>
-                                      {sentence.source}
-                                    </span>
-                                    {typeof sentence.meaningIndex ===
-                                      'number' && (
-                                      <span className='rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700'>
-                                        释义 {sentence.meaningIndex + 1}
-                                      </span>
-                                    )}
-                                    {(sentence.posTags || [])
-                                      .slice(0, 1)
-                                      .map(tag => (
-                                        <span
-                                          key={`${item.id}-sentence-${idx}-tag-${tag}`}
-                                          className='rounded-md bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700'>
-                                          {tag}
-                                        </span>
-                                      ))}
-                                  </div>
-                                </div>
-                              ))}
-                              {sentenceList.length > 2 && (
-                                <p className='text-[10px] font-medium text-gray-400 px-1'>
-                                  还有 {sentenceList.length - 2} 条例句
-                                </p>
-                              )}
-                            </div>
-                          )
-                        })()}
-                      </td>
-                      <td className='px-4 py-3.5'>
-                        {isEditing ? (
-                          <div className='w-64 border border-indigo-100 bg-indigo-50/40 p-2.5'>
-                            <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-500'>
-                              注音 / 音标
-                            </p>
-                            <textarea
-                              value={pronunciationsInput}
-                              onChange={e =>
-                                setPronunciationsInput(e.currentTarget.value)
-                              }
-                              rows={3}
-                              placeholder='每行一个，或使用逗号分隔；日语支持 言:い い 訳:わけ，也兼容空格或 | 拆分'
-                              className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
-                            />
-                            <p className='mt-1 text-[10px] text-indigo-400'>
-                              示例：言い訳 可填 言:い い 訳:わけ；也可填 にん
-                              げん / にん|げん；外来语一般整词填写
-                            </p>
-                            <div className='mt-2 flex flex-wrap gap-1.5'>
-                              {pronunciationsPreview.length > 0 ? (
-                                pronunciationsPreview.map(pron => (
-                                  <span
-                                    key={`${item.id}-pron-preview-${pron}`}
-                                    className='rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700'>
-                                    {pron}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className='text-[10px] text-indigo-300'>
-                                  尚未识别到注音项
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className='flex max-w-56 flex-wrap gap-1.5'>
-                            {displayPronunciations.length ? (
-                              displayPronunciations.map(pron => (
-                                <span
-                                  key={`${item.id}-pron-${pron}`}
-                                  className='rounded-md bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700'>
-                                  {pron}
-                                </span>
-                              ))
-                            ) : (
-                              <span className='text-xs text-gray-400'>
-                                未设置
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-4 py-3.5'>
-                        {isEditing ? (
-                          <div className='w-48 border border-amber-100 bg-amber-50/40 p-2.5'>
-                            <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-amber-700'>
-                              词性
-                            </p>
-                            <textarea
-                              value={partsOfSpeechInput}
-                              onChange={e =>
-                                setPartsOfSpeechInput(e.currentTarget.value)
-                              }
-                              rows={3}
-                              placeholder='例如: n.\nvt.'
-                              className='w-full border border-amber-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-amber-400'
-                            />
-                            <div className='mt-2 flex max-w-44 flex-wrap gap-1.5'>
-                              {partsOfSpeechPreview.length > 0 ? (
-                                partsOfSpeechPreview.map(pos => (
-                                  <span
-                                    key={`${item.id}-pos-preview-${pos}`}
-                                    className='rounded-md bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700'>
-                                    {pos}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className='text-[10px] text-amber-300'>
-                                  尚未识别到词性项
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className='flex max-w-44 flex-wrap gap-1.5'>
-                            {displayPartsOfSpeech.length ? (
-                              displayPartsOfSpeech.map(pos => (
-                                <span
-                                  key={`${item.id}-pos-${pos}`}
-                                  className='rounded-md bg-amber-50 px-2 py-1 text-xs font-bold text-amber-700'>
-                                  {pos}
-                                </span>
-                              ))
-                            ) : (
-                              <span className='text-xs text-gray-400'>
-                                未设置
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-4 py-3.5'>
-                        {isEditing ? (
-                          <div className='w-72 border border-emerald-100 bg-emerald-50/40 p-2.5'>
-                            <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600'>
-                              释义
-                            </p>
-                            <textarea
-                              value={meaningInput}
-                              onChange={e =>
-                                setMeaningInput(e.currentTarget.value)
-                              }
-                              rows={3}
-                              placeholder='每行一个释义，支持多个词义'
-                              className='w-full border border-emerald-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-emerald-400'
-                            />
-                            <div className='mt-2 flex max-w-64 flex-wrap gap-1.5'>
-                              {meaningPreview.length > 0 ? (
-                                meaningPreview.map(meaning => (
-                                  <span
-                                    key={`${item.id}-meaning-preview-${meaning}`}
-                                    className='rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700'>
-                                    {meaning}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className='text-[10px] text-emerald-300'>
-                                  尚未识别到释义项
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className='flex max-w-64 flex-wrap gap-1.5'>
-                            {displayMeanings.length ? (
-                              displayMeanings.map(meaning => (
-                                <span
-                                  key={`${item.id}-meaning-${meaning}`}
-                                  className='rounded-md bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700'>
-                                  {meaning}
-                                </span>
-                              ))
-                            ) : (
-                              <span className='text-xs text-gray-400'>
-                                未设置
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-4 py-3.5'>
-                        {isEditing ? (
-                          <div className='w-40 border border-indigo-100 bg-indigo-50/40 p-2.5'>
-                            <p className='mb-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600'>
-                              标签
-                            </p>
-                            <textarea
-                              value={tagsInput}
-                              onChange={e =>
-                                setTagsInput(e.currentTarget.value)
-                              }
-                              rows={2}
-                              placeholder='每行一个标签'
-                              className='w-full border border-indigo-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-indigo-400'
-                            />
-                            <div className='mt-2 flex max-w-40 flex-wrap gap-1.5'>
-                              {tagsPreview.length > 0 ? (
-                                tagsPreview.map(tag => (
-                                  <span
-                                    key={`${item.id}-tag-preview-${tag}`}
-                                    className='rounded-md bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700'>
-                                    #{tag}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className='text-[10px] text-indigo-300'>
-                                  未添加标签
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className='flex max-w-40 flex-wrap gap-1.5'>
-                            {item.tags && item.tags.length > 0 ? (
-                              item.tags.map(tag => (
-                                <span
-                                  key={`${item.id}-tag-${tag}`}
-                                  className='rounded-md bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700'>
-                                  #{tag}
-                                </span>
-                              ))
-                            ) : (
-                              <span className='text-xs text-gray-400'>
-                                未设置
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                      <td className='px-4 py-3.5'>
+              return (
+                <div key={item.id} className='px-4 py-4 md:px-6 lg:px-8'>
+                  <div className='grid gap-4 lg:grid-cols-[minmax(0,280px)_minmax(0,1fr)_auto] lg:items-start'>
+                    <div className='flex flex-col gap-2'>
+                      <div className='flex flex-wrap items-center gap-1.5'>
                         <SourceBadge type={item.sourceType} />
-                      </td>
-                      <td className='px-4 py-3.5 text-right'>
-                        <div className='inline-flex min-w-[132px] items-center justify-end gap-2 whitespace-nowrap'>
-                          {isEditing ? (
-                            <>
-                              <button
-                                onClick={() => handleSave(item)}
-                                disabled={isSaving}
-                                className='bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white disabled:opacity-60'>
-                                {isSaving ? '保存中...' : '保存'}
-                              </button>
-                              <button
-                                onClick={() => setEditingId(null)}
-                                className='border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-600'>
-                                取消
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => openEditor(item)}
-                                className='border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700'>
-                                编辑
-                              </button>
-                              <InlineConfirmAction
-                                message={`删除 "${item.word}" 后不可恢复，确认删除吗？`}
-                                onConfirm={() =>
-                                  handleDeleteVocab(item.id, item.word)
+                        {displayPartsOfSpeech.slice(0, 2).map(pos => (
+                          <span
+                            key={`${item.id}-row-pos-${pos}`}
+                            className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600'>
+                            {pos}
+                          </span>
+                        ))}
+                        {displayPronunciations.slice(0, 2).map(pron => (
+                          <span
+                            key={`${item.id}-row-pron-${pron}`}
+                            className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600'>
+                            {pron}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className='flex flex-wrap items-center gap-1.5'>
+                        {displayMeanings.slice(0, 2).map(meaning => (
+                          <span
+                            key={`${item.id}-row-meaning-${meaning}`}
+                            className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500'>
+                            {meaning}
+                          </span>
+                        ))}
+                        {item.tags.slice(0, 2).map(tag => (
+                          <span
+                            key={`${item.id}-row-tag-${tag}`}
+                            className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500'>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className='text-xs text-gray-400'>
+                        {sentenceList.length > 0
+                          ? `例句 ${sentenceList.length} 条`
+                          : '暂无例句'}
+                      </div>
+                    </div>
+
+                    <div className='min-w-0'>
+                      <WordPronunciation
+                        word={item.word}
+                        pronunciation={displayPronunciations[0] || ''}
+                        pronunciations={displayPronunciations}
+                        showPronunciation={true}
+                        wordClassName='block text-[26px] font-black text-gray-900 md:text-[34px]'
+                        hintClassName='text-[11px] font-bold text-gray-500'
+                      />
+                      {previewSentence ? (
+                        <p className='mt-2 max-w-3xl text-sm leading-relaxed text-gray-600 line-clamp-2'>
+                          {previewSentence}
+                        </p>
+                      ) : null}
+                      {isEditing ? (
+                        <div className='mt-3 space-y-2 text-xs text-gray-600'>
+                          <div className='grid gap-2 md:grid-cols-3'>
+                            <label className='block'>
+                              <span className='mb-1 block text-[10px] font-bold uppercase tracking-wide text-indigo-500'>
+                                注音 / 音标
+                              </span>
+                              <textarea
+                                value={pronunciationsInput}
+                                onChange={e =>
+                                  setPronunciationsInput(e.currentTarget.value)
                                 }
-                                triggerLabel='删除'
-                                confirmLabel='确认删除'
-                                pendingLabel='删除中...'
-                                triggerClassName={deleteButtonClassName}
+                                rows={3}
+                                placeholder='每行一个，或使用逗号分隔；日语支持 言:い い 訳:わけ，也兼容空格或 | 拆分'
+                                className='w-full border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-gray-400'
                               />
-                            </>
-                          )}
+                            </label>
+                            <label className='block'>
+                              <span className='mb-1 block text-[10px] font-bold uppercase tracking-wide text-amber-700'>
+                                词性
+                              </span>
+                              <textarea
+                                value={partsOfSpeechInput}
+                                onChange={e =>
+                                  setPartsOfSpeechInput(e.currentTarget.value)
+                                }
+                                rows={3}
+                                placeholder='例如: n.\nvt.'
+                                className='w-full border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-gray-400'
+                              />
+                            </label>
+                            <label className='block'>
+                              <span className='mb-1 block text-[10px] font-bold uppercase tracking-wide text-emerald-600'>
+                                释义
+                              </span>
+                              <textarea
+                                value={meaningInput}
+                                onChange={e =>
+                                  setMeaningInput(e.currentTarget.value)
+                                }
+                                rows={3}
+                                placeholder='每行一个释义，支持多个词义'
+                                className='w-full border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 outline-none focus:border-gray-400'
+                              />
+                            </label>
+                          </div>
+                          <div className='flex flex-wrap gap-1.5'>
+                            {item.pronunciations.map(pron => (
+                              <span
+                                key={`${item.id}-edit-pron-${pron}`}
+                                className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600'>
+                                {pron}
+                              </span>
+                            ))}
+                            {item.partsOfSpeech.map(pos => (
+                              <span
+                                key={`${item.id}-edit-pos-${pos}`}
+                                className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600'>
+                                {pos}
+                              </span>
+                            ))}
+                            {item.meanings.map(meaning => (
+                              <span
+                                key={`${item.id}-edit-meaning-${meaning}`}
+                                className='rounded-full border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500'>
+                                {meaning}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-                {filteredList.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className='py-16 text-center text-gray-400'>
-                      {searchKeyword.trim() ? '没有匹配的词条' : '暂无词条'}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                      ) : null}
+                    </div>
+
+                    <div className='flex shrink-0 items-start gap-2 lg:justify-end'>
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => handleSave(item)}
+                            disabled={isSaving}
+                            className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-60'>
+                            {isSaving ? '保存中...' : '保存'}
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className='ui-btn ui-btn-sm'>
+                            取消
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => openEditor(item)}
+                            className='ui-btn ui-btn-sm'>
+                            编辑
+                          </button>
+                          <InlineConfirmAction
+                            message={`删除 "${item.word}" 后不可恢复，确认删除吗？`}
+                            onConfirm={() => handleDeleteVocab(item.id, item.word)}
+                            triggerLabel='删除'
+                            confirmLabel='确认删除'
+                            pendingLabel='删除中...'
+                            triggerClassName={deleteButtonClassName}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+            {filteredList.length === 0 && (
+              <div className='py-16 text-center text-gray-400'>
+                {searchKeyword.trim() ? '没有匹配的词条' : '暂无词条'}
+              </div>
+            )}
           </div>
         )}
       </div>

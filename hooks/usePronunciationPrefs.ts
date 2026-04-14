@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { annotateJapaneseText, buildJapaneseRubyHtml } from '@/utils/japaneseRuby'
+import { annotateJapaneseText, buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
 
 const SHOW_KEY = 'mimiflow_show_pronunciation'
 const SHOW_MEANING_KEY = 'mimiflow_show_meaning'

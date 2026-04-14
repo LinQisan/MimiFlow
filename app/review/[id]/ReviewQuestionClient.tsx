@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { RetryQueueItem } from '@/app/actions/retry'
@@ -43,9 +43,11 @@ function formatDateTime(value: Date | string | null) {
 function mapRetryItemToExamQuestion(item: RetryQueueItem): ExamQuestion {
   return {
     id: item.questionId,
+    order: item.questionOrder,
     questionType: item.questionType,
     prompt: item.prompt,
     contextSentence: item.contextSentence,
+    targetWord: item.targetWord,
     options: item.options,
     passageId: item.passageId,
     passage: item.passage,
@@ -78,6 +80,29 @@ export default function ReviewQuestionClient({
   const nextRetryId =
     currentIndex < queue.length - 1 ? queue[currentIndex + 1]?.retryId : null
   const examQuestion = useMemo(() => mapRetryItemToExamQuestion(item), [item])
+  const reviewAnswerMap = useMemo(
+    () => (selectedOptionId ? { [examQuestion.id]: selectedOptionId } : {}),
+    [examQuestion.id, selectedOptionId],
+  )
+  const reviewPassageQuestions = useMemo(
+    () =>
+      examQuestion.passageId && examQuestion.questionType === 'FILL_BLANK'
+        ? [examQuestion]
+        : [],
+    [examQuestion],
+  )
+
+  useEffect(() => {
+    // Only reset local answering state when switching to another retry item.
+    // Server revalidation after submit may refresh summary/props for the same item.
+    // We should keep submitted state so user can click "下一题".
+    setItem(currentItem)
+    setSummary(initialSummary)
+    setSelectedOptionId('')
+    setFeedback('')
+    setIsSubmitted(false)
+    setResettingId(null)
+  }, [currentItem.retryId])
 
   const handleSubmit = () => {
     if (!selectedOptionId) {
@@ -138,7 +163,9 @@ export default function ReviewQuestionClient({
       <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:px-8'>
         <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3'>
           <div>
-            <h1 className='text-base font-black text-slate-900 md:text-lg'>错题回看</h1>
+            <h1 className='text-base font-black text-slate-900 md:text-lg'>
+              错题回看
+            </h1>
             <p className='text-xs text-slate-500'>
               第 {currentIndex + 1} / {queue.length} 题，到期 {summary.dueCount} 题
             </p>
@@ -149,7 +176,7 @@ export default function ReviewQuestionClient({
             </span>
             <Link
               href='/'
-              className='rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50'>
+              className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50'>
               首页
             </Link>
           </div>
@@ -157,21 +184,21 @@ export default function ReviewQuestionClient({
       </header>
 
       <div className='mx-auto w-full max-w-7xl space-y-4 px-4 py-4 md:px-8 md:py-6'>
-        <section className='rounded-xl border border-slate-200 bg-white p-4'>
+        <section className='rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)]'>
           <div className='mb-3 flex flex-wrap items-center gap-2 text-xs'>
-            <span className='rounded bg-slate-100 px-2 py-0.5 font-semibold text-slate-600'>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
               错题作答 {item.stats.attemptTotal} 次
             </span>
-            <span className='rounded bg-red-50 px-2 py-0.5 font-semibold text-red-600'>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
               阶段 {item.stage + 1}
             </span>
-            <span className='rounded bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700'>
-              错误率徽章 {formatPercent(1 - item.stats.accuracy)}
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
+              错误率 {formatPercent(1 - item.stats.accuracy)}
             </span>
-            <span className='rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700'>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
               优化后正确率 {formatPercent(item.stats.optimizedAccuracy)}
             </span>
-            <span className='rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-700'>
+            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
               近期连对 {item.stats.recentStreak}
             </span>
           </div>
@@ -181,7 +208,7 @@ export default function ReviewQuestionClient({
               type='button'
               disabled={isPending || isSubmitted}
               onClick={handleSubmit}
-              className='rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60'>
+              className='rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60'>
               提交复盘
             </button>
             <button
@@ -190,7 +217,7 @@ export default function ReviewQuestionClient({
                 isPending || resettingId === item.retryId || !item.stats.resetEligible
               }
               onClick={handleSoftReset}
-              className='rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-40'>
+              className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40'>
               轻度重置错误率
             </button>
             <span className='self-center text-[11px] text-slate-400'>
@@ -202,9 +229,12 @@ export default function ReviewQuestionClient({
         </section>
 
         <QuestionRenderer
+          key={examQuestion.id}
           question={examQuestion}
+          allQuestions={reviewPassageQuestions}
           onSelect={optionId => setSelectedOptionId(optionId)}
           currentAnswer={selectedOptionId}
+          answerMap={reviewAnswerMap}
           isSubmitted={isSubmitted}
           annotation={{
             showPronunciation: false,
@@ -221,7 +251,7 @@ export default function ReviewQuestionClient({
             type='button'
             disabled={!prevRetryId || isPending}
             onClick={() => prevRetryId && router.push(`/review/${prevRetryId}`)}
-            className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40'>
+            className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40'>
             上一题
           </button>
 
@@ -232,14 +262,15 @@ export default function ReviewQuestionClient({
           {nextRetryId ? (
             <button
               type='button'
+              disabled={!isSubmitted || isPending}
               onClick={() => router.push(`/review/${nextRetryId}`)}
-              className='rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700'>
+              className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40'>
               下一题
             </button>
           ) : (
             <Link
               href='/review'
-              className='rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700'>
+              className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800'>
               返回队列
             </Link>
           )}

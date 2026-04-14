@@ -1,7 +1,7 @@
 import {
   getRandomPracticeFilterOptions,
   randomPracticeTypeOptions,
-} from '@/lib/repositories/exam.repo'
+} from '@/lib/repositories/exam'
 import CustomPaperBuilderClient from './CustomPaperBuilderClient'
 
 export default async function CustomPaperBuilderPage() {

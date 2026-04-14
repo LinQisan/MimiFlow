@@ -33,7 +33,7 @@ export function OptionsList({
   annotation,
 }: OptionsListProps) {
   if (options.length === 0) {
-    return <div className='mt-4 text-sm text-gray-400'>暂无选项</div>
+    return <div className='mt-4 text-sm text-slate-400'>暂无选项</div>
   }
 
   const audioOnly = isAudioOnlyOptions(options)
@@ -51,10 +51,10 @@ export function OptionsList({
               ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
               : isWrongSelected
                 ? 'border-rose-300 bg-rose-50 text-rose-900'
-                : 'border-gray-200 bg-white text-gray-500'
+                : 'border-slate-200 bg-white text-slate-500'
             : isSelected
-              ? 'border-blue-500 bg-blue-50 text-blue-800 shadow-sm ring-1 ring-blue-500'
-              : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-gray-50'
+              ? 'border-slate-900 bg-slate-100 text-slate-900 shadow-sm ring-1 ring-slate-400'
+              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
         }`
         const content = (
           <>
@@ -65,10 +65,10 @@ export function OptionsList({
                     ? 'text-emerald-600'
                     : isWrongSelected
                       ? 'text-rose-600'
-                      : 'text-gray-400'
+                      : 'text-slate-400'
                   : isSelected
-                    ? 'text-blue-600'
-                    : 'text-gray-400 group-hover:text-blue-400'
+                    ? 'text-slate-900'
+                    : 'text-slate-400 group-hover:text-slate-600'
               }`}>
               {optionLabel(index)}.
             </span>

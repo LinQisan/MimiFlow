@@ -15,8 +15,8 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang='zh'>
-      <body>
+    <html lang='zh' data-lang='zh' suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <I18nProvider>
           <DialogProvider>{children}</DialogProvider>
         </I18nProvider>

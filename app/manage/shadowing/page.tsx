@@ -1,10 +1,14 @@
-import { listListeningMaterialsForShadowing } from '@/lib/repositories/materials.repo'
+import {
+  listListeningLessonsForShadowing,
+  listListeningMaterialsForShadowing,
+} from '@/lib/repositories/materials'
 import prisma from '@/lib/prisma'
 import ShadowingListClient from '@/app/shadowing/ShadowingListClient'
 
 export default async function ManageShadowingPage() {
-  const [rows, collections] = await Promise.all([
+  const [speakingRows, listeningRows, collections] = await Promise.all([
     listListeningMaterialsForShadowing(),
+    listListeningLessonsForShadowing(),
     prisma.collection.findMany({
       where: {
         collectionType: { in: ['LIBRARY_ROOT', 'BOOK', 'CHAPTER'] as const },
@@ -20,5 +24,11 @@ export default async function ManageShadowingPage() {
     }),
   ])
 
-  return <ShadowingListClient rows={rows} collections={collections} mode='manage' />
+  return (
+    <ShadowingListClient
+      rows={[...speakingRows, ...listeningRows]}
+      collections={collections}
+      mode='manage'
+    />
+  )
 }

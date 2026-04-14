@@ -1,4 +1,4 @@
-import type { VocabularyMeta } from '@/utils/vocabularyMeta'
+import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 export type ExamQuestionOption = {
   id: string

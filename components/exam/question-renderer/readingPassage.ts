@@ -105,16 +105,16 @@ export const buildReadingPassageHtml = ({
 
     if (!isSubmitted) {
       if (selectedOpt) {
-        replacementHtml = `<span class="article-blank-filled inline-block mx-1 border-b-2 border-indigo-500 px-1 py-0 text-indigo-700 font-semibold align-baseline transition-all duration-300">${selectedOpt.text}</span>`
+        replacementHtml = `<span class="article-blank-filled inline-block mx-1 border-b-2 border-slate-900 px-1 py-0 text-slate-900 font-semibold align-baseline transition-all duration-300">${selectedOpt.text}</span>`
       } else {
-        replacementHtml = `<span class="article-blank-empty inline-block mx-1 border-b-2 border-gray-400 px-3 py-0 text-gray-400 font-semibold select-none tracking-wide align-baseline">(${displaySerial})</span>`
+        replacementHtml = `<span class="article-blank-empty inline-block mx-1 border-b-2 border-slate-400 px-3 py-0 text-slate-400 font-semibold select-none tracking-wide align-baseline">(${displaySerial})</span>`
       }
     } else if (!selectedOpt) {
-      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-missed inline-block border-b-2 border-amber-500 px-2 py-0 text-amber-700 font-semibold bg-amber-50">(${displaySerial})</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-emerald-700">正确：${correctOption.text}</span></span>`
+      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-missed inline-block border-b-2 border-slate-500 px-2 py-0 text-slate-700 font-semibold bg-slate-100">(${displaySerial})</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOption.text}</span></span>`
     } else if (!selectedOpt.isCorrect) {
-      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-wrong inline-block border-b-2 border-red-500 px-2 py-0 text-red-700 font-semibold bg-red-50">${selectedOpt.text}</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-emerald-700">正确：${correctOption.text}</span></span>`
+      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-wrong inline-block border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100">${selectedOpt.text}</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOption.text}</span></span>`
     } else {
-      replacementHtml = `<span class="article-blank-ok inline-block mx-1 border-b-2 border-emerald-500 px-2 py-0 text-emerald-700 font-semibold bg-emerald-50 align-baseline">${correctOption.text}</span>`
+      replacementHtml = `<span class="article-blank-ok inline-block mx-1 border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100 align-baseline">${correctOption.text}</span>`
     }
 
     let replaced = false

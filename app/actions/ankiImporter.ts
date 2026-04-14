@@ -4,9 +4,9 @@ import { SourceType } from '@prisma/client'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import prisma from '@/lib/prisma'
-import { parseJsonStringList, toJsonStringList } from '@/utils/jsonList'
-import { sanitizePronunciations } from '@/utils/pronunciation'
-import { buildVocabularyCanonicalKeys } from '@/utils/vocabularyCanonical'
+import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
+import { sanitizePronunciations } from '@/utils/text/pronunciation'
+import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 
 type ParsedRow = {
   rowNo: number

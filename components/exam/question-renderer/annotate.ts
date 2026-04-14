@@ -18,7 +18,7 @@ const withTargetHighlight = (html: string, targetWord?: string | null) => {
 const withFillBlankHint = (html: string) =>
   html.replace(
     BLANK_TOKEN_GLOBAL,
-    '<span class="mx-1 inline-block min-w-12 border-b-2 border-dashed border-indigo-400 px-2 text-indigo-500">（ ）</span>',
+    '<span class="mx-1 inline-block min-w-12 border-b-2 border-dashed border-slate-400 px-2 text-slate-500">（ ）</span>',
   )
 
 export const annotateExamText = ({

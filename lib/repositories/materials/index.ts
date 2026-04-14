@@ -1,6 +1,6 @@
 import prisma from '@/lib/prisma'
 import { MaterialType, QuestionTemplate } from '@prisma/client'
-import { getMaterialDisplayTitle } from '@/lib/repositories/material-title'
+import { getMaterialDisplayTitle } from './material-title'
 
 type JsonRecord = Record<string, unknown>
 
@@ -498,9 +498,9 @@ export async function getTopMaterialSnapshots() {
   }
 }
 
-export async function listListeningMaterialsForShadowing() {
+async function listMaterialsForShadowingByType(materialType: MaterialType) {
   const rows = await prisma.material.findMany({
-    where: { type: 'SPEAKING' as MaterialType },
+    where: { type: materialType },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     include: {
       collectionMaterials: {
@@ -605,6 +605,14 @@ export async function listListeningMaterialsForShadowing() {
         : null,
     }
   })
+}
+
+export async function listListeningMaterialsForShadowing() {
+  return listMaterialsForShadowingByType(MaterialType.SPEAKING)
+}
+
+export async function listListeningLessonsForShadowing() {
+  return listMaterialsForShadowingByType(MaterialType.LISTENING)
 }
 
 export async function getListeningMaterialEditorByLegacyId(legacyId: string) {

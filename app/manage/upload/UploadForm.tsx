@@ -4,7 +4,11 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CollectionType, MaterialType } from '@prisma/client'
 import { listPublicAudioFiles, uploadAssAndSaveData } from './action'
+import CollectionBrowserSelect, {
+  type CollectionBrowserOption,
+} from '@/components/manage/upload/CollectionBrowserSelect'
 import { useDialog } from '@/context/DialogContext'
+import { buildCollectionTreeOptions } from '@/lib/repositories/collection/tree'
 
 function CustomDropdown({
   value,
@@ -16,7 +20,7 @@ function CustomDropdown({
 }: {
   value: string
   onChange: (val: string) => void
-  options: { value: string; label: string; group?: string }[]
+  options: DropdownOption[]
   placeholder: string
   enableSearch?: boolean
   groupByLevel?: boolean
@@ -46,8 +50,14 @@ function CustomDropdown({
   const selectedLabel =
     options.find(option => option.value === value)?.label || placeholder
 
-  // Sort alphabetically by label
   const sortedOptions = useMemo(() => {
+    if (options.some(option => typeof option.order === 'number')) {
+      return [...options].sort(
+        (a, b) =>
+          (a.order ?? 0) - (b.order ?? 0) ||
+          a.label.localeCompare(b.label, 'zh-CN'),
+      )
+    }
     return [...options].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
   }, [options])
 
@@ -55,7 +65,10 @@ function CustomDropdown({
   const filteredOptions = useMemo(() => {
     if (!search.trim()) return sortedOptions
     const q = search.trim().toLowerCase()
-    return sortedOptions.filter(option => option.label.toLowerCase().includes(q))
+    return sortedOptions.filter(option => {
+      const searchText = (option.searchText || option.label).toLowerCase()
+      return searchText.includes(q)
+    })
   }, [sortedOptions, search])
 
   // Group by level if enabled
@@ -153,25 +166,31 @@ function CustomDropdown({
                   {group}
                 </div>
                 {groupOpts.map(option => (
-                  <div
-                    key={option.value}
-                    onClick={() => {
-                      onChange(option.value)
-                      setIsOpen(false)
-                      setSearch('')
-                    }}
-                    className={`truncate px-4 py-3 text-sm font-bold transition-colors
+                <div
+                  key={option.value}
+                  onClick={() => {
+                    onChange(option.value)
+                    setIsOpen(false)
+                    setSearch('')
+                  }}
+                  className={`truncate px-4 py-3 text-sm font-bold transition-colors
                       ${
                         value === option.value
                           ? 'bg-blue-50 text-blue-700'
                           : 'cursor-pointer text-gray-700 hover:bg-gray-50 hover:text-blue-600'
-                      }`}>
-                    {option.label.replace(/^\[[^\]]+\]\s*/, '')}
-                  </div>
-                ))}
-              </div>
-            ))
-          ) : (
+                      }`}
+                  style={{ paddingLeft: `${16 + (option.depth || 0) * 14}px` }}>
+                    <div className='truncate'>{option.label}</div>
+                    {search && option.searchText && option.searchText !== option.label && (
+                      <div className='mt-0.5 truncate text-[11px] font-medium text-gray-400'>
+                        {option.searchText}
+                      </div>
+                    )}
+                </div>
+              ))}
+            </div>
+          ))
+        ) : (
             filteredOptions.map(option => (
               <div
                 key={option.value}
@@ -185,8 +204,14 @@ function CustomDropdown({
                     value === option.value
                       ? 'bg-blue-50 text-blue-700'
                       : 'cursor-pointer text-gray-700 hover:bg-gray-50 hover:text-blue-600'
-                  }`}>
-                {option.label}
+                  }`}
+                style={{ paddingLeft: `${16 + (option.depth || 0) * 14}px` }}>
+                <div className='truncate'>{option.label}</div>
+                {search && option.searchText && option.searchText !== option.label && (
+                  <div className='mt-0.5 truncate text-[11px] font-medium text-gray-400'>
+                    {option.searchText}
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -201,13 +226,16 @@ type Props = {
   papers: {
     id: string
     name: string
-    parentTitle?: string
+    parentId?: string | null
+    sortOrder?: number
     collectionType?: CollectionType
     materialType?: MaterialType
     level: { title: string }
     lessons: {
       title: string
       audioFile: string
+      chapterName: string
+      materialType: MaterialType
     }[]
   }[]
 }
@@ -240,6 +268,10 @@ type AudioMatchPreviewRow = PickedFileMeta & {
 type DropdownOption = {
   value: string
   label: string
+  searchText?: string
+  depth?: number
+  order?: number
+  group?: string
 }
 
 const autoIncrementString = (str: string) => {
@@ -443,6 +475,16 @@ export default function UploadForm({ levels, papers }: Props) {
 
   const isBatchAss = selectedFileNames.length > 1
 
+  const findLatestLessonByMaterialType = (
+    paper: Props['papers'][number] | undefined,
+    type: MaterialType,
+  ) => {
+    if (!paper) return null
+    const byType = paper.lessons.find(item => item.materialType === type)
+    if (byType) return byType
+    return paper.lessons[0] || null
+  }
+
   useEffect(() => {
     if (!selectedLevelId && levels.length > 0) {
       setSelectedLevelId(levels[0].id)
@@ -459,7 +501,8 @@ export default function UploadForm({ levels, papers }: Props) {
   useEffect(() => {
     if (mode === 'existing' && selectedPaperId) {
       const targetPaper = papers.find(paper => paper.id === selectedPaperId)
-      const latest = targetPaper?.lessons?.[0]
+      const resolvedType = targetPaper?.materialType || 'LISTENING'
+      const latest = findLatestLessonByMaterialType(targetPaper, resolvedType)
       if (targetPaper && targetPaper.lessons.length > 0) {
         setTitle(autoIncrementString(latest?.title || ''))
         setAudioFile(autoIncrementString(latest?.audioFile || ''))
@@ -467,14 +510,31 @@ export default function UploadForm({ levels, papers }: Props) {
         setTitle('')
         setAudioFile('/audios/')
       }
-      setMaterialType(targetPaper?.materialType || 'LISTENING')
-      if ((targetPaper?.materialType || 'LISTENING') === 'SPEAKING') {
-        setMaterialChapterName(latest?.title || '')
+      setMaterialType(resolvedType)
+      if (resolvedType === 'SPEAKING') {
+        setMaterialChapterName((latest?.chapterName || '').trim())
       } else {
         setMaterialChapterName('')
       }
     }
   }, [mode, selectedPaperId, papers, setMaterialType])
+
+  useEffect(() => {
+    if (mode !== 'existing' || !selectedPaperId || materialType !== 'SPEAKING') return
+    const targetPaper = papers.find(paper => paper.id === selectedPaperId)
+    const latest = findLatestLessonByMaterialType(targetPaper, 'SPEAKING')
+    // 自动读取同收藏夹上一条跟读材料的章节名，仅在空值时预填，避免覆盖手动输入。
+    if (!materialChapterName.trim()) {
+      setMaterialChapterName((latest?.chapterName || '').trim())
+    }
+  }, [
+    mode,
+    selectedPaperId,
+    materialType,
+    materialChapterName,
+    papers,
+    setMaterialChapterName,
+  ])
 
   useEffect(() => {
     if (mode === 'new') {
@@ -824,11 +884,24 @@ export default function UploadForm({ levels, papers }: Props) {
     syncFilesToInput(audioInputRef.current, droppedList)
   }
 
-  const paperOptions: DropdownOption[] = papers.map(paper => ({
-    value: paper.id,
-    label: `[${paper.level.title}] ${paper.parentTitle ? `${paper.parentTitle} / ` : ''}${paper.name}`,
-    group: paper.level.title,
-  } as DropdownOption & { group: string }))
+  const paperOptions: CollectionBrowserOption[] = useMemo(
+    () => {
+      return buildCollectionTreeOptions(
+        papers.map(paper => ({
+          ...paper,
+          title: paper.name,
+        })),
+      ).map(item => ({
+        value: item.id,
+        label: item.title,
+        searchText: item.pathLabel,
+        parentId: item.parentId,
+        depth: item.depth,
+        order: item.order,
+      }))
+    },
+    [papers],
+  )
 
   const levelOptions: DropdownOption[] = levels.map(level => ({
     value: level.id,
@@ -837,7 +910,8 @@ export default function UploadForm({ levels, papers }: Props) {
 
   const selectedPaperLabel =
     mode === 'existing'
-      ? paperOptions.find(item => item.value === selectedPaperId)?.label ||
+      ? paperOptions.find(item => item.value === selectedPaperId)?.searchText ||
+        paperOptions.find(item => item.value === selectedPaperId)?.label ||
         '未选择集合'
       : paperName || '新建集合'
 
@@ -900,13 +974,12 @@ export default function UploadForm({ levels, papers }: Props) {
         {mode === 'existing' ? (
           <div>
             <input type='hidden' name='paperId' value={selectedPaperId} />
-            <CustomDropdown
-              options={paperOptions as (DropdownOption & { group: string })[]}
+            <CollectionBrowserSelect
+              options={paperOptions}
               value={selectedPaperId}
               onChange={setSelectedPaperId}
               placeholder='请选择要追加内容的集合'
-              enableSearch={papers.length > 8}
-              groupByLevel
+              recentKey='manage.upload.paper.recent'
             />
           </div>
         ) : (

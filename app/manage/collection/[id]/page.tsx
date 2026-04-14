@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 import { deleteCollection, deleteCollectionMaterial } from '@/app/manage/collection/action'
-import { getCollectionManageDetail } from '@/lib/repositories/collection-manage.repo'
+import { getCollectionManageDetail } from '@/lib/repositories/collection/manage'
 
 export default async function ManageCollectionDetailPage({
   params,

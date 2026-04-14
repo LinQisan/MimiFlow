@@ -166,9 +166,19 @@ export default function ManageAnkiImportPage() {
       <div className='mx-auto max-w-6xl'>
         <section className='border-b border-gray-200 pb-5'>
           <Link
-            href='/manage'
-            className='mb-2 inline-flex items-center text-sm font-semibold text-indigo-600 hover:text-indigo-700'>
-            返回管理中心
+            href='/'
+            className='mb-2 inline-flex items-center gap-1.5 text-sm font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900'
+            aria-label='返回首页'
+            title='返回首页'>
+            <span>MimiFlow</span>
+            <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+              <path
+                strokeLinecap='round'
+                strokeLinejoin='round'
+                strokeWidth={2}
+                d='M15 19l-7-7 7-7'
+              />
+            </svg>
           </Link>
           <h1 className='text-3xl font-black text-gray-900'>Anki 导入器</h1>
           <p className='mt-2 text-sm text-gray-500'>

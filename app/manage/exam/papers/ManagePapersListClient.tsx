@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 
-import type { ExamHubLevelSummary } from '@/lib/repositories/exam.repo'
+import type { ExamHubLevelSummary } from '@/lib/repositories/exam'
 import PaperAttributeForm from '@/app/exam/papers/PaperAttributeForm'
 import PaperAdminPanel from '@/app/exam/papers/PaperAdminPanel'
 import FavoriteCollectionCreateForm from '@/app/exam/papers/FavoriteCollectionCreateForm'
@@ -26,7 +26,7 @@ export default function ManagePapersListClient({
     <div className='min-h-screen bg-slate-50 font-sans pb-12'>
       <div className='sticky top-0 z-10 flex items-center border-b border-slate-200 bg-white/95 px-6 py-4 backdrop-blur'>
         <Link
-          href='/manage'
+          href='/'
           className='p-2 -ml-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600'>
           ←
         </Link>
@@ -104,9 +104,9 @@ export default function ManagePapersListClient({
                     </div>
                     <div className='flex items-center gap-2'>
                       <Link
-                        href={`/exam/papers/${encodeURIComponent(paper.id)}`}
+                        href={`/manage/exam/papers/${encodeURIComponent(paper.id)}`}
                         className='inline-flex h-9 items-center border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700'>
-                        查看详情
+                        编辑详情
                       </Link>
                       <Link
                         href={`/exam/papers/${encodeURIComponent(paper.id)}/do`}

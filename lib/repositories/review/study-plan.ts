@@ -1,7 +1,7 @@
 import { GameDifficultyPreset } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
-import { getTopMaterialSnapshots } from './materials.repo'
+import { getTopMaterialSnapshots } from '../materials'
 
 export type TodayPlanLesson = {
   id: string

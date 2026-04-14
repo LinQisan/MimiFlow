@@ -38,44 +38,44 @@ export default function ShadowingMetaForm(props: Props) {
           name='title'
           defaultValue={props.title}
           placeholder='标题'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='audioFile'
           defaultValue={props.audioFile}
           placeholder='/audios/xxx.mp3'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='source'
           defaultValue={props.source}
           placeholder='来源'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='language'
           defaultValue={props.language}
           placeholder='语言（例：ja-JP / en-US）'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='difficulty'
           defaultValue={props.difficulty}
           placeholder='难度'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='tags'
           defaultValue={props.tags}
           placeholder='标签，逗号分隔'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
       </div>
       <div className='grid grid-cols-1 gap-3 md:grid-cols-[1fr_1fr]'>
         <select
           name='materialType'
           defaultValue={props.materialType}
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
           <option value='SPEAKING'>SPEAKING（跟读）</option>
           <option value='LISTENING'>LISTENING（听力）</option>
           <option value='READING'>READING（阅读）</option>
@@ -91,7 +91,7 @@ export default function ShadowingMetaForm(props: Props) {
           name='collectionId'
           defaultValue={props.collectionId}
           aria-label='收藏夹归属'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'>
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
           <option value=''>保持当前归属（不变）</option>
           <optgroup label='移动到已有收藏夹'>
             {props.favoriteCollections.map(item => (
@@ -105,32 +105,32 @@ export default function ShadowingMetaForm(props: Props) {
           name='newFavoriteName'
           placeholder='新建收藏夹名称（可选，填写后优先使用）'
           aria-label='新建收藏夹名称'
-          className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
       </div>
       <textarea
         name='description'
         defaultValue={props.description}
         placeholder='描述'
-        className='min-h-20 w-full resize-y border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        className='min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
       />
       <textarea
         name='transcript'
         defaultValue={props.transcript}
         placeholder='全文文本'
-        className='min-h-24 w-full resize-y border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        className='min-h-24 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
       />
       <div className='flex items-center gap-3'>
         <button
           type='submit'
           disabled={pending}
-          className='h-10 border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60'>
+          className='ui-btn ui-btn-primary h-10 px-4 disabled:cursor-not-allowed disabled:opacity-60'>
           {pending ? '保存中...' : '保存听力属性'}
         </button>
         {state.message ? (
           <p
             className={`text-xs font-semibold ${
-              state.success ? 'text-blue-700' : 'text-rose-600'
+              state.success ? 'text-slate-700' : 'text-rose-600'
             }`}>
             {state.message}
           </p>
