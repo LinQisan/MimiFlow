@@ -96,7 +96,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
     description: topLesson
       ? `推荐从《${topLesson.title}》开始。`
       : '暂无听力语料，请先在管理端录入。',
-    href: topLesson ? `/shadowing/${topLesson.id}` : '/manage/upload',
+    href: topLesson ? `/shadowing/${topLesson.id}` : '/upload',
     disabled: !topLesson,
   }
 
@@ -108,7 +108,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
     description: topArticle
       ? `推荐从《${topArticle.title || '阅读材料'}》开始。`
       : '暂无阅读材料，请先在管理端录入。',
-    href: topArticle ? `/articles/${topArticle.id}` : '/manage/upload',
+    href: topArticle ? `/articles/${topArticle.id}` : '/upload',
     disabled: !topArticle,
   }
 
@@ -146,6 +146,6 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
   return {
     dateKey: toDateKey(now),
     tasks,
-    startHref: firstActionable?.href || '/manage/upload',
+    startHref: firstActionable?.href || '/upload',
   }
 }

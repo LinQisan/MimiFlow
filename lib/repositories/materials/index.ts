@@ -6,6 +6,7 @@ type JsonRecord = Record<string, unknown>
 
 const MATERIAL_PREFIX: Record<MaterialType, string> = {
   [MaterialType.LISTENING]: 'lesson:',
+  [MaterialType.MEDIA_SUBTITLE]: 'media:',
   [MaterialType.READING]: 'passage:',
   [MaterialType.VOCAB_GRAMMAR]: 'quiz:',
   [MaterialType.SPEAKING]: 'lesson:',
@@ -62,6 +63,7 @@ function toLegacyQuestionType(
   }
 
   if (materialType === MaterialType.LISTENING) return 'LISTENING'
+  if (materialType === MaterialType.MEDIA_SUBTITLE) return 'LISTENING'
   if (materialType === MaterialType.READING) {
     return templateType === QuestionTemplate.CLOZE_TEST ||
       templateType === QuestionTemplate.FILL_BLANK

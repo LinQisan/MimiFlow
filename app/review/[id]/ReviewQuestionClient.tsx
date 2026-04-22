@@ -10,7 +10,15 @@ import {
   submitRetryAnswer,
 } from '@/app/actions/retry'
 import { QuestionRenderer } from '@/components/exam/QuestionRenderer'
+import WordTooltip from '@/components/exam/WordTooltip'
+import ToggleSwitch from '@/components/ToggleSwitch'
 import type { ExamQuestion } from '@/components/exam/question-renderer/types'
+import {
+  useShowMeaning,
+  useShowPronunciation,
+} from '@/hooks/usePronunciationPrefs'
+import { useTextSelection } from '@/hooks/useTextSelection'
+import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 type Summary = {
   dueCount: number
@@ -75,6 +83,18 @@ export default function ReviewQuestionClient({
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [resettingId, setResettingId] = useState<string | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>(
+    'idle',
+  )
+  const { showPronunciation, setShowPronunciation } = useShowPronunciation()
+  const { showMeaning, setShowMeaning } = useShowMeaning()
+  const [localPronunciationMap, setLocalPronunciationMap] = useState<
+    Record<string, string>
+  >({})
+  const [localVocabularyMetaMap, setLocalVocabularyMetaMap] = useState<
+    Record<string, VocabularyMeta>
+  >({})
+  const { selection, closeSelection } = useTextSelection()
 
   const prevRetryId = currentIndex > 0 ? queue[currentIndex - 1]?.retryId : null
   const nextRetryId =
@@ -158,6 +178,69 @@ export default function ReviewQuestionClient({
     })
   }
 
+  const buildCopyPayload = (question: ExamQuestion, questionIndex: number) => {
+    const sections: string[] = []
+    sections.push(`第 ${questionIndex + 1} 题`)
+
+    const context = (question.contextSentence || '').trim()
+    const prompt = (question.prompt || '').trim()
+    const shouldIncludePrompt = prompt && prompt !== context
+    if (context) sections.push(`题目：${context}`)
+    else if (prompt) sections.push(`题目：${prompt}`)
+    if (shouldIncludePrompt) sections.push(`补充：${prompt}`)
+
+    if (question.passageId) {
+      const passage = (question.passage?.content || '').trim()
+      if (passage) sections.push(`阅读正文：\n${passage}`)
+    }
+
+    const optionLines = (question.options || [])
+      .map((option, index) => {
+        const marker = String.fromCharCode(65 + index)
+        const text = (option.text || '').trim()
+        return text ? `${marker}. ${text}` : ''
+      })
+      .filter(Boolean)
+    if (optionLines.length > 0) {
+      sections.push(`选项：\n${optionLines.join('\n')}`)
+    }
+
+    return sections.join('\n\n').trim()
+  }
+
+  const writeClipboard = async (text: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text)
+      return
+    }
+    if (typeof document === 'undefined') {
+      throw new Error('clipboard api unavailable')
+    }
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+    const copied = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    if (!copied) throw new Error('copy fallback failed')
+  }
+
+  const handleCopyCurrentQuestion = async () => {
+    const payload = buildCopyPayload(examQuestion, currentIndex)
+    if (!payload) return
+    try {
+      await writeClipboard(payload)
+      setCopyState('copied')
+      window.setTimeout(() => setCopyState('idle'), 1800)
+    } catch {
+      setCopyState('error')
+      window.setTimeout(() => setCopyState('idle'), 1800)
+    }
+  }
+
   return (
     <main className='min-h-screen bg-slate-50 pb-24'>
       <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:px-8'>
@@ -220,6 +303,32 @@ export default function ReviewQuestionClient({
               className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40'>
               轻度重置错误率
             </button>
+            <button
+              type='button'
+              onClick={() => void handleCopyCurrentQuestion()}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors ${
+                copyState === 'copied'
+                  ? 'border-slate-300 bg-slate-100 text-slate-900'
+                  : copyState === 'error'
+                    ? 'border-rose-300 bg-rose-50 text-rose-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+              }`}>
+              {copyState === 'copied'
+                ? '已复制'
+                : copyState === 'error'
+                  ? '复制失败'
+                  : '复制题目'}
+            </button>
+            <ToggleSwitch
+              label='注音'
+              checked={showPronunciation}
+              onChange={setShowPronunciation}
+            />
+            <ToggleSwitch
+              label='注释'
+              checked={showMeaning}
+              onChange={setShowMeaning}
+            />
             <span className='self-center text-[11px] text-slate-400'>
               满足条件后可轻度清理早期错误记录，逐步修复历史偏差。
             </span>
@@ -237,12 +346,44 @@ export default function ReviewQuestionClient({
           answerMap={reviewAnswerMap}
           isSubmitted={isSubmitted}
           annotation={{
-            showPronunciation: false,
-            showMeaning: false,
-            pronunciationMap: {},
-            vocabularyMetaMap: {},
+            showPronunciation,
+            showMeaning,
+            pronunciationMap: localPronunciationMap,
+            vocabularyMetaMap: localVocabularyMetaMap,
           }}
         />
+
+        {selection.isVisible && selection.sourceType !== '' && (
+          <WordTooltip
+            word={selection.text}
+            x={selection.x}
+            y={selection.y}
+            isTop={selection.isTop}
+            contextSentence={selection.contextSentence}
+            sourceType={selection.sourceType}
+            sourceId={selection.sourceId}
+            initialMeta={localVocabularyMetaMap[selection.text]}
+            onSaved={({ word, meta }) => {
+              setLocalVocabularyMetaMap(prev => {
+                const next = { ...prev, [word]: meta }
+                if (selection.text && selection.text !== word) {
+                  next[selection.text] = meta
+                }
+                return next
+              })
+              if (meta.pronunciations[0]) {
+                setLocalPronunciationMap(prev => {
+                  const next = { ...prev, [word]: meta.pronunciations[0] }
+                  if (selection.text && selection.text !== word) {
+                    next[selection.text] = meta.pronunciations[0]
+                  }
+                  return next
+                })
+              }
+            }}
+            onClose={closeSelection}
+          />
+        )}
       </div>
 
       <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-4 backdrop-blur'>

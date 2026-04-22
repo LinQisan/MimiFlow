@@ -49,7 +49,7 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
           <Link href='/exam/papers/custom' className='ui-btn ui-btn-sm'>
             自定义抽题
           </Link>
-          <Link href='/manage/exam/papers' className='ui-btn ui-btn-sm'>
+          <Link href='/papers/manage' className='ui-btn ui-btn-sm'>
             去管理
           </Link>
         </div>

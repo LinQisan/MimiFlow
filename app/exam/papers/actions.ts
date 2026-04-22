@@ -44,9 +44,9 @@ export async function updatePaperAttributes(formData: FormData) {
 
     revalidatePath('/exam/papers')
     revalidatePath(`/exam/papers/${paperId}`)
-    revalidatePath('/manage/exam/papers')
-    revalidatePath('/manage')
-    revalidatePath('/manage/collection')
+    revalidatePath('/papers/manage')
+    revalidatePath('/')
+    revalidatePath('/collections')
 
     return { success: true, message: '已保存。' }
   } catch (error) {
@@ -68,8 +68,8 @@ export async function createFavoriteCollection(formData: FormData) {
     })
 
     revalidatePath('/exam/papers')
-    revalidatePath('/manage')
-    revalidatePath('/manage/collection')
+    revalidatePath('/')
+    revalidatePath('/collections')
     revalidatePath('/shadowing')
 
     return { success: true, message: '收藏夹已创建。' }
@@ -108,8 +108,8 @@ export async function updateExamPaperMaterialType(formData: FormData) {
     revalidatePath('/exam/papers')
     revalidatePath(`/exam/papers/${paperId}`)
     revalidatePath('/shadowing')
-    revalidatePath('/manage')
-    revalidatePath('/manage/collection')
+    revalidatePath('/')
+    revalidatePath('/collections')
 
     return { success: true, message: `已批量更新 ${result.count} 条语料。` }
   } catch (error) {

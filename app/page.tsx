@@ -70,9 +70,9 @@ const coreEntrances = [
     href: '/exam/papers',
   },
   {
-    title: '词汇复习',
-    desc: '生词与例句复习',
-    href: '/vocabulary',
+    title: '单词书',
+    desc: '书架浏览 + 书内复习',
+    href: '/wordbooks',
   },
   {
     title: '语法库',
@@ -84,30 +84,13 @@ const coreEntrances = [
     desc: '按记录回看薄弱点',
     href: '/review',
   },
+  {
+    title: '影视字幕',
+    desc: '电影/剧集字幕浏览与管理',
+    href: '/media-subtitles',
+  },
 ]
 
-const manageEntrances = [
-  {
-    title: '上传新内容',
-    desc: '音频、文章、题目统一导入',
-    href: '/manage/upload',
-  },
-  {
-    title: '内容管理台',
-    desc: '统一维护学习材料',
-    href: '/manage',
-  },
-  {
-    title: '合集管理',
-    desc: '整理套卷与学习集合',
-    href: '/manage/collection',
-  },
-  {
-    title: '全局搜索',
-    desc: '快速查找词句和内容',
-    href: '/search',
-  },
-]
 
 function SectionTitle({ title }: { title: string }) {
   return (
@@ -122,12 +105,14 @@ function SectionTitle({ title }: { title: string }) {
 
 function toTypeLabel(type: MaterialType): string {
   if (type === MaterialType.LISTENING) return '听力'
+  if (type === MaterialType.MEDIA_SUBTITLE) return '影视字幕'
   if (type === MaterialType.READING) return '阅读'
   return '题目'
 }
 
 function defaultModeByType(type: MaterialType): string {
   if (type === MaterialType.LISTENING) return '字幕精听'
+  if (type === MaterialType.MEDIA_SUBTITLE) return '影视浏览'
   if (type === MaterialType.READING) return '文章精读'
   return '套卷训练'
 }
@@ -300,14 +285,15 @@ export default async function HomePage() {
                   : '去输出',
         disabled: task.disabled,
       })),
-  ].slice(0, 6)
+  ].slice(0, 4)
 
   const assets = [
-    { title: '生词本', count: `${vocabCount} 个`, href: '/vocabulary' },
+    { title: '生词本', count: `${vocabCount} 个`, href: '/wordbooks' },
     { title: '错题本', count: `${wrongCount} 题`, href: '/review' },
     { title: '套卷库', count: `${paperCount} 套`, href: '/exam/papers' },
-    { title: '题目总量', count: `${questionCount} 题`, href: '/manage' },
+    { title: '题目总量', count: `${questionCount} 题`, href: '/papers/manage' },
   ]
+
 
   return (
     <main className='min-h-screen bg-white text-slate-900'>
@@ -323,7 +309,10 @@ export default async function HomePage() {
               <Link href='/shadowing' className='ui-btn ui-btn-primary'>
                 开始学习
               </Link>
-              <Link href='/manage/upload' className='ui-btn'>
+              <Link href='/media-subtitles/upload' className='ui-btn'>
+                影视字幕上传
+              </Link>
+              <Link href='/upload' className='ui-btn'>
                 上传内容
               </Link>
               <HomeHeaderSearch />
@@ -377,26 +366,26 @@ export default async function HomePage() {
               </p>
             </div>
           ) : (
-            <div className='space-y-4 border-t border-slate-200 pt-4'>
+            <div className='space-y-2 border-t border-slate-200 pt-2'>
               {studyRecords.map(card => (
                 <div
                   key={card.id}
-                  className='flex flex-col gap-4 border-b border-slate-200 pb-4 md:flex-row md:items-start md:justify-between'>
-                  <div className='min-w-0'>
-                    <h3 className='truncate text-lg font-semibold tracking-tight text-slate-900'>
+                  className='flex flex-col gap-2 border-b border-slate-200 py-3 md:flex-row md:items-center md:justify-between'>
+                  <div className='min-w-0 space-y-1'>
+                    <h3 className='truncate text-base font-semibold tracking-tight text-slate-900'>
                       {card.title}
                     </h3>
-                    <p className='mt-2 text-sm text-slate-500'>
+                    <p className='truncate text-sm text-slate-500'>
                       {card.metaLabel}
                     </p>
-                    <p className='mt-2 text-sm leading-6 text-slate-600'>
+                    <p className='truncate text-xs text-slate-500'>
                       {card.detailLabel}
                     </p>
                   </div>
-                  <div className='flex flex-wrap gap-2'>
+                  <div className='flex shrink-0 flex-wrap gap-2'>
                     <Link
                       href={card.primaryHref}
-                      className={`ui-btn ui-btn-primary ${
+                      className={`inline-flex h-9 items-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 ${
                         card.kind === 'task' && card.disabled
                           ? 'pointer-events-none opacity-50'
                           : ''
@@ -404,7 +393,9 @@ export default async function HomePage() {
                       {card.primaryLabel}
                     </Link>
                     {card.kind === 'resume' ? (
-                      <Link href={card.secondaryHref} className='ui-btn'>
+                      <Link
+                        href={card.secondaryHref}
+                        className='inline-flex h-9 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900'>
                         {card.secondaryLabel}
                       </Link>
                     ) : null}
@@ -436,25 +427,6 @@ export default async function HomePage() {
                     进入
                   </span>
                 </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section className='mb-6'>
-          <SectionTitle title='管理入口' />
-          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 md:grid-cols-2'>
-            {manageEntrances.map(item => (
-              <Link
-                key={item.title}
-                href={item.href}
-                className='group flex items-start justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
-                <h3 className='text-base font-semibold tracking-tight text-slate-900'>
-                  {item.title}
-                </h3>
-                <p className='mt-2 text-sm leading-6 text-slate-500'>
-                  {item.desc}
-                </p>
               </Link>
             ))}
           </div>

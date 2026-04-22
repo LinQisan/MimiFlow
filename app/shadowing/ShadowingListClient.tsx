@@ -12,7 +12,7 @@ import {
 import {
   deleteSpeakingMaterial,
   updateSpeakingMeta,
-} from '@/app/manage/shadowing/actions'
+} from '@/app/shadowing/manage/actions'
 import ShadowingQuickClassifyForm from './ShadowingQuickClassifyForm'
 
 type ShadowingRow = {
@@ -355,7 +355,7 @@ export default function ShadowingListClient({
             </div>
             <div className='flex items-center gap-3'>
               <Link
-                href='/manage/upload'
+                href='/upload'
                 className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
                 继续上传
               </Link>
@@ -662,7 +662,7 @@ export default function ShadowingListClient({
                                 </button>
                                 {item.materialType === 'SPEAKING' ? (
                                   <Link
-                                    href={`/manage/shadowing/${item.id}`}
+                                    href={`/shadowing/manage/${item.id}`}
                                     className='text-xs font-semibold text-slate-600 hover:text-slate-900'>
                                     详情编辑
                                   </Link>
@@ -837,7 +837,7 @@ export default function ShadowingListClient({
                           <Link
                             href={
                               isManageMode && item.materialType === 'SPEAKING'
-                                ? `/manage/shadowing/${item.id}`
+                                ? `/shadowing/manage/${item.id}`
                                 : `/shadowing/${item.id}`
                             }
                             className='ui-btn ui-btn-primary h-10 w-full px-4 text-sm font-bold'>

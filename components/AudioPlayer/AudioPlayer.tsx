@@ -23,6 +23,10 @@ import {
 } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
 import { getPosOptions, inferContextualPos } from '@/utils/language/posTagger'
+import {
+  buildPronunciationMapForText,
+  buildSurfaceAliasMapForText,
+} from '@/utils/vocabulary/japaneseInflection'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useAudioController } from './useAudioController'
 
@@ -162,6 +166,9 @@ export default function AudioPlayer({
   const [tooltipPronunciation, setTooltipPronunciation] = useState('')
   const [tooltipPartOfSpeech, setTooltipPartOfSpeech] = useState('')
   const [tooltipMeaning, setTooltipMeaning] = useState('')
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
+    'idle',
+  )
   useStudyTimeHeartbeat({
     enabled: isPlaying,
     kind: StudyTimeKind.LESSON_SPEAKING,
@@ -199,21 +206,59 @@ export default function AudioPlayer({
     )
     return new Map(
       lesson.dialogue.map(item => {
-        const matched = entries
-          .filter(([word]) => item.text.includes(word))
-          .sort((a, b) => b[0].length - a[0].length)
-          .slice(0, 6)
-          .map(([word, meta]) => ({
-            word,
+        const aliasMap = buildSurfaceAliasMapForText(
+          item.text,
+          entries.map(([word]) => word),
+        )
+        const bestByBase = new Map<
+          string,
+          {
+            word: string
+            baseWord: string
+            pronunciation: string
+            pronunciations: string[]
+            partsOfSpeech: string[]
+            meanings: string[]
+          }
+        >()
+        Object.entries(aliasMap).forEach(([surface, base]) => {
+          const meta = localVocabularyMetaMap[base]
+          if (!meta) return
+          const nextItem = {
+            word: surface,
+            baseWord: base,
             pronunciation: meta.pronunciations[0] || '',
             pronunciations: meta.pronunciations,
             partsOfSpeech: meta.partsOfSpeech,
             meanings: meta.meanings,
+          }
+          const existing = bestByBase.get(base)
+          if (!existing || surface.length > existing.word.length) {
+            bestByBase.set(base, nextItem)
+          }
+        })
+        const matched = Array.from(bestByBase.values())
+          .sort((a, b) => b.word.length - a.word.length)
+          .slice(0, 6)
+          .map(item => ({
+            word: item.word,
+            pronunciation: item.pronunciation,
+            pronunciations: item.pronunciations,
+            partsOfSpeech: item.partsOfSpeech,
+            meanings: item.meanings,
           }))
         return [item.id, matched] as const
       }),
     )
   }, [localVocabularyMetaMap, lesson.dialogue])
+  const transcriptPlainText = useMemo(
+    () =>
+      lesson.dialogue
+        .map(item => item.text.trim())
+        .filter(Boolean)
+        .join('\n'),
+    [lesson.dialogue],
+  )
   const activeSentenceEntries = activeId
     ? sentenceMetaMap.get(activeId) || []
     : []
@@ -230,20 +275,15 @@ export default function AudioPlayer({
 
   const annotateSentence = (text: string) => {
     if (!showPronunciation) return text
-    const entries = Object.entries(localVocabularyMetaMap)
-      .filter(
-        ([word, meta]) => text.includes(word) && meta.pronunciations.length > 0,
-      )
-      .sort((a, b) => b[0].length - a[0].length)
-    if (entries.length === 0) return text
-    const pronMap = entries.reduce<Record<string, string>>(
-      (acc, [word, meta]) => {
-        const pronunciation = meta.pronunciations[0]
-        if (pronunciation) acc[word] = pronunciation
-        return acc
-      },
-      {},
-    )
+    const basePronMap = Object.entries(localVocabularyMetaMap).reduce<
+      Record<string, string>
+    >((acc, [word, meta]) => {
+      const pronunciation = (meta.pronunciations[0] || '').trim()
+      if (pronunciation) acc[word] = pronunciation
+      return acc
+    }, {})
+    const pronMap = buildPronunciationMapForText(text, basePronMap)
+    if (Object.keys(pronMap).length === 0) return text
     const html = annotateJapaneseText(text, pronMap, {
       rubyClassName: 'text-slate-900 dark:text-slate-100',
       rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
@@ -320,13 +360,15 @@ export default function AudioPlayer({
       partsOfSpeech: [],
       meanings: [],
     }
+    const surfaceWord = activeTooltip.word
+    const targetWord = word
     const pronunciationList = splitListInput(tooltipPronunciation)
     const partOfSpeechList = splitListInput(tooltipPartOfSpeech)
     const meaningList = splitListInput(tooltipMeaning)
     const firstPron = pronunciationList[0]
     try {
       const res = await saveVocabulary(
-        word,
+        targetWord,
         activeTooltip.contextSentence,
         'AUDIO_DIALOGUE',
         String(activeTooltip.dialogueId),
@@ -339,7 +381,7 @@ export default function AudioPlayer({
       if (res.success) {
         setLocalVocabularyMetaMap(prev => ({
           ...prev,
-          [word]: {
+          [targetWord]: {
             pronunciations: pronunciationList,
             partsOfSpeech:
               partOfSpeechList.length > 0
@@ -347,13 +389,25 @@ export default function AudioPlayer({
                 : existingMeta.partsOfSpeech,
             meanings: meaningList,
           },
+          ...(surfaceWord && surfaceWord !== targetWord
+            ? {
+                [surfaceWord]: {
+                  pronunciations: pronunciationList,
+                  partsOfSpeech:
+                    partOfSpeechList.length > 0
+                      ? partOfSpeechList
+                      : existingMeta.partsOfSpeech,
+                  meanings: meaningList,
+                },
+              }
+            : {}),
         }))
         setWordSaveState('success')
         setTimeout(() => setActiveTooltip(null), 1500)
       } else if (res.state === 'already_exists') {
         setLocalVocabularyMetaMap(prev => ({
           ...prev,
-          [word]: {
+          [targetWord]: {
             pronunciations: pronunciationList,
             partsOfSpeech:
               partOfSpeechList.length > 0
@@ -361,6 +415,18 @@ export default function AudioPlayer({
                 : existingMeta.partsOfSpeech,
             meanings: meaningList,
           },
+          ...(surfaceWord && surfaceWord !== targetWord
+            ? {
+                [surfaceWord]: {
+                  pronunciations: pronunciationList,
+                  partsOfSpeech:
+                    partOfSpeechList.length > 0
+                      ? partOfSpeechList
+                      : existingMeta.partsOfSpeech,
+                  meanings: meaningList,
+                },
+              }
+            : {}),
         }))
         setWordSaveState('already_exists')
         setTimeout(() => setActiveTooltip(null), 1500)
@@ -396,6 +462,18 @@ export default function AudioPlayer({
 
   const handleBackToPrevious = () => {
     router.push('/shadowing')
+  }
+
+  const handleCopyTranscript = async () => {
+    if (!transcriptPlainText) return
+    try {
+      await navigator.clipboard.writeText(transcriptPlainText)
+      setCopyStatus('success')
+      window.setTimeout(() => setCopyStatus('idle'), 1800)
+    } catch {
+      setCopyStatus('error')
+      window.setTimeout(() => setCopyStatus('idle'), 1800)
+    }
   }
 
   // ---------------- 副作用钩子 ----------------
@@ -549,6 +627,38 @@ export default function AudioPlayer({
                 {lessonGroup.name}
               </p>
             </div>
+
+            <button
+              type='button'
+              onClick={handleCopyTranscript}
+              className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition-colors ${
+                copyStatus === 'success'
+                  ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
+                  : copyStatus === 'error'
+                    ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/50 dark:bg-rose-900/30 dark:text-rose-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'
+              }`}
+              title='复制跟读材料（不含时间轴）'>
+              <svg
+                className='h-3.5 w-3.5'
+                fill='none'
+                stroke='currentColor'
+                viewBox='0 0 24 24'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M8 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2M8 7h6a2 2 0 0 1 2 2v6'
+                />
+              </svg>
+              <span>
+                {copyStatus === 'success'
+                  ? '已复制'
+                  : copyStatus === 'error'
+                    ? '复制失败'
+                    : '复制原文'}
+              </span>
+            </button>
 
             {prevId ? (
               <Link

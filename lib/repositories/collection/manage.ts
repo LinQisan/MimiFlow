@@ -19,6 +19,10 @@ function asString(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
 
+function asBoolean(value: unknown): boolean {
+  return value === true
+}
+
 function toQuestionType(
   content: unknown,
   templateType: QuestionTemplate,
@@ -74,6 +78,8 @@ function resolveMaterialIdByAnySync(maybeId: string, type: MaterialType) {
   const prefix =
     type === MaterialType.READING
       ? 'passage'
+      : type === MaterialType.MEDIA_SUBTITLE
+        ? 'media'
       : type === MaterialType.VOCAB_GRAMMAR
         ? 'quiz'
         : 'lesson'
@@ -326,6 +332,14 @@ export async function getListeningEditData(maybeId: string) {
       toLegacyMaterialId(material.id),
     ),
     audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+    subtitleMeta: {
+      noAudio: asBoolean(payload.subtitleNoAudio),
+      sourceType:
+        asString(payload.subtitleSourceType) === 'TV' ? 'TV' : 'MOVIE',
+      workTitle: asString(payload.subtitleWorkTitle),
+      season: asString(payload.subtitleSeason),
+      episode: asString(payload.subtitleEpisode),
+    },
     collectionId,
     collectionTitle: material.collectionMaterials[0]?.collection.title || '未分组',
     siblings,

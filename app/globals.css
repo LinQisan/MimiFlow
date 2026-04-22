@@ -185,6 +185,19 @@ html.theme-switching *::after {
   white-space: nowrap;
 }
 
+.media-subtitle-text,
+.media-subtitle-text .jp-ruby {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.media-subtitle-text .jp-ruby-rt,
+.media-subtitle-text rt {
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+
 .ui-btn {
   display: inline-flex;
   align-items: center;

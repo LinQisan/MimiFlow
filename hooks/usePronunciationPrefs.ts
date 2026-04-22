@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { annotateJapaneseText, buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
+import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 
 const SHOW_KEY = 'mimiflow_show_pronunciation'
 const SHOW_MEANING_KEY = 'mimiflow_show_meaning'
@@ -163,9 +164,11 @@ const annotateChunkWithMeta = (
         .filter(([word, pron]) => hasJapanese(word) && Boolean((pron || '').trim()))
         .map(([word]) => word)
     : []
-  const words = Array.from(new Set([...meaningWords, ...pronunciationWords])).sort(
-    (a, b) => b.length - a.length,
-  )
+  const surfaceAliasMap = buildSurfaceAliasMapForText(text, [
+    ...meaningWords,
+    ...pronunciationWords,
+  ])
+  const words = Object.keys(surfaceAliasMap).sort((a, b) => b.length - a.length)
 
   if (words.length === 0) {
     return pronunciationEnabled ? annotateJapaneseText(text, pronMap) : escapeHtml(text)
@@ -196,7 +199,8 @@ const annotateChunkWithMeta = (
     }
 
     const word = match.word
-    const pronunciation = (pronMap[word] || '').trim()
+    const baseWord = surfaceAliasMap[word] || word
+    const pronunciation = (pronMap[word] || pronMap[baseWord] || '').trim()
     const baseWordHtml =
       pronunciationEnabled && pronunciation
         ? buildJapaneseRubyHtml(word, pronunciation)
@@ -204,7 +208,7 @@ const annotateChunkWithMeta = (
 
     const meaningText = showMeaning
       ? resolveMeaningText(
-          word,
+          baseWord,
           extractSentenceContext(text, cursor, match.length),
           options,
         )

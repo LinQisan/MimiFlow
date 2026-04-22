@@ -42,5 +42,8 @@ export function getMaterialDisplayTitle(
   if (type === MaterialType.LISTENING) {
     return fallbackId || '未命名听力'
   }
+  if (type === MaterialType.MEDIA_SUBTITLE) {
+    return fallbackId || '未命名影视字幕'
+  }
   return fallbackId || '未命名题库'
 }

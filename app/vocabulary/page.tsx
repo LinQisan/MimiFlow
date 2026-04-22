@@ -103,18 +103,18 @@ export default async function VocabularyPage({
   const groupValue = Array.isArray(resolvedSearchParams.group)
     ? resolvedSearchParams.group[0]
     : resolvedSearchParams.group
-  const folderValue = Array.isArray(resolvedSearchParams.folder)
-    ? resolvedSearchParams.folder[0]
-    : resolvedSearchParams.folder
+  const wordbookValue = Array.isArray(resolvedSearchParams.wordbook)
+    ? resolvedSearchParams.wordbook[0]
+    : resolvedSearchParams.wordbook
   const focusId = (focusValue || '').trim()
   const initialFocusGroup = (groupValue || '').trim()
-  const folderFilter = (folderValue || 'all').trim()
-  const allFolders = await prisma.vocabularyFolder.findMany({
+  const wordbookFilter = (wordbookValue || 'all').trim()
+  const allWordbooks = await prisma.wordbook.findMany({
     orderBy: { createdAt: 'asc' },
-    select: { id: true, name: true, parentId: true },
+    select: { id: true, title: true, parentId: true },
   })
-  const getFolderDescendantIds = (folderId: string) => {
-    const childrenByParent = allFolders.reduce<Record<string, string[]>>(
+  const getWordbookDescendantIds = (wordbookId: string) => {
+    const childrenByParent = allWordbooks.reduce<Record<string, string[]>>(
       (acc, folder) => {
         const parentKey = folder.parentId || '__root__'
         if (!acc[parentKey]) acc[parentKey] = []
@@ -123,7 +123,7 @@ export default async function VocabularyPage({
       },
       {},
     )
-    const queue = [folderId]
+    const queue = [wordbookId]
     const result: string[] = []
     while (queue.length > 0) {
       const current = queue.shift()!
@@ -134,27 +134,32 @@ export default async function VocabularyPage({
     return result
   }
 
-  const folderFilterIds =
-    folderFilter !== 'all' && folderFilter !== 'none'
-      ? getFolderDescendantIds(folderFilter)
+  const wordbookFilterIds =
+    wordbookFilter !== 'all' && wordbookFilter !== 'none'
+      ? getWordbookDescendantIds(wordbookFilter)
       : []
   const rawPage = Number(pageValue || 1)
   const currentPage = Number.isFinite(rawPage)
     ? Math.max(1, Math.floor(rawPage))
     : 1
   const whereClause =
-    folderFilter === 'all'
+    wordbookFilter === 'all'
       ? {}
-      : folderFilter === 'none'
-        ? { folderId: null as null }
-        : { folderId: { in: folderFilterIds } }
+      : wordbookFilter === 'none'
+        ? { wordbooks: { none: {} } }
+        : { wordbooks: { some: { wordbookId: { in: wordbookFilterIds } } } }
 
   const rawVocabularies = await prisma.vocabulary.findMany({
     where: whereClause,
     orderBy: { createdAt: 'desc' },
     include: {
-      folder: {
-        select: { id: true, name: true },
+      wordbooks: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          wordbook: {
+            select: { id: true, title: true },
+          },
+        },
       },
       tags: {
         include: {
@@ -210,8 +215,13 @@ export default async function VocabularyPage({
     const focusedVocabulary = await prisma.vocabulary.findUnique({
       where: { id: focusId },
       include: {
-        folder: {
-          select: { id: true, name: true },
+        wordbooks: {
+          orderBy: { createdAt: 'asc' },
+          include: {
+            wordbook: {
+              select: { id: true, title: true },
+            },
+          },
         },
         tags: {
           include: {
@@ -248,7 +258,11 @@ export default async function VocabularyPage({
       pageVocabularies = [focusedVocabulary, ...pageVocabularies]
     }
   }
-  const folders = allFolders
+  const folders = allWordbooks.map(item => ({
+    id: item.id,
+    name: item.title,
+    parentId: item.parentId,
+  }))
   const groupedTotals: Record<string, number> = {}
   rawVocabularies.forEach(vocab => {
     const groupName = resolveVocabularyGroupName(vocab.word, vocab.groupName)
@@ -327,8 +341,8 @@ export default async function VocabularyPage({
             .filter(Boolean),
         ),
       ),
-      folderId: vocab.folder?.id || null,
-      folderName: vocab.folder?.name || null,
+      folderId: vocab.wordbooks[0]?.wordbook?.id || null,
+      folderName: vocab.wordbooks[0]?.wordbook?.title || null,
       createdAt: vocab.createdAt,
       sourceType: vocab.sourceType,
       sentences: parsedSentences,
@@ -372,14 +386,14 @@ export default async function VocabularyPage({
               </div>
               <div className='flex h-[5.5rem] flex-col justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
                 <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                  收藏夹
+                  单词书
                 </p>
                 <p className='mt-1 max-w-[14rem] truncate text-base font-bold'>
-                  {folderFilter === 'all'
-                    ? '全部收藏夹'
-                    : folderFilter === 'none'
-                      ? '未收藏'
-                      : '已筛选收藏夹'}
+                  {wordbookFilter === 'all'
+                    ? '全部单词书'
+                    : wordbookFilter === 'none'
+                      ? '未加入单词书'
+                      : '已筛选单词书'}
                 </p>
               </div>
             </div>
@@ -390,7 +404,7 @@ export default async function VocabularyPage({
           groupedData={groupedData}
           groupedTotals={groupedTotals}
           folders={folders as FolderItem[]}
-          initialFolderFilter={folderFilter}
+          initialFolderFilter={wordbookFilter}
           initialGroupFilter={groupValue || undefined}
           initialFocusId={focusId || undefined}
           initialFocusGroup={initialFocusGroup || undefined}

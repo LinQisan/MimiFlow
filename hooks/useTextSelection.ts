@@ -27,6 +27,33 @@ export function useTextSelection() {
   })
 
   useEffect(() => {
+    const normalizeContextText = (value: string) =>
+      value.replace(/\s+/g, ' ').trim()
+
+    const extractCleanTextFromElement = (element: HTMLElement | null) => {
+      if (!element) return ''
+      const clone = element.cloneNode(true) as HTMLElement
+      clone
+        .querySelectorAll(
+          'rt, button, textarea, input, select, option, [data-context-ignore]',
+        )
+        .forEach(node => node.remove())
+      return normalizeContextText(clone.textContent || '')
+    }
+
+    const resolveContextText = (element: HTMLElement | null, fallback: string) => {
+      if (!element) return normalizeContextText(fallback)
+      const explicitSentence =
+        element.closest('[data-context-sentence]') ||
+        element.querySelector('[data-context-sentence]')
+      const explicitText = extractCleanTextFromElement(
+        explicitSentence as HTMLElement | null,
+      )
+      if (explicitText) return explicitText
+      const cleaned = extractCleanTextFromElement(element)
+      return cleaned || normalizeContextText(fallback)
+    }
+
     const extractSelectedText = (windowSelection: Selection) => {
       if (windowSelection.rangeCount === 0) return ''
       const range = windowSelection.getRangeAt(0)
@@ -68,7 +95,10 @@ export function useTextSelection() {
           sourceType:
             (sourceNode?.getAttribute('data-source-type') as SourceType) || '',
           sourceId: sourceNode?.getAttribute('data-source-id') || '',
-          contextSentence: contextNode?.textContent?.trim() || text,
+          contextSentence: resolveContextText(
+            contextNode as HTMLElement | null,
+            text,
+          ),
         })
       } else {
         setSelection(prev => ({ ...prev, isVisible: false }))
@@ -95,9 +125,8 @@ export function useTextSelection() {
     }
 
     const handleMouseDown = (e: MouseEvent) => {
-      if (!(e.target as HTMLElement).closest('.ui-pop')) {
-        setSelection(prev => ({ ...prev, isVisible: false }))
-      }
+      if ((e.target as HTMLElement).closest('.ui-pop')) return
+      setSelection(prev => (prev.isVisible ? { ...prev, isVisible: false } : prev))
     }
 
     document.addEventListener('mouseup', handleMouseUp)

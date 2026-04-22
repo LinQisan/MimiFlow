@@ -281,6 +281,22 @@ export function PracticePlayer({
               <span className='text-slate-900'>{session.answeredCount}</span> /{' '}
               {questions.length}
             </div>
+            <button
+              type='button'
+              onClick={() => void handleCopyCurrentQuestion()}
+              className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors md:px-4 md:py-2 md:text-sm ${
+                copyState === 'copied'
+                  ? 'border-slate-300 bg-slate-100 text-slate-900'
+                  : copyState === 'error'
+                    ? 'border-rose-300 bg-rose-50 text-rose-700'
+                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}>
+              {copyState === 'copied'
+                ? '已复制'
+                : copyState === 'error'
+                  ? '复制失败'
+                  : '复制题目+选项'}
+            </button>
             {mode !== 'single' && (
               <button
                 onClick={() => void handleSubmit()}
@@ -389,12 +405,21 @@ export function PracticePlayer({
             sourceId={selection.sourceId}
             initialMeta={localVocabularyMetaMap[selection.text]}
             onSaved={({ word, meta }) => {
-              setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))
+              setLocalVocabularyMetaMap(prev => {
+                const next = { ...prev, [word]: meta }
+                if (selection.text && selection.text !== word) {
+                  next[selection.text] = meta
+                }
+                return next
+              })
               if (meta.pronunciations[0]) {
-                setLocalPronunciationMap(prev => ({
-                  ...prev,
-                  [word]: meta.pronunciations[0],
-                }))
+                setLocalPronunciationMap(prev => {
+                  const next = { ...prev, [word]: meta.pronunciations[0] }
+                  if (selection.text && selection.text !== word) {
+                    next[selection.text] = meta.pronunciations[0]
+                  }
+                  return next
+                })
               }
             }}
             onClose={closeSelection}
@@ -443,7 +468,7 @@ export function PracticePlayer({
                   ? '已复制'
                   : copyState === 'error'
                     ? '复制失败'
-                    : '复制'}
+                    : '复制题目+选项'}
               </button>
               <button
                 disabled={session.currentIndex === 0}

@@ -10,12 +10,14 @@ datasource db {
 
 enum SourceType {
   AUDIO_DIALOGUE // 来自听力跟读
+  MEDIA_SUBTITLE_LINE // 来自影视字幕
   ARTICLE_TEXT // 来自阅读文章
   QUIZ_QUESTION // 来自选择题
 }
 
 enum MaterialType {
   LISTENING
+  MEDIA_SUBTITLE
   READING
   VOCAB_GRAMMAR
   SPEAKING
@@ -63,8 +65,35 @@ model Material {
   collectionMaterials CollectionMaterial[]
   studyProgresses     MaterialStudyProgress[]
   playtimeStats       MaterialPlaytimeStat[]
+  mediaSubtitleLines  MediaSubtitleLine[]
 
   @@map("materials")
+}
+
+model MediaSubtitleLine {
+  id                 String   @id @default(cuid())
+  materialId         String   @map("material_id")
+  stableId           String   @map("stable_id")
+  sequenceId         Int      @map("sequence_id")
+  text               String
+  normalizedText     String   @map("normalized_text")
+  searchText         String   @map("search_text")
+  note               String?
+  start              Float
+  end                Float
+  materialTitle      String   @map("material_title")
+  workTitle          String?  @map("work_title")
+  season             String?
+  episode            String?
+  subtitleSourceType String   @map("subtitle_source_type")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  material           Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, stableId])
+  @@index([materialId, sequenceId])
+  @@index([subtitleSourceType, workTitle])
+  @@map("media_subtitle_lines")
 }
 
 model Vocabulary {
@@ -80,6 +109,7 @@ model Vocabulary {
   meanings       String?
   folderId       String?
   folder         VocabularyFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  wordbooks      WordbookVocabulary[]
   review         VocabularyReview?
   createdAt      DateTime                    @default(now())
   sentenceLinks  VocabularySentenceLink[]
@@ -138,6 +168,37 @@ model VocabularyFolder {
 
   @@unique([parentId, name])
   @@index([parentId])
+}
+
+model Wordbook {
+  id        String             @id @default(cuid())
+  title     String
+  parentId  String?
+  parent    Wordbook?          @relation("WordbookTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Wordbook[]         @relation("WordbookTree")
+  sortOrder Int                @default(0)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  entries   WordbookVocabulary[]
+
+  @@unique([parentId, title])
+  @@index([parentId])
+  @@map("wordbooks")
+}
+
+model WordbookVocabulary {
+  id           String     @id @default(cuid())
+  wordbookId   String     @map("wordbook_id")
+  vocabularyId String     @map("vocabulary_id")
+  sortOrder    Int        @default(0) @map("sort_order")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  wordbook     Wordbook   @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
+  vocabulary   Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+
+  @@unique([wordbookId, vocabularyId])
+  @@index([wordbookId])
+  @@index([vocabularyId])
+  @@map("wordbook_vocabularies")
 }
 
 model VocabularySentence {

@@ -40,7 +40,7 @@ export default async function ArticleDetailPage({
                 返回列表
               </Link>
               <Link
-                href={`/manage/collection/article/${encodeURIComponent(article.id)}`}
+                href={`/collections/article/${encodeURIComponent(article.id)}`}
                 className='rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-800'>
                 去管理页
               </Link>

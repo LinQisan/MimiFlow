@@ -45,6 +45,7 @@ function resolveMaterialEntry(
 ): string {
   const legacyId = toLegacyId(materialId)
   if (type === MaterialType.LISTENING) return `/shadowing/${legacyId}`
+  if (type === MaterialType.MEDIA_SUBTITLE) return `/media-subtitles/${legacyId}`
   if (type === MaterialType.READING) return `/articles/${legacyId}`
   return resolveQuizEntryByMode(learningMode)
 }
@@ -78,6 +79,19 @@ export function resolveResumeActions(
     return {
       primary: { href: materialEntry, label: '继续学习' },
       secondary: { href: '/shadowing', label: '切换材料' },
+    }
+  }
+
+  if (input.type === MaterialType.MEDIA_SUBTITLE) {
+    if (!started) {
+      return {
+        primary: { href: materialEntry, label: '开始浏览' },
+        secondary: { href: '/media-subtitles', label: '查看字幕库' },
+      }
+    }
+    return {
+      primary: { href: materialEntry, label: '继续浏览' },
+      secondary: { href: '/media-subtitles', label: '切换作品' },
     }
   }
 

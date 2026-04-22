@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useI18n } from '@/context/I18nContext'
 
 export type TooltipSaveState =
@@ -211,6 +211,11 @@ export default function VocabularyTooltip({
 }: VocabularyTooltipProps) {
   const { t } = useI18n()
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [headwordValue, setHeadwordValue] = useState(word)
+
+  useEffect(() => {
+    setHeadwordValue(word)
+  }, [word])
 
   const estimatedHeight = showAdvanced ? 460 : 240
   const shouldOpenDown = isTop && y < estimatedHeight + 16
@@ -228,7 +233,7 @@ export default function VocabularyTooltip({
 
   const handleSave = () => {
     if (!saveBtnConfig.disabled) {
-      onSaveWord(word)
+      onSaveWord(headwordValue.trim() || word)
     }
   }
 
@@ -250,7 +255,7 @@ export default function VocabularyTooltip({
       className={`ui-pop ui-pop-surface fixed z-100 ${TOOLTIP_WIDTH_CLASS} overflow-hidden rounded-xl bg-white shadow-xl animate-in fade-in zoom-in-95 duration-200`}>
       <div className='flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2'>
         <span className='max-w-[62%] truncate text-sm font-bold tracking-tight text-slate-900'>
-          {word}
+          {headwordValue || word}
         </span>
 
         <button
@@ -264,6 +269,21 @@ export default function VocabularyTooltip({
       </div>
 
       <div className='max-h-[min(68vh,26rem)] space-y-3 overflow-y-auto px-3 py-2.5'>
+        <section className='space-y-1.5'>
+          <p className={SECTION_TITLE_CLASS}>单词 / 原形</p>
+
+          <input
+            value={headwordValue}
+            onChange={e => setHeadwordValue(e.currentTarget.value)}
+            placeholder='ののしる'
+            className={BASE_INPUT_CLASS}
+          />
+
+          <p className={SECTION_HINT_CLASS}>
+            默认带入当前划词词面；需要保存原形时手动修改。
+          </p>
+        </section>
+
         {enablePronunciation && (
           <section className='space-y-1.5'>
             <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>

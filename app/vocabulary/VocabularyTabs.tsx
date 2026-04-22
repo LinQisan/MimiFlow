@@ -5,14 +5,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  assignVocabularyFolder,
-  createVocabularyFolder,
+  addVocabularyToWordbook,
+  addVocabulariesToWordbook,
+  createWordbook,
   deleteVocabulary,
   searchSentencesForWord,
   addVocabularySentence,
   moveVocabularyToGroup,
-  moveVocabularyFolder,
-  renameVocabularyFolder,
+  moveWordbook,
+  renameWordbook,
+  removeVocabularyFromWordbook,
   renameVocabularyGroup,
   updateVocabularyPronunciationById,
   assignVocabularySentenceMeaning,
@@ -443,6 +445,8 @@ export default function VocabularyTabs({
   const [tagDraft, setTagDraft] = useState('')
   const [isSavingTags, setIsSavingTags] = useState(false)
   const [isSelectAllChecked, setIsSelectAllChecked] = useState(false)
+  const [bulkWordbookId, setBulkWordbookId] = useState('none')
+  const [isBulkAddingToWordbook, setIsBulkAddingToWordbook] = useState(false)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const [sortMode, setSortMode] = useState<'recent' | 'word' | 'pos'>('recent')
   const [selectedPosFilter, setSelectedPosFilter] = useState('all')
@@ -530,12 +534,12 @@ export default function VocabularyTabs({
 
   const buildVocabularySearchParams = (overrides: {
     page?: string
-    folder?: string
+    wordbook?: string
     group?: string | null
   }) => {
     const params = new URLSearchParams()
     params.set('page', overrides.page || '1')
-    params.set('folder', overrides.folder || selectedFolderFilter)
+    params.set('wordbook', overrides.wordbook || selectedFolderFilter)
     const nextGroup =
       overrides.group === undefined ? effectiveGroupFilter : overrides.group
     if (nextGroup) params.set('group', nextGroup)
@@ -671,49 +675,56 @@ export default function VocabularyTabs({
   }
 
   const handleCreateFolder = async (parentId?: string | null) => {
-    const nextName = await dialog.prompt('收藏夹名称', {
-      title: parentId ? '新建子收藏夹' : '新建收藏夹',
+    const nextName = await dialog.prompt('单词书名称', {
+      title: parentId ? '新建子单词书' : '新建单词书',
       defaultValue: '',
       confirmText: '创建',
     })
     if (nextName == null) return
     const trimmed = nextName.trim()
     if (!trimmed) {
-      dialog.toast('收藏夹名称不能为空', { tone: 'error' })
+      dialog.toast('单词书名称不能为空', { tone: 'error' })
       return
     }
-    const result = await createVocabularyFolder(trimmed, parentId || null)
-    if (!result.success || !result.folder) {
+    const result = await createWordbook(trimmed, parentId || null)
+    if (!result.success || !result.wordbook) {
       dialog.toast(result.message || '创建失败', { tone: 'error' })
       return
     }
-    setFolderList(prev => [...prev, result.folder])
-    setSelectedFolderManageId(result.folder.id)
-    dialog.toast('收藏夹已创建', { tone: 'success' })
+    setFolderList(prev => [
+      ...prev,
+      {
+        id: result.wordbook!.id,
+        name: result.wordbook!.title,
+        parentId: result.wordbook!.parentId,
+      },
+    ])
+    setSelectedFolderManageId(result.wordbook.id)
+    dialog.toast('单词书已创建', { tone: 'success' })
   }
 
   const handleRenameFolder = async (folderId: string) => {
     const target = folderList.find(item => item.id === folderId)
     if (!target) return
-    const nextName = await dialog.prompt('新的收藏夹名称', {
-      title: '重命名收藏夹',
+    const nextName = await dialog.prompt('新的单词书名称', {
+      title: '重命名单词书',
       defaultValue: target.name,
       confirmText: '保存',
     })
     if (nextName == null) return
     const trimmed = nextName.trim()
     if (!trimmed) {
-      dialog.toast('收藏夹名称不能为空', { tone: 'error' })
+      dialog.toast('单词书名称不能为空', { tone: 'error' })
       return
     }
-    const result = await renameVocabularyFolder(folderId, trimmed)
-    if (!result.success || !result.folder) {
+    const result = await renameWordbook(folderId, trimmed)
+    if (!result.success || !result.wordbook) {
       dialog.toast(result.message || '重命名失败', { tone: 'error' })
       return
     }
     setFolderList(prev =>
       prev.map(item =>
-        item.id === folderId ? { ...item, name: result.folder!.name } : item,
+        item.id === folderId ? { ...item, name: result.wordbook!.title } : item,
       ),
     )
     setLocalData(
@@ -723,13 +734,13 @@ export default function VocabularyTabs({
             group,
             items.map(item =>
               item.folderId === folderId
-                ? { ...item, folderName: result.folder!.name }
+                ? { ...item, folderName: result.wordbook!.title }
                 : item,
             ),
           ]),
         ) as Record<string, VocabItem[]>,
     )
-    dialog.toast('收藏夹名称已更新', { tone: 'success' })
+    dialog.toast('单词书名称已更新', { tone: 'success' })
   }
 
   const handleMoveFolder = async (folderId: string) => {
@@ -750,7 +761,7 @@ export default function VocabularyTabs({
     const selected = await dialog.prompt(
       `输入目标序号，把「${target.name}」移动到：\n${optionText}`,
       {
-        title: '移动收藏夹',
+        title: '移动单词书',
         defaultValue: '1',
         confirmText: '移动',
       },
@@ -763,8 +774,8 @@ export default function VocabularyTabs({
     }
     const nextParentId =
       options[index - 1].id === 'root' ? null : options[index - 1].id
-    const result = await moveVocabularyFolder(folderId, nextParentId)
-    if (!result.success || !result.folder) {
+    const result = await moveWordbook(folderId, nextParentId)
+    if (!result.success || !result.wordbook) {
       dialog.toast(result.message || '移动失败', { tone: 'error' })
       return
     }
@@ -773,7 +784,7 @@ export default function VocabularyTabs({
         item.id === folderId ? { ...item, parentId: nextParentId } : item,
       ),
     )
-    dialog.toast('收藏夹已移动', { tone: 'success' })
+    dialog.toast('单词书已移动', { tone: 'success' })
   }
 
   const handleRenameGroup = async () => {
@@ -812,6 +823,8 @@ export default function VocabularyTabs({
 
   const handleAssignFolder = async (vocabId: string, folderId: string) => {
     const nextFolderId = folderId === 'none' ? null : folderId
+    const currentItem = (localData[activeTab] || []).find(item => item.id === vocabId)
+    const prevWordbookId = currentItem?.folderId || ''
     const nextFolderName =
       nextFolderId == null ? null : folderPathLabelMap[nextFolderId] || null
     setLocalData(prev => ({
@@ -826,12 +839,16 @@ export default function VocabularyTabs({
           : item,
       ),
     }))
-    const result = await assignVocabularyFolder(vocabId, nextFolderId)
+    const result = nextFolderId
+      ? await addVocabularyToWordbook(vocabId, nextFolderId)
+      : prevWordbookId
+        ? await removeVocabularyFromWordbook(vocabId, prevWordbookId)
+        : { success: true }
     if (!result.success) {
-      dialog.toast(result.message || '收藏夹设置失败', { tone: 'error' })
+      dialog.toast(result.message || '单词书设置失败', { tone: 'error' })
       return
     }
-    dialog.toast(nextFolderId ? '已加入收藏夹' : '已移出收藏夹', {
+    dialog.toast(nextFolderId ? '已加入单词书' : '已移出单词书', {
       tone: 'success',
     })
   }
@@ -971,6 +988,49 @@ export default function VocabularyTabs({
     setBulkTagsInput('')
     setBulkTagPanelOpen(false)
     dialog.toast(`已为 ${selectedCount} 个单词添加标签`, { tone: 'success' })
+  }
+
+  const handleBulkAddToWordbook = async () => {
+    const selectedIds = Array.from(selectedVocabIds)
+    if (selectedIds.length === 0) {
+      dialog.toast('请先选择单词', { tone: 'error' })
+      return
+    }
+    if (bulkWordbookId === 'none') {
+      dialog.toast('请先选择目标单词书', { tone: 'error' })
+      return
+    }
+
+    setIsBulkAddingToWordbook(true)
+    const result = await addVocabulariesToWordbook(selectedIds, bulkWordbookId)
+    setIsBulkAddingToWordbook(false)
+    if (!result.success) {
+      dialog.toast(result.message || '批量加入失败', { tone: 'error' })
+      return
+    }
+
+    const nextFolderName = folderPathLabelMap[bulkWordbookId] || null
+    setLocalData(prev =>
+      Object.fromEntries(
+        Object.entries(prev).map(([group, items]) => [
+          group,
+          items.map(item =>
+            selectedVocabIds.has(item.id)
+              ? {
+                  ...item,
+                  folderId: bulkWordbookId,
+                  folderName: nextFolderName,
+                }
+              : item,
+          ),
+        ]),
+      ) as Record<string, VocabItem[]>,
+    )
+
+    dialog.toast(
+      `已加入单词书：新增 ${result.added || 0}，跳过 ${result.skipped || 0}`,
+      { tone: 'success' },
+    )
   }
 
   const handleAddSentence = async (
@@ -1368,6 +1428,12 @@ export default function VocabularyTabs({
   }, [folderList, selectedFolderManageId])
 
   useEffect(() => {
+    if (bulkWordbookId === 'none') return
+    if (folderList.some(item => item.id === bulkWordbookId)) return
+    setBulkWordbookId('none')
+  }, [bulkWordbookId, folderList])
+
+  useEffect(() => {
     setSelectedFolderFilter(initialFolderFilter || 'all')
   }, [initialFolderFilter])
 
@@ -1396,6 +1462,16 @@ export default function VocabularyTabs({
       appliedFocusIdRef.current = initialFocusId
     }
   }, [initialFocusId, initialFocusGroup, localData])
+
+  useEffect(() => {
+    const visibleIds = visibleList.map(item => item.id)
+    if (visibleIds.length === 0) {
+      if (isSelectAllChecked) setIsSelectAllChecked(false)
+      return
+    }
+    const allChecked = visibleIds.every(id => selectedVocabIds.has(id))
+    if (allChecked !== isSelectAllChecked) setIsSelectAllChecked(allChecked)
+  }, [visibleList, selectedVocabIds, isSelectAllChecked])
 
   const pushVocabularyGroup = (groupName: string | null) => {
     const params = buildVocabularySearchParams({
@@ -1960,6 +2036,28 @@ export default function VocabularyTabs({
                         <span className='text-xs font-medium text-slate-700'>
                           已选 {selectedVocabIds.size}/{visibleList.length} 个
                         </span>
+                        <ControlDropdown
+                          ariaLabel='批量加入单词书'
+                          value={bulkWordbookId}
+                          onChange={setBulkWordbookId}
+                          className='w-full sm:w-56'
+                          options={[
+                            { value: 'none', label: '选择目标单词书' },
+                            ...flatFolders.map(folder => ({
+                              value: folder.id,
+                              label: folder.pathLabel,
+                            })),
+                          ]}
+                        />
+                        <button
+                          type='button'
+                          onClick={() => void handleBulkAddToWordbook()}
+                          disabled={
+                            isBulkAddingToWordbook || bulkWordbookId === 'none'
+                          }
+                          className='rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:pointer-events-none disabled:opacity-50'>
+                          {isBulkAddingToWordbook ? '加入中...' : '加入单词书'}
+                        </button>
                         <button
                           type='button'
                           onClick={() => setBulkTagPanelOpen(prev => !prev)}
@@ -2164,7 +2262,7 @@ export default function VocabularyTabs({
 
                 <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
                   <ControlDropdown
-                    ariaLabel='收藏夹筛选'
+                    ariaLabel='单词书筛选'
                     value={selectedFolderFilter}
                     onChange={value => {
                       setSelectedFolderFilter(value)
@@ -2173,14 +2271,14 @@ export default function VocabularyTabs({
                       )
                       const params = buildVocabularySearchParams({
                         page: '1',
-                        folder: value,
+                        wordbook: value,
                       })
                       router.push(`${pathname}?${params.toString()}`)
                     }}
                     className='w-full'
                     options={[
-                      { value: 'all', label: '全部收藏夹' },
-                      { value: 'none', label: '未收藏' },
+                      { value: 'all', label: '全部单词书' },
+                      { value: 'none', label: '未加入单词书' },
                       ...flatFolders.map(folder => ({
                         value: folder.id,
                         label: folder.pathLabel,
@@ -2193,16 +2291,16 @@ export default function VocabularyTabs({
                       void handleCreateFolder(activeFolderContextId || null)
                     }
                     className='h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100'>
-                    {activeFolderContextId ? '新建子收藏夹' : '新建收藏夹'}
+                    {activeFolderContextId ? '新建子单词书' : '新建单词书'}
                   </button>
                 </div>
 
                 <div className='flex flex-wrap items-center gap-2'>
                   <span className='text-xs font-bold text-gray-500'>
-                    收藏夹管理
+                    单词书管理
                   </span>
                   <ControlDropdown
-                    ariaLabel='选择要管理的收藏夹'
+                    ariaLabel='选择要管理的单词书'
                     value={activeFolderContextId || 'none'}
                     onChange={value =>
                       setSelectedFolderManageId(value === 'none' ? null : value)
@@ -2224,7 +2322,7 @@ export default function VocabularyTabs({
                       void handleCreateFolder(activeFolderContextId)
                     }
                     className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    新建子收藏夹
+                    新建子单词书
                   </button>
                   <button
                     type='button'
@@ -2309,14 +2407,33 @@ export default function VocabularyTabs({
                   isEditMode ? 'bg-slate-50/20' : 'bg-white'
                 }`}>
                 <div className='flex items-center justify-between gap-4'>
-                  <WordPronunciation
-                    word={vocab.word}
-                    pronunciation={getPrimaryPronunciation(vocab)}
-                    pronunciations={displayPronunciations}
-                    showPronunciation={shouldShowPronunciationForVocab(vocab)}
-                    wordClassName='text-[28px] font-black tracking-tight text-slate-900 md:text-[32px]'
-                    hintClassName='text-[11px] font-semibold text-slate-500'
-                  />
+                  <div className='flex min-w-0 items-center gap-3'>
+                    {isEditMode && (
+                      <input
+                        type='checkbox'
+                        checked={selectedVocabIds.has(vocab.id)}
+                        onClick={event => event.stopPropagation()}
+                        onChange={event => {
+                          const checked = event.target.checked
+                          setSelectedVocabIds(prev => {
+                            const next = new Set(prev)
+                            if (checked) next.add(vocab.id)
+                            else next.delete(vocab.id)
+                            return next
+                          })
+                        }}
+                        className='h-4 w-4 shrink-0 rounded border-gray-300 accent-slate-900'
+                      />
+                    )}
+                    <WordPronunciation
+                      word={vocab.word}
+                      pronunciation={getPrimaryPronunciation(vocab)}
+                      pronunciations={displayPronunciations}
+                      showPronunciation={shouldShowPronunciationForVocab(vocab)}
+                      wordClassName='text-[28px] font-black tracking-tight text-slate-900 md:text-[32px]'
+                      hintClassName='text-[11px] font-semibold text-slate-500'
+                    />
+                  </div>
                   {vocab.wordAudio && (
                     <button
                       type='button'
@@ -2538,7 +2655,7 @@ export default function VocabularyTabs({
               {currentFlashVocab.folderName && (
                 <div className='mt-3'>
                   <span className='ui-tag ui-tag-info h-6 px-3 text-xs font-bold'>
-                    收藏夹:{' '}
+                    单词书:{' '}
                     {currentFlashVocab.folderId
                       ? folderPathLabelMap[currentFlashVocab.folderId] ||
                         currentFlashVocab.folderName

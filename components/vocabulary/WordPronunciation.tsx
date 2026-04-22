@@ -51,10 +51,15 @@ export default function WordPronunciation({
       return <div className={baseWordClass}>{word}</div>
     }
     const rubyHtml = buildJapaneseRubyHtml(word, pron, {
-      rubyClassName: `${baseWordClass} jp-ruby`.trim(),
+      rubyClassName: 'jp-ruby',
       rtClassName: `jp-ruby-rt ${hintClassName}`.trim(),
     })
-    return <span dangerouslySetInnerHTML={{ __html: rubyHtml }} />
+    return (
+      <span
+        className={baseWordClass}
+        dangerouslySetInnerHTML={{ __html: rubyHtml }}
+      />
+    )
   }
 
   if (lang === 'en') {

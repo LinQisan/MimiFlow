@@ -11,7 +11,7 @@ const TYPE_LABEL: Record<GlobalSearchType, string> = {
   passage: '阅读',
   quiz: '题库',
   question: '题目',
-  dialogue: '听力',
+  dialogue: '字幕',
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>

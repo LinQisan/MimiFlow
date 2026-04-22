@@ -13,7 +13,7 @@ const typeLabelMap: Record<GlobalSearchResult['type'], string> = {
   passage: '阅读',
   quiz: '题库',
   question: '题目',
-  dialogue: '听力',
+  dialogue: '字幕',
 }
 
 const typeBadgeClassMap: Record<GlobalSearchResult['type'], string> = {

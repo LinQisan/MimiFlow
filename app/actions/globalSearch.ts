@@ -8,6 +8,7 @@ import {
   normalizeQuestionOptions,
   toLegacyMaterialId,
 } from '@/lib/repositories/materials'
+import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-index'
 import { MaterialType } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 
@@ -23,10 +24,11 @@ export type GlobalSearchResult = {
 }
 
 export type GlobalSearchType = GlobalSearchResult['type']
+type JsonRecord = Record<string, unknown>
 
-const asRecord = (value: unknown): Record<string, unknown> | null =>
+const asRecord = (value: unknown): JsonRecord | null =>
   value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
+    ? (value as JsonRecord)
     : null
 
 const asStringOrNull = (value: unknown) => {
@@ -89,6 +91,25 @@ const tokenizeKeyword = (keyword: string) =>
 
 const buildTypeSet = (types?: GlobalSearchType[]) =>
   new Set<GlobalSearchType>(types && types.length > 0 ? types : DEFAULT_TYPES)
+
+const asString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+const formatMediaDialogueMeta = (input: {
+  sourceType: 'TV' | 'MOVIE'
+  workTitle: string
+  season: string
+  episode: string
+}) => {
+  const title = input.workTitle.trim() || '未命名作品'
+  if (input.sourceType === 'TV') {
+    const seasonText = input.season.trim() ? `第${input.season.trim()}季` : '未标季'
+    const episodeText = input.episode.trim()
+      ? `第${input.episode.trim()}集`
+      : '未标集'
+    return `电视剧 · ${title} · ${seasonText} · ${episodeText}`
+  }
+  return `电影 · ${title}`
+}
 
 const getMatchScore = (
   keyword: string,
@@ -159,6 +180,7 @@ export async function searchGlobalContent(
   if (!q) return []
   if (tokens.length === 0) return []
   const primaryToken = tokens[0]
+  const normalizedPrimaryToken = normalizeMediaSubtitleSearchText(primaryToken)
 
   const typeSet = buildTypeSet(options?.types)
 
@@ -168,7 +190,8 @@ export async function searchGlobalContent(
     passageRows,
     quizRows,
     questionRows,
-    dialogueRows,
+    legacyDialogueRows,
+    mediaDialogueRows,
   ] = await Promise.all([
     typeSet.has('vocabulary')
       ? prisma.vocabulary.findMany({
@@ -276,6 +299,29 @@ export async function searchGlobalContent(
           take: 20,
         })
       : Promise.resolve([]),
+
+    typeSet.has('dialogue')
+      ? prisma.mediaSubtitleLine.findMany({
+          where: {
+            searchText: { contains: normalizedPrimaryToken },
+          },
+          select: {
+            id: true,
+            materialId: true,
+            stableId: true,
+            sequenceId: true,
+            text: true,
+            note: true,
+            materialTitle: true,
+            workTitle: true,
+            season: true,
+            episode: true,
+            subtitleSourceType: true,
+          },
+          orderBy: [{ updatedAt: 'desc' }, { sequenceId: 'asc' }],
+          take: 80,
+        })
+      : Promise.resolve([]),
   ])
 
   const rankedVocabRows = sortByScore(
@@ -343,11 +389,38 @@ export async function searchGlobalContent(
     ),
   )
 
-  const rankedDialogueRows = sortByScore(
-    dialogueRows,
+  const rankedLegacyDialogueRows = sortByScore(
+    legacyDialogueRows,
     item => [item.text, item.source],
     q,
   ).filter(item => includesAllTokens([item.text, item.source], tokens))
+
+  const rankedMediaDialogueRows = sortByScore(
+    mediaDialogueRows,
+    item => [
+      item.text,
+      item.note,
+      item.materialTitle,
+      item.workTitle,
+      item.season,
+      item.episode,
+      item.subtitleSourceType === 'TV' ? '电视剧' : '电影',
+    ],
+    q,
+  ).filter(item =>
+    includesAllTokens(
+      [
+        item.text,
+        item.note,
+        item.materialTitle,
+        item.workTitle,
+        item.season,
+        item.episode,
+        item.subtitleSourceType === 'TV' ? '电视剧' : '电影',
+      ],
+      tokens,
+    ),
+  )
 
   const vocabularyResults: GlobalSearchResult[] = rankedVocabRows.map(item => {
     const firstSentence = item.sentenceLinks[0]?.sentence
@@ -434,17 +507,44 @@ export async function searchGlobalContent(
     }),
   )
 
-  const dialogueResults: GlobalSearchResult[] = rankedDialogueRows.map(
+  const legacyDialogueResults: GlobalSearchResult[] = rankedLegacyDialogueRows.map(
     item => ({
-      id: `dialogue-${item.sourceId}`,
+      id: `dialogue-legacy:${item.sourceId}`,
       type: 'dialogue',
       title: shortText(item.text, 48),
       snippet: shortText(item.text, 100),
-      href: buildSearchDetailHref(`dialogue-${item.sourceId}`, 'dialogue', q),
+      href: buildSearchDetailHref(`dialogue-legacy:${item.sourceId}`, 'dialogue', q),
       targetHref: item.sourceUrl || '/shadowing',
       meta: item.source,
       keyword: q,
     }),
+  )
+
+  const mediaDialogueResults: GlobalSearchResult[] = rankedMediaDialogueRows.map(
+    item => {
+      const params = new URLSearchParams()
+      params.set('q', q)
+      params.set('lineStableId', item.stableId)
+      return {
+        id: `dialogue-media:${item.materialId}::${item.stableId}`,
+        type: 'dialogue',
+        title: shortText(item.text, 48),
+        snippet: shortText(item.text, 100),
+        href: buildSearchDetailHref(
+          `dialogue-media:${item.materialId}::${item.stableId}`,
+          'dialogue',
+          q,
+        ),
+        targetHref: `/media-subtitles/${toLegacyMaterialId(item.materialId)}?${params.toString()}`,
+        meta: formatMediaDialogueMeta({
+          sourceType: item.subtitleSourceType === 'TV' ? 'TV' : 'MOVIE',
+          workTitle: item.workTitle || item.materialTitle,
+          season: item.season || '',
+          episode: item.episode || '',
+        }),
+        keyword: q,
+      }
+    },
   )
 
   return [
@@ -453,7 +553,8 @@ export async function searchGlobalContent(
     ...passageResults,
     ...quizResults,
     ...questionResults,
-    ...dialogueResults,
+    ...mediaDialogueResults,
+    ...legacyDialogueResults,
   ].slice(0, 50)
 }
 
@@ -563,8 +664,8 @@ export async function getGlobalSearchResultDetail(
     }
   }
 
-  if (type === 'dialogue' && rid.startsWith('dialogue-')) {
-    const sourceId = rid.slice('dialogue-'.length)
+  if (type === 'dialogue' && rid.startsWith('dialogue-legacy:')) {
+    const sourceId = rid.slice('dialogue-legacy:'.length)
     const rows = await prisma.vocabularySentence.findMany({
       where: {
         sourceType: 'AUDIO_DIALOGUE',
@@ -579,6 +680,53 @@ export async function getGlobalSearchResultDetail(
       type,
       targetHref: rows[0].sourceUrl || '/shadowing',
       raw: rows,
+    }
+  }
+
+  if (type === 'dialogue' && rid.startsWith('dialogue-media:')) {
+    const payload = rid.slice('dialogue-media:'.length)
+    const separator = payload.indexOf('::')
+    if (separator <= 0) return null
+    const materialId = payload.slice(0, separator)
+    const stableId = payload.slice(separator + 2)
+    if (!materialId || !stableId) return null
+
+    const row = await prisma.mediaSubtitleLine.findUnique({
+      where: {
+        materialId_stableId: {
+          materialId,
+          stableId,
+        },
+      },
+      include: {
+        material: {
+          select: {
+            id: true,
+            title: true,
+            contentPayload: true,
+          },
+        },
+      },
+    })
+    if (!row) return null
+
+    const params = new URLSearchParams()
+    params.set('lineStableId', stableId)
+
+    return {
+      title: row.text.trim() || row.material.title || '影视字幕',
+      type,
+      targetHref: `/media-subtitles/${toLegacyMaterialId(row.material.id)}?${params.toString()}`,
+      raw: {
+        material: row.material,
+        dialogue: row,
+        meta: formatMediaDialogueMeta({
+          sourceType: row.subtitleSourceType === 'TV' ? 'TV' : 'MOVIE',
+          workTitle: row.workTitle || row.materialTitle,
+          season: row.season || '',
+          episode: row.episode || '',
+        }),
+      },
     }
   }
 
@@ -619,6 +767,7 @@ export async function updateGlobalSearchResultDetail(input: {
           word: asStringOrNull(payload.word) || '',
           sourceType: (asStringOrNull(payload.sourceType) as
             | 'AUDIO_DIALOGUE'
+            | 'MEDIA_SUBTITLE_LINE'
             | 'ARTICLE_TEXT'
             | 'QUIZ_QUESTION') || 'QUIZ_QUESTION',
           sourceId: asStringOrNull(payload.sourceId) || '',
@@ -652,6 +801,7 @@ export async function updateGlobalSearchResultDetail(input: {
           sourceUrl: asStringOrNull(payload.sourceUrl) || '',
           sourceType: asStringOrNull(payload.sourceType) as
             | 'AUDIO_DIALOGUE'
+            | 'MEDIA_SUBTITLE_LINE'
             | 'ARTICLE_TEXT'
             | 'QUIZ_QUESTION'
             | null,

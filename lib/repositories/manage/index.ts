@@ -126,9 +126,10 @@ export async function getUploadPageSeedData(): Promise<{
 
   const priorityByType: Record<MaterialType, number> = {
     [MaterialType.LISTENING]: 4,
-    [MaterialType.READING]: 3,
-    [MaterialType.VOCAB_GRAMMAR]: 2,
-    [MaterialType.SPEAKING]: 1,
+    [MaterialType.MEDIA_SUBTITLE]: 3,
+    [MaterialType.READING]: 2,
+    [MaterialType.VOCAB_GRAMMAR]: 1,
+    [MaterialType.SPEAKING]: 0,
   }
   const dominantMaterialTypeByCollection = new Map<string, MaterialType>()
   const typeCountByCollection = new Map<
@@ -138,6 +139,7 @@ export async function getUploadPageSeedData(): Promise<{
   for (const row of collectionMaterialTypes) {
     const current = typeCountByCollection.get(row.collectionId) || {
       [MaterialType.LISTENING]: 0,
+      [MaterialType.MEDIA_SUBTITLE]: 0,
       [MaterialType.READING]: 0,
       [MaterialType.VOCAB_GRAMMAR]: 0,
       [MaterialType.SPEAKING]: 0,

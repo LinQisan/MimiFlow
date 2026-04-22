@@ -142,7 +142,7 @@ const resolveMaterialIdByLegacy = async (
   })
   if (direct && direct.type === type) return direct.id
 
-  const prefixed = `${type === MaterialType.LISTENING ? 'lesson' : type === MaterialType.READING ? 'passage' : 'quiz'}:${maybeLegacyId}`
+  const prefixed = `${type === MaterialType.LISTENING ? 'lesson' : type === MaterialType.MEDIA_SUBTITLE ? 'media' : type === MaterialType.READING ? 'passage' : 'quiz'}:${maybeLegacyId}`
   const legacy = await prisma.material.findUnique({
     where: { id: prefixed },
     select: { id: true, type: true },
@@ -285,8 +285,35 @@ const cleanupOrphanSentence = async (sentenceId: string) => {
   }
 }
 
+const stripContextUiChrome = (text: string) => {
+  let next = text.replace(/\s+/g, ' ').trim()
+  if (!next) return next
+
+  const leadingPatterns = [
+    /^#\d+\s*/,
+    /^(已收藏|收藏)\s*/,
+    /^(笔记\*?|笔记)\s*/,
+    /^(收起编辑|编辑)\s*/,
+    /^(取消|保存笔记)\s*/,
+  ]
+
+  let changed = true
+  while (changed && next) {
+    changed = false
+    for (const pattern of leadingPatterns) {
+      const replaced = next.replace(pattern, '')
+      if (replaced !== next) {
+        next = replaced.trim()
+        changed = true
+      }
+    }
+  }
+
+  return next
+}
+
 const extractSentenceContainingWord = (text: string, word: string) => {
-  const normalizedText = text.trim()
+  const normalizedText = stripContextUiChrome(text)
   const normalizedWord = word.trim()
   if (!normalizedText || !normalizedWord) return normalizedText
 
@@ -318,6 +345,20 @@ const resolveVocabularySourceMeta = async (
       }
     }
     return { source: '听力', sourceUrl: '#' }
+  }
+
+  if (sourceType === 'MEDIA_SUBTITLE_LINE') {
+    const sentence = await prisma.vocabularySentence.findFirst({
+      where: { sourceType, sourceId },
+      select: { source: true, sourceUrl: true },
+    })
+    if (sentence) {
+      return {
+        source: sentence.source || '影视字幕',
+        sourceUrl: sentence.sourceUrl || '#',
+      }
+    }
+    return { source: '影视字幕', sourceUrl: '#' }
   }
 
   if (sourceType === 'ARTICLE_TEXT') {
@@ -676,8 +717,8 @@ export async function updateArticleWithQuestions(
       })
     })
 
-    revalidatePath('/manage')
-    revalidatePath('/manage/upload')
+    revalidatePath('/')
+    revalidatePath('/upload')
     revalidatePath('/articles')
     revalidatePath('/articles/[id]', 'page')
 
@@ -810,8 +851,8 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
       })
     })
 
-    revalidatePath('/manage')
-    revalidatePath('/manage/upload')
+    revalidatePath('/')
+    revalidatePath('/upload')
     revalidatePath('/practice')
 
     return { success: true }
@@ -915,8 +956,8 @@ export async function updateLessonQuestions(
       })
     })
 
-    revalidatePath('/manage')
-    revalidatePath('/manage/upload')
+    revalidatePath('/')
+    revalidatePath('/upload')
     revalidatePath('/practice')
 
     return { success: true }
@@ -1193,18 +1234,17 @@ export async function updateVocabularyPartsOfSpeechById(
   }
 }
 
-const isVocabularyFolderMoveValid = async (
-  folderId: string,
+const isWordbookMoveValid = async (
+  wordbookId: string,
   nextParentId: string | null,
 ) => {
   if (!nextParentId) return true
-  if (nextParentId === folderId) return false
+  if (nextParentId === wordbookId) return false
 
   let cursor: string | null = nextParentId
   while (cursor) {
-    if (cursor === folderId) return false
-    const parent: { parentId: string | null } | null =
-      await prisma.vocabularyFolder.findUnique({
+    if (cursor === wordbookId) return false
+    const parent: { parentId: string | null } | null = await prisma.wordbook.findUnique({
         where: { id: cursor },
         select: { parentId: true },
       })
@@ -1213,106 +1253,136 @@ const isVocabularyFolderMoveValid = async (
   return true
 }
 
-export async function createVocabularyFolder(
-  name: string,
+export async function createWordbook(
+  title: string,
   parentId?: string | null,
 ) {
   try {
-    const trimmedName = name.trim()
-    if (!trimmedName) {
-      return { success: false, message: '收藏夹名称不能为空' }
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) {
+      return { success: false, message: '单词书名称不能为空' }
     }
     const nextParentId = parentId?.trim() || null
     if (nextParentId) {
-      const parent = await prisma.vocabularyFolder.findUnique({
+      const parent = await prisma.wordbook.findUnique({
         where: { id: nextParentId },
         select: { id: true },
       })
       if (!parent) {
-        return { success: false, message: '上级收藏夹不存在' }
+        return { success: false, message: '上级单词书不存在' }
       }
     }
-    const folder = await prisma.vocabularyFolder.create({
+    const wordbook = await prisma.wordbook.create({
       data: {
-        name: trimmedName,
+        title: trimmedTitle,
         parentId: nextParentId,
       },
-      select: { id: true, name: true, parentId: true, createdAt: true },
+      select: { id: true, title: true, parentId: true, createdAt: true },
     })
     revalidatePath('/vocabulary')
-    return { success: true, folder }
+    revalidatePath('/wordbooks')
+    return {
+      success: true,
+      wordbook: {
+        id: wordbook.id,
+        title: wordbook.title,
+        parentId: wordbook.parentId,
+        createdAt: wordbook.createdAt,
+      },
+    }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
     if (prismaError.code === 'P2002') {
-      return { success: false, message: '同级收藏夹名称已存在' }
+      return { success: false, message: '同级单词书名称已存在' }
     }
     console.error(error)
-    return { success: false, message: '创建收藏夹失败' }
+    return { success: false, message: '创建单词书失败' }
   }
 }
 
-export async function renameVocabularyFolder(folderId: string, name: string) {
+export async function renameWordbook(wordbookId: string, title: string) {
   try {
-    const trimmedFolderId = folderId.trim()
-    const trimmedName = name.trim()
-    if (!trimmedFolderId) return { success: false, message: '收藏夹无效' }
-    if (!trimmedName) return { success: false, message: '名称不能为空' }
-    const updated = await prisma.vocabularyFolder.update({
-      where: { id: trimmedFolderId },
-      data: { name: trimmedName },
-      select: { id: true, name: true, parentId: true },
+    const trimmedWordbookId = wordbookId.trim()
+    const trimmedTitle = title.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    if (!trimmedTitle) return { success: false, message: '名称不能为空' }
+    const updated = await prisma.wordbook.update({
+      where: { id: trimmedWordbookId },
+      data: { title: trimmedTitle },
+      select: { id: true, title: true, parentId: true },
     })
     revalidatePath('/vocabulary')
-    return { success: true, folder: updated }
+    revalidatePath('/wordbooks')
+    return { success: true, wordbook: updated }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
     if (prismaError.code === 'P2002') {
-      return { success: false, message: '同级收藏夹名称已存在' }
+      return { success: false, message: '同级单词书名称已存在' }
     }
     console.error(error)
     return { success: false, message: '重命名失败' }
   }
 }
 
-export async function moveVocabularyFolder(
-  folderId: string,
+export async function moveWordbook(
+  wordbookId: string,
   parentId: string | null,
 ) {
   try {
-    const trimmedFolderId = folderId.trim()
+    const trimmedWordbookId = wordbookId.trim()
     const nextParentId = parentId?.trim() || null
-    if (!trimmedFolderId) return { success: false, message: '收藏夹无效' }
-    const folder = await prisma.vocabularyFolder.findUnique({
-      where: { id: trimmedFolderId },
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const wordbook = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
       select: { id: true },
     })
-    if (!folder) return { success: false, message: '收藏夹不存在' }
+    if (!wordbook) return { success: false, message: '单词书不存在' }
     if (nextParentId) {
-      const target = await prisma.vocabularyFolder.findUnique({
+      const target = await prisma.wordbook.findUnique({
         where: { id: nextParentId },
         select: { id: true },
       })
-      if (!target) return { success: false, message: '目标收藏夹不存在' }
+      if (!target) return { success: false, message: '目标单词书不存在' }
     }
-    const valid = await isVocabularyFolderMoveValid(
-      trimmedFolderId,
-      nextParentId,
-    )
-    if (!valid) return { success: false, message: '不能移动到自身或子收藏夹下' }
-    const updated = await prisma.vocabularyFolder.update({
-      where: { id: trimmedFolderId },
+    const valid = await isWordbookMoveValid(trimmedWordbookId, nextParentId)
+    if (!valid) return { success: false, message: '不能移动到自身或子单词书下' }
+    const updated = await prisma.wordbook.update({
+      where: { id: trimmedWordbookId },
       data: { parentId: nextParentId },
-      select: { id: true, name: true, parentId: true },
+      select: { id: true, title: true, parentId: true },
     })
     revalidatePath('/vocabulary')
-    return { success: true, folder: updated }
+    revalidatePath('/wordbooks')
+    return { success: true, wordbook: updated }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
     if (prismaError.code === 'P2002') {
-      return { success: false, message: '目标位置已有同名收藏夹' }
+      return { success: false, message: '目标位置已有同名单词书' }
     }
     console.error(error)
-    return { success: false, message: '移动收藏夹失败' }
+    return { success: false, message: '移动单词书失败' }
+  }
+}
+
+export async function deleteWordbook(wordbookId: string) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const existing = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
+      select: { id: true },
+    })
+    if (!existing) return { success: false, message: '单词书不存在' }
+
+    await prisma.wordbook.delete({
+      where: { id: trimmedWordbookId },
+    })
+    revalidatePath('/wordbooks')
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '删除单词书失败' }
   }
 }
 
@@ -1338,21 +1408,284 @@ export async function renameVocabularyGroup(
   }
 }
 
-export async function assignVocabularyFolder(
+export async function addVocabularyToWordbook(
   vocabularyId: string,
-  folderId: string | null,
+  wordbookId: string,
 ) {
   try {
-    await prisma.vocabulary.update({
-      where: { id: vocabularyId },
-      data: { folderId: folderId || null },
-      select: { id: true, folderId: true },
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) {
+      return { success: false, message: '单词书无效' }
+    }
+    await prisma.wordbookVocabulary.upsert({
+      where: {
+        wordbookId_vocabularyId: {
+          wordbookId: trimmedWordbookId,
+          vocabularyId,
+        },
+      },
+      update: {},
+      create: {
+        wordbookId: trimmedWordbookId,
+        vocabularyId,
+      },
     })
     revalidatePath('/vocabulary')
+    revalidatePath('/wordbooks')
     return { success: true }
   } catch (error) {
     console.error(error)
-    return { success: false, message: '收藏夹设置失败' }
+    return { success: false, message: '加入单词书失败' }
+  }
+}
+
+export async function removeVocabularyFromWordbook(
+  vocabularyId: string,
+  wordbookId: string,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) {
+      return { success: false, message: '单词书无效' }
+    }
+    await prisma.wordbookVocabulary.deleteMany({
+      where: {
+        vocabularyId,
+        wordbookId: trimmedWordbookId,
+      },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/wordbooks')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '移出单词书失败' }
+  }
+}
+
+export async function listWordbooksTree() {
+  const rows = await prisma.wordbook.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      title: true,
+      parentId: true,
+      _count: {
+        select: { entries: true },
+      },
+    },
+  })
+  return rows.map(item => ({
+    id: item.id,
+    title: item.title,
+    parentId: item.parentId,
+    vocabularyCount: item._count.entries,
+  }))
+}
+
+export async function listVocabularyByWordbook(
+  wordbookId: string,
+  page = 1,
+  pageSize = 48,
+) {
+  const normalizedPage = Math.max(1, Math.floor(page || 1))
+  const normalizedPageSize = Math.max(
+    1,
+    Math.min(100, Math.floor(pageSize || 48)),
+  )
+
+  const [totalCount, rows] = await Promise.all([
+    prisma.wordbookVocabulary.count({
+      where: { wordbookId },
+    }),
+    prisma.wordbookVocabulary.findMany({
+      where: { wordbookId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      skip: (normalizedPage - 1) * normalizedPageSize,
+      take: normalizedPageSize,
+      include: {
+        vocabulary: {
+          include: {
+            review: {
+              select: {
+                id: true,
+                due: true,
+                state: true,
+                stability: true,
+                difficulty: true,
+                elapsed_days: true,
+                scheduled_days: true,
+                reps: true,
+                lapses: true,
+                learning_steps: true,
+                last_review: true,
+              },
+            },
+            tags: {
+              include: {
+                tag: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / normalizedPageSize))
+  return {
+    totalCount,
+    totalPages,
+    currentPage: Math.min(normalizedPage, totalPages),
+    items: rows.map(item => item.vocabulary),
+  }
+}
+
+export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
+  const trimmedWordbookId = (wordbookId || '').trim()
+  if (!trimmedWordbookId) return { success: false, updatedCount: 0 }
+
+  const wordbook = await prisma.wordbook.findUnique({
+    where: { id: trimmedWordbookId },
+    select: { id: true, title: true },
+  })
+  if (!wordbook) return { success: false, updatedCount: 0 }
+
+  const wordbookLinks = await prisma.wordbookVocabulary.findMany({
+    where: { wordbookId: trimmedWordbookId },
+    select: { vocabularyId: true },
+  })
+  const vocabularyIds = Array.from(
+    new Set(wordbookLinks.map(item => item.vocabularyId).filter(Boolean)),
+  )
+  if (vocabularyIds.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
+    where: {
+      vocabularyId: { in: vocabularyIds },
+      sentence: {
+        OR: [
+          { sourceId: 'anki-import' },
+          { sourceUrl: '/anki' },
+          { sourceUrl: '/manage/import/anki' },
+        ],
+      },
+    },
+    select: { sentenceId: true },
+  })
+  const sentenceIds = Array.from(
+    new Set(sentenceLinks.map(item => item.sentenceId).filter(Boolean)),
+  )
+  if (sentenceIds.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const updated = await prisma.vocabularySentence.updateMany({
+    where: {
+      id: { in: sentenceIds },
+      AND: [
+        {
+          OR: [
+            { sourceId: 'anki-import' },
+            { sourceUrl: '/anki' },
+            { sourceUrl: '/manage/import/anki' },
+          ],
+        },
+        {
+          OR: [
+            { source: { not: wordbook.title } },
+            { sourceUrl: { not: '/anki' } },
+          ],
+        },
+      ],
+    },
+    data: {
+      source: wordbook.title,
+      sourceUrl: '/anki',
+    },
+  })
+
+  return { success: true, updatedCount: updated.count }
+}
+
+export async function searchVocabularyCandidates(
+  keyword: string,
+  wordbookId?: string,
+  limit = 20,
+) {
+  const trimmed = keyword.trim()
+  if (!trimmed) return []
+  const maxLimit = Math.max(1, Math.min(50, Math.floor(limit || 20)))
+  const rows = await prisma.vocabulary.findMany({
+    where: {
+      word: { contains: trimmed, mode: 'insensitive' },
+      ...(wordbookId
+        ? {
+            wordbooks: {
+              none: {
+                wordbookId,
+              },
+            },
+          }
+        : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: maxLimit,
+    select: {
+      id: true,
+      word: true,
+      pronunciations: true,
+      partsOfSpeech: true,
+    },
+  })
+  return rows.map(item => ({
+    id: item.id,
+    word: item.word,
+    pronunciations: parseJsonStringList(item.pronunciations),
+    partsOfSpeech: parseJsonStringList(item.partsOfSpeech),
+  }))
+}
+
+export async function addVocabulariesToWordbook(
+  vocabularyIds: string[],
+  wordbookId: string,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const uniqueIds = Array.from(
+      new Set(vocabularyIds.map(item => item.trim()).filter(Boolean)),
+    )
+    if (uniqueIds.length === 0) {
+      return { success: false, message: '请先选择词条' }
+    }
+
+    const existingWordbook = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
+      select: { id: true },
+    })
+    if (!existingWordbook) return { success: false, message: '单词书不存在' }
+
+    const result = await prisma.wordbookVocabulary.createMany({
+      data: uniqueIds.map(vocabularyId => ({
+        wordbookId: trimmedWordbookId,
+        vocabularyId,
+      })),
+      skipDuplicates: true,
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/wordbooks')
+    return {
+      success: true,
+      added: result.count,
+      total: uniqueIds.length,
+      skipped: Math.max(0, uniqueIds.length - result.count),
+    }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '批量加入单词书失败' }
   }
 }
 
@@ -1881,8 +2214,8 @@ export async function updateSortOrder(
     await prisma.$transaction(updatePromises)
 
     // Keep manage/public pages in sync after drag-sort persistence.
-    revalidatePath('/manage')
-    revalidatePath('/manage/upload')
+    revalidatePath('/')
+    revalidatePath('/upload')
     revalidatePath('/shadowing/[id]', 'page')
     revalidatePath('/lessons/[id]', 'page')
     revalidatePath('/articles')

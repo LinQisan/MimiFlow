@@ -475,7 +475,7 @@ export default async function ShadowingListPage() {
               </div>
             </div>
             <Link
-              href='/manage/shadowing'
+              href='/shadowing/manage'
               className='ui-btn ui-btn-sm'>
               进入编辑模式
             </Link>

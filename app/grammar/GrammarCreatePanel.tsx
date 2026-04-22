@@ -17,6 +17,15 @@ type GrammarCreatePanelProps = {
   clusterSuggestions: string[]
 }
 
+const createInitialConstruction = (id: string): ConstructionDraft => ({
+  id,
+  connection: '',
+  meaning: '',
+  note: '',
+  examplesInput: '',
+  sentenceExampleIds: [],
+})
+
 export default function GrammarCreatePanel({
   grammarOptions,
   tagSuggestions,
@@ -24,14 +33,7 @@ export default function GrammarCreatePanel({
 }: GrammarCreatePanelProps) {
   const [name, setName] = useState('')
   const [constructions, setConstructions] = useState<ConstructionDraft[]>([
-    {
-      id: `${Date.now()}-init`,
-      connection: '',
-      meaning: '',
-      note: '',
-      examplesInput: '',
-      sentenceExampleIds: [],
-    },
+    createInitialConstruction('init'),
   ])
   const [tagsInput, setTagsInput] = useState('')
   const [clusterTitle, setClusterTitle] = useState('')
@@ -67,14 +69,11 @@ export default function GrammarCreatePanel({
       if (!result.success) return
       setName('')
       setConstructions([
-        {
-          id: `${Date.now()}-reset`,
-          connection: '',
-          meaning: '',
-          note: '',
-          examplesInput: '',
-          sentenceExampleIds: [],
-        },
+        createInitialConstruction(
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `reset-${Date.now()}`,
+        ),
       ])
       setTagsInput('')
       setClusterTitle('')

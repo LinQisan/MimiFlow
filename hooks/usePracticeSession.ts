@@ -23,7 +23,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   const [timeSpentByQuestionId, setTimeSpentByQuestionId] = useState<
     Record<string, number>
   >({})
-  const questionEnterAtRef = useRef<number>(Date.now())
+  const questionEnterAtRef = useRef<number>(0)
 
   const getCorrectOptionId = (question: TQuestion) =>
     question.options?.find(option => option.isCorrect)?.id
@@ -71,7 +71,8 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
     const currentQuestion = questions[currentIndex]
     if (!currentQuestion) return
     const now = Date.now()
-    const delta = Math.max(0, now - questionEnterAtRef.current)
+    const enterAt = questionEnterAtRef.current || now
+    const delta = Math.max(0, now - enterAt)
     questionEnterAtRef.current = now
     if (delta <= 0) return
     setTimeSpentByQuestionId(prev => ({

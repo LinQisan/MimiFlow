@@ -63,15 +63,15 @@ export default function WordTooltip({
   const [saveState, setSaveState] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
+  const [headwordValue, setHeadwordValue] = useState('')
   const [pronunciationValue, setPronunciationValue] = useState('')
-  const [saveWithPronunciation, setSaveWithPronunciation] = useState(false)
   const [meaningValue, setMeaningValue] = useState('')
-  const [saveWithMeaning, setSaveWithMeaning] = useState(true)
   const [partOfSpeechValue, setPartOfSpeechValue] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(true)
 
   useEffect(() => {
     setSaveState('idle')
+    setHeadwordValue(word)
     const initialPron = (initialMeta?.pronunciations || []).join(' / ')
     setPronunciationValue(initialPron)
     setPartOfSpeechValue(initialMeta?.partsOfSpeech?.[0] || '')
@@ -126,6 +126,11 @@ export default function WordTooltip({
   // --- 3. 核心：处理保存逻辑 ---
   const handleSave = async () => {
     if (saveState === 'saving' || saveState === 'saved') return
+    const normalizedHeadword = headwordValue.trim()
+    if (!normalizedHeadword) {
+      setSaveState('error')
+      return
+    }
     setSaveState('saving')
 
     const pronList = splitPronunciationInput(pronunciationValue)
@@ -134,22 +139,22 @@ export default function WordTooltip({
 
     try {
       const res = await saveVocabulary(
-        word,
+        normalizedHeadword,
         contextSentence,
         sourceType,
         sourceId,
-        saveWithPronunciation ? pronList[0] : undefined,
-        saveWithPronunciation ? pronList : [],
-        saveWithMeaning ? meaningList : [],
+        pronList[0],
+        pronList,
+        meaningList,
         posList[0],
         posList,
       )
 
       if (res.state === 'success' || res.state === 'already_exists') {
         const savedMeta: VocabularyMeta = {
-          pronunciations: saveWithPronunciation
-            ? Array.from(new Set(pronList.map(item => item.trim()).filter(Boolean)))
-            : initialMeta?.pronunciations || [],
+          pronunciations: Array.from(
+            new Set(pronList.map(item => item.trim()).filter(Boolean)),
+          ),
           partsOfSpeech: Array.from(
             new Set(
               posList.map(item => item.trim()).filter(Boolean).length > 0
@@ -157,11 +162,11 @@ export default function WordTooltip({
                 : initialMeta?.partsOfSpeech || [],
             ),
           ),
-          meanings: saveWithMeaning
-            ? Array.from(new Set(meaningList.map(item => item.trim()).filter(Boolean)))
-            : initialMeta?.meanings || [],
+          meanings: Array.from(
+            new Set(meaningList.map(item => item.trim()).filter(Boolean)),
+          ),
         }
-        onSaved?.({ word, meta: savedMeta })
+        onSaved?.({ word: normalizedHeadword, meta: savedMeta })
         setSaveState('saved')
         setTimeout(() => onClose?.(), 1000)
       } else {
@@ -194,7 +199,7 @@ export default function WordTooltip({
       {/* --- 头部区块 --- */}
       <div className='flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 px-3 py-2.5'>
         <span className='max-w-[60%] truncate text-base font-bold tracking-tight text-slate-900'>
-          {word}
+          {headwordValue || word}
         </span>
         <button
           type='button'
@@ -209,18 +214,20 @@ export default function WordTooltip({
       <div className='max-h-[min(68vh,20rem)] space-y-4 overflow-y-auto px-3 py-3 custom-scrollbar'>
         {/* 1. 读音/注音模块 */}
         <section className='space-y-2'>
-          <div className='flex items-center justify-between'>
-            <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
-            <label className='flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500 transition-colors hover:text-slate-800'>
-              <input
-                type='checkbox'
-                className='accent-slate-900'
-                checked={saveWithPronunciation}
-                onChange={e => setSaveWithPronunciation(e.target.checked)}
-              />
-              保存此项
-            </label>
-          </div>
+          <p className={SECTION_TITLE_CLASS}>单词 / 原形</p>
+          <input
+            value={headwordValue}
+            onChange={e => setHeadwordValue(e.target.value)}
+            placeholder='如: ののしる'
+            className={BASE_INPUT_CLASS}
+          />
+          <p className={SECTION_HINT_CLASS}>
+            默认带入当前划词词面；如需保存原形，请手动改成词典形。
+          </p>
+        </section>
+
+        <section className='space-y-2'>
+          <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
           <input
             value={pronunciationValue}
             onChange={e => setPronunciationValue(e.target.value)}
@@ -276,18 +283,7 @@ export default function WordTooltip({
 
             {/* 释义 */}
             <section className='space-y-2'>
-              <div className='flex items-center justify-between'>
-                <p className={SECTION_TITLE_CLASS}>释义</p>
-                <label className='flex cursor-pointer items-center gap-1.5 text-[10px] text-slate-500 transition-colors hover:text-slate-800'>
-                  <input
-                    type='checkbox'
-                    className='accent-slate-900'
-                    checked={saveWithMeaning}
-                    onChange={e => setSaveWithMeaning(e.target.checked)}
-                  />
-                  保存此项
-                </label>
-              </div>
+              <p className={SECTION_TITLE_CLASS}>释义</p>
               <input
                 value={meaningValue}
                 onChange={e => setMeaningValue(e.target.value)}

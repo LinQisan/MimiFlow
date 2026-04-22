@@ -17,13 +17,27 @@ type GrammarConstructionsEditorProps = {
 }
 
 const createDraft = (): ConstructionDraft => ({
-  id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  id:
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `draft-${Date.now()}-${Math.random().toString(16).slice(2)}`,
   connection: '',
   meaning: '',
   note: '',
   examplesInput: '',
   sentenceExampleIds: [],
 })
+
+const EMPTY_ROWS_FALLBACK: ConstructionDraft[] = [
+  {
+    id: 'empty',
+    connection: '',
+    meaning: '',
+    note: '',
+    examplesInput: '',
+    sentenceExampleIds: [],
+  },
+]
 
 export default function GrammarConstructionsEditor({
   value,
@@ -33,7 +47,7 @@ export default function GrammarConstructionsEditor({
   const [overId, setOverId] = useState<string | null>(null)
 
   const rows = useMemo(
-    () => (value.length > 0 ? value : [createDraft()]),
+    () => (value.length > 0 ? value : EMPTY_ROWS_FALLBACK),
     [value],
   )
 
