@@ -11,14 +11,7 @@ import type {
   ExamQuestion,
   OnSelectOption,
 } from './question-renderer/types'
-
-const formatTime = (sec: number) => {
-  if (!Number.isFinite(sec)) return '00:00'
-  const total = Math.max(0, Math.floor(sec))
-  const m = String(Math.floor(total / 60)).padStart(2, '0')
-  const s = String(total % 60).padStart(2, '0')
-  return `${m}:${s}`
-}
+import { formatMediaTime } from '@/utils/time/format'
 
 type QuestionRendererProps = {
   question: ExamQuestion
@@ -95,6 +88,7 @@ function ReadingQuestion({
 
 function ListeningQuestion({
   question,
+  allQuestions = [],
   currentAnswer,
   onSelect,
   isSubmitted = false,
@@ -109,6 +103,15 @@ function ListeningQuestion({
   const [autoPlayAttempted, setAutoPlayAttempted] = React.useState(false)
   const dialogues = question.lesson?.dialogues || []
   const lessonId = question.lesson?.id || question.lessonId || question.id
+  const sectionKey = question.lesson?.sectionKey || ''
+  const sectionQuestions = sectionKey
+    ? allQuestions.filter(item => item.lesson?.sectionKey === sectionKey)
+    : []
+  const sectionQuestionIndex = Math.max(
+    0,
+    sectionQuestions.findIndex(item => item.id === question.id),
+  )
+  const sectionTitle = question.lesson?.sectionTitle || '听力部分'
 
   React.useEffect(() => {
     setIsPlaying(false)
@@ -175,8 +178,26 @@ function ListeningQuestion({
 
   return (
     <div className='mx-auto w-full max-w-3xl rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8'>
+      <div className='mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4'>
+        <div>
+          <div className='inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
+            {sectionTitle}
+          </div>
+          {sectionQuestions.length > 1 && (
+            <p className='mt-2 text-sm font-medium text-slate-500'>
+              本部分第 {sectionQuestionIndex + 1} / {sectionQuestions.length} 题。每段音频对应一道题。
+            </p>
+          )}
+        </div>
+        {question.lesson?.audioFile && (
+          <span className='rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500'>
+            单题音频
+          </span>
+        )}
+      </div>
+
       {question.lesson?.audioFile && (
-        <div className='mb-8 rounded-[18px] border border-slate-200 bg-slate-50 p-4 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-5'>
+        <div className='mb-6 rounded-[18px] border border-slate-200 bg-slate-50 p-4 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-5'>
           <div className='flex items-center gap-3'>
             <button
               type='button'
@@ -188,7 +209,7 @@ function ListeningQuestion({
               <div className='mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500'>
                 <span>听力播放</span>
                 <span>
-                  {formatTime(currentTime)} / {formatTime(duration)}
+                  {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
                 </span>
               </div>
               <input
@@ -250,6 +271,12 @@ function ListeningQuestion({
             }),
           }}
         />
+      )}
+
+      {!question.prompt && !question.contextSentence && (
+        <p className='mb-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500'>
+          该听力题未填写文字题干，作答时只显示选项。
+        </p>
       )}
 
       <OptionsList

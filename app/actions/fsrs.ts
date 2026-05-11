@@ -1,6 +1,6 @@
 'use server'
 
-import { MaterialType } from '@prisma/client'
+import { MaterialType, Prisma } from '@prisma/client'
 import {
   Card,
   Rating,
@@ -609,10 +609,13 @@ export async function addSentenceToReview(dialogueId: number) {
     revalidatePath('/')
 
     return { success: true, message: '已加入跟读复习库' }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('添加句子到复习库失败:', error)
 
-    if (error.code === 'P2002') {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
       return {
         success: false,
         state: 'already_exists',
@@ -620,7 +623,8 @@ export async function addSentenceToReview(dialogueId: number) {
       }
     }
 
-    return { success: false, message: error.message }
+    const message = error instanceof Error ? error.message : '加入复习库失败'
+    return { success: false, message }
   }
 }
 

@@ -114,6 +114,9 @@ model Vocabulary {
   createdAt      DateTime                    @default(now())
   sentenceLinks  VocabularySentenceLink[]
   tags           VocabularyTagOnVocabulary[]
+
+  @@index([word])
+  @@index([createdAt])
 }
 
 model VocabularyTag {

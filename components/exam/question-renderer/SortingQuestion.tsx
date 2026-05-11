@@ -97,7 +97,7 @@ export function SortingQuestion({
   isJapanesePaper = false,
   annotation,
 }: SortingQuestionProps) {
-  const options = question.options || []
+  const options = useMemo(() => question.options || [], [question.options])
   const correctOptionId = options.find(option => option.isCorrect)?.id
   const promptText = (question.prompt || '').trim()
   const contextText = (question.contextSentence || '').trim()
@@ -155,7 +155,15 @@ export function SortingQuestion({
     const draft = createSlotDraft(slotCount, options, initialAnswerId, starIndex)
     setSlots(draft.slots)
     setPool(draft.pool)
-  }, [question.id, options, slotCount, starIndex, isSubmitted])
+  }, [
+    correctOptionId,
+    currentAnswer,
+    isSubmitted,
+    question.id,
+    options,
+    slotCount,
+    starIndex,
+  ])
 
   useEffect(() => {
     if (slots.length === 0) return

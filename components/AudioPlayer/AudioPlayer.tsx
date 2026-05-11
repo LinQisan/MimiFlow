@@ -16,6 +16,7 @@ import VocabularyTooltip, {
   SAVE_BG_COLORS,
 } from '@/components/vocabulary/VocabularyTooltip'
 import ToggleSwitch from '@/components/ToggleSwitch'
+import TrustedHtml from '@/components/ui/TrustedHtml'
 import WordMetaPanel from '@/components/vocabulary/WordMetaPanel'
 import {
   useShowMeaning,
@@ -29,6 +30,8 @@ import {
 } from '@/utils/vocabulary/japaneseInflection'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useAudioController } from './useAudioController'
+import { getCleanSelectionText } from '@/utils/text/selection'
+import { formatDurationCompact, formatMediaTime } from '@/utils/time/format'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -88,42 +91,12 @@ const splitListInput = (value: string) =>
     ),
   )
 
-const formatDuration = (seconds: number) => {
-  const safe = Math.max(0, Math.floor(seconds))
-  const h = Math.floor(safe / 3600)
-  const m = Math.floor((safe % 3600) / 60)
-  const s = safe % 60
-  if (h > 0) {
-    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(
-      s,
-    ).padStart(2, '0')}`
-  }
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-}
-
-const formatDurationCompact = (seconds: number) => {
-  const safe = Math.max(0, Math.floor(seconds))
-  const day = Math.floor(safe / 86400)
-  const hour = Math.floor((safe % 86400) / 3600)
-  const minute = Math.floor((safe % 3600) / 60)
-  const sec = safe % 60
-
-  if (day > 0) {
-    if (hour > 0) return `${day}天 ${hour}小时`
-    return `${day}天 ${minute}分钟`
-  }
-  if (hour > 0) return `${hour}小时 ${minute}分钟`
-  if (minute > 0) return `${minute}分钟`
-  return `${sec}秒`
-}
-
 // ================= 主控组件 =================
 export default function AudioPlayer({
   lesson,
   lessonGroup,
   prevId,
   nextId,
-  lessonSwitcher: _lessonSwitcher,
   initialTotalPlaySeconds = 0,
   initialPlayedDays = 0,
   vocabularyMetaMap,
@@ -288,14 +261,14 @@ export default function AudioPlayer({
       rubyClassName: 'text-slate-900 dark:text-slate-100',
       rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
     })
-    return <span dangerouslySetInnerHTML={{ __html: html }} />
+    return <TrustedHtml html={html} />
   }
 
   // ---------------- 音频控制逻辑 ----------------
 
   const handleSentenceClick = (item: DialogueItem) => {
     const selection = window.getSelection()
-    if (selection && selection.toString().trim().length > 0) return
+    if (getCleanSelectionText(selection).length > 0) return
     if (activeTooltip) {
       setActiveTooltip(null)
       return
@@ -310,7 +283,7 @@ export default function AudioPlayer({
   ) => {
     setTimeout(() => {
       const selection = window.getSelection()
-      const text = selection?.toString().trim()
+      const text = getCleanSelectionText(selection)
 
       if (text && text.length > 0) {
         const range = selection!.getRangeAt(0)
@@ -433,7 +406,7 @@ export default function AudioPlayer({
       } else {
         setWordSaveState('error')
       }
-    } catch (error) {
+    } catch {
       setWordSaveState('error')
     }
   }
@@ -451,7 +424,7 @@ export default function AudioPlayer({
         setSavingDialogueId(null)
         setDialogueSaveState('idle')
       }, 1500)
-    } catch (error) {
+    } catch {
       setDialogueSaveState('error')
       setTimeout(() => {
         setSavingDialogueId(null)
@@ -491,7 +464,7 @@ export default function AudioPlayer({
     setSessionPlaySeconds(0)
     setTotalPlaySeconds(initialTotalPlaySeconds)
     setPlayedDays(initialPlayedDays)
-  }, [lesson.id])
+  }, [initialPlayedDays, initialTotalPlaySeconds, lesson.id])
 
   useEffect(() => {
     if (!isPlaying) return
@@ -693,7 +666,7 @@ export default function AudioPlayer({
           <div className='mt-2 overflow-x-auto'>
             <div className='flex min-w-max items-center gap-2 pb-0.5'>
               <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
-                本次 {formatDuration(sessionPlaySeconds)}
+                本次 {formatMediaTime(sessionPlaySeconds)}
               </span>
               <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
                 累计 {formatDurationCompact(totalPlaySeconds)}
@@ -798,7 +771,7 @@ export default function AudioPlayer({
               canAddToReview={isSentenceMeaningMatched(item.id)}
               onClick={() => handleSentenceClick(item)}
               onMouseUp={e => handleTextSelection(e, item)}
-              onToggleLoop={e => toggleLoop(item)}
+              onToggleLoop={() => toggleLoop(item)}
               onAddToReview={e => handleAddToReview(e, item.id)}
             />
           ))}

@@ -91,7 +91,7 @@ npm run dev
 6. Quality checks
 
 ```bash
-npx tsc --noEmit
+npm run typecheck
 npm run lint
 ```
 
@@ -119,7 +119,7 @@ app/          routes + server actions
 components/   shared UI
 context/      global providers
 hooks/        telemetry/prefs hooks
-prisma/       schema + migrations + local db
+prisma/       schema + local db
 utils/        text/linguistic helpers
 ```
 

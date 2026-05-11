@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "clean:next": "rm -rf .next",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate --config prisma.config.ts",
@@ -21,6 +22,7 @@
     "@prisma/adapter-pg": "^7.6.0",
     "@prisma/client": "^7.6.0",
     "dotenv": "^17.3.1",
+    "jszip": "^3.10.1",
     "next": "16.1.7",
     "pg": "^8.20.0",
     "react": "19.2.3",
@@ -38,13 +40,5 @@
     "prisma": "^7.6.0",
     "tailwindcss": "^4",
     "typescript": "^5"
-  },
-  "ignoreScripts": [
-    "sharp",
-    "unrs-resolver"
-  ],
-  "trustedDependencies": [
-    "sharp",
-    "unrs-resolver"
-  ]
+  }
 }

@@ -1,4 +1,4 @@
-import { CollectionType, MaterialType, QuestionTemplate, QuestionType } from '@prisma/client'
+import { MaterialType, QuestionTemplate, QuestionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { toLegacyMaterialId } from '../materials'
@@ -21,6 +21,24 @@ function asString(value: unknown): string {
 
 function asBoolean(value: unknown): boolean {
   return value === true
+}
+
+function asPositiveIntegerString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      const normalized = Math.floor(value)
+      if (normalized > 0) return String(normalized)
+    }
+    if (typeof value === 'string' && value.trim()) {
+      const matched = value.trim().match(/\d+/)
+      if (!matched) continue
+      const normalized = Number(matched[0])
+      if (Number.isFinite(normalized) && normalized > 0) {
+        return String(Math.floor(normalized))
+      }
+    }
+  }
+  return ''
 }
 
 function toQuestionType(
@@ -254,6 +272,13 @@ export async function getQuizEditData(maybeId: string) {
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,
         explanation: asString(content.explanation) || question.analysis || null,
+        listeningSectionNumber: asPositiveIntegerString(
+          content.listeningSectionNumber,
+          content.sectionNumber,
+          content.partNumber,
+          content.listeningSectionTitle,
+          content.sectionTitle,
+        ),
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),
@@ -357,6 +382,13 @@ export async function getListeningEditData(maybeId: string) {
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,
         explanation: asString(content.explanation) || question.analysis || null,
+        listeningSectionNumber: asPositiveIntegerString(
+          content.listeningSectionNumber,
+          content.sectionNumber,
+          content.partNumber,
+          content.listeningSectionTitle,
+          content.sectionTitle,
+        ),
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),

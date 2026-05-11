@@ -167,7 +167,8 @@ export const inferContextualPos = (
   return unique([...inferred, ...normalizedExisting]).slice(0, 3)
 }
 
-export const posBadgeClass = (_pos: string) => {
+export const posBadgeClass = (pos?: string) => {
+  void pos
   return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
 }
 

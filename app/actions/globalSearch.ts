@@ -11,6 +11,22 @@ import {
 import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-index'
 import { MaterialType } from '@prisma/client'
 import { Prisma } from '@prisma/client'
+import {
+  asNumberOrDefault,
+  asRecord,
+  asStringOrNull,
+  buildSearchDetailHref,
+  extractMaterialSearchText,
+  formatMediaDialogueMeta,
+  formatPassageMeta,
+  includesAllTokens,
+  normalizeKeyword,
+  shortText,
+  sortByScore,
+  toJsonValue,
+  toNullableJsonValue,
+  tokenizeKeyword,
+} from './globalSearchShared'
 
 export type GlobalSearchResult = {
   id: string
@@ -24,43 +40,6 @@ export type GlobalSearchResult = {
 }
 
 export type GlobalSearchType = GlobalSearchResult['type']
-type JsonRecord = Record<string, unknown>
-
-const asRecord = (value: unknown): JsonRecord | null =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : null
-
-const asStringOrNull = (value: unknown) => {
-  if (value === null || value === undefined) return null
-  return typeof value === 'string' ? value : String(value)
-}
-
-const asNumberOrDefault = (value: unknown, fallback = 0) => {
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
-  if (typeof value === 'string') {
-    const num = Number(value)
-    if (Number.isFinite(num)) return Math.floor(num)
-  }
-  return fallback
-}
-
-const toJsonValue = (
-  value: unknown,
-  fallback: Prisma.InputJsonValue,
-): Prisma.InputJsonValue =>
-  value === undefined ? fallback : (value as Prisma.InputJsonValue)
-
-const toNullableJsonValue = (
-  value: unknown,
-):
-  | Prisma.InputJsonValue
-  | Prisma.NullableJsonNullValueInput
-  | undefined => {
-  if (value === undefined) return undefined
-  if (value === null) return Prisma.JsonNull
-  return value as Prisma.InputJsonValue
-}
 
 const DEFAULT_TYPES: GlobalSearchType[] = [
   'vocabulary',
@@ -71,105 +50,8 @@ const DEFAULT_TYPES: GlobalSearchType[] = [
   'dialogue',
 ]
 
-const shortText = (text: string, max = 96) => {
-  const value = (text || '').trim()
-  if (value.length <= max) return value
-  return `${value.slice(0, max)}...`
-}
-
-const normalizeKeyword = (keyword: string) =>
-  keyword
-    .replace(/\u3000/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-
-const tokenizeKeyword = (keyword: string) =>
-  normalizeKeyword(keyword)
-    .split(' ')
-    .map(item => item.trim())
-    .filter(Boolean)
-
 const buildTypeSet = (types?: GlobalSearchType[]) =>
   new Set<GlobalSearchType>(types && types.length > 0 ? types : DEFAULT_TYPES)
-
-const asString = (value: unknown) => (typeof value === 'string' ? value : '')
-
-const formatMediaDialogueMeta = (input: {
-  sourceType: 'TV' | 'MOVIE'
-  workTitle: string
-  season: string
-  episode: string
-}) => {
-  const title = input.workTitle.trim() || '未命名作品'
-  if (input.sourceType === 'TV') {
-    const seasonText = input.season.trim() ? `第${input.season.trim()}季` : '未标季'
-    const episodeText = input.episode.trim()
-      ? `第${input.episode.trim()}集`
-      : '未标集'
-    return `电视剧 · ${title} · ${seasonText} · ${episodeText}`
-  }
-  return `电影 · ${title}`
-}
-
-const getMatchScore = (
-  keyword: string,
-  fields: Array<string | null | undefined>,
-) => {
-  const tokens = tokenizeKeyword(keyword).map(item => item.toLowerCase())
-  if (tokens.length === 0) return 0
-  let score = 0
-
-  for (const raw of fields) {
-    if (!raw) continue
-    const value = raw.toLowerCase()
-    for (const token of tokens) {
-      if (value === token) score += 120
-      else if (value.startsWith(token)) score += 80
-      else if (value.includes(token)) score += 40
-    }
-  }
-
-  return score
-}
-
-const includesAllTokens = (
-  fields: Array<string | null | undefined>,
-  tokens: string[],
-) => {
-  if (tokens.length === 0) return false
-  const normalizedFields = fields
-    .filter(Boolean)
-    .map(item => String(item).toLowerCase())
-  return tokens.every(token =>
-    normalizedFields.some(field => field.includes(token.toLowerCase())),
-  )
-}
-
-const sortByScore = <T>(
-  rows: T[],
-  getFields: (row: T) => Array<string | null | undefined>,
-  keyword: string,
-) =>
-  [...rows].sort(
-    (a, b) =>
-      getMatchScore(keyword, getFields(b)) -
-      getMatchScore(keyword, getFields(a)),
-  )
-
-const formatPassageMeta = (item: { collectionTitle?: string | null }) => {
-  const paperName = item.collectionTitle?.trim()
-
-  if (paperName) return paperName
-  return '文章'
-}
-
-const buildSearchDetailHref = (resultId: string, type: GlobalSearchType, q: string) => {
-  const params = new URLSearchParams()
-  params.set('rid', resultId)
-  params.set('type', type)
-  if (q) params.set('q', q)
-  return `/search/result?${params.toString()}`
-}
 
 export async function searchGlobalContent(
   keyword: string,
@@ -230,24 +112,27 @@ export async function searchGlobalContent(
 
     typeSet.has('passage')
       ? prisma.material.findMany({
-        where: {
-          type: MaterialType.READING,
-          OR: [
-            { title: { contains: primaryToken } },
-            {
-              contentPayload: {
-                path: ['text'],
-                string_contains: primaryToken,
+          where: {
+            type: MaterialType.READING,
+            OR: [
+              { title: { contains: primaryToken } },
+              {
+                contentPayload: {
+                  path: ['text'],
+                  string_contains: primaryToken,
+                },
               },
-            },
-          ],
-        },
-        include: {
-          collectionMaterials: {
-            take: 1,
-            include: { collection: { select: { title: true } } },
+            ],
           },
-        },
+          select: {
+            id: true,
+            title: true,
+            contentPayload: true,
+            collectionMaterials: {
+              take: 1,
+              include: { collection: { select: { title: true } } },
+            },
+          },
           orderBy: { createdAt: 'desc' },
           take: 20,
         })
@@ -255,18 +140,23 @@ export async function searchGlobalContent(
 
     typeSet.has('quiz')
       ? prisma.material.findMany({
-        where: {
-          type: MaterialType.VOCAB_GRAMMAR,
-          OR: [
-            { title: { contains: primaryToken } },
-            {
-              contentPayload: {
-                path: ['description'],
-                string_contains: primaryToken,
+          where: {
+            type: MaterialType.VOCAB_GRAMMAR,
+            OR: [
+              { title: { contains: primaryToken } },
+              {
+                contentPayload: {
+                  path: ['description'],
+                  string_contains: primaryToken,
+                },
               },
-            },
-          ],
-        },
+            ],
+          },
+          select: {
+            id: true,
+            title: true,
+            contentPayload: true,
+          },
           orderBy: { createdAt: 'desc' },
           take: 20,
         })
@@ -319,7 +209,7 @@ export async function searchGlobalContent(
             subtitleSourceType: true,
           },
           orderBy: [{ updatedAt: 'desc' }, { sequenceId: 'asc' }],
-          take: 80,
+          take: 60,
         })
       : Promise.resolve([]),
   ])
@@ -345,7 +235,7 @@ export async function searchGlobalContent(
     passageRows,
     item => [
       item.title,
-      String(item.contentPayload),
+      extractMaterialSearchText(item.contentPayload),
       item.collectionMaterials[0]?.collection.title,
     ],
     q,
@@ -353,7 +243,7 @@ export async function searchGlobalContent(
     includesAllTokens(
       [
         item.title,
-        String(item.contentPayload),
+        extractMaterialSearchText(item.contentPayload),
         item.collectionMaterials[0]?.collection.title,
       ],
       tokens,
@@ -362,10 +252,13 @@ export async function searchGlobalContent(
 
   const rankedQuizRows = sortByScore(
     quizRows,
-    item => [item.title, String(item.contentPayload)],
+    item => [item.title, extractMaterialSearchText(item.contentPayload)],
     q,
   ).filter(item =>
-    includesAllTokens([item.title, String(item.contentPayload)], tokens),
+    includesAllTokens(
+      [item.title, extractMaterialSearchText(item.contentPayload)],
+      tokens,
+    ),
   )
 
   const rankedQuestionRows = sortByScore(
@@ -460,8 +353,7 @@ export async function searchGlobalContent(
   )
 
   const passageResults: GlobalSearchResult[] = rankedPassageRows.map(item => {
-    const payload = item.contentPayload as Record<string, unknown>
-    const content = String(payload.text || payload.description || '')
+    const content = extractMaterialSearchText(item.contentPayload)
     const sentences = content.split(/[。！？\n]+/).filter(s => s.trim())
     const matchingSentence = sentences.find(s =>
       s.toLowerCase().includes(q.toLowerCase()),
@@ -487,7 +379,7 @@ export async function searchGlobalContent(
     id: `quiz-${item.id}`,
     type: 'quiz',
     title: item.title || '',
-    snippet: shortText(String((item.contentPayload as Record<string, unknown>).description || '')),
+    snippet: shortText(extractMaterialSearchText(item.contentPayload)),
     href: buildSearchDetailHref(`quiz-${item.id}`, 'quiz', q),
     targetHref: '/exam/papers',
     meta: '题库',

@@ -1,6 +1,8 @@
 import prisma from '@/lib/prisma'
 import { MaterialType, QuestionTemplate } from '@prisma/client'
 import { getMaterialDisplayTitle } from './material-title'
+import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 
 type JsonRecord = Record<string, unknown>
 
@@ -35,6 +37,17 @@ function asNumber(value: unknown, fallback = 0): number {
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter(item => typeof item === 'string') as string[]
+}
+
+function asChapterArray(value: unknown) {
+  return asArray<JsonRecord>(value)
+    .map((item, index) => ({
+      id: asString(item.id) || `chapter-${index + 1}`,
+      title: asString(item.title) || `第 ${index + 1} 页`,
+      text: asString(item.text) || '',
+      href: asString(item.href) || '',
+    }))
+    .filter(item => item.text.trim())
 }
 
 export function toMaterialId(type: MaterialType, legacyId: string): string {
@@ -106,6 +119,18 @@ export function normalizeQuestionContext(
   return context || prompt || '（未填写语境句）'
 }
 
+const buildMaterialLookupIds = (type: MaterialType, id: string) => {
+  const trimmedId = id.trim()
+  const legacyId = toLegacyMaterialId(trimmedId)
+  return Array.from(
+    new Set(
+      [trimmedId, legacyId, toMaterialId(type, legacyId)]
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  )
+}
+
 export function materialDialogueItems(contentPayload: unknown) {
   return asArray<JsonRecord>(asRecord(contentPayload).dialogues).map(
     (item, index) => ({
@@ -118,9 +143,53 @@ export function materialDialogueItems(contentPayload: unknown) {
   )
 }
 
+const buildVocabularyMetaMapForText = async (text: string, sourceIds: string[]) => {
+  const rows = await prisma.vocabulary.findMany({
+    where: {
+      OR: [
+        { sourceType: 'ARTICLE_TEXT', sourceId: { in: sourceIds } },
+        { pronunciations: { not: null } },
+        { meanings: { not: null } },
+      ],
+    },
+    select: {
+      word: true,
+      pronunciations: true,
+      partsOfSpeech: true,
+      meanings: true,
+      sourceType: true,
+      sourceId: true,
+    },
+  })
+
+  const sourceIdSet = new Set(sourceIds)
+  const aliasMap = buildSurfaceAliasMapForText(
+    text,
+    rows.map(row => row.word),
+  )
+  const matchedBaseWords = new Set(Object.values(aliasMap))
+
+  return rows.reduce<Record<string, ReturnType<typeof toVocabularyMeta>>>(
+    (acc, row) => {
+      if (
+        row.sourceType !== 'ARTICLE_TEXT' ||
+        !sourceIdSet.has(row.sourceId)
+      ) {
+        if (!matchedBaseWords.has(row.word)) return acc
+      }
+      acc[row.word] = toVocabularyMeta(row)
+      return acc
+    },
+    {},
+  )
+}
+
 export async function getArticleByLegacyId(legacyId: string) {
-  const material = await prisma.material.findUnique({
-    where: { id: toMaterialId(MaterialType.READING, legacyId) },
+  const material = await prisma.material.findFirst({
+    where: {
+      type: MaterialType.READING,
+      id: { in: buildMaterialLookupIds(MaterialType.READING, legacyId) },
+    },
     include: {
       collectionMaterials: {
         take: 1,
@@ -150,6 +219,12 @@ export async function getArticleByLegacyId(legacyId: string) {
 
   const payload = asRecord(material.contentPayload)
   const category = material.collectionMaterials[0]?.collection
+  const legacyMaterialId = toLegacyMaterialId(material.id)
+  const materialText = asString(payload.text) || asString(payload.transcript) || ''
+  const vocabularyMetaMap = await buildVocabularyMetaMapForText(
+    materialText,
+    [legacyMaterialId, material.id],
+  )
 
   return {
     id: legacyId,
@@ -159,7 +234,12 @@ export async function getArticleByLegacyId(legacyId: string) {
       material.contentPayload,
       legacyId,
     ),
-    content: asString(payload.text) || asString(payload.transcript) || '',
+    content: materialText,
+    sourceKind: asString(payload.sourceKind),
+    author: asString(payload.author),
+    description: asString(payload.description),
+    chapters: asChapterArray(payload.chapters),
+    vocabularyMetaMap,
     category: category ? { name: category.title } : null,
     questions: material.questions.map(question => {
       const content = asRecord(question.content)
@@ -219,6 +299,9 @@ export async function listReadingMaterials() {
       ),
       description: asString(payload.description),
       content: asString(payload.text) || asString(payload.transcript) || '',
+      sourceKind: asString(payload.sourceKind),
+      author: asString(payload.author),
+      chapterCount: asChapterArray(payload.chapters).length,
       paper: category
         ? {
             id: category.id,

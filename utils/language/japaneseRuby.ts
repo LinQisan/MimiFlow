@@ -1,4 +1,3 @@
-const KANA_REGEX = /[\u3040-\u30ffー]/
 const KANJI_REGEX = /[\u4e00-\u9fff]/
 
 const escapeHtml = (text: string) =>
@@ -9,7 +8,6 @@ const escapeHtml = (text: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
-const isKanaChar = (ch: string) => KANA_REGEX.test(ch)
 const isKanjiChar = (ch: string) => KANJI_REGEX.test(ch)
 const hasKanji = (text: string) => KANJI_REGEX.test(text)
 const hasJapanese = (text: string) => /[\u3040-\u30ffー\u4e00-\u9fff]/.test(text)
@@ -65,7 +63,7 @@ export const buildJapaneseRubyHtml = (
     : ''
   const rtClass = options?.rtClassName ? ` class="${options.rtClassName}"` : ''
   const buildRuby = (base: string, pron: string) =>
-    `<ruby${rubyClass}>${escapeHtml(base)}<rt${rtClass}>${escapeHtml(pron)}</rt></ruby>`
+    `<ruby${rubyClass}>${escapeHtml(base)}<rt${rtClass} aria-hidden="true" data-context-ignore="true">${escapeHtml(pron)}</rt></ruby>`
 
   const tryBuildFromMixedTokens = () => {
     const tokens = splitPronunciationTokens(cleanPron)

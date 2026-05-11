@@ -21,16 +21,28 @@ export type ExamHubPaperSummary = {
   moduleCount: number
   questionCount: number
   lessonQuestionCount: number
+  listeningSectionCount: number
   quizQuestionCount: number
   attemptCount: number
   attemptCorrectCount: number
   attemptAccuracyPct: number | null
+  manageSections: ExamHubManageSection[]
 }
 
 export type ExamHubLevelSummary = {
   id: string
   title: string
   papers: ExamHubPaperSummary[]
+}
+
+export type ExamHubManageSection = {
+  key: string
+  label: string
+  detail: string
+  materialType: MaterialType
+  questionCount: number
+  materialCount: number
+  sectionNumber: number | null
 }
 
 export const randomPracticeTypeOptions = [
@@ -125,6 +137,118 @@ function toQuestionOrder(
   return fallback
 }
 
+const LISTENING_SECTION_FALLBACK = {
+  key: 'listening',
+  title: '听力',
+  partNumber: null,
+}
+
+function normalizeSectionKey(title: string) {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+function firstString(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+  return ''
+}
+
+function toPositiveInteger(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const normalized = Math.floor(value)
+    return normalized > 0 ? normalized : null
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const match = value.trim().match(/\d+/)
+    if (!match) return null
+    const normalized = Number(match[0])
+    return Number.isFinite(normalized) && normalized > 0
+      ? Math.floor(normalized)
+      : null
+  }
+  return null
+}
+
+function resolveListeningSection({
+  content,
+  payload,
+  metadata,
+  chapterName,
+}: {
+  content: Record<string, unknown>
+  payload: Record<string, unknown>
+  metadata: Record<string, unknown>
+  chapterName?: string | null
+}) {
+  const explicitPart = toPositiveInteger(
+    content.listeningSectionNumber ??
+      content.sectionNumber ??
+      content.partNumber ??
+      content.jlptPartNumber ??
+      content.listeningSectionOrder ??
+      content.sectionOrder ??
+      content.partOrder,
+  )
+  if (explicitPart) {
+    return {
+      key: `listening-part-${explicitPart}`,
+      title: '听力',
+      partNumber: explicitPart,
+    }
+  }
+
+  const title = firstString(
+    content.listeningSectionTitle,
+    content.sectionTitle,
+    content.partTitle,
+    content.jlptPartTitle,
+    payload.listeningSectionTitle,
+    payload.sectionTitle,
+    payload.partTitle,
+    payload.jlptPartTitle,
+    metadata.listeningSectionTitle,
+    metadata.sectionTitle,
+    metadata.partTitle,
+    metadata.jlptPartTitle,
+    content.listeningSection,
+    content.section,
+    content.part,
+    content.jlptPart,
+    payload.listeningSection,
+    payload.section,
+    payload.part,
+    payload.jlptPart,
+    metadata.listeningSection,
+    metadata.section,
+    metadata.part,
+    metadata.jlptPart,
+    chapterName,
+  )
+
+  if (!title) return LISTENING_SECTION_FALLBACK
+  const titlePart = toPositiveInteger(title)
+  if (titlePart && /部分|part|問題|问题|大题/i.test(title)) {
+    return {
+      key: `listening-part-${titlePart}`,
+      title: '听力',
+      partNumber: titlePart,
+    }
+  }
+
+  return {
+    key: normalizeSectionKey(title) || LISTENING_SECTION_FALLBACK.key,
+    title,
+    partNumber: null,
+  }
+}
+
 function buildQuestionView(
   row: {
     id: string
@@ -141,7 +265,9 @@ function buildQuestionView(
   material: {
     id: string
     type: MaterialType
+    chapterName?: string | null
     contentPayload: unknown
+    metadata?: unknown
   },
   fallbackOrder: number,
 ) {
@@ -189,6 +315,12 @@ function buildQuestionView(
 
   if (material.type === MaterialType.LISTENING) {
     const rawDialogues = asArray<Record<string, unknown>>(payload.dialogues)
+    const section = resolveListeningSection({
+      content,
+      payload,
+      metadata: asRecord(material.metadata),
+      chapterName: material.chapterName,
+    })
     const dialogues = rawDialogues.map((item, index) => ({
       id: Number(item.id ?? index + 1),
       text: asString(item.text) || '',
@@ -203,6 +335,9 @@ function buildQuestionView(
       lesson: {
         id: material.id,
         audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+        sectionKey: section.key,
+        sectionTitle: section.title,
+        sectionNumber: section.partNumber,
         dialogues,
       },
     }
@@ -257,9 +392,13 @@ export async function findLevelsWithPapersAndCounts(): Promise<
             select: {
               id: true,
               type: true,
+              chapterName: true,
+              contentPayload: true,
+              metadata: true,
               questions: {
                 select: {
                   id: true,
+                  content: true,
                   attempts: {
                     select: {
                       isCorrect: true,
@@ -291,6 +430,30 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         (sum, item) => sum + item.questions.length,
         0,
       )
+      const listeningSectionKeys = new Set<string>()
+      for (const material of lessonMaterials) {
+        const payload = asRecord(material.contentPayload)
+        const metadata = asRecord(material.metadata)
+        if (material.questions.length === 0) {
+          const section = resolveListeningSection({
+            content: {},
+            payload,
+            metadata,
+            chapterName: material.chapterName,
+          })
+          listeningSectionKeys.add(section.key)
+          continue
+        }
+        for (const question of material.questions) {
+          const section = resolveListeningSection({
+            content: asRecord(question.content),
+            payload,
+            metadata,
+            chapterName: material.chapterName,
+          })
+          listeningSectionKeys.add(section.key)
+        }
+      }
       const quizQuestionCount = quizMaterials.reduce(
         (sum, item) => sum + item.questions.length,
         0,
@@ -299,6 +462,92 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         (sum, item) => sum + item.questions.length,
         0,
       )
+      const listeningSectionRows = Array.from(
+        lessonMaterials
+          .reduce<
+            Map<
+              string,
+              {
+                key: string
+                label: string
+                sectionNumber: number | null
+                questionCount: number
+                materialIds: Set<string>
+              }
+            >
+          >((acc, material) => {
+            const payload = asRecord(material.contentPayload)
+            const metadata = asRecord(material.metadata)
+            const questionRows =
+              material.questions.length > 0 ? material.questions : [{ content: {} }]
+            for (const question of questionRows) {
+              const section = resolveListeningSection({
+                content: asRecord(question.content),
+                payload,
+                metadata,
+                chapterName: material.chapterName,
+              })
+              const current =
+                acc.get(section.key) ||
+                {
+                  key: section.key,
+                  label: section.partNumber
+                    ? `听力部分 ${section.partNumber}`
+                    : section.title,
+                  sectionNumber: section.partNumber,
+                  questionCount: 0,
+                  materialIds: new Set<string>(),
+                }
+              current.questionCount += 'id' in question ? 1 : 0
+              current.materialIds.add(material.id)
+              acc.set(section.key, current)
+            }
+            return acc
+          }, new Map())
+          .values(),
+      ).sort((a, b) => {
+        const aNumber = a.sectionNumber || Number.MAX_SAFE_INTEGER
+        const bNumber = b.sectionNumber || Number.MAX_SAFE_INTEGER
+        if (aNumber !== bNumber) return aNumber - bNumber
+        return a.label.localeCompare(b.label, 'zh-CN')
+      })
+      const manageSections: ExamHubManageSection[] = [
+        ...(quizQuestionCount > 0 || quizMaterials.length > 0
+          ? [
+              {
+                key: 'VOCAB_GRAMMAR',
+                label: '选择部分',
+                detail: `${quizQuestionCount} 题 / ${quizMaterials.length} 模块`,
+                materialType: MaterialType.VOCAB_GRAMMAR,
+                questionCount: quizQuestionCount,
+                materialCount: quizMaterials.length,
+                sectionNumber: null,
+              },
+            ]
+          : []),
+        ...listeningSectionRows.map(section => ({
+          key: `LISTENING:${section.key}`,
+          label: section.label,
+          detail: `${section.questionCount} 题 / ${section.materialIds.size} 音频`,
+          materialType: MaterialType.LISTENING,
+          questionCount: section.questionCount,
+          materialCount: section.materialIds.size,
+          sectionNumber: section.sectionNumber,
+        })),
+        ...(readingQuestionCount > 0 || readingMaterials.length > 0
+          ? [
+              {
+                key: 'READING',
+                label: '阅读部分',
+                detail: `${readingQuestionCount} 题 / ${readingMaterials.length} 篇`,
+                materialType: MaterialType.READING,
+                questionCount: readingQuestionCount,
+                materialCount: readingMaterials.length,
+                sectionNumber: null,
+              },
+            ]
+          : []),
+      ]
 
       const questionCount =
         lessonQuestionCount + quizQuestionCount + readingQuestionCount
@@ -337,10 +586,12 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         moduleCount,
         questionCount,
         lessonQuestionCount,
+        listeningSectionCount: listeningSectionKeys.size,
         quizQuestionCount,
         attemptCount,
         attemptCorrectCount,
         attemptAccuracyPct,
+        manageSections,
       }
     })
     .filter(item => item.questionCount > 0 || item.moduleCount > 0)
@@ -391,6 +642,8 @@ export async function findPaperDetailById(id: string) {
                   id: true,
                   templateType: true,
                   content: true,
+                  prompt: true,
+                  context: true,
                   sortOrder: true,
                 },
               },
@@ -436,19 +689,44 @@ export async function findPaperDetailById(id: string) {
   const lessons = collection.materials
     .map(item => item.material)
     .filter(material => material.type === MaterialType.LISTENING)
-    .map(material => ({
-      id: material.id,
-      materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
-      title: getMaterialDisplayTitle(
-        material.type,
-        material.title,
-        material.contentPayload,
-        material.id,
-      ),
-      questions: material.questions.map(question => ({
-        id: question.id,
-      })),
-    }))
+    .map(material => {
+      const payload = asRecord(material.contentPayload)
+      const metadata = asRecord(material.metadata)
+      return {
+        id: material.id,
+        materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
+        title: getMaterialDisplayTitle(
+          material.type,
+          material.title,
+          material.contentPayload,
+          material.id,
+        ),
+        audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+        questions: material.questions.map((question, index) => {
+          const content = asRecord(question.content)
+          const section = resolveListeningSection({
+            content,
+            payload,
+            metadata,
+            chapterName: material.chapterName,
+          })
+          return {
+            id: question.id,
+            questionType: toLegacyQuestionType({
+              materialType: material.type,
+              templateType: question.templateType,
+              content,
+            }),
+            prompt: question.prompt,
+            contextSentence: question.context,
+            sectionKey: section.key,
+            sectionTitle: section.title,
+            sectionNumber: section.partNumber,
+            order: toQuestionOrder(content, question.sortOrder || index + 1),
+          }
+        }),
+      }
+    })
 
   const passages = collection.materials
     .map(item => item.material)
@@ -522,7 +800,6 @@ export async function getManagePaperEditData(paperId: string) {
 
   const materials = collection.materials.map(relation => {
     const material = relation.material
-    const contentPayload = asRecord(material.contentPayload)
     return {
       id: material.id,
       materialType: material.type,
@@ -537,6 +814,17 @@ export async function getManagePaperEditData(paperId: string) {
       questions: material.questions.map((row, index) => {
         const content = asRecord(row.content)
         const answerIds = new Set(toAnswerIds(row.answer))
+        const payload = asRecord(material.contentPayload)
+        const metadata = asRecord(material.metadata)
+        const listeningSection =
+          material.type === MaterialType.LISTENING
+            ? resolveListeningSection({
+                content,
+                payload,
+                metadata,
+                chapterName: material.chapterName,
+              })
+            : null
         const options = asArray<Record<string, unknown>>(row.options).map(
           (item, optionIndex) => {
             const id = asString(item.id) || `opt_${optionIndex + 1}`
@@ -558,6 +846,11 @@ export async function getManagePaperEditData(paperId: string) {
           prompt: row.prompt || '',
           contextSentence: row.context || asString(content.contextSentence) || '',
           explanation: row.analysis || asString(content.explanation) || '',
+          listeningSectionTitle: listeningSection?.title || '',
+          listeningSectionKey: listeningSection?.key || '',
+          listeningSectionNumber: listeningSection?.partNumber
+            ? String(listeningSection.partNumber)
+            : '',
           sortOrder: toQuestionOrder(content, row.sortOrder || index + 1),
           options,
         }

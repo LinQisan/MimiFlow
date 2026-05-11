@@ -117,7 +117,7 @@ app/          ルートと server actions
 components/   共通 UI
 context/      グローバル Provider
 hooks/        設定/計測 hooks
-prisma/       schema・migration・ローカル DB
+prisma/       schema・ローカル DB
 utils/        テキスト/言語処理
 ```
 

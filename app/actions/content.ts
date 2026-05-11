@@ -175,6 +175,74 @@ const normalizeOptions = (
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'
 
+const scoreVocabularyCandidate = (
+  normalizedWord: string,
+  targetKeys: Set<string>,
+  candidateWord: string,
+) => {
+  const candidateKeys = buildVocabularyCanonicalKeys(candidateWord)
+  const intersectCount = candidateKeys.filter(key => targetKeys.has(key)).length
+  if (intersectCount === 0) return -1
+
+  const lengthScore = Math.max(
+    0,
+    6 - Math.abs(candidateWord.length - normalizedWord.length),
+  )
+
+  return intersectCount * 10 + lengthScore
+}
+
+const buildVocabularyCandidateTerms = (normalizedWord: string) =>
+  Array.from(
+    new Set(
+      [normalizedWord, ...buildVocabularyCanonicalKeys(normalizedWord)]
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  )
+
+const findExistingVocabularyCandidate = async (normalizedWord: string) => {
+  const targetKeys = new Set(buildVocabularyCanonicalKeys(normalizedWord))
+  if (targetKeys.size === 0) return null
+
+  const candidateTerms = buildVocabularyCandidateTerms(normalizedWord)
+  const startsWithTerms = candidateTerms
+    .filter(item => item.length >= 2)
+    .slice(0, 8)
+
+  const candidates = await prisma.vocabulary.findMany({
+    where: {
+      OR: [
+        { word: normalizedWord },
+        ...candidateTerms.map(term => ({ word: term })),
+        ...startsWithTerms.map(term => ({
+          word: { startsWith: term },
+        })),
+      ],
+    },
+    take: 80,
+    orderBy: { createdAt: 'desc' },
+  })
+
+  let bestCandidate: (typeof candidates)[number] | null = null
+  let bestScore = -1
+
+  for (const candidate of candidates) {
+    const score = scoreVocabularyCandidate(
+      normalizedWord,
+      targetKeys,
+      candidate.word,
+    )
+    if (score < 0) continue
+    if (!bestCandidate || score > bestScore) {
+      bestCandidate = candidate
+      bestScore = score
+    }
+  }
+
+  return bestCandidate
+}
+
 const normalizeSentenceKey = (text: string) =>
   text
     .normalize('NFKC')
@@ -362,10 +430,16 @@ const resolveVocabularySourceMeta = async (
   }
 
   if (sourceType === 'ARTICLE_TEXT') {
-    const material = await prisma.material.findUnique({
-      where: { id: `passage:${sourceId}` },
-      select: { id: true, title: true },
-    })
+    const materialId = await resolveMaterialIdByLegacy(
+      MaterialType.READING,
+      sourceId,
+    )
+    const material = materialId
+      ? await prisma.material.findUnique({
+          where: { id: materialId },
+          select: { id: true, title: true },
+        })
+      : null
     if (material) {
       return {
         source: `阅读：${material.title}`,
@@ -742,6 +816,7 @@ type EditableQuizQuestionInput = {
   contextSentence?: string | null
   targetWord?: string | null
   explanation?: string | null
+  listeningSectionNumber?: string | null
   options?: EditableQuizOptionInput[]
 }
 
@@ -802,17 +877,38 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
             : '（未填写语境句）')
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
+        const listeningSectionNumberText = String(
+          question.listeningSectionNumber || '',
+        ).trim()
+        let listeningSectionNumber: number | null = null
+        if (listeningSectionNumberText) {
+          const parsedNumber = Number(listeningSectionNumberText)
+          if (!Number.isFinite(parsedNumber) || parsedNumber < 1) {
+            throw new Error('听力所属部分请填写大于 0 的数字。')
+          }
+          listeningSectionNumber = Math.floor(parsedNumber)
+        }
 
         const normalizedOptions = normalizeOptions(question.options)
+        const baseContent = toQuestionRecordPayload(
+          questionType,
+          promptText || null,
+          normalizedContext,
+          targetWord,
+          explanation,
+        )
         const nextQuestionData = {
           templateType: toTemplateType(questionType),
-          content: toQuestionRecordPayload(
-            questionType,
-            promptText || null,
-            normalizedContext,
-            targetWord,
-            explanation,
-          ),
+          content:
+            questionType === QuestionType.LISTENING
+              ? {
+                  ...baseContent,
+                  listeningSectionNumber,
+                  sectionNumber: listeningSectionNumber,
+                  listeningSectionTitle: '听力',
+                  sectionTitle: '听力',
+                }
+              : baseContent,
           prompt: promptText || null,
           context: normalizedContext,
           analysis: explanation,
@@ -907,17 +1003,38 @@ export async function updateLessonQuestions(
             : '（未填写语境句）')
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
+        const listeningSectionNumberText = String(
+          question.listeningSectionNumber || '',
+        ).trim()
+        let listeningSectionNumber: number | null = null
+        if (listeningSectionNumberText) {
+          const parsedNumber = Number(listeningSectionNumberText)
+          if (!Number.isFinite(parsedNumber) || parsedNumber < 1) {
+            throw new Error('听力所属部分请填写大于 0 的数字。')
+          }
+          listeningSectionNumber = Math.floor(parsedNumber)
+        }
 
         const normalizedOptions = normalizeOptions(question.options)
+        const baseContent = toQuestionRecordPayload(
+          questionType,
+          promptText || null,
+          normalizedContext,
+          targetWord,
+          explanation,
+        )
         const nextQuestionData = {
           templateType: toTemplateType(questionType),
-          content: toQuestionRecordPayload(
-            questionType,
-            promptText || null,
-            normalizedContext,
-            targetWord,
-            explanation,
-          ),
+          content:
+            questionType === QuestionType.LISTENING
+              ? {
+                  ...baseContent,
+                  listeningSectionNumber,
+                  sectionNumber: listeningSectionNumber,
+                  listeningSectionTitle: '听力',
+                  sectionTitle: '听力',
+                }
+              : baseContent,
           prompt: promptText || null,
           context: normalizedContext,
           analysis: explanation,
@@ -963,7 +1080,8 @@ export async function updateLessonQuestions(
     return { success: true }
   } catch (error) {
     console.error('updateLessonQuestions failed:', error)
-    return { success: false, message: '保存失败，请稍后重试。' }
+    const message = error instanceof Error ? error.message : '保存失败，请稍后重试。'
+    return { success: false, message }
   }
 }
 
@@ -1062,33 +1180,7 @@ export async function saveVocabulary(
     })
 
     if (!exists) {
-      const targetKeys = new Set(buildVocabularyCanonicalKeys(normalizedWord))
-      if (targetKeys.size > 0) {
-        const candidates = await prisma.vocabulary.findMany()
-
-        let bestCandidate: (typeof candidates)[number] | null = null
-        let bestScore = -1
-        for (const candidate of candidates) {
-          const candidateKeys = buildVocabularyCanonicalKeys(candidate.word)
-          const intersectCount = candidateKeys.filter(key =>
-            targetKeys.has(key),
-          ).length
-          if (intersectCount === 0) continue
-          const lengthScore = Math.max(
-            0,
-            6 - Math.abs(candidate.word.length - normalizedWord.length),
-          )
-          const score = intersectCount * 10 + lengthScore
-          if (!bestCandidate || score > bestScore) {
-            bestCandidate = candidate
-            bestScore = score
-          }
-        }
-
-        if (bestCandidate) {
-          exists = bestCandidate
-        }
-      }
+      exists = await findExistingVocabularyCandidate(normalizedWord)
     }
 
     if (exists) {
@@ -1709,8 +1801,8 @@ export async function deleteArticle(passageId: string) {
     }
 
     return { success: true, message: '删除成功' }
-  } catch (error: any) {
-    console.error('删除文章时发生未知错误:', error)
+  } catch (error: unknown) {
+    console.error('删除文章时发生未知错误:', getErrorMessage(error), error)
     return { success: false, message: '服务器内部错误，删除失败' }
   }
 }
@@ -1756,8 +1848,8 @@ export async function submitQuizAttempts(
     revalidatePath('/')
 
     return { success: true, message: '做题数据已永久保存入库！' }
-  } catch (error: any) {
-    console.error('保存做题数据失败:', error)
+  } catch (error: unknown) {
+    console.error('保存做题数据失败:', getErrorMessage(error), error)
     return { success: false, message: '数据保存失败' }
   }
 }
@@ -1772,8 +1864,8 @@ export async function updateQuestionExplanation(
       data: { analysis: explanation },
     })
     return { success: true, message: '笔记已保存' }
-  } catch (error: any) {
-    console.error('保存笔记失败:', error)
+  } catch (error: unknown) {
+    console.error('保存笔记失败:', getErrorMessage(error), error)
     return { success: false, message: '保存失败' }
   }
 }
@@ -1790,8 +1882,8 @@ export async function updateQuestionNote(questionId: string, note: string) {
       data: { note: normalizedNote || null },
     })
     return { success: true, message: '笔记已保存' }
-  } catch (error: any) {
-    console.error('保存题目笔记失败:', error)
+  } catch (error: unknown) {
+    console.error('保存题目笔记失败:', getErrorMessage(error), error)
     return { success: false, message: '保存失败' }
   }
 }
@@ -1869,7 +1961,7 @@ export async function searchSentencesForWord(word: string) {
     })
 
     return { success: true, data: dedupeAndRankSentences(results, 12) }
-  } catch (error) {
+  } catch {
     return { success: false, data: [] }
   }
 }
@@ -1912,7 +2004,7 @@ export async function addVocabularySentence(
       message: '例句已添加',
       sentences: await listVocabularySentenceRecords(id),
     }
-  } catch (error) {
+  } catch {
     return { success: false, message: '添加失败' }
   }
 }
@@ -2144,7 +2236,7 @@ export async function moveVocabularyToGroup(id: string, newGroupName: string) {
       data: { groupName: newGroupName },
     })
     return { success: true, message: '移动成功' }
-  } catch (error) {
+  } catch {
     return { success: false, message: '移动失败' }
   }
 }

@@ -2,6 +2,7 @@
 
 import { guessLanguageCode } from '@/utils/language/langDetector'
 import { buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
+import TrustedHtml from '@/components/ui/TrustedHtml'
 
 export default function WordPronunciation({
   word,
@@ -37,6 +38,10 @@ export default function WordPronunciation({
   const hasKanaInPron = /[\u3040-\u30ff]/.test(pron)
   const isJapaneseWord = hasKana || hasKanaInPron || lang === 'ja'
   const isChineseWord = lang === 'zh' && !isJapaneseWord
+  const renderMeanings = () =>
+    shouldShowMeaning ? (
+      <div className={meaningClassName}>{parsedMeanings.join(' / ')}</div>
+    ) : null
   const baseWordClass = isJapaneseWord
     ? `font-word-ja ${wordClassName}`.trim()
     : lang === 'en'
@@ -48,17 +53,25 @@ export default function WordPronunciation({
   // 仅对日语词（含汉字）使用 ruby；中文词保留普通注音展示，避免错误注音布局。
   if (hasKanji && isJapaneseWord) {
     if (!shouldShowHint) {
-      return <div className={baseWordClass}>{word}</div>
+      return (
+        <div>
+          <div className={baseWordClass}>{word}</div>
+          {renderMeanings()}
+        </div>
+      )
     }
     const rubyHtml = buildJapaneseRubyHtml(word, pron, {
       rubyClassName: 'jp-ruby',
       rtClassName: `jp-ruby-rt ${hintClassName}`.trim(),
     })
     return (
-      <span
-        className={baseWordClass}
-        dangerouslySetInnerHTML={{ __html: rubyHtml }}
-      />
+      <div>
+        <TrustedHtml
+          className={baseWordClass}
+          html={rubyHtml}
+        />
+        {renderMeanings()}
+      </div>
     )
   }
 
@@ -67,6 +80,7 @@ export default function WordPronunciation({
       <div>
         <div className={baseWordClass}>{word}</div>
         {shouldShowHint && <div className={hintClassName}>/{pron}/</div>}
+        {renderMeanings()}
       </div>
     )
   }
@@ -76,6 +90,7 @@ export default function WordPronunciation({
       <div>
         {shouldShowHint && <div className={hintClassName}>{pron}</div>}
         <div className={baseWordClass}>{word}</div>
+        {renderMeanings()}
       </div>
     )
   }
@@ -85,11 +100,15 @@ export default function WordPronunciation({
       <div>
         <div className={baseWordClass}>{word}</div>
         <div className={hintClassName}>{pron}</div>
+        {renderMeanings()}
       </div>
     )
   }
 
   return (
-    <div className={baseWordClass}>{word}</div>
+    <div>
+      <div className={baseWordClass}>{word}</div>
+      {renderMeanings()}
+    </div>
   )
 }

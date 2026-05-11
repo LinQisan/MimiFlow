@@ -27,6 +27,8 @@ export type ExamQuestion = {
   lesson?: {
     id?: string
     audioFile?: string | null
+    sectionKey?: string | null
+    sectionTitle?: string | null
     dialogues?: {
       id: number
       text: string

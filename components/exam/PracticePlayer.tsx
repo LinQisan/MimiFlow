@@ -166,6 +166,12 @@ export function PracticePlayer({
   const buildCopyPayload = (question: ExamQuestion, questionIndex: number) => {
     const sections: string[] = []
     sections.push(`第 ${questionIndex + 1} 题`)
+    if (question.lesson?.sectionTitle) {
+      sections.push(`听力部分：${question.lesson.sectionTitle}`)
+    }
+    if (question.lesson?.audioFile) {
+      sections.push(`音频：${question.lesson.audioFile}`)
+    }
 
     const context = (question.contextSentence || '').trim()
     const prompt = (question.prompt || '').trim()
@@ -251,6 +257,11 @@ export function PracticePlayer({
         <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
           <div className='max-w-full truncate text-sm font-bold tracking-tight text-slate-900 md:max-w-none md:text-lg'>
             {paperTitle}
+            {currentQuestion.lesson?.sectionTitle && (
+              <span className='ml-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-slate-600 md:text-xs'>
+                {currentQuestion.lesson.sectionTitle}
+              </span>
+            )}
           </div>
 
           {!isSingleMode && (

@@ -1,48 +1,50 @@
 // hooks/useTextSelection.ts
 import { SourceType } from '@prisma/client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import {
+  cleanInlineSelectionText,
+  getCleanElementText,
+  getCleanSelectionText,
+} from '@/utils/text/selection'
 
 export interface SelectionState {
   text: string
   x: number
   y: number
+  rects: Array<{
+    top: number
+    left: number
+    width: number
+    height: number
+  }>
   isVisible: boolean
   isTop: boolean
   contextSentence: string
-  // 💡 修改 1：允许初始状态为空字符串
   sourceType: SourceType | ''
   sourceId: string
 }
 
 export function useTextSelection() {
+  const selectedRangeRef = useRef<Range | null>(null)
   const [selection, setSelection] = useState<SelectionState>({
     text: '',
     x: 0,
     y: 0,
+    rects: [],
     isVisible: false,
     isTop: true,
     contextSentence: '',
-    sourceType: '', // 现在这里不会报错了
+    sourceType: '',
     sourceId: '',
   })
 
   useEffect(() => {
-    const normalizeContextText = (value: string) =>
-      value.replace(/\s+/g, ' ').trim()
-
     const extractCleanTextFromElement = (element: HTMLElement | null) => {
-      if (!element) return ''
-      const clone = element.cloneNode(true) as HTMLElement
-      clone
-        .querySelectorAll(
-          'rt, button, textarea, input, select, option, [data-context-ignore]',
-        )
-        .forEach(node => node.remove())
-      return normalizeContextText(clone.textContent || '')
+      return getCleanElementText(element)
     }
 
     const resolveContextText = (element: HTMLElement | null, fallback: string) => {
-      if (!element) return normalizeContextText(fallback)
+      if (!element) return cleanInlineSelectionText(fallback)
       const explicitSentence =
         element.closest('[data-context-sentence]') ||
         element.querySelector('[data-context-sentence]')
@@ -51,18 +53,34 @@ export function useTextSelection() {
       )
       if (explicitText) return explicitText
       const cleaned = extractCleanTextFromElement(element)
-      return cleaned || normalizeContextText(fallback)
+      return cleaned || cleanInlineSelectionText(fallback)
     }
 
     const extractSelectedText = (windowSelection: Selection) => {
-      if (windowSelection.rangeCount === 0) return ''
-      const range = windowSelection.getRangeAt(0)
-      const fragment = range.cloneContents()
+      return getCleanSelectionText(windowSelection)
+    }
 
-      // 划词结果里不包含 <rt> 注音，避免 WordTooltip 词条被注音污染。
-      fragment.querySelectorAll('rt').forEach(node => node.remove())
+    const getRangeRects = (range: Range) =>
+      Array.from(range.getClientRects())
+        .map(rect => ({
+          top: rect.top,
+          left: rect.left,
+          width: rect.width,
+          height: rect.height,
+        }))
+        .filter(rect => rect.width > 0 && rect.height > 0)
 
-      return (fragment.textContent || '').trim()
+    const restoreSelectedRange = (expectedText: string) => {
+      const range = selectedRangeRef.current
+      if (!range) return
+      window.requestAnimationFrame(() => {
+        const windowSelection = window.getSelection()
+        if (!windowSelection) return
+        const currentText = extractSelectedText(windowSelection)
+        if (currentText === expectedText) return
+        windowSelection.removeAllRanges()
+        windowSelection.addRange(range)
+      })
     }
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -74,6 +92,7 @@ export function useTextSelection() {
       if (text && text.length > 0 && text.length <= 30) {
         const range = windowSelection!.getRangeAt(0)
         const rect = range.getBoundingClientRect()
+        selectedRangeRef.current = range.cloneRange()
 
         const container = range.commonAncestorContainer
         const element =
@@ -89,9 +108,9 @@ export function useTextSelection() {
           text,
           x: rect.left + rect.width / 2,
           y: rect.top,
+          rects: getRangeRects(range),
           isVisible: true,
           isTop: rect.top > 250,
-          // 💡 修改 2：使用 as SourceType 强转，且找不到时 fallback 回空字符串而不是 'UNKNOWN'
           sourceType:
             (sourceNode?.getAttribute('data-source-type') as SourceType) || '',
           sourceId: sourceNode?.getAttribute('data-source-id') || '',
@@ -100,8 +119,10 @@ export function useTextSelection() {
             text,
           ),
         })
+        restoreSelectedRange(text)
       } else {
-        setSelection(prev => ({ ...prev, isVisible: false }))
+        selectedRangeRef.current = null
+        setSelection(prev => ({ ...prev, rects: [], isVisible: false }))
       }
     }
 
@@ -119,6 +140,7 @@ export function useTextSelection() {
           ...prev,
           x: rect.left + rect.width / 2,
           y: rect.top,
+          rects: getRangeRects(range),
           isTop: rect.top > 250,
         }
       })
@@ -126,7 +148,14 @@ export function useTextSelection() {
 
     const handleMouseDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('.ui-pop')) return
-      setSelection(prev => (prev.isVisible ? { ...prev, isVisible: false } : prev))
+      const windowSelection = window.getSelection()
+      if (!windowSelection || windowSelection.rangeCount === 0) return
+      const text = extractSelectedText(windowSelection)
+      if (text) return
+      selectedRangeRef.current = null
+      setSelection(prev =>
+        prev.isVisible ? { ...prev, rects: [], isVisible: false } : prev,
+      )
     }
 
     document.addEventListener('mouseup', handleMouseUp)
@@ -141,8 +170,10 @@ export function useTextSelection() {
     }
   }, [])
 
-  const closeSelection = () =>
-    setSelection(prev => ({ ...prev, isVisible: false }))
+  const closeSelection = () => {
+    selectedRangeRef.current = null
+    setSelection(prev => ({ ...prev, rects: [], isVisible: false }))
+  }
 
   return { selection, closeSelection }
 }

@@ -158,9 +158,6 @@ const DEFAULT_TYPE_CONFIG: BadgeConfig = {
     'bg-gray-50 text-gray-500 border-gray-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
 }
 
-const BLANK_REGEX =
-  /([（(][\s　]*[）)]|__{2,}|～|[＿_★＊][＿_★＊\s　]+[＿_★＊]|[★＊])/
-
 const getDifficultyBadge = (attempts?: QuestionAttempt[]): BadgeConfig => {
   if (!attempts?.length) return DIFFICULTY_BADGES.new
 

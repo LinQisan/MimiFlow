@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type PracticeOptionLike = {
   id: string
@@ -25,8 +25,11 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   >({})
   const questionEnterAtRef = useRef<number>(0)
 
-  const getCorrectOptionId = (question: TQuestion) =>
-    question.options?.find(option => option.isCorrect)?.id
+  const getCorrectOptionId = useCallback(
+    (question: TQuestion) =>
+      question.options?.find(option => option.isCorrect)?.id,
+    [],
+  )
 
   const answeredCount = Object.keys(answers).length
 
@@ -38,12 +41,12 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
         if (answers[question.id] !== correctId) acc.push(index)
         return acc
       }, []),
-    [questions, answers],
+    [questions, answers, getCorrectOptionId],
   )
 
   const gradableCount = useMemo(
     () => questions.filter(question => !!getCorrectOptionId(question)).length,
-    [questions],
+    [questions, getCorrectOptionId],
   )
 
   const wrongCount = wrongIndexes.length

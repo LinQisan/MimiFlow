@@ -31,8 +31,9 @@ export async function getMoreExamples(word: string, excludeDialogueId: number) {
         },
       })),
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('搜索例句失败:', error)
-    return { success: false, message: error.message }
+    const message = error instanceof Error ? error.message : '搜索例句失败'
+    return { success: false, message }
   }
 }

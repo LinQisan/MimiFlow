@@ -116,7 +116,7 @@ app/          路由与 server actions
 components/   通用组件
 context/      全局 Provider
 hooks/        偏好/遥测 hooks
-prisma/       schema/迁移/本地数据库
+prisma/       schema/本地数据库
 utils/        文本与语言工具函数
 ```
 

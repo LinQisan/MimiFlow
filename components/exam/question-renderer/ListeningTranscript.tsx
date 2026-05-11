@@ -7,6 +7,7 @@ import type {
   ExamQuestion,
   ExamQuestionOption,
 } from './types'
+import { formatMediaTime } from '@/utils/time/format'
 
 type DialogueLine =
   NonNullable<NonNullable<ExamQuestion['lesson']>['dialogues']>[number]
@@ -17,14 +18,6 @@ type ListeningTranscriptProps = {
   options?: ExamQuestionOption[]
   audioRef: React.RefObject<HTMLAudioElement | null>
   annotation: ExamAnnotationSettings
-}
-
-const formatTime = (sec: number) => {
-  if (!Number.isFinite(sec)) return '00:00'
-  const total = Math.max(0, Math.floor(sec))
-  const m = String(Math.floor(total / 60)).padStart(2, '0')
-  const s = String(total % 60).padStart(2, '0')
-  return `${m}:${s}`
 }
 
 export function ListeningTranscript({
@@ -188,7 +181,7 @@ export function ListeningTranscript({
                   : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
               }`}>
               <div className='mb-1 text-[11px] font-medium text-slate-400'>
-                {formatTime(line.start)} - {formatTime(line.end)}
+                {formatMediaTime(line.start)} - {formatMediaTime(line.end)}
               </div>
               <div
                 className='text-[15px] leading-7 text-slate-800'

@@ -185,17 +185,22 @@ html.theme-switching *::after {
   white-space: nowrap;
 }
 
-.media-subtitle-text,
-.media-subtitle-text .jp-ruby {
+.jp-ruby,
+ruby {
   -webkit-user-select: text;
   user-select: text;
 }
 
-.media-subtitle-text .jp-ruby-rt,
-.media-subtitle-text rt {
+.jp-ruby-rt,
+rt {
   -webkit-user-select: none;
   user-select: none;
   pointer-events: none;
+}
+
+.jp-ruby-rt::selection,
+rt::selection {
+  background: transparent;
 }
 
 .ui-btn {

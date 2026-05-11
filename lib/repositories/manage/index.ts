@@ -27,8 +27,8 @@ type UploadPageCollectionLite = {
 }
 
 function toCollectionTypeLabel(type: CollectionType) {
-  if (type === CollectionType.PAPER) return '试卷'
-  if (type === CollectionType.CUSTOM_GROUP) return '分组'
+  if (type === CollectionType.PAPER) return '正式试卷'
+  if (type === CollectionType.CUSTOM_GROUP) return '普通集合'
   return '收藏夹'
 }
 
@@ -106,9 +106,9 @@ export async function getUploadPageSeedData(): Promise<{
   })
 
   const dbLevels: UploadPageLevelLite[] = [
-    { id: CollectionType.PAPER, title: '试卷（PAPER）' },
-    { id: CollectionType.CUSTOM_GROUP, title: '分组（CUSTOM_GROUP）' },
-    { id: CollectionType.FAVORITES, title: '收藏夹（FAVORITES）' },
+    { id: CollectionType.PAPER, title: '正式试卷 - 真题 / 模考' },
+    { id: CollectionType.CUSTOM_GROUP, title: '普通集合 - 教材 / 自定义练习' },
+    { id: CollectionType.FAVORITES, title: '收藏夹 - 临时归类 / 精选内容' },
   ]
 
   const collectionIds = collections.map(item => item.id)

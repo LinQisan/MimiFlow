@@ -6,7 +6,7 @@ import { updateQuestionExplanation } from '@/app/actions/content'
 type QuizQuestion = {
   id: string
   explanation?: string | null
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export function useQuizExplanation(
