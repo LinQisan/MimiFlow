@@ -4,13 +4,13 @@ This project uses Next.js route groups to keep source routes semantic without
 changing public URLs.
 
 - `(home)`: dashboard and first-screen entry points.
-- `(study)`: active learning flows, practice, review, retry, shadowing, and exams.
+- `(study)`: active learning flows for listening, practice, and the memory/mistake review center.
 - `(knowledge)`: reusable knowledge systems such as vocabulary, wordbooks, and grammar.
-- `(library)`: browsable content libraries such as articles, ebooks, media subtitles, and collections.
-- `(tools)`: supporting utilities such as search, Anki import, and settings.
-- `(admin)`: operational management screens such as uploads, audio management, paper management, and FSRS admin.
+- `(library)`: browsable reading and subtitle libraries.
+- `(tools)`: supporting utilities such as global search.
+- `(admin)`: the `/manage` operations area for imports, listening, practice, vocabulary, collections, search results, audio, and review settings.
 - `actions`: shared server actions used across route groups.
 - `api`: route handlers.
 
 Route group names in parentheses are omitted from the URL. For example,
-`app/(study)/shadowing/page.tsx` still serves `/shadowing`.
+`app/(study)/listening/page.tsx` still serves `/listening`.

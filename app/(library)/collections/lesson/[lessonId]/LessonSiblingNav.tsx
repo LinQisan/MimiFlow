@@ -7,7 +7,7 @@ import {
   SortableItem,
   DragHandle,
 } from '@/app/(library)/collections/DndSystem'
-import { updateSortOrder } from '@/app/actions/content'
+import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 
 type SiblingLesson = {
@@ -19,7 +19,7 @@ type SiblingLesson = {
 export default function LessonSiblingNav({
   lessons,
   currentLessonId,
-  hrefBase = '/collections/lesson',
+  hrefBase = '/manage/collections/lesson',
 }: {
   lessons: SiblingLesson[]
   currentLessonId: string

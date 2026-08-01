@@ -8,6 +8,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "node --test scripts/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "clean:next": "rm -rf .next",
     "postinstall": "prisma generate",

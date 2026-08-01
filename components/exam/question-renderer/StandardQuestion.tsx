@@ -15,6 +15,7 @@ type StandardQuestionProps = {
   currentAnswer?: string
   onSelect: OnSelectOption
   isSubmitted?: boolean
+  isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -35,6 +36,7 @@ export function StandardQuestion({
   currentAnswer,
   onSelect,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
   annotation,
 }: StandardQuestionProps) {
@@ -61,6 +63,7 @@ export function StandardQuestion({
           currentAnswer={currentAnswer}
           onSelect={onSelect}
           isSubmitted={isSubmitted}
+          isInteractionLocked={isInteractionLocked}
           isJapanesePaper={isJapanesePaper}
           annotation={annotation}
         />
@@ -80,6 +83,7 @@ export function StandardQuestion({
           onSelect={onSelect}
           sourceId={question.id}
           isSubmitted={isSubmitted}
+          isInteractionLocked={isInteractionLocked}
           isJapanesePaper={isJapanesePaper}
           annotation={annotation}
         />
@@ -172,6 +176,7 @@ export function StandardQuestion({
         onSelect={onSelect}
         sourceId={question.id}
         isSubmitted={isSubmitted}
+        isInteractionLocked={isInteractionLocked}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />

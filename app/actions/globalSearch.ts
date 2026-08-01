@@ -9,7 +9,7 @@ import {
   toLegacyMaterialId,
 } from '@/lib/repositories/materials'
 import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-index'
-import { MaterialType } from '@prisma/client'
+import { MaterialType, QuestionType } from '@prisma/client'
 import { Prisma } from '@prisma/client'
 import {
   asNumberOrDefault,
@@ -322,7 +322,6 @@ export async function searchGlobalContent(
 
     const focusParams = new URLSearchParams()
     focusParams.set('focus', item.id)
-    if (item.groupName) focusParams.set('group', item.groupName)
     focusParams.set('q', item.word)
 
     return {
@@ -367,7 +366,7 @@ export async function searchGlobalContent(
       title: item.title?.trim() || '',
       snippet: displaySnippet,
       href: buildSearchDetailHref(`passage-${item.id}`, 'passage', q),
-      targetHref: '/exam/papers',
+      targetHref: '/practice',
       meta: formatPassageMeta({
         collectionTitle: item.collectionMaterials[0]?.collection.title,
       }),
@@ -381,7 +380,7 @@ export async function searchGlobalContent(
     title: item.title || '',
     snippet: shortText(extractMaterialSearchText(item.contentPayload)),
     href: buildSearchDetailHref(`quiz-${item.id}`, 'quiz', q),
-    targetHref: '/exam/papers',
+    targetHref: '/practice',
     meta: '题库',
     keyword: q,
   }))
@@ -393,7 +392,7 @@ export async function searchGlobalContent(
       title: shortText(normalizeQuestionContext(item.prompt, item.context), 52),
       snippet: shortText(normalizeQuestionContext(item.prompt, item.context), 100),
       href: buildSearchDetailHref(`question-${item.id}`, 'question', q),
-      targetHref: '/exam/papers',
+      targetHref: '/practice',
       meta: item.material?.title || '题目',
       keyword: q,
     }),
@@ -406,7 +405,7 @@ export async function searchGlobalContent(
       title: shortText(item.text, 48),
       snippet: shortText(item.text, 100),
       href: buildSearchDetailHref(`dialogue-legacy:${item.sourceId}`, 'dialogue', q),
-      targetHref: item.sourceUrl || '/shadowing',
+      targetHref: item.sourceUrl || '/listening',
       meta: item.source,
       keyword: q,
     }),
@@ -427,7 +426,7 @@ export async function searchGlobalContent(
           'dialogue',
           q,
         ),
-        targetHref: `/media-subtitles/${toLegacyMaterialId(item.materialId)}?${params.toString()}`,
+        targetHref: `/subtitles/${toLegacyMaterialId(item.materialId)}?${params.toString()}`,
         meta: formatMediaDialogueMeta({
           sourceType: item.subtitleSourceType === 'TV' ? 'TV' : 'MOVIE',
           workTitle: item.workTitle || item.materialTitle,
@@ -471,7 +470,6 @@ export async function getGlobalSearchResultDetail(
     if (!row) return null
     const focusParams = new URLSearchParams()
     focusParams.set('focus', row.id)
-    if (row.groupName) focusParams.set('group', row.groupName)
     focusParams.set('q', row.word)
     return {
       title: row.word,
@@ -508,7 +506,7 @@ export async function getGlobalSearchResultDetail(
     return {
       title: row.title || toLegacyMaterialId(row.id),
       type,
-      targetHref: '/exam/papers',
+      targetHref: '/practice',
       raw: row,
     }
   }
@@ -528,7 +526,7 @@ export async function getGlobalSearchResultDetail(
     return {
       title: row.title || toLegacyMaterialId(row.id),
       type,
-      targetHref: '/exam/papers',
+      targetHref: '/practice',
       raw: row,
     }
   }
@@ -551,7 +549,7 @@ export async function getGlobalSearchResultDetail(
     return {
       title: normalizeQuestionContext(row.prompt, row.context),
       type,
-      targetHref: '/exam/papers',
+      targetHref: '/practice',
       raw: row,
     }
   }
@@ -570,7 +568,7 @@ export async function getGlobalSearchResultDetail(
     return {
       title: rows[0].text,
       type,
-      targetHref: rows[0].sourceUrl || '/shadowing',
+      targetHref: rows[0].sourceUrl || '/listening',
       raw: rows,
     }
   }
@@ -608,7 +606,7 @@ export async function getGlobalSearchResultDetail(
     return {
       title: row.text.trim() || row.material.title || '影视字幕',
       type,
-      targetHref: `/media-subtitles/${toLegacyMaterialId(row.material.id)}?${params.toString()}`,
+      targetHref: `/subtitles/${toLegacyMaterialId(row.material.id)}?${params.toString()}`,
       raw: {
         material: row.material,
         dialogue: row,
@@ -663,17 +661,15 @@ export async function updateGlobalSearchResultDetail(input: {
             | 'ARTICLE_TEXT'
             | 'QUIZ_QUESTION') || 'QUIZ_QUESTION',
           sourceId: asStringOrNull(payload.sourceId) || '',
-          groupName: asStringOrNull(payload.groupName),
           wordAudio: asStringOrNull(payload.wordAudio),
           pronunciations: asStringOrNull(payload.pronunciations),
           partsOfSpeech: asStringOrNull(payload.partsOfSpeech),
           meanings: asStringOrNull(payload.meanings),
-          folderId: asStringOrNull(payload.folderId),
         },
       })
       revalidatePath('/vocabulary')
       revalidatePath('/search')
-      revalidatePath('/search/result')
+      revalidatePath('/manage/search')
       return { success: true, message: '单词数据已保存。' }
     }
 
@@ -701,7 +697,7 @@ export async function updateGlobalSearchResultDetail(input: {
         },
       })
       revalidatePath('/search')
-      revalidatePath('/search/result')
+      revalidatePath('/manage/search')
       return { success: true, message: '句子数据已保存。' }
     }
 
@@ -725,10 +721,10 @@ export async function updateGlobalSearchResultDetail(input: {
         where: { id },
         data: materialUpdateData,
       })
-      revalidatePath('/exam')
-      revalidatePath('/exam/papers')
+      revalidatePath('/practice')
+      revalidatePath('/practice')
       revalidatePath('/search')
-      revalidatePath('/search/result')
+      revalidatePath('/manage/search')
       return { success: true, message: '材料数据已保存。' }
     }
 
@@ -739,6 +735,11 @@ export async function updateGlobalSearchResultDetail(input: {
       await prisma.question.update({
         where: { id },
         data: {
+          questionType:
+            typeof payload.questionType === 'string' &&
+            Object.values(QuestionType).includes(payload.questionType as QuestionType)
+              ? (payload.questionType as QuestionType)
+              : undefined,
           prompt: asStringOrNull(payload.prompt),
           context: asStringOrNull(payload.context),
           content: toJsonValue(payload.content, {}),
@@ -749,10 +750,10 @@ export async function updateGlobalSearchResultDetail(input: {
           sortOrder: asNumberOrDefault(payload.sortOrder, 0),
         },
       })
-      revalidatePath('/exam')
-      revalidatePath('/exam/papers')
+      revalidatePath('/practice')
+      revalidatePath('/practice')
       revalidatePath('/search')
-      revalidatePath('/search/result')
+      revalidatePath('/manage/search')
       return { success: true, message: '题目数据已保存。' }
     }
 

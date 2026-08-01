@@ -108,6 +108,9 @@ export function PracticePlayer({
     currentStats.total > 0
       ? Math.round((currentStats.correct / currentStats.total) * 100)
       : 0
+  const answeredProgress = Math.round(
+    (session.answeredCount / questions.length) * 100,
+  )
 
   const handleSubmit = async () => {
     if (session.isSubmitted || persistState === 'saving') return
@@ -118,11 +121,10 @@ export function PracticePlayer({
     const attempts = questions
       .map(question => {
         const selectedId = session.answers[question.id]
-        const correctId = session.getCorrectOptionId(question)
-        if (!selectedId || !correctId) return null
+        if (!selectedId) return null
         return {
           questionId: question.id,
-          isCorrect: selectedId === correctId,
+          selectedOptionId: selectedId,
           timeSpentMs: Math.max(
             0,
             session.timeSpentByQuestionId[question.id] || 0,
@@ -143,7 +145,10 @@ export function PracticePlayer({
       },
       body: JSON.stringify({ attempts }),
     })
-    const result = (await response.json()) as { success?: boolean }
+    const result = (await response.json()) as {
+      success?: boolean
+      results?: Array<{ questionId: string; isCorrect: boolean }>
+    }
     if (!result.success) {
       setPersistState('error')
       return
@@ -151,7 +156,7 @@ export function PracticePlayer({
 
     setAttemptStatsByQuestion(prev => {
       const next = { ...prev }
-      for (const item of attempts) {
+      for (const item of result.results || []) {
         const current = next[item.questionId] || { total: 0, correct: 0 }
         next[item.questionId] = {
           total: current.total + 1,
@@ -250,33 +255,36 @@ export function PracticePlayer({
 
   return (
     <div
-      className={`relative flex min-h-screen flex-col bg-slate-50 pb-32 font-sans md:pb-24 ${
+      className={`relative flex min-h-screen flex-col bg-slate-50 pb-20 font-sans md:pb-24 ${
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
-      <header className='sticky top-0 z-40 border-b border-slate-200/80 bg-white px-3 py-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:px-8 md:py-4'>
-        <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-          <div className='max-w-full truncate text-sm font-bold tracking-tight text-slate-900 md:max-w-none md:text-lg'>
-            {paperTitle}
-            {currentQuestion.lesson?.sectionTitle && (
-              <span className='ml-2 inline-flex rounded-full bg-slate-100 px-2 py-0.5 align-middle text-[11px] font-semibold text-slate-600 md:text-xs'>
-                {currentQuestion.lesson.sectionTitle}
-              </span>
+      <header className='sticky top-0 z-40 border-b border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+        <div className='mx-auto flex max-w-7xl items-center justify-between gap-3 px-3 py-2.5 md:px-8 md:py-3'>
+          <div className='min-w-0 flex-1'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <h1 className='truncate text-sm font-bold tracking-tight text-slate-900 md:text-base'>
+                {paperTitle}
+              </h1>
+              {currentQuestion.lesson?.sectionTitle && (
+                <span className='hidden shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600 sm:inline-flex'>
+                  {currentQuestion.lesson.sectionTitle}
+                </span>
+              )}
+            </div>
+            {!isSingleMode && (
+              <p className='mt-0.5 truncate text-[11px] font-medium text-slate-500 md:text-xs'>
+                第 {session.currentIndex + 1} 题
+                <span className='hidden sm:inline'>
+                  <span className='mx-1.5 text-slate-300'>·</span>
+                  正确率 {currentStats.total > 0 ? `${currentAccuracy}%` : '--'}
+                  <span className='mx-1.5 text-slate-300'>·</span>
+                  {currentStats.total} 次作答
+                </span>
+              </p>
             )}
           </div>
 
-          {!isSingleMode && (
-            <div className='flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 md:justify-end md:text-sm md:tracking-widest'>
-              <span>- 第 {session.currentIndex + 1} 题 -</span>
-              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold tracking-normal text-slate-700'>
-                正确率 {currentStats.total > 0 ? `${currentAccuracy}%` : '--'}
-              </span>
-              <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold tracking-normal text-slate-700'>
-                做题 {currentStats.total} 次
-              </span>
-            </div>
-          )}
-
-          <div className='flex flex-wrap items-center gap-2 md:justify-end md:gap-3'>
+          <div className='flex shrink-0 items-center gap-1.5 md:gap-2'>
             <ToggleSwitch
               checked={showPronunciation}
               onChange={setShowPronunciation}
@@ -287,32 +295,16 @@ export function PracticePlayer({
               onChange={setShowMeaning}
               label='注释'
             />
-            <div className='rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500 md:px-3 md:text-sm'>
-              进度:{' '}
-              <span className='text-slate-900'>{session.answeredCount}</span> /{' '}
-              {questions.length}
-            </div>
-            <button
-              type='button'
-              onClick={() => void handleCopyCurrentQuestion()}
-              className={`rounded-xl border px-3 py-1.5 text-xs font-bold transition-colors md:px-4 md:py-2 md:text-sm ${
-                copyState === 'copied'
-                  ? 'border-slate-300 bg-slate-100 text-slate-900'
-                  : copyState === 'error'
-                    ? 'border-rose-300 bg-rose-50 text-rose-700'
-                    : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-              }`}>
-              {copyState === 'copied'
-                ? '已复制'
-                : copyState === 'error'
-                  ? '复制失败'
-                  : '复制题目+选项'}
-            </button>
+            {!isSingleMode && (
+              <span className='hidden whitespace-nowrap text-xs font-medium text-slate-500 lg:inline'>
+                已答 {session.answeredCount}/{questions.length}
+              </span>
+            )}
             {mode !== 'single' && (
               <button
                 onClick={() => void handleSubmit()}
                 disabled={session.isSubmitted || persistState === 'saving'}
-                className='ui-btn ui-btn-primary h-10 px-4 text-sm disabled:cursor-not-allowed disabled:opacity-50 md:px-5'>
+                className='ui-btn ui-btn-primary h-9 px-3 text-xs disabled:cursor-not-allowed disabled:opacity-50 md:h-10 md:px-5 md:text-sm'>
                 {session.isSubmitted
                   ? '已交卷'
                   : persistState === 'saving'
@@ -322,18 +314,37 @@ export function PracticePlayer({
             )}
           </div>
         </div>
+        {!isSingleMode && (
+          <div
+            className='h-1 bg-slate-100'
+            role='progressbar'
+            aria-label={`已完成 ${session.answeredCount} / ${questions.length} 题`}
+            aria-valuemin={0}
+            aria-valuemax={questions.length}
+            aria-valuenow={session.answeredCount}>
+            <div
+              className='h-full bg-slate-900 transition-[width] duration-200'
+              style={{ width: `${answeredProgress}%` }}
+            />
+          </div>
+        )}
       </header>
 
       <main
         onMouseDown={handleQuestionAreaMouseDown}
-        className='flex w-full flex-1 flex-col justify-center p-4 md:p-8'>
+        className='flex w-full flex-1 flex-col justify-center px-4 py-5 md:p-8'>
         {session.isSubmitted && (
           <div className='mb-6 rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.3),0_0_0_1px_rgba(15,23,42,0.06),0_4px_10px_rgba(15,23,42,0.03)]'>
             <div className='flex flex-wrap items-center gap-3'>
               <span className='font-semibold'>
-                已交卷：答对 {session.correctCount} / {session.gradableCount}
-                ，错题 {session.wrongCount} 题
+                已提交 {session.submittedCount} 题：答对 {session.correctCount}
+                ，答错 {session.wrongCount}
               </span>
+              {session.unansweredCount > 0 && (
+                <span className='text-slate-500'>
+                  未答 {session.unansweredCount} 题，不计入本次正确率且不显示答案
+                </span>
+              )}
               {session.wrongCount > 0 && (
                 <>
                   <button
@@ -388,7 +399,9 @@ export function PracticePlayer({
           answerMap={session.answers}
           allQuestions={questions}
           onSelect={handleSelectOption}
-          isSubmitted={session.isSubmitted}
+          isSubmitted={session.isQuestionSubmitted(currentQuestion.id)}
+          isInteractionLocked={session.isSubmitted}
+          submittedQuestionIds={session.submittedQuestionIds}
           isJapanesePaper={isJapanesePaper}
           annotation={{
             showPronunciation,
@@ -398,7 +411,7 @@ export function PracticePlayer({
           }}
         />
 
-        {session.isSubmitted && (
+        {session.isQuestionSubmitted(currentQuestion.id) && (
           <QuestionNoteEditor
             questionId={currentQuestion.id}
             initialNote={(currentQuestion.note || '').trim()}
@@ -439,12 +452,13 @@ export function PracticePlayer({
       </main>
 
       {!isSingleMode && (
-        <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-2 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur md:p-4'>
-          <div className='mx-auto flex max-w-5xl flex-col gap-2 rounded-[18px] bg-white px-2 py-2 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:flex-row md:items-center md:justify-between md:px-4'>
-            <div className='flex items-center justify-between gap-2 md:justify-start'>
+        <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 px-2 py-2 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur md:px-4 md:py-3'>
+          <div className='mx-auto flex max-w-5xl items-center gap-1.5 md:justify-between md:gap-4'>
+            <div className='flex shrink-0 items-center gap-2'>
               <button
                 onClick={() => session.setShowSheet(!session.showSheet)}
-                className='flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 md:px-2.5 md:py-2'>
+                aria-expanded={session.showSheet}
+                className='flex h-10 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 md:gap-2 md:px-2.5 md:text-sm'>
                 <svg
                   className='h-4 w-4 md:h-5 md:w-5'
                   fill='none'
@@ -459,16 +473,17 @@ export function PracticePlayer({
                 </svg>
                 答题卡
               </button>
-              <span className='text-[11px] font-medium text-slate-400 md:text-xs'>
+              <span className='hidden text-xs font-medium text-slate-400 md:inline'>
                 第 {session.currentIndex + 1} / {questions.length} 题
               </span>
             </div>
 
-            <div className='grid w-full grid-cols-3 gap-2 md:flex md:w-auto md:gap-3'>
+            <div className='grid min-w-0 flex-1 grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-1.5 md:flex md:flex-none md:gap-2'>
               <button
                 type='button'
                 onClick={() => void handleCopyCurrentQuestion()}
-                className={`rounded-xl border px-2 py-2 text-sm font-medium transition-colors md:px-5 md:py-2.5 ${
+                aria-label='复制题目和选项'
+                className={`h-10 truncate rounded-lg border px-2 text-xs font-medium transition-colors md:px-4 md:text-sm ${
                   copyState === 'copied'
                     ? 'border-slate-300 bg-slate-100 text-slate-900'
                     : copyState === 'error'
@@ -479,7 +494,7 @@ export function PracticePlayer({
                   ? '已复制'
                   : copyState === 'error'
                     ? '复制失败'
-                    : '复制题目+选项'}
+                    : '复制'}
               </button>
               <button
                 disabled={session.currentIndex === 0}
@@ -487,7 +502,7 @@ export function PracticePlayer({
                   session.setCurrentIndex(session.currentIndex - 1)
                   session.setShowSheet(false)
                 }}
-                className='rounded-xl border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:py-2.5'>
+                className='h-10 rounded-lg border border-slate-300 bg-white px-2 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:text-sm'>
                 上一题
               </button>
               <button
@@ -496,7 +511,7 @@ export function PracticePlayer({
                   session.setCurrentIndex(session.currentIndex + 1)
                   session.setShowSheet(false)
                 }}
-                className='ui-btn ui-btn-primary rounded-xl px-2 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:py-2.5'>
+                className='ui-btn ui-btn-primary h-10 rounded-lg px-2 text-xs font-medium disabled:cursor-not-allowed disabled:opacity-40 md:px-6 md:text-sm'>
                 下一题
               </button>
             </div>
@@ -505,7 +520,7 @@ export function PracticePlayer({
       )}
 
       {session.showSheet && !isSingleMode && (
-        <div className='animate-fade-in-up fixed bottom-[76px] left-0 z-30 w-full transform border-t border-slate-100 bg-white p-3 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] transition-transform md:bottom-19 md:p-6'>
+        <div className='animate-fade-in-up fixed bottom-[57px] left-0 z-30 w-full transform border-t border-slate-100 bg-white p-3 shadow-[0_-10px_30px_-18px_rgba(15,23,42,0.35)] transition-transform md:bottom-16 md:p-6'>
           <div className='mx-auto max-w-4xl'>
             <div className='mb-3 flex items-center justify-between md:mb-4'>
               <h4 className='text-sm font-bold tracking-tight text-slate-900 md:text-base'>
@@ -523,7 +538,7 @@ export function PracticePlayer({
                 const isCurrent = session.currentIndex === index
                 const isAnswered = !!session.answers[question.id]
                 const isWrong =
-                  session.isSubmitted &&
+                  session.isQuestionSubmitted(question.id) &&
                   !!session.getCorrectOptionId(question) &&
                   session.answers[question.id] !==
                     session.getCorrectOptionId(question)

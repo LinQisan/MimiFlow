@@ -1,21 +1,14 @@
 'use client'
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { StudyTimeKind } from '@prisma/client'
 
-import { saveVocabulary } from '@/app/actions/content'
-import { addSentenceToReview } from '@/app/actions/fsrs'
+import { addSentenceToReview } from '@/modules/review/actions/memory'
 import { logMaterialPlaytime } from '@/app/actions/materialPlaytime'
 
-// 🌟 移除了 SmartText 组件，改回原生文本渲染解决移动端溢出问题
-import VocabularyTooltip, {
-  TooltipSaveState,
-  SaveStatusIcon,
-  SAVE_BG_COLORS,
-} from '@/components/vocabulary/VocabularyTooltip'
-import ToggleSwitch from '@/components/ToggleSwitch'
+import type { TooltipSaveState } from '@/components/vocabulary/VocabularyTooltip'
+import WordTooltip from '@/components/exam/WordTooltip'
 import TrustedHtml from '@/components/ui/TrustedHtml'
 import WordMetaPanel from '@/components/vocabulary/WordMetaPanel'
 import {
@@ -23,15 +16,18 @@ import {
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
-import { getPosOptions, inferContextualPos } from '@/utils/language/posTagger'
+import { inferContextualPos } from '@/utils/language/posTagger'
 import {
   buildPronunciationMapForText,
   buildSurfaceAliasMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
+import { useTextSelection } from '@/hooks/useTextSelection'
 import { useAudioController } from './useAudioController'
 import { getCleanSelectionText } from '@/utils/text/selection'
-import { formatDurationCompact, formatMediaTime } from '@/utils/time/format'
+import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+import ListeningPlayerHeader from './ListeningPlayerHeader'
+import ListeningSentenceRow from './ListeningSentenceRow'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -49,12 +45,6 @@ type PlayerLesson = {
   dialogue: DialogueItem[]
 }
 
-type PlayerLessonGroup = {
-  id: string
-  name: string
-  levelId: string
-}
-
 type VocabularyMeta = {
   pronunciations: string[]
   partsOfSpeech: string[]
@@ -63,33 +53,15 @@ type VocabularyMeta = {
 
 interface Props {
   lesson: PlayerLesson
-  lessonGroup: PlayerLessonGroup
+  lessonGroup: { name: string }
   prevId: string | null
   nextId: string | null
-  lessonSwitcher?: {
-    currentLessonId: string
-    groups: {
-      id: string
-      label: string
-      items: { id: string; title: string }[]
-    }[]
-  }
   initialTotalPlaySeconds?: number
   initialPlayedDays?: number
   vocabularyMetaMap: Record<string, VocabularyMeta>
   isEmbedded?: boolean
   forceBlindMode?: boolean
 }
-
-const splitListInput = (value: string) =>
-  Array.from(
-    new Set(
-      value
-        .split(/[\n,，；;]+/)
-        .map(item => item.trim())
-        .filter(Boolean),
-    ),
-  )
 
 // ================= 主控组件 =================
 export default function AudioPlayer({
@@ -111,24 +83,15 @@ export default function AudioPlayer({
     playbackRate,
     isTrackLoop,
     loopId,
+    togglePlayback,
     togglePlaybackRate,
     toggleTrackLoop,
     playSentence,
     toggleLoop,
   } = useAudioController(lesson.dialogue)
+  const { selection, closeSelection } = useTextSelection()
 
   const [isBlindMode, setIsBlindMode] = useState(false)
-
-  const [activeTooltip, setActiveTooltip] = useState<{
-    word: string
-    contextSentence: string
-    dialogueId: number
-    x: number
-    y: number
-    isTop: boolean
-  } | null>(null)
-
-  const [wordSaveState, setWordSaveState] = useState<TooltipSaveState>('idle')
   const [savingDialogueId, setSavingDialogueId] = useState<number | null>(null)
   const [dialogueSaveState, setDialogueSaveState] =
     useState<TooltipSaveState>('idle')
@@ -136,9 +99,6 @@ export default function AudioPlayer({
   const { showMeaning, setShowMeaning } = useShowMeaning()
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     useState(vocabularyMetaMap)
-  const [tooltipPronunciation, setTooltipPronunciation] = useState('')
-  const [tooltipPartOfSpeech, setTooltipPartOfSpeech] = useState('')
-  const [tooltipMeaning, setTooltipMeaning] = useState('')
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
     'idle',
   )
@@ -235,6 +195,19 @@ export default function AudioPlayer({
   const activeSentenceEntries = activeId
     ? sentenceMetaMap.get(activeId) || []
     : []
+  const selectedVocabularyMeta = useMemo(() => {
+    if (!selection.text) return undefined
+    const existing = localVocabularyMetaMap[selection.text]
+    return {
+      pronunciations: existing?.pronunciations || [],
+      meanings: existing?.meanings || [],
+      partsOfSpeech: inferContextualPos(
+        selection.text,
+        selection.contextSentence,
+        existing?.partsOfSpeech || [],
+      ),
+    }
+  }, [localVocabularyMetaMap, selection.contextSentence, selection.text])
   const isSentenceMeaningMatched = (sentenceId: number) => {
     if (!showMeaning) return true
     const entries = sentenceMetaMap.get(sentenceId) || []
@@ -267,148 +240,13 @@ export default function AudioPlayer({
   // ---------------- 音频控制逻辑 ----------------
 
   const handleSentenceClick = (item: DialogueItem) => {
-    const selection = window.getSelection()
-    if (getCleanSelectionText(selection).length > 0) return
-    if (activeTooltip) {
-      setActiveTooltip(null)
+    const windowSelection = window.getSelection()
+    if (getCleanSelectionText(windowSelection).length > 0) return
+    if (selection.isVisible) {
+      closeSelection()
       return
     }
     playSentence(item)
-  }
-
-  // ---------------- 原生划词与复习逻辑 ----------------
-  const handleTextSelection = (
-    e: React.MouseEvent | React.TouchEvent,
-    item: DialogueItem,
-  ) => {
-    setTimeout(() => {
-      const selection = window.getSelection()
-      const text = getCleanSelectionText(selection)
-
-      if (text && text.length > 0) {
-        const range = selection!.getRangeAt(0)
-        const rect = range.getBoundingClientRect()
-
-        let x = rect.left + rect.width / 2
-        let y = rect.top - 10
-        let isTop = true
-
-        const screenWidth = window.innerWidth
-        if (x < 110) x = 110
-        if (x > screenWidth - 110) x = screenWidth - 110
-        if (rect.top < 60) {
-          y = rect.bottom + 10
-          isTop = false
-        }
-
-        setActiveTooltip({
-          word: text,
-          contextSentence: item.text,
-          dialogueId: item.id,
-          x,
-          y,
-          isTop,
-        })
-        const existingMeta = localVocabularyMetaMap[text]
-        const inferredPos = inferContextualPos(
-          text,
-          item.text,
-          existingMeta?.partsOfSpeech || [],
-        )
-        setTooltipPronunciation((existingMeta?.pronunciations || []).join('\n'))
-        setTooltipPartOfSpeech(inferredPos.join('\n'))
-        setTooltipMeaning((existingMeta?.meanings || []).join('\n'))
-        setWordSaveState('idle')
-      } else {
-        setActiveTooltip(null)
-      }
-    }, 50)
-  }
-
-  const handleSaveWord = async (word: string) => {
-    if (!activeTooltip) return
-    setWordSaveState('saving')
-    const existingMeta = localVocabularyMetaMap[word] || {
-      pronunciations: [],
-      partsOfSpeech: [],
-      meanings: [],
-    }
-    const surfaceWord = activeTooltip.word
-    const targetWord = word
-    const pronunciationList = splitListInput(tooltipPronunciation)
-    const partOfSpeechList = splitListInput(tooltipPartOfSpeech)
-    const meaningList = splitListInput(tooltipMeaning)
-    const firstPron = pronunciationList[0]
-    try {
-      const res = await saveVocabulary(
-        targetWord,
-        activeTooltip.contextSentence,
-        'AUDIO_DIALOGUE',
-        String(activeTooltip.dialogueId),
-        firstPron,
-        pronunciationList,
-        meaningList,
-        partOfSpeechList[0],
-        partOfSpeechList,
-      )
-      if (res.success) {
-        setLocalVocabularyMetaMap(prev => ({
-          ...prev,
-          [targetWord]: {
-            pronunciations: pronunciationList,
-            partsOfSpeech:
-              partOfSpeechList.length > 0
-                ? partOfSpeechList
-                : existingMeta.partsOfSpeech,
-            meanings: meaningList,
-          },
-          ...(surfaceWord && surfaceWord !== targetWord
-            ? {
-                [surfaceWord]: {
-                  pronunciations: pronunciationList,
-                  partsOfSpeech:
-                    partOfSpeechList.length > 0
-                      ? partOfSpeechList
-                      : existingMeta.partsOfSpeech,
-                  meanings: meaningList,
-                },
-              }
-            : {}),
-        }))
-        setWordSaveState('success')
-        setTimeout(() => setActiveTooltip(null), 1500)
-      } else if (res.state === 'already_exists') {
-        setLocalVocabularyMetaMap(prev => ({
-          ...prev,
-          [targetWord]: {
-            pronunciations: pronunciationList,
-            partsOfSpeech:
-              partOfSpeechList.length > 0
-                ? partOfSpeechList
-                : existingMeta.partsOfSpeech,
-            meanings: meaningList,
-          },
-          ...(surfaceWord && surfaceWord !== targetWord
-            ? {
-                [surfaceWord]: {
-                  pronunciations: pronunciationList,
-                  partsOfSpeech:
-                    partOfSpeechList.length > 0
-                      ? partOfSpeechList
-                      : existingMeta.partsOfSpeech,
-                  meanings: meaningList,
-                },
-              }
-            : {}),
-        }))
-        setWordSaveState('already_exists')
-        setTimeout(() => setActiveTooltip(null), 1500)
-      } else {
-        setWordSaveState('error')
-      }
-    } catch {
-      setWordSaveState('error')
-    }
   }
 
   const handleAddToReview = async (e: React.MouseEvent, dialogueId: number) => {
@@ -434,7 +272,7 @@ export default function AudioPlayer({
   }
 
   const handleBackToPrevious = () => {
-    router.push('/shadowing')
+    router.push('/listening')
   }
 
   const handleCopyTranscript = async () => {
@@ -521,21 +359,6 @@ export default function AudioPlayer({
   }, [lesson.materialId])
 
   useEffect(() => {
-    if (!activeTooltip) return
-    const handleScrollOrResize = () => {
-      setActiveTooltip(null)
-      setWordSaveState('idle')
-      window.getSelection()?.removeAllRanges()
-    }
-    window.addEventListener('scroll', handleScrollOrResize, { passive: true })
-    window.addEventListener('resize', handleScrollOrResize)
-    return () => {
-      window.removeEventListener('scroll', handleScrollOrResize)
-      window.removeEventListener('resize', handleScrollOrResize)
-    }
-  }, [activeTooltip])
-
-  useEffect(() => {
     if (activeId === null) return
     const targetId =
       isBlindMode && previousSentenceId !== null ? previousSentenceId : activeId
@@ -547,183 +370,83 @@ export default function AudioPlayer({
     <div
       className={`relative bg-slate-50 dark:bg-slate-950 ${
         isEmbedded ? 'min-h-full h-full overflow-y-auto' : 'min-h-screen'
-      }`}
-      onClick={() => setActiveTooltip(null)}>
+      }`}>
       <audio ref={audioRef} src={lesson.audioFile} preload='metadata' />
 
-      {activeTooltip && (
-        <VocabularyTooltip
-          word={activeTooltip.word}
-          x={activeTooltip.x}
-          y={activeTooltip.y}
-          isTop={activeTooltip.isTop}
-          saveState={wordSaveState}
-          onSaveWord={handleSaveWord}
-          enablePronunciation
-          pronunciationValue={tooltipPronunciation}
-          onPronunciationChange={setTooltipPronunciation}
-          partOfSpeechValue={tooltipPartOfSpeech}
-          onPartOfSpeechChange={setTooltipPartOfSpeech}
-          partOfSpeechOptions={
-            activeTooltip
-              ? getPosOptions(activeTooltip.word, activeTooltip.contextSentence)
-              : []
-          }
-          meaningValue={tooltipMeaning}
-          onMeaningChange={setTooltipMeaning}
-        />
-      )}
-
-      <header className='sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] dark:border-slate-800 dark:bg-slate-950/80'>
-        <div className='mx-auto w-full max-w-5xl px-3 py-2 md:px-6 md:py-3'>
-          <div className='flex items-center gap-2'>
-            <button
-              type='button'
-              onClick={handleBackToPrevious}
-              className='inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
-              <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M15 19l-7-7 7-7'
-                />
-              </svg>
-              返回
-            </button>
-
-            <div className='min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-900'>
-              <h1 className='truncate text-sm font-bold text-slate-900 dark:text-slate-100'>
-                {lesson.title}
-              </h1>
-              <p className='hidden truncate text-[11px] font-semibold text-slate-500 md:block'>
-                {lessonGroup.name}
-              </p>
-            </div>
-
-            <button
-              type='button'
-              onClick={handleCopyTranscript}
-              className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition-colors ${
-                copyStatus === 'success'
-                  ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
-                  : copyStatus === 'error'
-                    ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/50 dark:bg-rose-900/30 dark:text-rose-100'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'
-              }`}
-              title='复制跟读材料（不含时间轴）'>
-              <svg
-                className='h-3.5 w-3.5'
-                fill='none'
-                stroke='currentColor'
-                viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M8 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2M8 7H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-2M8 7h6a2 2 0 0 1 2 2v6'
-                />
-              </svg>
-              <span>
-                {copyStatus === 'success'
-                  ? '已复制'
-                  : copyStatus === 'error'
-                    ? '复制失败'
-                    : '复制原文'}
-              </span>
-            </button>
-
-            {prevId ? (
-              <Link
-                href={`/shadowing/${prevId}`}
-                className='inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'>
-                <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M15 19l-7-7 7-7'
-                  />
-                </svg>
-              </Link>
-            ) : null}
-            {nextId ? (
-              <Link
-                href={`/shadowing/${nextId}`}
-                className='inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'>
-                <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path
-                    strokeLinecap='round'
-                    strokeLinejoin='round'
-                    strokeWidth={2}
-                    d='M9 5l7 7-7 7'
-                  />
-                </svg>
-              </Link>
-            ) : null}
+      {selection.isVisible && selection.sourceType !== '' ? (
+        <>
+          <div className='pointer-events-none fixed inset-0 z-40'>
+            {selection.rects.map((rect, index) => (
+              <span
+                key={`${rect.left}-${rect.top}-${index}`}
+                className='absolute rounded-[2px] bg-blue-400/35'
+                style={{
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                }}
+              />
+            ))}
           </div>
+          <WordTooltip
+            word={selection.text}
+            x={selection.x}
+            y={selection.y}
+            isTop={selection.isTop}
+            contextSentence={selection.contextSentence}
+            sourceType={selection.sourceType}
+            sourceId={selection.sourceId}
+            initialMeta={selectedVocabularyMeta}
+            onClose={closeSelection}
+            onSaved={({ word, meta }) =>
+              setLocalVocabularyMetaMap(prev => ({
+                ...prev,
+                [word]: meta,
+                ...(selection.text && selection.text !== word
+                  ? { [selection.text]: meta }
+                  : {}),
+              }))
+            }
+          />
+        </>
+      ) : null}
 
-          <div className='mt-2 overflow-x-auto'>
-            <div className='flex min-w-max items-center gap-2 pb-0.5'>
-              <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
-                本次 {formatMediaTime(sessionPlaySeconds)}
-              </span>
-              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
-                累计 {formatDurationCompact(totalPlaySeconds)}
-              </span>
-              <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200'>
-                {Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)} 天
-              </span>
+      <ListeningPlayerHeader
+        title={lesson.title}
+        groupName={lessonGroup.name}
+        dialogueCount={lesson.dialogue.length}
+        prevId={prevId}
+        nextId={nextId}
+        isPlaying={isPlaying}
+        isTrackLoop={isTrackLoop}
+        playbackRate={playbackRate}
+        showPronunciation={showPronunciation}
+        showMeaning={showMeaning}
+        isBlindMode={isBlindMode}
+        sessionPlaySeconds={sessionPlaySeconds}
+        totalPlaySeconds={totalPlaySeconds}
+        playedDays={playedDays}
+        copyStatus={copyStatus}
+        onBack={handleBackToPrevious}
+        onCopy={handleCopyTranscript}
+        onTogglePlayback={togglePlayback}
+        onToggleTrackLoop={toggleTrackLoop}
+        onTogglePlaybackRate={togglePlaybackRate}
+        onShowPronunciationChange={setShowPronunciation}
+        onShowMeaningChange={setShowMeaning}
+        onBlindModeChange={setIsBlindMode}
+      />
 
-              <button
-                onClick={toggleTrackLoop}
-                aria-pressed={isTrackLoop}
-                title='整段循环播放'
-                className={`h-7 rounded-lg border px-2 text-xs font-semibold transition-colors ${
-                  isTrackLoop
-                    ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
-                }`}>
-                循环
-              </button>
-              <button
-                onClick={togglePlaybackRate}
-                title='切换播放速度'
-                className='h-7 min-w-[3.3rem] rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800'>
-                {playbackRate}x
-              </button>
-
-              <div className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1 shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] dark:border-slate-700 dark:bg-slate-900'>
-                <ToggleSwitch
-                  label='注音'
-                  checked={showPronunciation}
-                  onChange={setShowPronunciation}
-                />
-                <ToggleSwitch
-                  label='释义'
-                  checked={showMeaning}
-                  onChange={setShowMeaning}
-                />
-                <ToggleSwitch
-                  label='盲听'
-                  checked={isBlindMode}
-                  onChange={setIsBlindMode}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className='mx-auto w-full max-w-5xl px-4 py-4 md:px-6 md:py-5'>
-        {activeSentenceEntries.length > 0 && (
-          <div className='mb-4 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] dark:border dark:border-slate-700 dark:bg-slate-900 md:p-4 '>
+      <div className='mx-auto w-full max-w-4xl px-3 py-3 md:px-5 md:py-4'>
+        {activeSentenceEntries.length > 0 ? (
+          <section className='mb-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4'>
             <div className='mb-2 flex items-center justify-between'>
-              <h2 className='text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100'>
-                词条区
+              <h2 className='text-sm font-bold text-slate-900 dark:text-slate-100'>
+                当前句词汇
               </h2>
-              <span className='text-[11px] text-slate-400 dark:text-slate-400'>
-                {activeId ? `当前句：${activeSentenceNo}` : '先点击句子'}
+              <span className='text-[11px] text-slate-400'>
+                第 {activeSentenceNo} 句
               </span>
             </div>
             <WordMetaPanel
@@ -746,16 +469,21 @@ export default function AudioPlayer({
                 }))
               }}
             />
-          </div>
-        )}
-        <div className='space-y-3 pb-44 md:pb-52'>
-          {lesson.dialogue.map(item => (
-            <SentenceRow
+          </section>
+        ) : null}
+
+        <div className='space-y-2 pb-24 md:pb-32'>
+          {lesson.dialogue.map((item, index) => (
+            <ListeningSentenceRow
               key={item.id}
+              sequence={index + 1}
+              sourceId={buildAudioDialogueSourceId(
+                lesson.materialId,
+                String(item.id),
+              )}
               item={item}
               isActive={activeId === item.id}
               isLooping={loopId === item.id}
-              isBlindMode={isBlindMode}
               blindState={
                 !isBlindMode
                   ? 'normal'
@@ -770,114 +498,14 @@ export default function AudioPlayer({
               renderedText={annotateSentence(item.text)}
               canAddToReview={isSentenceMeaningMatched(item.id)}
               onClick={() => handleSentenceClick(item)}
-              onMouseUp={e => handleTextSelection(e, item)}
-              onToggleLoop={() => toggleLoop(item)}
-              onAddToReview={e => handleAddToReview(e, item.id)}
+              onToggleLoop={event => {
+                event.stopPropagation()
+                toggleLoop(item)
+              }}
+              onAddToReview={event => handleAddToReview(event, item.id)}
             />
           ))}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ================= 子组件：单行字幕 UI =================
-interface SentenceRowProps {
-  item: DialogueItem
-  isActive: boolean
-  isLooping: boolean
-  isBlindMode: boolean
-  blindState: 'normal' | 'clear' | 'blur'
-  savingDialogueId: number | null
-  dialogueSaveState: TooltipSaveState
-  renderedText: React.ReactNode
-  canAddToReview: boolean
-  onClick: () => void
-  onMouseUp: (e: React.MouseEvent | React.TouchEvent) => void
-  onToggleLoop: (e: React.MouseEvent) => void
-  onAddToReview: (e: React.MouseEvent) => void
-}
-
-function SentenceRow({
-  item,
-  isActive,
-  isLooping,
-  isBlindMode,
-  blindState,
-  savingDialogueId,
-  dialogueSaveState,
-  renderedText,
-  canAddToReview,
-  onClick,
-  onMouseUp,
-  onToggleLoop,
-  onAddToReview,
-}: SentenceRowProps) {
-  const currentState = savingDialogueId === item.id ? dialogueSaveState : 'idle'
-  const currentBgClass =
-    currentState === 'idle'
-      ? 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-      : SAVE_BG_COLORS[currentState]
-  const blurClass = blindState === 'blur' ? 'blur-sm opacity-50' : ''
-
-  return (
-    <div
-      id={`sentence-${item.id}`}
-      className='group flex items-center gap-2 md:gap-3 scroll-mt-44'>
-      {/* 左侧文字区 */}
-      <div
-        onClick={onClick}
-        onMouseUp={onMouseUp}
-        onTouchEnd={onMouseUp}
-          className={`flex-1 min-w-0 rounded-2xl border p-4 text-lg leading-relaxed transition-[background-color,border-color,color,box-shadow,filter,opacity] duration-300 select-text wrap-break-word md:p-5 md:text-xl
-          ${
-            isActive
-              ? 'scale-[1.01] border-slate-900 bg-slate-100 text-slate-900 font-bold shadow-sm dark:border-slate-100 dark:bg-slate-800 dark:text-slate-100'
-              : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-500 dark:hover:bg-slate-800'
-          }
-          ${isBlindMode && blindState === 'clear' ? 'border-slate-400/80 bg-white text-slate-900 dark:border-slate-500 dark:bg-slate-900 dark:text-slate-100' : ''}
-        `}>
-        <div
-          className={`min-w-0 transition-[filter,opacity] duration-300 ${blurClass}`}>
-          {renderedText}
-        </div>
-      </div>
-
-      {/* 右侧操作区 */}
-      <div className='flex w-9 shrink-0 flex-col gap-2 md:w-10'>
-          <button
-            onClick={onAddToReview}
-            title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
-            disabled={savingDialogueId === item.id || !canAddToReview}
-            className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
-            ${isActive && currentState === 'idle' ? 'scale-110 bg-slate-900 text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200' : currentBgClass}
-            ${isActive || currentState !== 'idle' ? 'ring-2 ring-slate-200 dark:ring-slate-500/30' : ''}
-          `}>
-          <SaveStatusIcon
-            state={currentState}
-            className='h-4 w-4 md:h-5 md:w-5'
-          />
-        </button>
-
-          <button
-            onClick={onToggleLoop}
-            title='单句复读'
-            className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs transition-colors duration-200 md:h-10 md:w-10
-            ${isLooping ? 'scale-110 bg-slate-900 text-white ring-2 ring-slate-200 dark:bg-slate-100 dark:text-slate-900 dark:ring-slate-400/40' : isActive ? 'scale-105 bg-slate-800 text-white hover:bg-slate-900 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-100' : 'border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-slate-100'}
-          `}>
-          <svg
-            className='h-4 w-4 md:h-5 md:w-5'
-            fill='none'
-            stroke='currentColor'
-            viewBox='0 0 24 24'>
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2}
-              d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15'
-            />
-          </svg>
-        </button>
       </div>
     </div>
   )

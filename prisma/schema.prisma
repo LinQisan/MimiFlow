@@ -23,12 +23,6 @@ enum MaterialType {
   SPEAKING
 }
 
-enum QuestionTemplate {
-  CHOICE_QUIZ // 单/多选题
-  CLOZE_TEST // 完形填空
-  FILL_BLANK // 填空题
-}
-
 enum CollectionType {
   LIBRARY_ROOT // 系统内容根分类（例如：口语/阅读/听力）
   BOOK // 一本书/一套教材/一个官方内容合集
@@ -102,13 +96,10 @@ model Vocabulary {
 
   sourceType     SourceType
   sourceId       String
-  groupName      String?
   wordAudio      String?
   pronunciations String?
   partsOfSpeech  String?
   meanings       String?
-  folderId       String?
-  folder         VocabularyFolder?           @relation(fields: [folderId], references: [id], onDelete: SetNull)
   wordbooks      WordbookVocabulary[]
   review         VocabularyReview?
   createdAt      DateTime                    @default(now())
@@ -160,28 +151,15 @@ model VocabularyReview {
   @@index([due])
 }
 
-model VocabularyFolder {
-  id           String             @id @default(cuid())
-  name         String
-  parentId     String?
-  parent       VocabularyFolder?  @relation("VocabularyFolderTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children     VocabularyFolder[] @relation("VocabularyFolderTree")
-  createdAt    DateTime           @default(now())
-  vocabularies Vocabulary[]
-
-  @@unique([parentId, name])
-  @@index([parentId])
-}
-
 model Wordbook {
-  id        String             @id @default(cuid())
+  id        String               @id @default(cuid())
   title     String
   parentId  String?
-  parent    Wordbook?          @relation("WordbookTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Wordbook[]         @relation("WordbookTree")
-  sortOrder Int                @default(0)
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
+  parent    Wordbook?            @relation("WordbookTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Wordbook[]           @relation("WordbookTree")
+  sortOrder Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
   entries   WordbookVocabulary[]
 
   @@unique([parentId, title])
@@ -205,17 +183,17 @@ model WordbookVocabulary {
 }
 
 model VocabularySentence {
-  id             String                   @id @default(cuid())
-  text           String
-  normalizedText String
-  translation    String?
-  audioFile      String?
-  source         String
-  sourceUrl      String
-  sourceType     SourceType?
-  sourceId       String?
-  createdAt      DateTime                 @default(now())
-  links          VocabularySentenceLink[]
+  id              String                   @id @default(cuid())
+  text            String
+  normalizedText  String
+  translation     String?
+  audioFile       String?
+  source          String
+  sourceUrl       String
+  sourceType      SourceType?
+  sourceId        String?
+  createdAt       DateTime                 @default(now())
+  links           VocabularySentenceLink[]
   grammarExamples GrammarExample[]
 
   @@unique([normalizedText, sourceUrl])
@@ -227,15 +205,15 @@ enum GrammarExampleSource {
 }
 
 model Grammar {
-  id          String                @id @default(cuid())
-  name        String
-  meaning     String?               @db.Text
-  usageNote   String?               @map("usage_note") @db.Text
-  createdAt   DateTime              @default(now()) @map("created_at")
-  updatedAt   DateTime              @updatedAt @map("updated_at")
-  tags        GrammarTagOnGrammar[]
-  examples    GrammarExample[]
-  clusters    GrammarClusterMember[]
+  id            String                 @id @default(cuid())
+  name          String
+  meaning       String?                @db.Text
+  usageNote     String?                @map("usage_note") @db.Text
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  tags          GrammarTagOnGrammar[]
+  examples      GrammarExample[]
+  clusters      GrammarClusterMember[]
   constructions GrammarConstruction[]
 
   @@index([name])
@@ -243,36 +221,36 @@ model Grammar {
 }
 
 model GrammarConstruction {
-  id          String    @id @default(cuid())
-  grammarId   String    @map("grammar_id")
-  connection  String    @db.Text
-  meaning     String    @db.Text
-  note        String?   @db.Text
-  sortOrder   Int       @default(0) @map("sort_order")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  grammar     Grammar   @relation(fields: [grammarId], references: [id], onDelete: Cascade)
-  examples    GrammarExample[]
+  id         String           @id @default(cuid())
+  grammarId  String           @map("grammar_id")
+  connection String           @db.Text
+  meaning    String           @db.Text
+  note       String?          @db.Text
+  sortOrder  Int              @default(0) @map("sort_order")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  grammar    Grammar          @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  examples   GrammarExample[]
 
   @@index([grammarId, sortOrder])
   @@map("grammar_constructions")
 }
 
 model GrammarTag {
-  id         String               @id @default(cuid())
-  name       String               @unique
-  createdAt  DateTime             @default(now()) @map("created_at")
-  grammars   GrammarTagOnGrammar[]
+  id        String                @id @default(cuid())
+  name      String                @unique
+  createdAt DateTime              @default(now()) @map("created_at")
+  grammars  GrammarTagOnGrammar[]
 
   @@map("grammar_tags")
 }
 
 model GrammarTagOnGrammar {
-  grammarId  String
-  tagId      String
-  createdAt  DateTime   @default(now()) @map("created_at")
-  grammar    Grammar    @relation(fields: [grammarId], references: [id], onDelete: Cascade)
-  tag        GrammarTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  grammarId String
+  tagId     String
+  createdAt DateTime   @default(now()) @map("created_at")
+  grammar   Grammar    @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  tag       GrammarTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([grammarId, tagId])
   @@index([tagId])
@@ -291,11 +269,11 @@ model GrammarCluster {
 }
 
 model GrammarClusterMember {
-  clusterId   String
-  grammarId   String
-  createdAt   DateTime       @default(now()) @map("created_at")
-  cluster     GrammarCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
-  grammar     Grammar        @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  clusterId String
+  grammarId String
+  createdAt DateTime       @default(now()) @map("created_at")
+  cluster   GrammarCluster @relation(fields: [clusterId], references: [id], onDelete: Cascade)
+  grammar   Grammar        @relation(fields: [grammarId], references: [id], onDelete: Cascade)
 
   @@id([clusterId, grammarId])
   @@index([grammarId])
@@ -303,18 +281,18 @@ model GrammarClusterMember {
 }
 
 model GrammarExample {
-  id              String               @id @default(cuid())
-  grammarId       String               @map("grammar_id")
-  source          GrammarExampleSource
-  sentenceText    String               @map("sentence_text") @db.Text
-  translation     String?              @db.Text
-  note            String?              @db.Text
-  sentenceId      String?              @map("sentence_id")
-  constructionId  String?              @map("construction_id")
-  createdAt       DateTime             @default(now()) @map("created_at")
-  grammar         Grammar              @relation(fields: [grammarId], references: [id], onDelete: Cascade)
-  sentence        VocabularySentence?  @relation(fields: [sentenceId], references: [id], onDelete: SetNull)
-  construction    GrammarConstruction? @relation(fields: [constructionId], references: [id], onDelete: SetNull)
+  id             String               @id @default(cuid())
+  grammarId      String               @map("grammar_id")
+  source         GrammarExampleSource
+  sentenceText   String               @map("sentence_text") @db.Text
+  translation    String?              @db.Text
+  note           String?              @db.Text
+  sentenceId     String?              @map("sentence_id")
+  constructionId String?              @map("construction_id")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  grammar        Grammar              @relation(fields: [grammarId], references: [id], onDelete: Cascade)
+  sentence       VocabularySentence?  @relation(fields: [sentenceId], references: [id], onDelete: SetNull)
+  construction   GrammarConstruction? @relation(fields: [constructionId], references: [id], onDelete: SetNull)
 
   @@index([grammarId, createdAt])
   @@index([sentenceId])
@@ -357,19 +335,19 @@ model SentenceReview {
 }
 
 model Question {
-  id           String           @id @default(uuid())
-  materialId   String           @map("material_id")
-  templateType QuestionTemplate @map("template_type")
+  id           String       @id @default(uuid())
+  materialId   String       @map("material_id")
+  questionType QuestionType @default(PRONUNCIATION) @map("question_type")
   content      Json
-  prompt       String?          @db.Text
-  context      String?          @db.Text
+  prompt       String?      @db.Text
+  context      String?      @db.Text
   options      Json?
   answer       Json
-  analysis     String?          @db.Text
-  note         String?          @db.Text
-  createdAt    DateTime         @default(now()) @map("created_at")
-  updatedAt    DateTime         @updatedAt @map("updated_at")
-  sortOrder    Int              @default(0) @map("sort_order")
+  analysis     String?      @db.Text
+  note         String?      @db.Text
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  sortOrder    Int          @default(0) @map("sort_order")
 
   material   Material          @relation(fields: [materialId], references: [id], onDelete: Cascade)
   attempts   QuestionAttempt[]
@@ -390,8 +368,8 @@ model Collection {
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
 
-  parent    Collection?         @relation("CollectionTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Collection[]        @relation("CollectionTree")
+  parent    Collection?          @relation("CollectionTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Collection[]         @relation("CollectionTree")
   materials CollectionMaterial[]
 
   @@index([parentId, sortOrder])
@@ -440,35 +418,29 @@ model QuestionRetry {
   @@index([dueAt])
 }
 
-model GameProfile {
-  id               String                  @id @default("default")
-  xp               Int                     @default(0)
-  level            Int                     @default(1)
-  difficultyPreset GameDifficultyPreset    @default(STANDARD)
-  coins            Int                     @default(0)
-  streakDays       Int                     @default(0)
-  lastStreakDate   String?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
-  sessions         GameSessionLog[]
-  fsrsProfile      FSRSProfile?
-  reviewEvents     ReviewEvent[]
-  outputPractices  OutputPractice[]
-  studyProgresses  MaterialStudyProgress[]
-  playtimeStats    MaterialPlaytimeStat[]
+model LearnerProfile {
+  id              String                  @id @default("default")
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  fsrsProfile     FSRSProfile?
+  reviewEvents    ReviewEvent[]
+  studyProgresses MaterialStudyProgress[]
+  playtimeStats   MaterialPlaytimeStat[]
+
+  @@map("GameProfile")
 }
 
 model MaterialStudyProgress {
-  id              String      @id @default(uuid())
-  profileId       String      @default("default") @map("profile_id")
-  materialId      String      @map("material_id")
-  learningMode    String      @default("default") @map("learning_mode")
-  progressPercent Float       @default(0) @map("progress_percent")
-  lastPosition    String?     @map("last_position")
-  startedAt       DateTime    @default(now()) @map("started_at")
-  updatedAt       DateTime    @updatedAt @map("updated_at")
-  profile         GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  material        Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  id              String         @id @default(uuid())
+  profileId       String         @default("default") @map("profile_id")
+  materialId      String         @map("material_id")
+  learningMode    String         @default("default") @map("learning_mode")
+  progressPercent Float          @default(0) @map("progress_percent")
+  lastPosition    String?        @map("last_position")
+  startedAt       DateTime       @default(now()) @map("started_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  profile         LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material        Material       @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, materialId, learningMode])
   @@index([updatedAt])
@@ -476,51 +448,45 @@ model MaterialStudyProgress {
 }
 
 model MaterialPlaytimeStat {
-  id           String      @id @default(uuid())
-  profileId    String      @default("default") @map("profile_id")
-  materialId   String      @map("material_id")
-  totalSeconds Int         @default(0) @map("total_seconds")
-  playedDays   Int         @default(0) @map("played_days")
-  lastPlayedAt DateTime?   @map("last_played_at")
-  createdAt    DateTime    @default(now()) @map("created_at")
-  updatedAt    DateTime    @updatedAt @map("updated_at")
-  profile      GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  material     Material    @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  id           String         @id @default(uuid())
+  profileId    String         @default("default") @map("profile_id")
+  materialId   String         @map("material_id")
+  totalSeconds Int            @default(0) @map("total_seconds")
+  playedDays   Int            @default(0) @map("played_days")
+  lastPlayedAt DateTime?      @map("last_played_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  profile      LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material     Material       @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, materialId])
   @@index([materialId, updatedAt])
   @@map("material_playtime_stats")
 }
 
-enum GameDifficultyPreset {
-  CONSERVATIVE
-  STANDARD
-  AGGRESSIVE
-}
-
 model FSRSProfile {
-  id                 String      @id @default(cuid())
-  profileId          String      @unique
-  profile            GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  requestRetention   Float       @default(0.9)
-  maximumInterval    Int         @default(36500)
+  id                 String         @id @default(cuid())
+  profileId          String         @unique
+  profile            LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  requestRetention   Float          @default(0.9)
+  maximumInterval    Int            @default(36500)
   weights            String
-  sampleSize         Int         @default(0)
-  fitVersion         Int         @default(1)
-  enabled            Boolean     @default(true)
-  lastEngineMode     String      @default("custom")
+  sampleSize         Int            @default(0)
+  fitVersion         Int            @default(1)
+  enabled            Boolean        @default(true)
+  lastEngineMode     String         @default("custom")
   lastFallbackReason String?
   lastFallbackAt     DateTime?
   lastFittedAt       DateTime?
   lastEventAt        DateTime?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 }
 
 model ReviewEvent {
-  id               String      @id @default(cuid())
+  id               String         @id @default(cuid())
   profileId        String
-  profile          GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile          LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   reviewId         String
   sourceType       SourceType
   sourceId         String
@@ -534,28 +500,12 @@ model ReviewEvent {
   difficultyBefore Float
   difficultyAfter  Float
   dueAt            DateTime
-  reviewedAt       DateTime    @default(now())
+  reviewedAt       DateTime       @default(now())
   wasOverdue       Boolean
   wasRecallSuccess Boolean
 
   @@index([profileId, reviewedAt])
   @@index([reviewId, reviewedAt])
-}
-
-model GameSessionLog {
-  id          String      @id @default(cuid())
-  profileId   String
-  profile     GameProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  dateKey     String
-  taskKey     String
-  taskTitle   String
-  points      Int
-  coins       Int         @default(0)
-  durationMin Int         @default(0)
-  completedAt DateTime    @default(now())
-
-  @@unique([profileId, dateKey, taskKey])
-  @@index([dateKey])
 }
 
 enum StudyTimeKind {
@@ -572,65 +522,5 @@ model StudyTimeDaily {
   updatedAt DateTime      @updatedAt
 
   @@unique([dateKey, kind])
-  @@index([dateKey])
-}
-
-model LearningDiary {
-  id        String   @id @default(cuid())
-  dateKey   String   @unique
-  content   String
-  wordCount Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model MorningRecall {
-  id              String   @id @default(cuid())
-  dateKey         String   @unique
-  sourceDateKey   String
-  prompt          String
-  content         String
-  wordCount       Int      @default(0)
-  aiCoachPrompt   String?
-  aiFeedbackRaw   String?
-  totalScore      Int      @default(0)
-  accuracy        Int      @default(0)
-  coverage        Int      @default(0)
-  clarity         Int      @default(0)
-  feedbackSummary String?
-  actionItems     String?
-  modelAnswer     String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-
-enum OutputPracticeType {
-  WRITING
-}
-
-model OutputPractice {
-  id                String             @id @default(cuid())
-  profileId         String
-  profile           GameProfile        @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  dateKey           String
-  practiceType      OutputPracticeType @default(WRITING)
-  languageCode      String             @default("ja")
-  missionPrompt     String
-  missionText       String
-  learnerText       String
-  aiCoachPrompt     String
-  aiFeedbackRaw     String
-  totalScore        Int                @default(0)
-  comprehensibility Int                @default(0)
-  accuracy          Int                @default(0)
-  complexity        Int                @default(0)
-  taskCompletion    Int                @default(0)
-  feedbackSummary   String?
-  actionItems       String?
-  wordCount         Int                @default(0)
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-
-  @@unique([profileId, dateKey, practiceType])
   @@index([dateKey])
 }

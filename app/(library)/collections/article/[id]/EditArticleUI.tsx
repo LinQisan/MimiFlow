@@ -10,7 +10,8 @@ import {
   DragHandle,
   ActionInterceptor,
 } from '@/app/(library)/collections/DndSystem'
-import { updateArticleWithQuestions, updateSortOrder } from '@/app/actions/content'
+import { updateArticleWithQuestions } from '@/modules/content/actions/materials'
+import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 
 const splitIntoSentences = (text: string) => {
@@ -241,7 +242,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
         <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
           <div>
           <Link
-            href={`/collections/${article.category?.levelId || ''}`}
+            href={`/manage/collections/${article.category?.levelId || ''}`}
             className='mb-2 inline-flex rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100'>
             返回分组
           </Link>

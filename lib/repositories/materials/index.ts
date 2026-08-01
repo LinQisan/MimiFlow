@@ -1,6 +1,9 @@
 import prisma from '@/lib/prisma'
-import { MaterialType, QuestionTemplate } from '@prisma/client'
-import { getMaterialDisplayTitle } from './material-title'
+import { MaterialType } from '@prisma/client'
+import {
+  getMaterialDisplayTitle,
+  getReadingCardTitle,
+} from './material-title'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 
@@ -59,36 +62,6 @@ export function toLegacyMaterialId(materialId: string): string {
   return index >= 0 ? materialId.slice(index + 1) : materialId
 }
 
-function toLegacyQuestionType(
-  materialType: MaterialType,
-  templateType: QuestionTemplate,
-  content: JsonRecord,
-) {
-  const explicitType = asString(content.questionType)
-  if (explicitType) {
-    if (
-      materialType === MaterialType.VOCAB_GRAMMAR &&
-      (explicitType === 'FILL_BLANK' || explicitType === 'READING_COMPREHENSION')
-    ) {
-      return 'GRAMMAR'
-    }
-    return explicitType
-  }
-
-  if (materialType === MaterialType.LISTENING) return 'LISTENING'
-  if (materialType === MaterialType.MEDIA_SUBTITLE) return 'LISTENING'
-  if (materialType === MaterialType.READING) {
-    return templateType === QuestionTemplate.CLOZE_TEST ||
-      templateType === QuestionTemplate.FILL_BLANK
-      ? 'FILL_BLANK'
-      : 'READING_COMPREHENSION'
-  }
-  if (materialType === MaterialType.VOCAB_GRAMMAR) {
-    return templateType === QuestionTemplate.CLOZE_TEST ? 'SORTING' : 'GRAMMAR'
-  }
-  return 'GRAMMAR'
-}
-
 function toAnswerIds(answer: unknown): string[] {
   if (typeof answer === 'string' && answer) return [answer]
   if (Array.isArray(answer)) {
@@ -116,7 +89,7 @@ export function normalizeQuestionContext(
   prompt: string | null,
   context: string | null,
 ) {
-  return context || prompt || '（未填写语境句）'
+  return context || prompt || ''
 }
 
 const buildMaterialLookupIds = (type: MaterialType, id: string) => {
@@ -205,12 +178,17 @@ export async function getArticleByLegacyId(legacyId: string) {
       questions: {
         orderBy: { sortOrder: 'asc' },
         include: {
-          attempts: {
-            take: 1000,
-            orderBy: { createdAt: 'desc' },
-            select: { isCorrect: true },
+          _count: {
+            select: { attempts: true },
           },
         },
+      },
+      studyProgresses: {
+        where: {
+          profileId: 'default',
+          learningMode: 'article-reading',
+        },
+        take: 1,
       },
     },
   })
@@ -228,11 +206,20 @@ export async function getArticleByLegacyId(legacyId: string) {
 
   return {
     id: legacyId,
+    materialId: material.id,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
       material.contentPayload,
       legacyId,
+    ),
+    shortTitle: getReadingCardTitle(
+      getMaterialDisplayTitle(
+        material.type,
+        material.title,
+        material.contentPayload,
+        legacyId,
+      ),
     ),
     content: materialText,
     sourceKind: asString(payload.sourceKind),
@@ -241,18 +228,28 @@ export async function getArticleByLegacyId(legacyId: string) {
     chapters: asChapterArray(payload.chapters),
     vocabularyMetaMap,
     category: category ? { name: category.title } : null,
+    progress: material.studyProgresses[0]
+      ? {
+          percent: material.studyProgresses[0].progressPercent,
+          lastPosition: material.studyProgresses[0].lastPosition,
+          updatedAt: material.studyProgresses[0].updatedAt,
+        }
+      : null,
     questions: material.questions.map(question => {
-      const content = asRecord(question.content)
+      const contextSentence =
+        question.context && question.context.trim() !== question.prompt?.trim()
+          ? question.context
+          : null
       return {
         id: question.id,
-        questionType: toLegacyQuestionType(
-          material.type,
-          question.templateType,
-          content,
-        ),
+        questionType: question.questionType,
         prompt: question.prompt,
-        contextSentence: normalizeQuestionContext(question.prompt, question.context),
-        options: normalizeQuestionOptions(question.options, question.answer),
+        contextSentence,
+        options: normalizeQuestionOptions(question.options, question.answer).map(
+          ({ id, text }) => ({ id, text }),
+        ),
+        analysis: question.analysis,
+        attemptCount: question._count.attempts,
       }
     }),
   }
@@ -276,12 +273,14 @@ export async function listReadingMaterials() {
         },
       },
       questions: {
-        orderBy: { sortOrder: 'asc' },
-        select: {
-          id: true,
-          templateType: true,
-          content: true,
+        select: { id: true },
+      },
+      studyProgresses: {
+        where: {
+          profileId: 'default',
+          learningMode: 'article-reading',
         },
+        take: 1,
       },
     },
   })
@@ -297,11 +296,26 @@ export async function listReadingMaterials() {
         material.contentPayload,
         toLegacyMaterialId(material.id),
       ),
+      shortTitle: getReadingCardTitle(
+        getMaterialDisplayTitle(
+          material.type,
+          material.title,
+          material.contentPayload,
+          toLegacyMaterialId(material.id),
+        ),
+      ),
       description: asString(payload.description),
       content: asString(payload.text) || asString(payload.transcript) || '',
       sourceKind: asString(payload.sourceKind),
       author: asString(payload.author),
       chapterCount: asChapterArray(payload.chapters).length,
+      progress: material.studyProgresses[0]
+        ? {
+            percent: material.studyProgresses[0].progressPercent,
+            lastPosition: material.studyProgresses[0].lastPosition,
+            updatedAt: material.studyProgresses[0].updatedAt,
+          }
+        : null,
       paper: category
         ? {
             id: category.id,
@@ -309,13 +323,7 @@ export async function listReadingMaterials() {
             level: null,
           }
         : null,
-      questions: material.questions.map(question => ({
-        questionType: toLegacyQuestionType(
-          material.type,
-          question.templateType,
-          asRecord(question.content),
-        ),
-      })),
+      questionCount: material.questions.length,
     }
   })
 }
@@ -365,6 +373,7 @@ export async function getLessonByLegacyId(legacyId: string) {
 
   return {
     id: legacyId,
+    materialId: material.id,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,

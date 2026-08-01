@@ -47,3 +47,13 @@ export function getMaterialDisplayTitle(
   }
   return fallbackId || '未命名题库'
 }
+
+export function getReadingCardTitle(title: string): string {
+  const normalized = title.replace(/\s+/g, ' ').trim()
+  if (normalized.length <= 36) return normalized
+
+  const opening = normalized.slice(0, 36)
+  const sentenceEnd = opening.search(/[。！？!?]/)
+  if (sentenceEnd >= 10) return opening.slice(0, sentenceEnd + 1)
+  return `${opening.slice(0, 32).trim()}…`
+}

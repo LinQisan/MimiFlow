@@ -10,7 +10,8 @@ import {
   DragHandle,
   ActionInterceptor,
 } from '@/app/(library)/collections/DndSystem'
-import { updateLessonQuestions, updateSortOrder } from '@/app/actions/content'
+import { updateLessonQuestions } from '@/modules/content/actions/materials'
+import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 
 // ─── Types ───

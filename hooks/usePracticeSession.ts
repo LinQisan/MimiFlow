@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { summarizePracticeSubmission } from '@/modules/practice/domain/submission-summary'
 
 type PracticeOptionLike = {
   id: string
@@ -20,6 +21,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [showSheet, setShowSheet] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [submittedQuestionIds, setSubmittedQuestionIds] = useState<string[]>([])
   const [timeSpentByQuestionId, setTimeSpentByQuestionId] = useState<
     Record<string, number>
   >({})
@@ -32,25 +34,27 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   )
 
   const answeredCount = Object.keys(answers).length
-
-  const wrongIndexes = useMemo(
-    () =>
-      questions.reduce<number[]>((acc, question, index) => {
-        const correctId = getCorrectOptionId(question)
-        if (!correctId) return acc
-        if (answers[question.id] !== correctId) acc.push(index)
-        return acc
-      }, []),
-    [questions, answers, getCorrectOptionId],
+  const submittedQuestionIdSet = useMemo(
+    () => new Set(submittedQuestionIds),
+    [submittedQuestionIds],
   )
 
-  const gradableCount = useMemo(
-    () => questions.filter(question => !!getCorrectOptionId(question)).length,
-    [questions, getCorrectOptionId],
+  const submissionSummary = useMemo(
+    () => summarizePracticeSubmission(questions, answers),
+    [questions, answers],
   )
-
-  const wrongCount = wrongIndexes.length
-  const correctCount = gradableCount - wrongCount
+  const {
+    wrongIndexes,
+    wrongCount,
+    correctCount,
+    gradableCount,
+  } = submissionSummary
+  const submittedCount = submittedQuestionIds.length
+  const unansweredCount = Math.max(0, questions.length - submittedCount)
+  const isQuestionSubmitted = useCallback(
+    (questionId: string) => isSubmitted && submittedQuestionIdSet.has(questionId),
+    [isSubmitted, submittedQuestionIdSet],
+  )
 
   const selectOption = (questionId: string, optionId: string) => {
     if (isSubmitted) return
@@ -93,6 +97,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   const submit = () => {
     if (isSubmitted) return
     accumulateCurrentQuestionTime()
+    setSubmittedQuestionIds(submissionSummary.submittedQuestionIds)
     setIsSubmitted(true)
     setShowSheet(true)
     // 仅在整卷已作答的情况下自动跳到第一道错题，
@@ -115,6 +120,10 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
     showSheet,
     setShowSheet,
     isSubmitted,
+    submittedQuestionIds,
+    submittedCount,
+    unansweredCount,
+    isQuestionSubmitted,
     wrongIndexes,
     wrongCount,
     correctCount,

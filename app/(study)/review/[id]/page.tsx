@@ -4,7 +4,7 @@ import {
   getDueRetryQuestions,
   getRetryQuestionById,
   getRetryQueueSummary,
-} from '@/app/actions/retry'
+} from '@/modules/review/actions/mistakes'
 import ReviewQuestionClient from './ReviewQuestionClient'
 
 export const dynamic = 'force-dynamic'
@@ -39,7 +39,7 @@ export default async function ReviewQuestionPage({
     }
 
     if (items.length === 0) {
-      redirect('/review')
+      redirect('/review/mistakes')
     }
     notFound()
   }

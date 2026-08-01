@@ -11,7 +11,8 @@ import {
   DragHandle,
   ActionInterceptor,
 } from '@/app/(library)/collections/DndSystem'
-import { updateQuizWithQuestions, updateSortOrder } from '@/app/actions/content'
+import { updateQuizWithQuestions } from '@/modules/content/actions/materials'
+import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 
 type EditableOption = {
@@ -268,7 +269,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
         <div className='flex flex-col justify-between gap-4 md:flex-row md:items-start'>
         <div className='flex items-start gap-3 flex-1'>
           <Link
-            href={`/collections/${quiz.category?.levelId || ''}`}
+            href={`/manage/collections/${quiz.category?.levelId || ''}`}
             className='mt-2 p-2 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900 rounded-full transition-colors shrink-0'
             title='返回列表'>
             <svg

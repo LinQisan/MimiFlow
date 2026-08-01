@@ -146,11 +146,8 @@ export const buildSearchDetailHref = (
   type: string,
   q: string,
 ) => {
-  const params = new URLSearchParams()
-  params.set('rid', resultId)
-  params.set('type', type)
-  if (q) params.set('q', q)
-  return `/search/result?${params.toString()}`
+  void q
+  return `/manage/search/${encodeURIComponent(type)}/${encodeURIComponent(resultId)}`
 }
 
 export const extractMaterialSearchText = (contentPayload: unknown) => {

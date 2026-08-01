@@ -1,17 +1,19 @@
 import { annotateJapaneseHtml } from '@/hooks/usePronunciationPrefs'
+import { escapeHtml } from '@/utils/language/japaneseRuby'
 import type { ExamAnnotationSettings } from './types'
 
 const BLANK_TOKEN_GLOBAL = /([（(]\s*[）)]|[＿_]{2,}|[★＊])/g
 
-const toRichHtml = (text: string) => (text || '').replace(/\n/g, '<br/>')
+const toRichHtml = (text: string) => escapeHtml(text || '').replace(/\n/g, '<br/>')
 
 const withTargetHighlight = (html: string, targetWord?: string | null) => {
   const token = (targetWord || '').trim()
   if (!token) return html
+  const escapedToken = escapeHtml(token)
 
   return html.replace(
-    token,
-    `<span class="mx-1 border-b-2 border-black px-1 font-bold">${token}</span>`,
+    escapedToken,
+    `<span class="mx-1 border-b-2 border-black px-1 font-bold">${escapedToken}</span>`,
   )
 }
 

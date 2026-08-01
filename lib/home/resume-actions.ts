@@ -33,9 +33,9 @@ function normalizeProgress(progressPercent?: number | null): number {
 function resolveQuizEntryByMode(learningMode?: string | null): string {
   const mode = (learningMode || '').trim().toLowerCase()
   if (mode.includes('custom') || mode.includes('random')) {
-    return '/exam/papers/custom'
+    return '/practice/custom'
   }
-  return '/exam/papers'
+  return '/practice'
 }
 
 function resolveMaterialEntry(
@@ -44,9 +44,9 @@ function resolveMaterialEntry(
   learningMode?: string | null,
 ): string {
   const legacyId = toLegacyId(materialId)
-  if (type === MaterialType.LISTENING) return `/shadowing/${legacyId}`
-  if (type === MaterialType.MEDIA_SUBTITLE) return `/media-subtitles/${legacyId}`
-  if (type === MaterialType.READING) return `/articles/${legacyId}`
+  if (type === MaterialType.LISTENING) return `/listening/${legacyId}`
+  if (type === MaterialType.MEDIA_SUBTITLE) return `/subtitles/${legacyId}`
+  if (type === MaterialType.READING) return `/reading/articles/${legacyId}`
   return resolveQuizEntryByMode(learningMode)
 }
 
@@ -67,18 +67,18 @@ export function resolveResumeActions(
     if (!started) {
       return {
         primary: { href: materialEntry, label: '开始学习' },
-        secondary: { href: '/shadowing', label: '查看听力列表' },
+        secondary: { href: '/listening', label: '查看听力列表' },
       }
     }
     if (completed) {
       return {
         primary: { href: materialEntry, label: '复习本材料' },
-        secondary: { href: '/review', label: '去错题回顾' },
+        secondary: { href: '/review/mistakes', label: '去错题回顾' },
       }
     }
     return {
       primary: { href: materialEntry, label: '继续学习' },
-      secondary: { href: '/shadowing', label: '切换材料' },
+      secondary: { href: '/listening', label: '切换材料' },
     }
   }
 
@@ -86,12 +86,12 @@ export function resolveResumeActions(
     if (!started) {
       return {
         primary: { href: materialEntry, label: '开始浏览' },
-        secondary: { href: '/media-subtitles', label: '查看字幕库' },
+        secondary: { href: '/subtitles', label: '查看字幕库' },
       }
     }
     return {
       primary: { href: materialEntry, label: '继续浏览' },
-      secondary: { href: '/media-subtitles', label: '切换作品' },
+      secondary: { href: '/subtitles', label: '切换作品' },
     }
   }
 
@@ -99,35 +99,35 @@ export function resolveResumeActions(
     if (!started) {
       return {
         primary: { href: materialEntry, label: '开始学习' },
-        secondary: { href: '/articles', label: '查看阅读列表' },
+        secondary: { href: '/reading?tab=articles', label: '查看阅读中心' },
       }
     }
     if (completed) {
       return {
         primary: { href: materialEntry, label: '复习本材料' },
-        secondary: { href: '/review', label: '去错题回顾' },
+        secondary: { href: '/review/mistakes', label: '去错题回顾' },
       }
     }
     return {
       primary: { href: materialEntry, label: '继续学习' },
-      secondary: { href: '/articles', label: '切换材料' },
+      secondary: { href: '/reading?tab=articles', label: '切换材料' },
     }
   }
 
   if (!started) {
     return {
       primary: { href: materialEntry, label: '开始训练' },
-      secondary: { href: '/exam/papers/custom', label: '随机练习' },
+      secondary: { href: '/practice/custom', label: '随机练习' },
     }
   }
   if (completed) {
     return {
       primary: { href: materialEntry, label: '再做一轮' },
-      secondary: { href: '/exam/papers', label: '查看套卷库' },
+      secondary: { href: '/practice', label: '查看套卷库' },
     }
   }
   return {
     primary: { href: materialEntry, label: '继续训练' },
-    secondary: { href: '/exam/papers/custom', label: '随机练习' },
+    secondary: { href: '/practice/custom', label: '随机练习' },
   }
 }

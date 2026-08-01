@@ -82,6 +82,129 @@ body {
   font-kerning: normal;
 }
 
+/* Keep native select behavior while giving every closed control one visual
+   language across desktop and mobile browsers. */
+select:not([multiple]) {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1rem;
+  padding-right: 2.5rem !important;
+}
+
+select:not([multiple]):disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+html.dark select:not([multiple]) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m7 10 5 5 5-5'/%3E%3C/svg%3E");
+}
+
+/* Browser number spinners vary widely and often overlap compact fields. */
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.ui-number-stepper {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(2.75rem, 1fr) 2.25rem;
+  align-items: stretch;
+  min-width: 8.5rem;
+  height: 2.5rem;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.04);
+}
+
+.ui-number-stepper:focus-within {
+  border-color: #64748b;
+  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.22);
+}
+
+.ui-number-stepper button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.ui-number-stepper button:first-child {
+  border-right: 1px solid #e2e8f0;
+}
+
+.ui-number-stepper button:last-child {
+  border-left: 1px solid #e2e8f0;
+}
+
+.ui-number-stepper button:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.ui-number-stepper button:disabled {
+  cursor: not-allowed;
+  color: #cbd5e1;
+}
+
+.ui-number-stepper input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #0f172a;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 700;
+  outline: none;
+}
+
+html.dark .ui-number-stepper {
+  border-color: #334155;
+  background: #0f172a;
+  box-shadow: inset 0 1px 1px rgba(2, 6, 23, 0.35);
+}
+
+html.dark .ui-number-stepper button {
+  background: #111827;
+  color: #cbd5e1;
+}
+
+html.dark .ui-number-stepper button:first-child,
+html.dark .ui-number-stepper button:last-child {
+  border-color: #334155;
+}
+
+html.dark .ui-number-stepper button:hover:not(:disabled) {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+html.dark .ui-number-stepper input {
+  color: #f8fafc;
+}
+
 html.dark body {
   background: #020617;
   color: #e6edf7;

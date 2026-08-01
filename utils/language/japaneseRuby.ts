@@ -1,6 +1,6 @@
 const KANJI_REGEX = /[\u4e00-\u9fff]/
 
-const escapeHtml = (text: string) =>
+export const escapeHtml = (text: string) =>
   text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -248,7 +248,7 @@ export const annotateJapaneseText = (
   const entries = Object.entries(pronMap)
     .filter(([word, pron]) => hasJapanese(word) && !!pron.trim())
     .sort((a, b) => b[0].length - a[0].length)
-  if (entries.length === 0) return text
+  if (entries.length === 0) return escapeHtml(text)
 
   const bestByStart = new Map<number, { word: string; pron: string; length: number }>()
   for (const [word, pron] of entries) {

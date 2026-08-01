@@ -14,6 +14,7 @@ type OptionsListProps = {
   onSelect: OnSelectOption
   sourceId: string
   isSubmitted?: boolean
+  isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -29,6 +30,7 @@ export function OptionsList({
   onSelect,
   sourceId,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
   annotation,
 }: OptionsListProps) {
@@ -103,7 +105,7 @@ export function OptionsList({
           </>
         )
 
-        if (isSubmitted) {
+        if (isInteractionLocked) {
           return (
             <div
               key={option.id}
@@ -122,13 +124,13 @@ export function OptionsList({
             key={option.id}
             type='button'
             onClick={() => {
-              if (isSubmitted) return
+              if (isInteractionLocked) return
               const selectedText = window.getSelection()?.toString().trim() || ''
               // 当用户在选项文本上划词时，不触发选项选择，优先弹出 WordTooltip。
               if (selectedText.length > 0) return
               onSelect(option.id)
             }}
-            aria-disabled={isSubmitted}
+            aria-disabled={isInteractionLocked}
             data-source-type='QUIZ_QUESTION'
             data-source-id={sourceId}
             data-context-block='true'

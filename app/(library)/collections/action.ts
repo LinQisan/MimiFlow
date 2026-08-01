@@ -32,8 +32,8 @@ export async function deleteCollection(collectionId: string) {
       where: { id: collectionId },
     })
     revalidatePath('/')
-    revalidatePath('/collections')
-    revalidatePath('/upload')
+    revalidatePath('/manage/collections')
+    revalidatePath('/manage/import')
     return { success: true, message: '集合已删除' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
@@ -50,7 +50,7 @@ export async function deleteCollectionMaterial(materialId: string) {
     const finalId = direct?.id || materialId
     await prisma.material.delete({ where: { id: finalId } })
     revalidatePath('/')
-    revalidatePath('/collections')
+    revalidatePath('/manage/collections')
     return { success: true, message: '材料已删除' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
@@ -72,10 +72,10 @@ export async function updateCollectionMaterialTitle(
       where: { id: materialId },
       data: { title: nextTitle },
     })
-    revalidatePath('/collections')
-    revalidatePath(`/collections/lesson/${maybeId}`)
-    revalidatePath(`/collections/article/${maybeId}`)
-    revalidatePath(`/collections/quiz/${maybeId}`)
+    revalidatePath('/manage/collections')
+    revalidatePath(`/manage/collections/lesson/${maybeId}`)
+    revalidatePath(`/manage/collections/article/${maybeId}`)
+    revalidatePath(`/manage/collections/quiz/${maybeId}`)
     return { success: true, message: '标题已更新' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '更新失败'
@@ -97,9 +97,9 @@ export async function clearEmptyCollections() {
       },
     })
     revalidatePath('/')
-    revalidatePath('/collections')
-    revalidatePath('/exam/papers')
-    revalidatePath('/upload')
+    revalidatePath('/manage/collections')
+    revalidatePath('/practice')
+    revalidatePath('/manage/import')
     return { success: true, message: `已清理 ${result.count} 个空集合` }
   } catch (error) {
     const message = error instanceof Error ? error.message : '清理失败'
@@ -141,11 +141,11 @@ export async function updateCollectionAttributes(formData: FormData) {
     })
 
     revalidatePath('/')
-    revalidatePath('/collections')
-    revalidatePath(`/collections/${collectionId}`)
-    revalidatePath('/exam/papers')
-    revalidatePath(`/exam/papers/${collectionId}`)
-    revalidatePath('/upload')
+    revalidatePath('/manage/collections')
+    revalidatePath(`/manage/collections/${collectionId}`)
+    revalidatePath('/practice')
+    revalidatePath(`/practice/${collectionId}`)
+    revalidatePath('/manage/import')
 
     return { success: true, message: '集合属性已保存' }
   } catch (error) {

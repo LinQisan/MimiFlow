@@ -21,7 +21,7 @@ export async function getMoreExamples(word: string, excludeDialogueId: number) {
         id: Number(item.sourceId || 0),
         text: item.text,
         lesson: {
-          id: item.sourceUrl.replace('/shadowing/', '').replace('/lessons/', ''),
+          id: item.sourceUrl.replace('/listening/', '').replace('/lessons/', ''),
           title: item.source.replace(/^听力[:：]/, '') || '听力',
           audioFile: item.audioFile || '',
           paper: {

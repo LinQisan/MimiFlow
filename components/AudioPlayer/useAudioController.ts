@@ -41,6 +41,17 @@ export function useAudioController(dialogue: DialogueItem[]) {
     setIsTrackLoop(nextLoop)
   }
 
+  const togglePlayback = () => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (audio.paused) {
+      if (activeId === null && dialogue[0]) audio.currentTime = dialogue[0].start
+      void audio.play().catch(() => {})
+    } else {
+      audio.pause()
+    }
+  }
+
   // 3. 播放特定句子
   const playSentence = (item: DialogueItem) => {
     const audio = audioRef.current
@@ -76,13 +87,17 @@ export function useAudioController(dialogue: DialogueItem[]) {
     audio.loop = isTrackLoop
   }, [isTrackLoop])
 
-  // 核心：监听进度高亮与单句循环
+  // 仅在播放时逐帧同步高亮与单句循环，暂停时不持续占用主线程。
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
-    let animationFrameId: number
+    let animationFrameId: number | null = null
 
     const syncHighlight = () => {
+      if (audio.paused) {
+        animationFrameId = null
+        return
+      }
       const currentTime = audio.currentTime
       if (loopId !== null) {
         const loopItem = dialogue.find(d => d.id === loopId)
@@ -97,9 +112,15 @@ export function useAudioController(dialogue: DialogueItem[]) {
       animationFrameId = requestAnimationFrame(syncHighlight)
     }
 
-    animationFrameId = requestAnimationFrame(syncHighlight)
-    const onPlay = () => setIsPlaying(true)
-    const onPause = () => setIsPlaying(false)
+    const onPlay = () => {
+      setIsPlaying(true)
+      if (animationFrameId === null) syncHighlight()
+    }
+    const onPause = () => {
+      setIsPlaying(false)
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+      animationFrameId = null
+    }
     const onEnded = () => {
       setIsPlaying(false)
       setActiveId(null)
@@ -109,9 +130,10 @@ export function useAudioController(dialogue: DialogueItem[]) {
     audio.addEventListener('play', onPlay)
     audio.addEventListener('pause', onPause)
     audio.addEventListener('ended', onEnded)
+    if (!audio.paused) onPlay()
 
     return () => {
-      cancelAnimationFrame(animationFrameId)
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
       audio.removeEventListener('play', onPlay)
       audio.removeEventListener('pause', onPause)
       audio.removeEventListener('ended', onEnded)
@@ -173,6 +195,7 @@ export function useAudioController(dialogue: DialogueItem[]) {
     playbackRate,
     isTrackLoop,
     loopId,
+    togglePlayback,
     togglePlaybackRate,
     toggleTrackLoop,
     playSentence,

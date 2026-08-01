@@ -20,7 +20,7 @@ const resolveSourceType = (item: RankedSentenceLike) => {
   if (item.sourceType) return item.sourceType
   const sourceUrl = (item.sourceUrl || '').trim()
   if (sourceUrl.startsWith('/lessons/')) return 'AUDIO_DIALOGUE'
-  if (sourceUrl.startsWith('/articles/')) return 'ARTICLE_TEXT'
+  if (sourceUrl.startsWith('/reading/articles/')) return 'ARTICLE_TEXT'
   if (sourceUrl.startsWith('/quizzes/')) return 'QUIZ_QUESTION'
   const sourceText = (item.source || '').trim()
   if (sourceText.includes('听力')) return 'AUDIO_DIALOGUE'
@@ -72,4 +72,3 @@ export function dedupeAndRankSentences<T extends RankedSentenceLike>(
     .slice(0, Math.max(1, limit))
     .map(entry => entry.item)
 }
-

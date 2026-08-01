@@ -1,4 +1,5 @@
 import { annotateExamText } from './annotate'
+import { createTrustedMarkupSlots } from './trustedMarkup'
 import type { ExamAnnotationSettings, ExamQuestion } from './types'
 
 const escapeRegExp = (value: string) =>
@@ -68,13 +69,13 @@ export const buildReadingPassageHtml = ({
   question,
   fillBlankQuestions,
   answerMap,
-  isSubmitted,
+  submittedQuestionIds,
   annotation,
 }: {
   question: ExamQuestion
   fillBlankQuestions: ExamQuestion[]
   answerMap: Record<string, string>
-  isSubmitted: boolean
+  submittedQuestionIds: string[]
   annotation: ExamAnnotationSettings
 }) => {
   let htmlContent = question.passage?.content || ''
@@ -85,6 +86,11 @@ export const buildReadingPassageHtml = ({
   }
 
   let counter = 1
+  const submittedQuestionIdSet = new Set(submittedQuestionIds)
+  const trustedMarkup = createTrustedMarkupSlots(htmlContent)
+
+  const annotateOptionText = (text: string) =>
+    annotateExamText({ text, settings: annotation })
 
   fillBlankQuestions.forEach(fillQuestion => {
     const options = fillQuestion.options || []
@@ -100,41 +106,48 @@ export const buildReadingPassageHtml = ({
 
     const selectedOptId = answerMap[fillQuestion.id]
     const selectedOpt = options.find(option => option.id === selectedOptId)
+    const shouldRevealAnswer = submittedQuestionIdSet.has(fillQuestion.id)
 
+    const selectedOptionHtml = selectedOpt
+      ? annotateOptionText(selectedOpt.text)
+      : ''
+    const correctOptionHtml = annotateOptionText(correctOption.text)
     let replacementHtml = ''
 
-    if (!isSubmitted) {
+    if (!shouldRevealAnswer) {
       if (selectedOpt) {
-        replacementHtml = `<span class="article-blank-filled inline-block mx-1 border-b-2 border-slate-900 px-1 py-0 text-slate-900 font-semibold align-baseline transition-all duration-300">${selectedOpt.text}</span>`
+        replacementHtml = `<span class="article-blank-filled inline-block mx-1 border-b-2 border-slate-900 px-1 py-0 text-slate-900 font-semibold align-baseline transition-all duration-300">${selectedOptionHtml}</span>`
       } else {
         replacementHtml = `<span class="article-blank-empty inline-block mx-1 border-b-2 border-slate-400 px-3 py-0 text-slate-400 font-semibold select-none tracking-wide align-baseline">(${displaySerial})</span>`
       }
     } else if (!selectedOpt) {
-      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-missed inline-block border-b-2 border-slate-500 px-2 py-0 text-slate-700 font-semibold bg-slate-100">(${displaySerial})</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOption.text}</span></span>`
+      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-missed inline-block border-b-2 border-slate-500 px-2 py-0 text-slate-700 font-semibold bg-slate-100">(${displaySerial})</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOptionHtml}</span></span>`
     } else if (!selectedOpt.isCorrect) {
-      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-wrong inline-block border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100">${selectedOpt.text}</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOption.text}</span></span>`
+      replacementHtml = `<span class="inline-flex items-center gap-2 mx-1 align-baseline"><span class="article-blank-wrong inline-block border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100">${selectedOptionHtml}</span><span class="article-blank-correct text-xs md:text-sm font-semibold text-slate-700">正确：${correctOptionHtml}</span></span>`
     } else {
-      replacementHtml = `<span class="article-blank-ok inline-block mx-1 border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100 align-baseline">${correctOption.text}</span>`
+      replacementHtml = `<span class="article-blank-ok inline-block mx-1 border-b-2 border-slate-900 px-2 py-0 text-slate-900 font-semibold bg-slate-100 align-baseline">${correctOptionHtml}</span>`
     }
+
+    const replacementToken = trustedMarkup.add(replacementHtml)
 
     let replaced = false
 
     if (serial) {
-      const byToken = replaceBySerialToken(htmlContent, serial, replacementHtml)
+      const byToken = replaceBySerialToken(htmlContent, serial, replacementToken)
       htmlContent = byToken.next
       replaced = byToken.replaced
     }
 
     if (!replaced && anchorSentence) {
       let processedSentence = anchorSentence
-      const sentenceToken = replaceBySerialToken(processedSentence, serial, replacementHtml)
+      const sentenceToken = replaceBySerialToken(processedSentence, serial, replacementToken)
 
       if (sentenceToken.replaced) {
         processedSentence = sentenceToken.next
       } else if (processedSentence.includes(correctOption.text)) {
-        processedSentence = processedSentence.replace(correctOption.text, replacementHtml)
+        processedSentence = processedSentence.replace(correctOption.text, replacementToken)
       } else {
-        processedSentence = `${processedSentence}${replacementHtml}`
+        processedSentence = `${processedSentence}${replacementToken}`
       }
 
       const bySentence = replaceFirst(htmlContent, anchorSentence, processedSentence)
@@ -145,5 +158,7 @@ export const buildReadingPassageHtml = ({
     if (replaced) counter += 1
   })
 
-  return annotateExamText({ text: htmlContent, settings: annotation })
+  return trustedMarkup.restore(
+    annotateExamText({ text: htmlContent, settings: annotation }),
+  )
 }

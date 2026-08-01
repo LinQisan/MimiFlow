@@ -3,7 +3,7 @@
 MimiFlow は第二言語習得の循環に基づく学習アプリです：
 **インプット -> 想起 -> 交錯練習 -> アウトプット -> 間隔復習**。
 
-リスニング、読解、クイズ、語彙、FSRS 復習、誤答再学習、ゲーム型タスク、AI 出力評価までを 1 つの流れで扱います。
+リスニング、読解、クイズ、語彙、FSRS 復習、誤答再学習を 1 つの流れで扱います。
 
 ## 主な特徴
 
@@ -18,39 +18,33 @@ MimiFlow は第二言語習得の循環に基づく学習アプリです：
   - リスト表示 / フラッシュカード表示
 - 誤答キュー（24h/72h/7d）
 - FSRS パラメータ可視化と復習イベント記録
-- AI 出力ループ
-  - プロンプト①: 今日の作文課題を生成
-  - プロンプト②: 作文を JSON で定量評価
-  - スコアを自動解析しゲーム進捗へ反映
+- FSRS 記憶復習と誤答再学習を分けた復習センター
 
 ## 主要ルート
 
 - 学習
-  - `/lessons/[id]` リスニング・音読
-  - `/articles/[id]` 読解＋設問
-  - `/quizzes/[id]` 問題演習
-  - `/review` 復習
-  - `/retry` 誤答再学習
+  - `/listening` リスニング一覧；`/listening/[id]` リスニング・音読
+  - `/reading` 読書ライブラリ；`/reading/articles/[id]` 記事読解
+  - `/subtitles/[id]` 字幕付きメディア学習
+  - `/practice` 問題演習
+  - `/review` 復習センター
+  - `/review/memory` FSRS 記憶復習
+  - `/review/mistakes` 誤答再学習
   - `/vocabulary` 語彙ノート
-  - `/game` ゲームダッシュボード
-  - `/today` 今日の自動学習プラン
 - 管理
   - `/manage` 管理トップ
-  - `/manage/upload` 一括登録
-  - `/manage/audio` サイト内音声管理
-  - `/manage/level/*` 分類/教材編集
-  - `/manage/import/anki` Anki 取込
-  - `/manage/fsrs` FSRS 管理
+  - `/manage/import` 一括インポート
+  - `/manage/listening` リスニング管理
+  - `/manage/practice` 試験管理
+  - `/manage/import?type=anki` Anki 取込
+  - `/manage/system/audio` サイト内音声管理
+  - `/manage/system/review` FSRS 管理
 
 ## 習得モデル（実装済み）
 
 - 朝: 可理解インプット + 想起サイクル
 - 午後: 交錯練習（復習/問題/音読の混合）
-- 夕方: AI コーチ付きアウトプット課題
-- 就寝前: 軽い再生想起
-- 翌朝: 遅延想起（默写）
-
-主要タスクはデータから自動提出/自動達成判定され、手動操作を最小化します。
+- 随時: 期限が来た FSRS 記憶復習と誤答再学習
 
 ## 技術スタック
 
@@ -93,23 +87,6 @@ npx tsc --noEmit
 npm run lint
 ```
 
-## AI 出力タスクの使い方
-
-`/game` の「出力タスク（AI コーチ）」で次の流れを実行します。
-
-1. プロンプト①をコピーして AI に課題生成を依頼
-2. 学習者が作文を作成
-3. プロンプト②に課題文+作文を入れて AI に JSON 評価を依頼
-4. JSON をアプリに貼り付けて保存
-
-記録される定量データ:
-- 総合点
-- 可理解度
-- 正確性
-- 複雑性
-- 課題達成度
-- フィードバック要約/改善アクション
-
 ## ディレクトリ構成
 
 ```text
@@ -117,6 +94,7 @@ app/          ルートと server actions
 components/   共通 UI
 context/      グローバル Provider
 hooks/        設定/計測 hooks
+modules/      復習・練習・進捗の機能モジュール
 prisma/       schema・ローカル DB
 utils/        テキスト/言語処理
 ```

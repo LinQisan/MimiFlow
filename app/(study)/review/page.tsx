@@ -1,67 +1,63 @@
 import Link from 'next/link'
-import { redirect } from 'next/navigation'
-import { getDueRetryQuestions, getRetryQueueSummary } from '@/app/actions/retry'
-import { formatTokyoDateTime } from '@/utils/time/format'
+
+import { getReviewOverview } from '@/modules/review/server/queries'
+import PageHeader from '@/components/layout/PageHeader'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ReviewPage() {
-  const [summary, firstBatch] = await Promise.all([
-    getRetryQueueSummary(),
-    getDueRetryQuestions(1),
-  ])
+  const overview = await getReviewOverview()
 
-  if (firstBatch.length > 0) {
-    redirect(`/review/${firstBatch[0].retryId}`)
-  }
+  const sections = [
+    {
+      title: '记忆复习',
+      description: '使用 FSRS 复习到期的单词和句子。',
+      count: overview.dueMemory,
+      detail: `单词 ${overview.dueVocabularies} · 句子 ${overview.dueSentences}`,
+      href: '/review/memory',
+      action: '开始复习',
+    },
+    {
+      title: '错题巩固',
+      description: '按照 24h / 72h / 7d 节奏重新作答。',
+      count: overview.dueMistakes,
+      detail: `错题本共 ${overview.allMistakes} 题`,
+      href: '/review/mistakes',
+      action: '开始巩固',
+    },
+  ]
 
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <section className='mx-auto max-w-3xl rounded-[1.75rem] border border-slate-200 bg-white p-6 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)]'>
-        <div className='flex flex-col gap-4 md:flex-row md:items-end md:justify-between'>
-          <div>
-            <p className='text-xs font-semibold uppercase tracking-[0.24em] text-slate-500'>
-              Review
-            </p>
-            <h1 className='mt-2 text-3xl font-black tracking-tight text-slate-900'>
-              错题回看
-            </h1>
-            <p className='mt-2 text-sm text-slate-600'>当前没有到期错题。</p>
-          </div>
-          <div className='flex flex-wrap gap-2'>
-            <div className='rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm'>
-              <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                错题总数
-              </p>
-              <p className='mt-1 text-2xl font-black'>{summary.totalCount}</p>
-            </div>
-            <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
-              <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                下一到期
-              </p>
-              <p className='mt-1 text-base font-bold'>
-                {formatTokyoDateTime(summary.nextDueAt)}
-              </p>
-            </div>
-          </div>
-        </div>
-        <div className='mt-6 flex flex-wrap gap-2'>
-          <Link
-            href='/exam/papers/custom'
-            className='rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-800'>
-            去做新题
-          </Link>
-          <Link
-            href='/'
-            className='rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm transition-colors hover:bg-slate-50'>
-            返回首页
-          </Link>
-        </div>
-        <p className='mt-3 text-xs text-slate-400'>
-          错题总数 {summary.totalCount}，下一到期：
-          {formatTokyoDateTime(summary.nextDueAt)}
-        </p>
-      </section>
+      <div className='mx-auto max-w-4xl space-y-5'>
+        <PageHeader title='复习中心' description='处理到期记忆和需要巩固的错题。' />
+
+        <section className='grid gap-4 md:grid-cols-2'>
+          {sections.map(section => (
+            <article
+              key={section.title}
+              className='border-t border-slate-200 py-5'>
+              <div className='flex items-start justify-between gap-4'>
+                <div>
+                  <h2 className='text-xl font-black text-slate-900'>
+                    {section.title}
+                  </h2>
+                  <p className='mt-2 text-sm leading-6 text-slate-600'>{section.description}</p>
+                </div>
+                <span className='min-w-12 rounded-full bg-slate-900 px-3 py-1 text-center text-sm font-bold text-white'>
+                  {section.count}
+                </span>
+              </div>
+              <p className='mt-5 text-xs text-slate-500'>{section.detail}</p>
+              <Link
+                href={section.href}
+                className='mt-4 inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800'>
+                {section.count > 0 ? section.action : '查看'}
+              </Link>
+            </article>
+          ))}
+        </section>
+      </div>
     </main>
   )
 }

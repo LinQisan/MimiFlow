@@ -1,8 +1,9 @@
 import prisma from '@/lib/prisma'
-import { CollectionType, MaterialType, QuestionTemplate } from '@prisma/client'
+import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { getMaterialDisplayTitle } from '../materials/material-title'
 import { reorderExamOptionsForSession } from './exam-option-order'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { normalizeQuestionDisplayText } from '@/modules/practice/domain/question-text'
 
 export type ExamHubPaperSummary = {
   id: string
@@ -52,9 +53,11 @@ export const randomPracticeTypeOptions = [
 ] as const
 
 export type RandomPracticeCountMap = Partial<Record<MaterialType, number>>
+export type RandomPracticeScope = 'unattempted' | 'attempted' | 'all'
 export type RandomPracticeFilters = {
   language?: string
   level?: string
+  scope?: RandomPracticeScope
 }
 
 function shuffleList<T>(list: T[]): T[] {
@@ -87,43 +90,6 @@ function toAnswerIds(answer: unknown): string[] {
     return answer.filter(item => typeof item === 'string') as string[]
   }
   return []
-}
-
-function toLegacyQuestionType({
-  materialType,
-  templateType,
-  content,
-}: {
-  materialType: MaterialType
-  templateType: QuestionTemplate
-  content: Record<string, unknown>
-}): string {
-  const explicitType = asString(content.questionType)
-  if (explicitType) {
-    if (
-      materialType === MaterialType.VOCAB_GRAMMAR &&
-      (explicitType === 'FILL_BLANK' || explicitType === 'READING_COMPREHENSION')
-    ) {
-      return 'GRAMMAR'
-    }
-    return explicitType
-  }
-
-  if (materialType === MaterialType.LISTENING) return 'LISTENING'
-  if (materialType === MaterialType.READING) {
-    if (
-      templateType === QuestionTemplate.FILL_BLANK ||
-      templateType === QuestionTemplate.CLOZE_TEST
-    ) {
-      return 'FILL_BLANK'
-    }
-    return 'READING_COMPREHENSION'
-  }
-
-  if (materialType === MaterialType.VOCAB_GRAMMAR) {
-    return templateType === QuestionTemplate.CLOZE_TEST ? 'SORTING' : 'GRAMMAR'
-  }
-  return 'GRAMMAR'
 }
 
 function toQuestionOrder(
@@ -254,7 +220,7 @@ function buildQuestionView(
     id: string
     note: string | null
     attempts?: Array<{ isCorrect: boolean }>
-    templateType: QuestionTemplate
+    questionType: QuestionType
     content: unknown
     prompt: string | null
     context: string | null
@@ -273,11 +239,7 @@ function buildQuestionView(
 ) {
   const content = asRecord(row.content)
   const payload = asRecord(material.contentPayload)
-  const questionType = toLegacyQuestionType({
-    materialType: material.type,
-    templateType: row.templateType,
-    content,
-  })
+  const questionType = row.questionType
   const answerIds = new Set(toAnswerIds(row.answer))
 
   const options = asArray<Record<string, unknown>>(row.options).map(item => {
@@ -296,8 +258,8 @@ function buildQuestionView(
     attempts: row.attempts || [],
     order: toQuestionOrder(content, row.sortOrder || fallbackOrder),
     questionType,
-    prompt: row.prompt,
-    contextSentence: row.context,
+    prompt: normalizeQuestionDisplayText(row.prompt),
+    contextSentence: normalizeQuestionDisplayText(row.context),
     targetWord: asString(content.targetWord),
     options: orderedOptions,
   }
@@ -378,6 +340,7 @@ export async function findLevelsWithPapersAndCounts(): Promise<
 > {
   const collections = await prisma.collection.findMany({
     where: {
+      collectionType: CollectionType.PAPER,
       materials: {
         some: {},
       },
@@ -640,7 +603,7 @@ export async function findPaperDetailById(id: string) {
                 orderBy: { sortOrder: 'asc' },
                 select: {
                   id: true,
-                  templateType: true,
+                  questionType: true,
                   content: true,
                   prompt: true,
                   context: true,
@@ -675,11 +638,7 @@ export async function findPaperDetailById(id: string) {
           const content = asRecord(question.content)
           return {
             id: question.id,
-            questionType: toLegacyQuestionType({
-              materialType: material.type,
-              templateType: question.templateType,
-              content,
-            }),
+            questionType: question.questionType,
             order: toQuestionOrder(content, question.sortOrder || index + 1),
           }
         }),
@@ -712,11 +671,7 @@ export async function findPaperDetailById(id: string) {
           })
           return {
             id: question.id,
-            questionType: toLegacyQuestionType({
-              materialType: material.type,
-              templateType: question.templateType,
-              content,
-            }),
+            questionType: question.questionType,
             prompt: question.prompt,
             contextSentence: question.context,
             sectionKey: section.key,
@@ -779,7 +734,7 @@ export async function getManagePaperEditData(paperId: string) {
                 orderBy: { sortOrder: 'asc' },
                 select: {
                   id: true,
-                  templateType: true,
+                  questionType: true,
                   content: true,
                   prompt: true,
                   context: true,
@@ -838,11 +793,7 @@ export async function getManagePaperEditData(paperId: string) {
 
         return {
           id: row.id,
-          questionType: toLegacyQuestionType({
-            materialType: material.type,
-            templateType: row.templateType,
-            content,
-          }),
+          questionType: row.questionType,
           prompt: row.prompt || '',
           contextSentence: row.context || asString(content.contextSentence) || '',
           explanation: row.analysis || asString(content.explanation) || '',
@@ -889,7 +840,7 @@ export async function getExamQuestionsByPaperId(paperId: string) {
                       isCorrect: true,
                     },
                   },
-                  templateType: true,
+                  questionType: true,
                   content: true,
                   prompt: true,
                   context: true,
@@ -957,6 +908,7 @@ export async function getRandomExamQuestionsByTypeCounts(
 ) {
   const normalizedLanguage = (filters?.language || '').trim()
   const normalizedLevel = (filters?.level || '').trim()
+  const scope = filters?.scope || 'unattempted'
   const hasCollectionFilter = Boolean(normalizedLanguage || normalizedLevel)
 
   const selectedQuestionIds: string[] = []
@@ -972,6 +924,11 @@ export async function getRandomExamQuestionsByTypeCounts(
 
     const rows = await prisma.question.findMany({
       where: {
+        ...(scope === 'unattempted'
+          ? { attempts: { none: {} } }
+          : scope === 'attempted'
+            ? { attempts: { some: {} } }
+            : {}),
         material: {
           type: key,
           ...(hasCollectionFilter
@@ -1066,7 +1023,7 @@ export async function getRandomExamQuestionsByTypeCounts(
           id: row.id,
           note: row.note,
           attempts: row.attempts,
-          templateType: row.templateType,
+          questionType: row.questionType,
           content: row.content,
           prompt: row.prompt,
           context: row.context,

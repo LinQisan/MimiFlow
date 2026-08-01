@@ -271,8 +271,8 @@ export async function uploadAudioFileAdmin(formData: FormData) {
     const bytes = Buffer.from(await file.arrayBuffer())
     await writeFile(absPath, bytes)
 
-    revalidatePath('/audio/manage')
-    revalidatePath('/upload')
+    revalidatePath('/manage/system/audio')
+    revalidatePath('/manage/import')
     return { success: true, message: '录音已上传。', path: `/audios/uploads/${fileName}` }
   } catch (error) {
     console.error('上传录音失败:', error)
@@ -301,8 +301,8 @@ export async function deleteAudioFileAdmin(audioPath: string) {
     }
 
     await unlink(target.normalizedTarget)
-    revalidatePath('/audio/manage')
-    revalidatePath('/upload')
+    revalidatePath('/manage/system/audio')
+    revalidatePath('/manage/import')
     return { success: true, message: '录音已删除。' }
   } catch (error) {
     console.error('删除录音失败:', error)
@@ -339,9 +339,9 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
     await rename(oldTarget.absPath, targetAbsPath)
     const refUpdated = await replaceAudioReference(audioPath, nextWebPath)
 
-    revalidatePath('/audio/manage')
-    revalidatePath('/upload')
-    revalidatePath('/collections')
+    revalidatePath('/manage/system/audio')
+    revalidatePath('/manage/import')
+    revalidatePath('/manage/collections')
 
     return {
       success: true,
@@ -368,8 +368,8 @@ export async function createAudioFolderAdmin(rawFolder: string) {
       return { success: false, message: '非法路径。' }
     }
     await mkdir(targetAbsPath, { recursive: true })
-    revalidatePath('/audio/manage')
-    revalidatePath('/upload')
+    revalidatePath('/manage/system/audio')
+    revalidatePath('/manage/import')
     return { success: true, message: `文件夹已创建：${folder}` }
   } catch (error) {
     console.error('创建文件夹失败:', error)
@@ -411,9 +411,9 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
     await rename(target.absPath, nextAbsPath)
     const refUpdated = await replaceAudioReference(audioPath, nextPath)
 
-    revalidatePath('/audio/manage')
-    revalidatePath('/upload')
-    revalidatePath('/collections')
+    revalidatePath('/manage/system/audio')
+    revalidatePath('/manage/import')
+    revalidatePath('/manage/collections')
     return {
       success: true,
       message: `文件已重命名为 ${nextName}。`,

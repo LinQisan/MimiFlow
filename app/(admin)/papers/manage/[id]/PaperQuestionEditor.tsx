@@ -266,7 +266,7 @@ export default function PaperQuestionEditor({
       <div className='mx-auto max-w-7xl space-y-4'>
         <header className='rounded-2xl border border-slate-200 bg-white p-5 shadow-sm'>
           <div className='flex flex-wrap items-center gap-2 text-sm'>
-            <Link href='/papers/manage' className='text-indigo-600 hover:underline'>
+            <Link href='/manage/practice' className='text-indigo-600 hover:underline'>
               试卷管理
             </Link>
             <span className='text-slate-300'>/</span>
@@ -296,7 +296,7 @@ export default function PaperQuestionEditor({
           </div>
           {activeSection ? (
             <Link
-              href={`/papers/manage/${encodeURIComponent(paper.id)}`}
+              href={`/manage/practice/${encodeURIComponent(paper.id)}`}
               className='mt-3 inline-flex text-xs font-bold text-blue-700 hover:underline'>
               查看整卷结构
             </Link>

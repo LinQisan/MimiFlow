@@ -905,9 +905,9 @@ export async function uploadAssAndSaveData(formData: FormData) {
     if (overrideInvalid > 0) summary.push(`无效改配 ${overrideInvalid}`)
 
     revalidatePath('/')
-    revalidatePath('/upload')
-    revalidatePath('/collections')
-    if (isMediaUploadMode) revalidatePath('/media-subtitles')
+    revalidatePath('/manage/import')
+    revalidatePath('/manage/collections')
+    if (isMediaUploadMode) revalidatePath('/subtitles')
 
     return {
       success: true,
@@ -1031,10 +1031,10 @@ export async function createShadowingFromTimedAudio(formData: FormData) {
     })
 
     revalidatePath('/')
-    revalidatePath('/upload')
-    revalidatePath('/shadowing')
-    revalidatePath('/shadowing/manage')
-    revalidatePath('/collections')
+    revalidatePath('/manage/import')
+    revalidatePath('/listening')
+    revalidatePath('/manage/listening')
+    revalidatePath('/manage/collections')
 
     return {
       success: true,

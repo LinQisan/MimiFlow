@@ -12,6 +12,7 @@ import type {
   OnSelectOption,
 } from './question-renderer/types'
 import { formatMediaTime } from '@/utils/time/format'
+import { normalizeQuestionDisplayText } from '@/modules/practice/domain/question-text'
 
 type QuestionRendererProps = {
   question: ExamQuestion
@@ -20,6 +21,8 @@ type QuestionRendererProps = {
   answerMap?: Record<string, string>
   onSelect: OnSelectOption
   isSubmitted?: boolean
+  isInteractionLocked?: boolean
+  submittedQuestionIds?: string[]
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -31,6 +34,8 @@ function ReadingQuestion({
   answerMap = {},
   onSelect,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
+  submittedQuestionIds = [],
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -58,7 +63,7 @@ function ReadingQuestion({
               question,
               fillBlankQuestions: relatedFillBlankQuestions,
               answerMap,
-              isSubmitted,
+              submittedQuestionIds,
               annotation,
             }),
           }}
@@ -77,6 +82,7 @@ function ReadingQuestion({
             currentAnswer={currentAnswer}
             onSelect={onSelect}
             isSubmitted={isSubmitted}
+            isInteractionLocked={isInteractionLocked}
             isJapanesePaper={isJapanesePaper}
             annotation={annotation}
           />
@@ -92,6 +98,7 @@ function ListeningQuestion({
   currentAnswer,
   onSelect,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -102,6 +109,9 @@ function ListeningQuestion({
   const [duration, setDuration] = React.useState(0)
   const [autoPlayAttempted, setAutoPlayAttempted] = React.useState(false)
   const dialogues = question.lesson?.dialogues || []
+  const promptText = normalizeQuestionDisplayText(question.prompt)
+  const contextText = normalizeQuestionDisplayText(question.contextSentence)
+  const distinctContextText = contextText === promptText ? null : contextText
   const lessonId = question.lesson?.id || question.lessonId || question.id
   const sectionKey = question.lesson?.sectionKey || ''
   const sectionQuestions = sectionKey
@@ -177,27 +187,20 @@ function ListeningQuestion({
   }
 
   return (
-    <div className='mx-auto w-full max-w-3xl rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8'>
-      <div className='mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4'>
-        <div>
-          <div className='inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
-            {sectionTitle}
-          </div>
-          {sectionQuestions.length > 1 && (
-            <p className='mt-2 text-sm font-medium text-slate-500'>
-              本部分第 {sectionQuestionIndex + 1} / {sectionQuestions.length} 题。每段音频对应一道题。
-            </p>
-          )}
+    <div className='mx-auto w-full max-w-4xl rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-6'>
+      <div className='mb-4 flex items-center justify-between gap-3'>
+        <div className='inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
+          {sectionTitle}
         </div>
-        {question.lesson?.audioFile && (
-          <span className='rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500'>
-            单题音频
+        {sectionQuestions.length > 1 && (
+          <span className='text-xs font-medium text-slate-500'>
+            {sectionQuestionIndex + 1} / {sectionQuestions.length}
           </span>
         )}
       </div>
 
       {question.lesson?.audioFile && (
-        <div className='mb-6 rounded-[18px] border border-slate-200 bg-slate-50 p-4 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-5'>
+        <div className='mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-4'>
           <div className='flex items-center gap-3'>
             <button
               type='button'
@@ -207,7 +210,7 @@ function ListeningQuestion({
             </button>
             <div className='min-w-0 flex-1'>
               <div className='mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500'>
-                <span>听力播放</span>
+                <span>音频</span>
                 <span>
                   {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
                 </span>
@@ -237,7 +240,7 @@ function ListeningQuestion({
         </div>
       )}
 
-      {question.prompt && (
+      {promptText && (
         <p
           data-source-type='QUIZ_QUESTION'
           data-source-id={question.id}
@@ -248,14 +251,14 @@ function ListeningQuestion({
           }`}
           dangerouslySetInnerHTML={{
             __html: annotateExamText({
-              text: question.prompt,
+              text: promptText,
               settings: annotation,
             }),
           }}
         />
       )}
 
-      {question.contextSentence && (
+      {distinctContextText && (
         <div
           data-source-type='AUDIO_DIALOGUE'
           data-source-id={dialogueSourceId}
@@ -266,17 +269,11 @@ function ListeningQuestion({
           }`}
           dangerouslySetInnerHTML={{
             __html: annotateExamText({
-              text: question.contextSentence,
+              text: distinctContextText,
               settings: annotation,
             }),
           }}
         />
-      )}
-
-      {!question.prompt && !question.contextSentence && (
-        <p className='mb-4 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-500'>
-          该听力题未填写文字题干，作答时只显示选项。
-        </p>
       )}
 
       <OptionsList
@@ -285,6 +282,7 @@ function ListeningQuestion({
         onSelect={onSelect}
         sourceId={question.id}
         isSubmitted={isSubmitted}
+        isInteractionLocked={isInteractionLocked}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -309,6 +307,8 @@ export function QuestionRenderer({
   answerMap,
   onSelect,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
+  submittedQuestionIds = [],
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -325,6 +325,8 @@ export function QuestionRenderer({
         answerMap={answerMap}
         onSelect={onSelect}
         isSubmitted={isSubmitted}
+        isInteractionLocked={isInteractionLocked}
+        submittedQuestionIds={submittedQuestionIds}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -340,6 +342,7 @@ export function QuestionRenderer({
         answerMap={answerMap}
         onSelect={onSelect}
         isSubmitted={isSubmitted}
+        isInteractionLocked={isInteractionLocked}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -352,6 +355,7 @@ export function QuestionRenderer({
       currentAnswer={currentAnswer}
       onSelect={onSelect}
       isSubmitted={isSubmitted}
+      isInteractionLocked={isInteractionLocked}
       isJapanesePaper={isJapanesePaper}
       annotation={annotation}
     />

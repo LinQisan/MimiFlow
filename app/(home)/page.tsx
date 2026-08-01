@@ -3,8 +3,7 @@ import Link from 'next/link'
 import prisma from '@/lib/prisma'
 import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
-import { getTodayStudyPlan } from '@/app/actions/studyPlan'
-import HomeHeaderSearch from '@/components/search/HomeHeaderSearch'
+import { getTodayStudyPlan } from '@/modules/progress/server/today-plan'
 
 export const revalidate = 60
 
@@ -31,41 +30,23 @@ type HomeContinueItem =
       disabled?: boolean
     }
 
-const coreEntrances = [
-  {
-    title: '听力与跟读',
-    desc: '字幕精听 + 跟读训练',
-    href: '/shadowing',
-  },
-  {
-    title: '套卷练习',
-    desc: '整卷模拟 + 专项训练',
-    href: '/exam/papers',
-  },
-  {
-    title: '词汇中心',
-    desc: '生词复习 + 单词书架',
-    href: '/vocabulary',
-  },
+type HomeEntrance = {
+  title: string
+  desc: string
+  href: string
+  metric?: 'papers' | 'vocabulary' | 'mistakes'
+}
+
+const coreEntrances: HomeEntrance[] = [
   {
     title: '语法库',
     desc: '标签归类 + 相似语法',
     href: '/grammar',
   },
   {
-    title: '错题回顾',
-    desc: '按记录回看薄弱点',
-    href: '/review',
-  },
-  {
     title: '影视字幕',
-    desc: '电影/剧集字幕浏览与管理',
-    href: '/media-subtitles',
-  },
-  {
-    title: '电子书阅读',
-    desc: 'EPUB 导入 + 划词注音阅读',
-    href: '/ebooks',
+    desc: '按电影和剧集浏览字幕',
+    href: '/subtitles',
   },
 ]
 
@@ -95,6 +76,20 @@ function defaultModeByType(type: MaterialType): string {
   return '套卷训练'
 }
 
+function formatLearningMeta(
+  type: MaterialType,
+  learningMode?: string | null,
+): string {
+  const labels = [
+    toTypeLabel(type),
+    ...(learningMode || defaultModeByType(type))
+      .split('/')
+      .map(label => label.trim()),
+  ].filter(Boolean)
+
+  return [...new Set(labels)].join(' · ')
+}
+
 function toDateKeyInTokyo(date: Date): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Tokyo',
@@ -110,29 +105,8 @@ export default async function HomePage() {
   const weekStartKey = toDateKeyInTokyo(sixDaysAgo)
   const todayKey = toDateKeyInTokyo(now)
 
-  const examTableFlags = await prisma.$queryRaw<
-    Array<{
-      has_materials: boolean
-      has_questions: boolean
-      has_collections: boolean
-      has_progresses: boolean
-    }>
-  >`SELECT
-      to_regclass('public.materials') IS NOT NULL AS has_materials,
-      to_regclass('public.questions') IS NOT NULL AS has_questions,
-      to_regclass('public.collections') IS NOT NULL AS has_collections,
-      to_regclass('public.material_study_progresses') IS NOT NULL AS has_progresses`
-
-  const examTablesReady = examTableFlags[0] || {
-    has_materials: false,
-    has_questions: false,
-    has_collections: false,
-    has_progresses: false,
-  }
-
   const [
     vocabCount,
-    wrongCount,
     weekStudyAgg,
     paperCount,
     questionCount,
@@ -141,7 +115,6 @@ export default async function HomePage() {
     recentPlaytimeRows,
   ] = await Promise.all([
     prisma.vocabulary.count(),
-    prisma.questionRetry.count(),
     prisma.studyTimeDaily.aggregate({
       _sum: { seconds: true },
       where: {
@@ -151,55 +124,74 @@ export default async function HomePage() {
         },
       },
     }),
-    examTablesReady.has_collections
-      ? prisma.collection.count({ where: { collectionType: 'PAPER' } })
-      : Promise.resolve(0),
-    examTablesReady.has_questions
-      ? prisma.question.count()
-      : Promise.resolve(0),
+    prisma.collection.count({ where: { collectionType: 'PAPER' } }),
+    prisma.question.count(),
     getTodayStudyPlan(),
-    examTablesReady.has_progresses && examTablesReady.has_materials
-      ? prisma.materialStudyProgress.findMany({
-          where: { profileId: 'default' },
-          orderBy: { updatedAt: 'desc' },
-          take: 6,
-          include: {
-            material: {
-              select: {
-                id: true,
-                title: true,
-                type: true,
-              },
-            },
+    prisma.materialStudyProgress.findMany({
+      where: { profileId: 'default' },
+      orderBy: { updatedAt: 'desc' },
+      take: 6,
+      include: {
+        material: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
           },
-        })
-      : Promise.resolve([]),
-    examTablesReady.has_progresses && examTablesReady.has_materials
-      ? prisma.materialPlaytimeStat.findMany({
-          where: {
-            profileId: 'default',
-            material: { type: MaterialType.LISTENING },
+        },
+      },
+    }),
+    prisma.materialPlaytimeStat.findMany({
+      where: {
+        profileId: 'default',
+        material: { type: MaterialType.LISTENING },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 6,
+      include: {
+        material: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
           },
-          orderBy: { updatedAt: 'desc' },
-          take: 6,
-          include: {
-            material: {
-              select: {
-                id: true,
-                title: true,
-                type: true,
-              },
-            },
-          },
-        })
-      : Promise.resolve([]),
+        },
+      },
+    }),
   ])
+
+  const wrongCount =
+    todayPlan.tasks.find(task => task.id === 'retry')?.targetCount || 0
 
   const totalWeekSeconds = weekStudyAgg._sum.seconds || 0
   const weekHours = (totalWeekSeconds / 3600).toFixed(1)
 
-  const studyRecords: HomeContinueItem[] = [
-    ...recentStudyRows.map(row => {
+  const todayTaskRecords: HomeContinueItem[] = todayPlan.tasks
+    .filter(task => !task.disabled)
+    .map(task => ({
+      kind: 'task' as const,
+      id: `task-${task.id}`,
+      title: task.title,
+      metaLabel: `今日目标 · ${task.targetCount}${task.unit}`,
+      detailLabel: task.description,
+      primaryHref: task.href,
+      primaryLabel:
+        task.id === 'memory'
+          ? '去复习'
+          : task.id === 'listening'
+            ? '去听力'
+            : task.id === 'reading'
+              ? '去阅读'
+              : '去巩固',
+      disabled: task.disabled,
+    }))
+
+  const recentStudyMaterialIds = new Set(
+    recentStudyRows.map(row => row.material.id),
+  )
+  const activeStudyRecords: HomeContinueItem[] = recentStudyRows
+    .filter(row => row.progressPercent < 98)
+    .map(row => {
       const actions = resolveResumeActions({
         type: row.material.type,
         materialId: row.material.id,
@@ -211,15 +203,18 @@ export default async function HomePage() {
         kind: 'resume' as const,
         id: `study-${row.id}`,
         title: row.material.title,
-        metaLabel: `${toTypeLabel(row.material.type)} / ${row.learningMode || defaultModeByType(row.material.type)}`,
+        metaLabel: formatLearningMeta(row.material.type, row.learningMode),
         detailLabel: `进度：已完成 ${Math.max(0, Math.min(100, Math.round(row.progressPercent)))}%，上次位置：${row.lastPosition || '未记录位置'}`,
         primaryHref: actions.primary.href,
         primaryLabel: actions.primary.label,
         secondaryHref: actions.secondary.href,
         secondaryLabel: actions.secondary.label,
       }
-    }),
-    ...recentPlaytimeRows.map(row => {
+    })
+
+  const activePlaytimeRecords: HomeContinueItem[] = recentPlaytimeRows
+    .filter(row => !recentStudyMaterialIds.has(row.material.id))
+    .map(row => {
       const actions = resolveResumeActions({
         type: row.material.type,
         materialId: row.material.id,
@@ -241,66 +236,36 @@ export default async function HomePage() {
         secondaryHref: actions.secondary.href,
         secondaryLabel: actions.secondary.label,
       }
-    }),
-    ...todayPlan.tasks
-      .filter(task => !task.disabled)
-      .map(task => ({
-        kind: 'task' as const,
-        id: `task-${task.id}`,
-        title: task.title,
-        metaLabel: `${task.targetCount}${task.unit}`,
-        detailLabel: task.description,
-        primaryHref: task.href,
-        primaryLabel:
-          task.id === 'review'
-            ? '去复习'
-            : task.id === 'listening'
-              ? '去听力'
-              : task.id === 'reading'
-                ? '去阅读'
-                : task.id === 'retry'
-                  ? '去回流'
-                  : '去输出',
-        disabled: task.disabled,
-      })),
+    })
+
+  const studyRecords: HomeContinueItem[] = [
+    ...todayTaskRecords,
+    ...activeStudyRecords,
+    ...activePlaytimeRecords,
   ].slice(0, 4)
 
-  const assets = [
-    { title: '生词本', count: `${vocabCount} 个`, href: '/vocabulary' },
-    { title: '错题本', count: `${wrongCount} 题`, href: '/review' },
-    { title: '套卷库', count: `${paperCount} 套`, href: '/exam/papers' },
-    { title: '题目总量', count: `${questionCount} 题`, href: '/papers/manage' },
-  ]
-
+  const entranceMetrics: Record<
+    NonNullable<HomeEntrance['metric']>,
+    string
+  > = {
+    papers: `${paperCount} 套 · ${questionCount} 题`,
+    vocabulary: `${vocabCount} 个生词`,
+    mistakes: `${wrongCount} 题待复习`,
+  }
 
   return (
     <main className='min-h-screen bg-white text-slate-900'>
       <div className='mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8'>
         <header className='mb-7 border-b border-slate-200 pb-6'>
-          <div className='flex flex-wrap items-center gap-3'>
-            <Link
-              href='/'
-              className='text-sm font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900'>
-              MimiFlow
-            </Link>
-            <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <Link href='/shadowing' className='ui-btn ui-btn-primary'>
-                开始学习
-              </Link>
-              <Link href='/media-subtitles/upload' className='ui-btn'>
-                影视字幕上传
-              </Link>
-              <Link href='/ebooks/import' className='ui-btn'>
-                导入电子书
-              </Link>
-              <Link href='/upload' className='ui-btn'>
-                上传内容
-              </Link>
-              <HomeHeaderSearch />
-            </div>
+          <div className='mb-5'>
+            <p className='text-xs font-semibold uppercase tracking-[0.22em] text-slate-400'>
+              Today
+            </p>
+            <h1 className='mt-1 text-3xl font-black tracking-tight text-slate-950'>
+              今日学习
+            </h1>
           </div>
-
-          <div className='grid gap-5 pt-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
+          <div className='grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
             <div className='grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-200 pt-5 md:grid-cols-4 md:pt-0'>
               <div>
                 <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
@@ -343,7 +308,7 @@ export default async function HomePage() {
           {studyRecords.length === 0 ? (
             <div className='border-t border-slate-200 py-5'>
               <p className='text-sm text-slate-500'>
-                暂无学习进度记录，可从下方学习入口直接开始。
+                今日任务已完成，可从下方学习中心开始新的内容。
               </p>
             </div>
           ) : (
@@ -388,7 +353,7 @@ export default async function HomePage() {
         </section>
 
         <section className='mb-6'>
-          <SectionTitle title='学习入口' />
+          <SectionTitle title='资料与工具' />
           <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 lg:grid-cols-2'>
             {coreEntrances.map(card => (
               <Link
@@ -403,33 +368,16 @@ export default async function HomePage() {
                     <p className='mt-2 text-sm leading-6 text-slate-500'>
                       {card.desc}
                     </p>
+                    {card.metric ? (
+                      <p className='mt-1 text-xs font-medium text-slate-500'>
+                        {entranceMetrics[card.metric]}
+                      </p>
+                    ) : null}
                   </div>
                   <span className='rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
                     进入
                   </span>
                 </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <section>
-          <SectionTitle title='学习资产' />
-          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 md:grid-cols-2 xl:grid-cols-4'>
-            {assets.map(item => (
-              <Link
-                key={item.title}
-                href={item.href}
-                className='flex items-center justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
-                <div>
-                  <h3 className='text-sm font-semibold tracking-tight text-slate-900'>
-                    {item.title}
-                  </h3>
-                  <p className='mt-1 text-sm text-slate-500'>{item.count}</p>
-                </div>
-                <span className='rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
-                  查看
-                </span>
               </Link>
             ))}
           </div>

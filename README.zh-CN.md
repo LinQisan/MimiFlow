@@ -3,7 +3,7 @@
 MimiFlow 是一个围绕二语习得闭环构建的语言学习应用：
 **输入 -> 提取 -> 交错练习 -> 输出 -> 间隔复习**。
 
-项目整合听力、阅读、做题、生词、复习、错题回流、游戏任务和 AI 输出评估，尽量让学习过程“少手动、可量化、可持续”。
+项目整合听力、阅读、做题、生词、FSRS 记忆复习和错题巩固，尽量让学习过程“少手动、可量化、可持续”。
 
 ## 主要特性
 
@@ -18,39 +18,35 @@ MimiFlow 是一个围绕二语习得闭环构建的语言学习应用：
   - 列表与闪卡模式
 - 错题回流队列（24h/72h/7d）
 - FSRS 参数管理与复习事件日志
-- 输出任务闭环：
-  - 提示词① 生成输出目标
-  - 提示词② 评改作文并返回 JSON
-  - 系统自动解析分数并计入游戏进度
+- 复习中心明确区分：
+  - 单词与句子的 FSRS 记忆复习
+  - 24h/72h/7d 错题巩固
 
 ## 路由概览
 
 - 学习侧
-  - `/lessons/[id]` 听力与跟读
-  - `/articles/[id]` 阅读与文章做题
-  - `/quizzes/[id]` 题库练习
-  - `/review` 复习
-  - `/retry` 错题回流
+  - `/listening` 听力库；`/listening/[id]` 听力与跟读
+  - `/reading` 阅读库；`/reading/articles/[id]` 文章阅读
+  - `/subtitles/[id]` 字幕媒体学习
+  - `/practice` 题库练习
+  - `/review` 复习中心
+  - `/review/memory` 单词与句子复习
+  - `/review/mistakes` 错题巩固
   - `/vocabulary` 生词本
-  - `/game` 游戏系统与学习闭环面板
-  - `/today` 今日任务自动编排
 - 管理侧
   - `/manage` 管理首页
-  - `/manage/upload` 统一录入
-  - `/manage/audio` 站内录音管理
-  - `/manage/level/*` 分类与内容维护
-  - `/manage/import/anki` Anki 导入
-  - `/manage/fsrs` FSRS 面板
+  - `/manage/import` 统一导入
+  - `/manage/listening` 听力管理
+  - `/manage/practice` 试卷管理
+  - `/manage/import?type=anki` Anki 导入
+  - `/manage/system/audio` 站内音频管理
+  - `/manage/system/review` FSRS 面板
 
 ## 习得逻辑（系统内已落地）
 
 - 早上：可理解输入 + 提取循环
 - 下午：交错练习（复习/做题/听读混排）
-- 傍晚：AI 输出任务（自动量化）
-- 睡前：轻回顾
-- 次晨：延迟默写
-
-核心任务会基于行为数据自动提交或自动结算，减少额外打卡操作。
+- 随时：到期记忆复习与错题巩固
 
 ## 技术栈
 
@@ -93,22 +89,6 @@ npx tsc --noEmit
 npm run lint
 ```
 
-## AI 输出任务使用方式
-
-在 `/game` 的“输出任务（AI教练）”中：
-
-1. 点击复制提示词①，让 AI 生成当日写作目标  
-2. 完成作文后，点击复制提示词②，让 AI 输出严格 JSON 评改  
-3. 把“输出目标 + 作文 + JSON 评改”粘贴回系统保存  
-
-系统会记录：
-- 综合分
-- 可理解度
-- 准确度
-- 复杂度
-- 完成度
-- 建议总结与下一步行动项
-
 ## 目录结构
 
 ```text
@@ -116,6 +96,7 @@ app/          路由与 server actions
 components/   通用组件
 context/      全局 Provider
 hooks/        偏好/遥测 hooks
+modules/      按业务组织的复习、练习与进度模块
 prisma/       schema/本地数据库
 utils/        文本与语言工具函数
 ```

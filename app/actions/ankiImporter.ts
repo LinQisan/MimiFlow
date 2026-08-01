@@ -522,7 +522,6 @@ export async function previewAnkiImport(formData: FormData) {
   const wordbookId = String(formData.get('wordbookId') || '').trim()
   const wordbookTitle = String(formData.get('wordbookTitle') || '').trim()
   const sourceName = wordbookTitle || notebookName || 'Anki导入'
-  const groupName = String(formData.get('groupName') || '').trim()
   const globalTags = splitList(String(formData.get('globalTags') || ''))
   const uploadNameSet = new Set([
     ...audioFiles.map(file => path.basename(file.name)),
@@ -561,7 +560,6 @@ export async function previewAnkiImport(formData: FormData) {
       wordbookId,
       wordbookTitle,
       sourceName,
-      groupName,
       globalTags: globalTags.join(' / '),
       sampleRows: createPreviewRows(truncatedRows),
       rowsJson: JSON.stringify(validRows),
@@ -575,7 +573,6 @@ export async function runAnkiImport(formData: FormData) {
   const notebookName = String(formData.get('notebookName') || '').trim()
   const selectedWordbookId = String(formData.get('wordbookId') || '').trim()
   const selectedWordbookTitle = String(formData.get('wordbookTitle') || '').trim()
-  const groupName = String(formData.get('groupName') || '').trim()
   const globalTags = splitList(String(formData.get('globalTags') || ''))
   const rows = parseRowsJson(rowsJson)
   if (rows.length === 0) {
@@ -640,7 +637,6 @@ export async function runAnkiImport(formData: FormData) {
           word: row.word,
           sourceType: SourceType.ARTICLE_TEXT,
           sourceId: 'anki-import',
-          groupName: groupName || null,
           wordAudio: wordAudioPath || null,
           pronunciations: toJsonStringList(normalizedPronunciations),
           partsOfSpeech: toJsonStringList([]),
@@ -710,7 +706,7 @@ export async function runAnkiImport(formData: FormData) {
       where: {
         normalizedText_sourceUrl: {
           normalizedText: normalized,
-          sourceUrl: '/anki',
+          sourceUrl: '/manage/import?type=anki',
         },
       },
       update: {
@@ -727,7 +723,7 @@ export async function runAnkiImport(formData: FormData) {
         translation: row.sentenceTranslation || null,
         audioFile: sentenceAudioPath || null,
         source: sourceName,
-        sourceUrl: '/anki',
+        sourceUrl: '/manage/import?type=anki',
         sourceType: SourceType.ARTICLE_TEXT,
         sourceId: 'anki-import',
       },
@@ -764,7 +760,6 @@ export async function runAnkiImport(formData: FormData) {
       uploadedAudios: audioMap.size,
       sourceName,
       notebookName: selectedWordbookTitle || notebookName || '',
-      groupName: groupName || '',
       globalTags: globalTags.join(' / '),
     },
   }
@@ -814,7 +809,7 @@ export async function syncWordbookSources() {
       where: {
         id: sentenceId,
         source: { not: source },
-        OR: [{ sourceId: 'anki-import' }, { sourceUrl: '/anki' }],
+        OR: [{ sourceId: 'anki-import' }, { sourceUrl: '/manage/import?type=anki' }],
       },
       data: { source },
     })

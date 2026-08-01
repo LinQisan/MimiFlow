@@ -1,0 +1,437 @@
+'use server'
+
+import { revalidatePath } from 'next/cache'
+
+import prisma from '@/lib/prisma'
+import { parseJsonStringList } from '@/utils/text/jsonList'
+
+const isWordbookMoveValid = async (
+  wordbookId: string,
+  nextParentId: string | null,
+) => {
+  if (!nextParentId) return true
+  if (nextParentId === wordbookId) return false
+
+  let cursor: string | null = nextParentId
+  while (cursor) {
+    if (cursor === wordbookId) return false
+    const parent: { parentId: string | null } | null = await prisma.wordbook.findUnique({
+        where: { id: cursor },
+        select: { parentId: true },
+      })
+    cursor = parent?.parentId || null
+  }
+  return true
+}
+
+export async function createWordbook(
+  title: string,
+  parentId?: string | null,
+) {
+  try {
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) {
+      return { success: false, message: '单词书名称不能为空' }
+    }
+    const nextParentId = parentId?.trim() || null
+    if (nextParentId) {
+      const parent = await prisma.wordbook.findUnique({
+        where: { id: nextParentId },
+        select: { id: true },
+      })
+      if (!parent) {
+        return { success: false, message: '上级单词书不存在' }
+      }
+    }
+    const wordbook = await prisma.wordbook.create({
+      data: {
+        title: trimmedTitle,
+        parentId: nextParentId,
+      },
+      select: { id: true, title: true, parentId: true, createdAt: true },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return {
+      success: true,
+      wordbook: {
+        id: wordbook.id,
+        title: wordbook.title,
+        parentId: wordbook.parentId,
+        createdAt: wordbook.createdAt,
+      },
+    }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同级单词书名称已存在' }
+    }
+    console.error(error)
+    return { success: false, message: '创建单词书失败' }
+  }
+}
+
+export async function renameWordbook(wordbookId: string, title: string) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    const trimmedTitle = title.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    if (!trimmedTitle) return { success: false, message: '名称不能为空' }
+    const updated = await prisma.wordbook.update({
+      where: { id: trimmedWordbookId },
+      data: { title: trimmedTitle },
+      select: { id: true, title: true, parentId: true },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true, wordbook: updated }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同级单词书名称已存在' }
+    }
+    console.error(error)
+    return { success: false, message: '重命名失败' }
+  }
+}
+
+export async function moveWordbook(
+  wordbookId: string,
+  parentId: string | null,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    const nextParentId = parentId?.trim() || null
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const wordbook = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
+      select: { id: true },
+    })
+    if (!wordbook) return { success: false, message: '单词书不存在' }
+    if (nextParentId) {
+      const target = await prisma.wordbook.findUnique({
+        where: { id: nextParentId },
+        select: { id: true },
+      })
+      if (!target) return { success: false, message: '目标单词书不存在' }
+    }
+    const valid = await isWordbookMoveValid(trimmedWordbookId, nextParentId)
+    if (!valid) return { success: false, message: '不能移动到自身或子单词书下' }
+    const updated = await prisma.wordbook.update({
+      where: { id: trimmedWordbookId },
+      data: { parentId: nextParentId },
+      select: { id: true, title: true, parentId: true },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true, wordbook: updated }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '目标位置已有同名单词书' }
+    }
+    console.error(error)
+    return { success: false, message: '移动单词书失败' }
+  }
+}
+
+export async function deleteWordbook(wordbookId: string) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const existing = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
+      select: { id: true },
+    })
+    if (!existing) return { success: false, message: '单词书不存在' }
+
+    await prisma.wordbook.delete({
+      where: { id: trimmedWordbookId },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '删除单词书失败' }
+  }
+}
+
+export async function addVocabularyToWordbook(
+  vocabularyId: string,
+  wordbookId: string,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) {
+      return { success: false, message: '单词书无效' }
+    }
+    await prisma.wordbookVocabulary.upsert({
+      where: {
+        wordbookId_vocabularyId: {
+          wordbookId: trimmedWordbookId,
+          vocabularyId,
+        },
+      },
+      update: {},
+      create: {
+        wordbookId: trimmedWordbookId,
+        vocabularyId,
+      },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '加入单词书失败' }
+  }
+}
+
+export async function removeVocabularyFromWordbook(
+  vocabularyId: string,
+  wordbookId: string,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) {
+      return { success: false, message: '单词书无效' }
+    }
+    await prisma.wordbookVocabulary.deleteMany({
+      where: {
+        vocabularyId,
+        wordbookId: trimmedWordbookId,
+      },
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '移出单词书失败' }
+  }
+}
+
+export async function listWordbooksTree() {
+  const rows = await prisma.wordbook.findMany({
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      title: true,
+      parentId: true,
+      _count: {
+        select: { entries: true },
+      },
+    },
+  })
+  return rows.map(item => ({
+    id: item.id,
+    title: item.title,
+    parentId: item.parentId,
+    vocabularyCount: item._count.entries,
+  }))
+}
+
+export async function listVocabularyByWordbook(
+  wordbookId: string,
+  page = 1,
+  pageSize = 48,
+) {
+  const normalizedPage = Math.max(1, Math.floor(page || 1))
+  const normalizedPageSize = Math.max(
+    1,
+    Math.min(100, Math.floor(pageSize || 48)),
+  )
+
+  const [totalCount, rows] = await Promise.all([
+    prisma.wordbookVocabulary.count({
+      where: { wordbookId },
+    }),
+    prisma.wordbookVocabulary.findMany({
+      where: { wordbookId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+      skip: (normalizedPage - 1) * normalizedPageSize,
+      take: normalizedPageSize,
+      include: {
+        vocabulary: {
+          include: {
+            review: {
+              select: {
+                id: true,
+                due: true,
+                state: true,
+                stability: true,
+                difficulty: true,
+                elapsed_days: true,
+                scheduled_days: true,
+                reps: true,
+                lapses: true,
+                learning_steps: true,
+                last_review: true,
+              },
+            },
+            tags: {
+              include: {
+                tag: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    }),
+  ])
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / normalizedPageSize))
+  return {
+    totalCount,
+    totalPages,
+    currentPage: Math.min(normalizedPage, totalPages),
+    items: rows.map(item => item.vocabulary),
+  }
+}
+
+export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
+  const trimmedWordbookId = (wordbookId || '').trim()
+  if (!trimmedWordbookId) return { success: false, updatedCount: 0 }
+
+  const wordbook = await prisma.wordbook.findUnique({
+    where: { id: trimmedWordbookId },
+    select: { id: true, title: true },
+  })
+  if (!wordbook) return { success: false, updatedCount: 0 }
+
+  const wordbookLinks = await prisma.wordbookVocabulary.findMany({
+    where: { wordbookId: trimmedWordbookId },
+    select: { vocabularyId: true },
+  })
+  const vocabularyIds = Array.from(
+    new Set(wordbookLinks.map(item => item.vocabularyId).filter(Boolean)),
+  )
+  if (vocabularyIds.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
+    where: {
+      vocabularyId: { in: vocabularyIds },
+      sentence: {
+        OR: [
+          { sourceId: 'anki-import' },
+          { sourceUrl: '/manage/import?type=anki' },
+        ],
+      },
+    },
+    select: { sentenceId: true },
+  })
+  const sentenceIds = Array.from(
+    new Set(sentenceLinks.map(item => item.sentenceId).filter(Boolean)),
+  )
+  if (sentenceIds.length === 0) {
+    return { success: true, updatedCount: 0 }
+  }
+
+  const updated = await prisma.vocabularySentence.updateMany({
+    where: {
+      id: { in: sentenceIds },
+      AND: [
+        {
+          OR: [
+            { sourceId: 'anki-import' },
+            { sourceUrl: '/manage/import?type=anki' },
+          ],
+        },
+        {
+          OR: [
+            { source: { not: wordbook.title } },
+            { sourceUrl: { not: '/manage/import?type=anki' } },
+          ],
+        },
+      ],
+    },
+    data: {
+      source: wordbook.title,
+      sourceUrl: '/manage/import?type=anki',
+    },
+  })
+
+  return { success: true, updatedCount: updated.count }
+}
+
+export async function searchVocabularyCandidates(
+  keyword: string,
+  wordbookId?: string,
+  limit = 20,
+) {
+  const trimmed = keyword.trim()
+  if (!trimmed) return []
+  const maxLimit = Math.max(1, Math.min(50, Math.floor(limit || 20)))
+  const rows = await prisma.vocabulary.findMany({
+    where: {
+      word: { contains: trimmed, mode: 'insensitive' },
+      ...(wordbookId
+        ? {
+            wordbooks: {
+              none: {
+                wordbookId,
+              },
+            },
+          }
+        : {}),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: maxLimit,
+    select: {
+      id: true,
+      word: true,
+      pronunciations: true,
+      partsOfSpeech: true,
+    },
+  })
+  return rows.map(item => ({
+    id: item.id,
+    word: item.word,
+    pronunciations: parseJsonStringList(item.pronunciations),
+    partsOfSpeech: parseJsonStringList(item.partsOfSpeech),
+  }))
+}
+
+export async function addVocabulariesToWordbook(
+  vocabularyIds: string[],
+  wordbookId: string,
+) {
+  try {
+    const trimmedWordbookId = wordbookId.trim()
+    if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    const uniqueIds = Array.from(
+      new Set(vocabularyIds.map(item => item.trim()).filter(Boolean)),
+    )
+    if (uniqueIds.length === 0) {
+      return { success: false, message: '请先选择词条' }
+    }
+
+    const existingWordbook = await prisma.wordbook.findUnique({
+      where: { id: trimmedWordbookId },
+      select: { id: true },
+    })
+    if (!existingWordbook) return { success: false, message: '单词书不存在' }
+
+    const result = await prisma.wordbookVocabulary.createMany({
+      data: uniqueIds.map(vocabularyId => ({
+        wordbookId: trimmedWordbookId,
+        vocabularyId,
+      })),
+      skipDuplicates: true,
+    })
+    revalidatePath('/vocabulary')
+    revalidatePath('/vocabulary')
+    return {
+      success: true,
+      added: result.count,
+      total: uniqueIds.length,
+      skipped: Math.max(0, uniqueIds.length - result.count),
+    }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '批量加入单词书失败' }
+  }
+}

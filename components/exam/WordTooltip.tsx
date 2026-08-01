@@ -1,7 +1,15 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
-import { saveVocabulary } from '@/app/actions/content'
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
 import { SourceType } from '@prisma/client'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
@@ -63,14 +71,32 @@ export default function WordTooltip({
   const [saveState, setSaveState] = useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
+  const [statusMessage, setStatusMessage] = useState('')
   const [headwordValue, setHeadwordValue] = useState('')
   const [pronunciationValue, setPronunciationValue] = useState('')
   const [meaningValue, setMeaningValue] = useState('')
   const [partOfSpeechValue, setPartOfSpeechValue] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(true)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const headwordInputRef = useRef<HTMLInputElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const closeTimerRef = useRef<number | null>(null)
+  const headwordInputId = useId()
+  const pronunciationInputId = useId()
+  const partOfSpeechInputId = useId()
+  const meaningInputId = useId()
+  const contextId = useId()
+  const [popupHeight, setPopupHeight] = useState(320)
+  const [viewport, setViewport] = useState(() => ({
+    width: typeof window === 'undefined' ? 1024 : window.innerWidth,
+    height: typeof window === 'undefined' ? 768 : window.innerHeight,
+    offsetLeft: 0,
+    offsetTop: 0,
+  }))
 
   useEffect(() => {
     setSaveState('idle')
+    setStatusMessage('')
     setHeadwordValue(word)
     const initialPron = (initialMeta?.pronunciations || []).join(' / ')
     setPronunciationValue(initialPron)
@@ -78,21 +104,95 @@ export default function WordTooltip({
     setMeaningValue((initialMeta?.meanings || []).join('; '))
   }, [word, initialMeta])
 
+  const requestClose = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+    onClose?.()
+  }, [onClose])
+
+  useLayoutEffect(() => {
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null
+    const focusFrame = window.requestAnimationFrame(() => {
+      headwordInputRef.current?.focus({ preventScroll: true })
+      headwordInputRef.current?.select()
+    })
+    return () => {
+      window.cancelAnimationFrame(focusFrame)
+      if (closeTimerRef.current != null) {
+        window.clearTimeout(closeTimerRef.current)
+      }
+      previousFocusRef.current?.focus({ preventScroll: true })
+    }
+  }, [])
+
+  useLayoutEffect(() => {
+    const popup = popupRef.current
+    if (!popup) return
+    const measure = () => setPopupHeight(popup.getBoundingClientRect().height)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(popup)
+    return () => observer.disconnect()
+  }, [showAdvanced])
+
+  useEffect(() => {
+    const updateViewport = () => {
+      const visualViewport = window.visualViewport
+      setViewport({
+        width: visualViewport?.width || window.innerWidth,
+        height: visualViewport?.height || window.innerHeight,
+        offsetLeft: visualViewport?.offsetLeft || 0,
+        offsetTop: visualViewport?.offsetTop || 0,
+      })
+    }
+    updateViewport()
+    window.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('resize', updateViewport)
+    window.visualViewport?.addEventListener('scroll', updateViewport)
+    return () => {
+      window.removeEventListener('resize', updateViewport)
+      window.visualViewport?.removeEventListener('resize', updateViewport)
+      window.visualViewport?.removeEventListener('scroll', updateViewport)
+    }
+  }, [])
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      requestClose()
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [requestClose])
+
   // --- 2. 动态计算样式与位置 ---
-  const estimatedHeight = showAdvanced ? 320 : 180
-  const tooltipHalfWidth = 130
   const viewportPadding = 12
-  const maxX = typeof window === 'undefined' ? x : window.innerWidth - tooltipHalfWidth - viewportPadding
-  const minX = tooltipHalfWidth + viewportPadding
+  const tooltipWidth = Math.min(260, Math.max(160, viewport.width - 24))
+  const tooltipHalfWidth = tooltipWidth / 2
+  const minX = viewport.offsetLeft + tooltipHalfWidth + viewportPadding
+  const maxX =
+    viewport.offsetLeft + viewport.width - tooltipHalfWidth - viewportPadding
   const clampedX = Math.min(Math.max(x, minX), maxX)
-  const shouldOpenDown = isTop && y < estimatedHeight + 16
-  const maxY =
-    typeof window === 'undefined'
-      ? y
-      : window.innerHeight - viewportPadding - (shouldOpenDown ? estimatedHeight : 0)
+  const viewportBottom = viewport.offsetTop + viewport.height
+  const spaceAbove = y - viewport.offsetTop
+  const spaceBelow = viewportBottom - y
+  const shouldOpenDown =
+    spaceBelow >= popupHeight + 16 || (!isTop && spaceBelow >= spaceAbove)
   const topOffset = shouldOpenDown
-    ? Math.min(y + 12, maxY)
-    : Math.max(y, estimatedHeight + viewportPadding)
+    ? Math.max(
+        viewport.offsetTop + viewportPadding,
+        Math.min(y + 12, viewportBottom - popupHeight - viewportPadding),
+      )
+    : Math.min(
+        viewportBottom - viewportPadding,
+        Math.max(y - 8, viewport.offsetTop + popupHeight + viewportPadding),
+      )
 
   const saveBtnConfig = useMemo(() => {
     switch (saveState) {
@@ -129,9 +229,11 @@ export default function WordTooltip({
     const normalizedHeadword = headwordValue.trim()
     if (!normalizedHeadword) {
       setSaveState('error')
+      setStatusMessage('请填写要保存的单词或原形。')
       return
     }
     setSaveState('saving')
+    setStatusMessage('正在保存词条…')
 
     const pronList = splitPronunciationInput(pronunciationValue)
     const meaningList = splitListInput(meaningValue)
@@ -140,6 +242,7 @@ export default function WordTooltip({
     try {
       const res = await saveVocabulary(
         normalizedHeadword,
+        word,
         contextSentence,
         sourceType,
         sourceId,
@@ -150,31 +253,23 @@ export default function WordTooltip({
         posList,
       )
 
-      if (res.state === 'success' || res.state === 'already_exists') {
-        const savedMeta: VocabularyMeta = {
-          pronunciations: Array.from(
-            new Set(pronList.map(item => item.trim()).filter(Boolean)),
-          ),
-          partsOfSpeech: Array.from(
-            new Set(
-              posList.map(item => item.trim()).filter(Boolean).length > 0
-                ? posList.map(item => item.trim()).filter(Boolean)
-                : initialMeta?.partsOfSpeech || [],
-            ),
-          ),
-          meanings: Array.from(
-            new Set(meaningList.map(item => item.trim()).filter(Boolean)),
-          ),
-        }
-        onSaved?.({ word: normalizedHeadword, meta: savedMeta })
+      if (
+        (res.state === 'success' || res.state === 'already_exists') &&
+        res.word &&
+        res.meta
+      ) {
+        onSaved?.({ word: res.word, meta: res.meta })
         setSaveState('saved')
-        setTimeout(() => onClose?.(), 1000)
+        setStatusMessage(res.message || '已保存到生词本。')
+        closeTimerRef.current = window.setTimeout(requestClose, 1000)
       } else {
         setSaveState('error')
+        setStatusMessage(res.message || '保存失败，请重试。')
       }
     } catch (error) {
       console.error('Save failed:', error)
       setSaveState('error')
+      setStatusMessage('保存失败，请检查连接后重试。')
     }
   }
 
@@ -185,37 +280,65 @@ export default function WordTooltip({
 
   return (
     <div
+      ref={popupRef}
+      role='dialog'
+      aria-modal='false'
+      aria-label={`保存词条：${word}`}
+      aria-describedby={contextId}
       onClick={e => e.stopPropagation()} // 阻止冒泡，防止点击弹窗内部导致弹窗关闭
+      onPointerDown={e => e.stopPropagation()}
       onMouseDown={e => e.stopPropagation()}
       style={{
         top: topOffset,
         left: clampedX,
+        width: tooltipWidth,
+        maxHeight: Math.max(180, viewport.height - viewportPadding * 2),
         transform:
           shouldOpenDown || !isTop
             ? 'translate(-50%, 0)'
             : 'translate(-50%, -100%)',
       }}
-      className={`ui-pop fixed z-50 ${TOOLTIP_WIDTH_CLASS} bg-white overflow-hidden rounded-xl shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95 duration-200`}>
+      className={`ui-pop fixed z-50 ${TOOLTIP_WIDTH_CLASS} overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200`}>
       {/* --- 头部区块 --- */}
       <div className='flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 px-3 py-2.5'>
         <span className='max-w-[60%] truncate text-base font-bold tracking-tight text-slate-900'>
           {headwordValue || word}
         </span>
-        <button
-          type='button'
-          onClick={handleSave}
-          disabled={saveBtnConfig.disabled}
-          className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors duration-200 ${saveBtnConfig.bg}`}>
-          {saveBtnConfig.text}
-        </button>
+        <div className='flex items-center gap-1.5'>
+          <button
+            type='button'
+            onClick={handleSave}
+            disabled={saveBtnConfig.disabled}
+            className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors duration-200 ${saveBtnConfig.bg}`}>
+            {saveBtnConfig.text}
+          </button>
+          <button
+            type='button'
+            onClick={requestClose}
+            aria-label='关闭词条编辑'
+            className='inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900'>
+            ×
+          </button>
+        </div>
       </div>
 
       {/* --- 内容区块 --- */}
-      <div className='max-h-[min(68vh,20rem)] space-y-4 overflow-y-auto px-3 py-3 custom-scrollbar'>
+      <div
+        className='space-y-4 overflow-y-auto px-3 py-3 custom-scrollbar'
+        style={{ maxHeight: Math.max(120, viewport.height - 88) }}>
+        <p
+          id={contextId}
+          className='line-clamp-2 rounded-md bg-slate-50 px-2 py-1.5 text-[10px] leading-4 text-slate-500'>
+          例句：{contextSentence || word}
+        </p>
         {/* 1. 读音/注音模块 */}
         <section className='space-y-2'>
-          <p className={SECTION_TITLE_CLASS}>单词 / 原形</p>
+          <label htmlFor={headwordInputId} className={SECTION_TITLE_CLASS}>
+            单词 / 原形
+          </label>
           <input
+            ref={headwordInputRef}
+            id={headwordInputId}
             value={headwordValue}
             onChange={e => setHeadwordValue(e.target.value)}
             placeholder='如: ののしる'
@@ -227,8 +350,11 @@ export default function WordTooltip({
         </section>
 
         <section className='space-y-2'>
-          <p className={SECTION_TITLE_CLASS}>读音 / 注音</p>
+          <label htmlFor={pronunciationInputId} className={SECTION_TITLE_CLASS}>
+            读音 / 注音
+          </label>
           <input
+            id={pronunciationInputId}
             value={pronunciationValue}
             onChange={e => setPronunciationValue(e.target.value)}
             placeholder='如: 言:い い 訳:わけ / にん げん（或 にん|げん）'
@@ -254,7 +380,9 @@ export default function WordTooltip({
           <div className='animate-in slide-in-from-top-2 space-y-4 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 duration-200'>
             {/* 词性 */}
             <section className='space-y-2'>
-              <p className={SECTION_TITLE_CLASS}>词性</p>
+              <label htmlFor={partOfSpeechInputId} className={SECTION_TITLE_CLASS}>
+                词性
+              </label>
               <div className='flex flex-wrap gap-1.5'>
                 {POS_OPTIONS.map(option => {
                   const active = partOfSpeechValue === option
@@ -274,6 +402,7 @@ export default function WordTooltip({
                 })}
               </div>
               <input
+                id={partOfSpeechInputId}
                 value={partOfSpeechValue}
                 onChange={e => setPartOfSpeechValue(e.target.value)}
                 placeholder='手动输入其他词性'
@@ -283,8 +412,11 @@ export default function WordTooltip({
 
             {/* 释义 */}
             <section className='space-y-2'>
-              <p className={SECTION_TITLE_CLASS}>释义</p>
+              <label htmlFor={meaningInputId} className={SECTION_TITLE_CLASS}>
+                释义
+              </label>
               <input
+                id={meaningInputId}
                 value={meaningValue}
                 onChange={e => setMeaningValue(e.target.value)}
                 placeholder='如: 学习; 用功'
@@ -296,6 +428,17 @@ export default function WordTooltip({
             </section>
           </div>
         )}
+        <p
+          className={`min-h-4 text-[11px] font-semibold ${
+            saveState === 'error'
+              ? 'text-rose-700'
+              : saveState === 'saved'
+                ? 'text-emerald-700'
+                : 'text-slate-500'
+          }`}
+          aria-live='polite'>
+          {statusMessage}
+        </p>
       </div>
 
       {/* --- 小箭头 (Triangle) --- */}

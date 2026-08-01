@@ -1,225 +1,33 @@
 'use client'
 
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CollectionType, MaterialType } from '@prisma/client'
 import { listPublicAudioFiles, uploadAssAndSaveData } from './action'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
-} from '@/components/manage/upload/CollectionBrowserSelect'
+} from '@/components/manage/import/CollectionBrowserSelect'
 import { useDialog } from '@/context/DialogContext'
-import { toCollectionBrowserOptions } from '@/components/manage/upload/collectionBrowserOptions'
+import { toCollectionBrowserOptions } from '@/components/manage/import/collectionBrowserOptions'
+import SearchableDropdown from '@/modules/import/audio/components/SearchableDropdown'
+import AudioMatchPreview from '@/modules/import/audio/components/AudioMatchPreview'
+import CustomSelect from '@/components/ui/CustomSelect'
+import {
+  autoIncrementString,
+  buildPickedKey,
+  deriveAudioPathFromDir,
+  extractAssDialoguePlainText,
+  getDefaultCollectionTypeForMaterial,
+  getStem,
+  isCollectionTypeAllowedForMaterial,
+} from '@/modules/import/audio/domain'
+import { useAudioUploadState } from '@/modules/import/audio/hooks/useAudioUploadState'
+import { useAudioFileCatalog } from '@/modules/import/audio/hooks/useAudioFileCatalog'
+import type {
+  AudioMatchPreviewRow,
+  DropdownOption,
+} from '@/modules/import/audio/types'
 
-function CustomDropdown({
-  value,
-  onChange,
-  options,
-  placeholder,
-  enableSearch = false,
-  groupByLevel = false,
-}: {
-  value: string
-  onChange: (val: string) => void
-  options: DropdownOption[]
-  placeholder: string
-  enableSearch?: boolean
-  groupByLevel?: boolean
-}) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [search, setSearch] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setIsOpen(false)
-        setSearch('')
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  useEffect(() => {
-    if (isOpen && enableSearch && searchInputRef.current) {
-      searchInputRef.current.focus()
-    }
-  }, [isOpen, enableSearch])
-
-  const selectedLabel =
-    options.find(option => option.value === value)?.label || placeholder
-
-  const sortedOptions = useMemo(() => {
-    if (options.some(option => typeof option.order === 'number')) {
-      return [...options].sort(
-        (a, b) =>
-          (a.order ?? 0) - (b.order ?? 0) ||
-          a.label.localeCompare(b.label, 'zh-CN'),
-      )
-    }
-    return [...options].sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
-  }, [options])
-
-  // Filter by search query
-  const filteredOptions = useMemo(() => {
-    if (!search.trim()) return sortedOptions
-    const q = search.trim().toLowerCase()
-    return sortedOptions.filter(option => {
-      const searchText = (option.searchText || option.label).toLowerCase()
-      return searchText.includes(q)
-    })
-  }, [sortedOptions, search])
-
-  // Group by level if enabled
-  const groupedOptions = useMemo(() => {
-    if (!groupByLevel) return null
-    const groups = new Map<string, typeof filteredOptions>()
-    for (const option of filteredOptions) {
-      const group = option.group || '其他'
-      if (!groups.has(group)) groups.set(group, [])
-      groups.get(group)!.push(option)
-    }
-    return groups
-  }, [filteredOptions, groupByLevel])
-
-  return (
-    <div className='relative w-full' ref={ref}>
-      <div
-        onClick={() => setIsOpen(prev => !prev)}
-        className={`flex w-full cursor-pointer items-center justify-between border bg-gray-50 p-4 text-sm font-bold outline-none transition-colors
-          ${
-            isOpen
-              ? 'border-blue-400 bg-white ring-2 ring-blue-400/20'
-              : 'border-gray-200 hover:bg-white'
-          }`}>
-        <span
-          className={value ? 'truncate pr-4 text-gray-800' : 'text-gray-400'}>
-          {selectedLabel}
-        </span>
-        <div className='flex items-center gap-2'>
-          {value && options.length > 0 && (
-            <span className='rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-600'>
-              {options.length}
-            </span>
-          )}
-          <svg
-            className={`h-5 w-5 shrink-0 text-gray-400 transition-transform duration-300 ${
-              isOpen ? 'rotate-180 text-blue-500' : ''
-            }`}
-            fill='none'
-            stroke='currentColor'
-            viewBox='0 0 24 24'>
-            <path
-              strokeLinecap='round'
-              strokeLinejoin='round'
-              strokeWidth={2.5}
-              d='M19 9l-7 7-7-7'
-            />
-          </svg>
-        </div>
-      </div>
-
-      {isOpen && (
-        <div className='custom-scrollbar animate-in fade-in slide-in-from-top-2 absolute z-[80] mt-2 max-h-[26rem] w-full overflow-y-auto border border-gray-100 bg-white py-2'>
-          {enableSearch && (
-            <div className='sticky top-0 z-10 border-b border-gray-100 bg-white px-3 pb-2'>
-              <div className='relative'>
-                <svg className='absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                  <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' />
-                </svg>
-                <input
-                  ref={searchInputRef}
-                  type='text'
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className='w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm font-medium outline-none transition-colors focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100'
-                  placeholder='搜索集合...'
-                  onClick={e => e.stopPropagation()}
-                />
-                {search && (
-                  <button
-                    onClick={e => { e.stopPropagation(); setSearch('') }}
-                    className='absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600'>
-                    <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M6 18L18 6M6 6l12 12' />
-                    </svg>
-                  </button>
-                )}
-              </div>
-              {search && (
-                <p className='mt-1.5 text-[11px] font-medium text-gray-400'>
-                  找到 {filteredOptions.length} 个结果
-                </p>
-              )}
-            </div>
-          )}
-
-          {filteredOptions.length === 0 ? (
-            <div className='px-4 py-3 text-center text-sm text-gray-400'>
-              {search ? '无匹配结果' : '暂无选项'}
-            </div>
-          ) : groupedOptions ? (
-            Array.from(groupedOptions.entries()).map(([group, groupOpts]) => (
-              <div key={group}>
-                <div className='sticky top-0 z-[5] border-b border-gray-50 bg-gray-50/90 px-4 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 backdrop-blur-sm'>
-                  {group}
-                </div>
-                {groupOpts.map(option => (
-                <div
-                  key={option.value}
-                  onClick={() => {
-                    onChange(option.value)
-                    setIsOpen(false)
-                    setSearch('')
-                  }}
-                  className={`truncate px-4 py-3 text-sm font-bold transition-colors
-                      ${
-                        value === option.value
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'cursor-pointer text-gray-700 hover:bg-gray-50 hover:text-blue-600'
-                      }`}
-                  style={{ paddingLeft: `${16 + (option.depth || 0) * 14}px` }}>
-                    <div className='truncate'>{option.label}</div>
-                    {search && option.searchText && option.searchText !== option.label && (
-                      <div className='mt-0.5 truncate text-[11px] font-medium text-gray-400'>
-                        {option.searchText}
-                      </div>
-                    )}
-                </div>
-              ))}
-            </div>
-          ))
-        ) : (
-            filteredOptions.map(option => (
-              <div
-                key={option.value}
-                onClick={() => {
-                  onChange(option.value)
-                  setIsOpen(false)
-                  setSearch('')
-                }}
-                className={`truncate px-4 py-3 text-sm font-bold transition-colors
-                  ${
-                    value === option.value
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'cursor-pointer text-gray-700 hover:bg-gray-50 hover:text-blue-600'
-                  }`}
-                style={{ paddingLeft: `${16 + (option.depth || 0) * 14}px` }}>
-                <div className='truncate'>{option.label}</div>
-                {search && option.searchText && option.searchText !== option.label && (
-                  <div className='mt-0.5 truncate text-[11px] font-medium text-gray-400'>
-                    {option.searchText}
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
 
 type Props = {
   levels: { id: string; title: string }[]
@@ -241,271 +49,8 @@ type Props = {
   variant?: 'default' | 'media-subtitle'
 }
 
-type PickedFileMeta = {
-  name: string
-  size: number
-}
 
-type UploadStatus = {
-  type: 'idle' | 'loading' | 'success' | 'error'
-  message: string
-}
 
-type LastUploadResult = {
-  lessonIds: string[]
-  materialType?: MaterialType
-}
-
-type AudioMatchPreviewRow = PickedFileMeta & {
-  key: string
-  stem: string
-  autoValue: string
-  autoLabel: string
-  uploadCandidates: string[]
-  scopedCandidates: string[]
-  siteCandidates: string[]
-}
-
-type DropdownOption = {
-  value: string
-  label: string
-  searchText?: string
-  depth?: number
-  order?: number
-  group?: string
-}
-
-const autoIncrementString = (str: string) => {
-  if (!str) return ''
-  return str.replace(/(\d+)(?!.*\d)/, match => {
-    const num = parseInt(match, 10) + 1
-    return num.toString().padStart(match.length, '0')
-  })
-}
-
-const getStem = (name: string) =>
-  name
-    .normalize('NFKC')
-    .trim()
-    .toLowerCase()
-    .replace(/\.[^.]+$/, '')
-    .replace(/\s+/g, '')
-
-const buildPickedKey = (file: PickedFileMeta) => `${file.name}::${file.size}`
-
-const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
-  const trimmed = audioPath.trim()
-  if (!trimmed.endsWith('/')) return trimmed
-  const baseName = assName.replace(/\.[^.]+$/, '')
-  return `${trimmed}${baseName}.mp3`
-}
-
-const MATERIAL_TYPE_LABEL: Record<MaterialType, string> = {
-  LISTENING: '听力题 / 听力语料',
-  MEDIA_SUBTITLE: '影视字幕',
-  READING: '阅读材料',
-  VOCAB_GRAMMAR: '选择题 / 语法题',
-  SPEAKING: '跟读材料',
-}
-
-const isCollectionTypeAllowedForMaterial = (
-  materialType: MaterialType,
-  collectionType: string,
-) => {
-  if (materialType === 'SPEAKING') return collectionType !== 'PAPER'
-  if (materialType === 'MEDIA_SUBTITLE') return collectionType !== 'PAPER'
-  return true
-}
-
-const getDefaultCollectionTypeForMaterial = (materialType: MaterialType) => {
-  if (materialType === 'SPEAKING' || materialType === 'MEDIA_SUBTITLE') {
-    return 'CUSTOM_GROUP'
-  }
-  return 'PAPER'
-}
-
-function splitAssRow(row: string, splitLimit: number) {
-  const parts: string[] = []
-  let cursor = 0
-
-  for (let idx = 0; idx < splitLimit - 1; idx += 1) {
-    const commaIndex = row.indexOf(',', cursor)
-    if (commaIndex === -1) break
-    parts.push(row.slice(cursor, commaIndex))
-    cursor = commaIndex + 1
-  }
-
-  parts.push(row.slice(cursor))
-  return parts
-}
-
-function cleanAssDialogueText(text: string) {
-  return text
-    .replace(/\\N/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\\h/g, ' ')
-    .replace(/\{[^}]*\}/g, '')
-    .replace(/\u00a0/g, ' ')
-    .split('\n')
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-function extractAssDialoguePlainText(input: string) {
-  const lines = input
-    .replace(/^\uFEFF/, '')
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-
-  let formatFields: string[] = []
-  let textIndex = 9
-  const output: string[] = []
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim()
-    if (line.startsWith('Format:')) {
-      formatFields = line
-        .replace('Format:', '')
-        .split(',')
-        .map(item => item.trim().toLowerCase())
-      const nextTextIndex = formatFields.indexOf('text')
-      if (nextTextIndex >= 0) textIndex = nextTextIndex
-      continue
-    }
-
-    if (!line.startsWith('Dialogue:')) continue
-
-    const row = line.replace('Dialogue:', '').trim()
-    const splitLimit = formatFields.length > 0 ? formatFields.length : textIndex + 1
-    const parts = splitAssRow(row, splitLimit)
-    if (parts.length <= textIndex) continue
-
-    output.push(...cleanAssDialogueText(parts[textIndex]))
-  }
-
-  return output.join('\n')
-}
-
-function useUploadFormState(hasPapers: boolean) {
-  const [mode, setMode] = useState<'existing' | 'new'>(
-    hasPapers ? 'existing' : 'new',
-  )
-  const [selectedPaperId, setSelectedPaperId] = useState('')
-  const [selectedLevelId, setSelectedLevelId] = useState('')
-
-  const [status, setStatus] = useState<UploadStatus>({
-    type: 'idle',
-    message: '',
-  })
-  const [lastUpload, setLastUpload] = useState<LastUploadResult | null>(null)
-
-  const [title, setTitle] = useState('')
-  const [audioFile, setAudioFile] = useState('')
-  const [audioSourceType, setAudioSourceType] = useState<
-    'manual' | 'existing' | 'upload'
-  >('manual')
-  const [existingAudioFiles, setExistingAudioFiles] = useState<string[]>([])
-  const [selectedAudioFolder, setSelectedAudioFolder] = useState('')
-  const [audioListLoading, setAudioListLoading] = useState(false)
-  const [audioUploadFileNames, setAudioUploadFileNames] = useState<string[]>([])
-  const [paperName, setPaperName] = useState('')
-  const [materialDescription, setMaterialDescription] = useState('')
-  const [materialTranscript, setMaterialTranscript] = useState('')
-  const [materialSource, setMaterialSource] = useState('')
-  const [materialLanguage, setMaterialLanguage] = useState('')
-  const [materialTags, setMaterialTags] = useState('')
-  const [materialDifficulty, setMaterialDifficulty] = useState('')
-  const [materialChapterName, setMaterialChapterName] = useState('')
-  const [materialType, setMaterialType] = useState<MaterialType>('LISTENING')
-  const [subtitleNoAudio, setSubtitleNoAudio] = useState(false)
-  const [subtitleSourceType, setSubtitleSourceType] = useState<'MOVIE' | 'TV'>(
-    'MOVIE',
-  )
-  const [subtitleWorkTitle, setSubtitleWorkTitle] = useState('')
-  const [subtitleSeason, setSubtitleSeason] = useState('')
-  const [subtitleEpisode, setSubtitleEpisode] = useState('')
-
-  const [isDragging, setIsDragging] = useState(false)
-  const [isAudioDragging, setIsAudioDragging] = useState(false)
-  const [pickedAssFiles, setPickedAssFiles] = useState<PickedFileMeta[]>([])
-  const [selectedFileNames, setSelectedFileNames] = useState<string[]>([])
-  const [assAudioOverrides, setAssAudioOverrides] = useState<
-    Record<string, string>
-  >({})
-  const [addQuestions, setAddQuestions] = useState(true)
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const audioInputRef = useRef<HTMLInputElement>(null)
-
-  return {
-    mode,
-    setMode,
-    selectedPaperId,
-    setSelectedPaperId,
-    selectedLevelId,
-    setSelectedLevelId,
-    status,
-    setStatus,
-    lastUpload,
-    setLastUpload,
-    title,
-    setTitle,
-    audioFile,
-    setAudioFile,
-    audioSourceType,
-    setAudioSourceType,
-    existingAudioFiles,
-    setExistingAudioFiles,
-    selectedAudioFolder,
-    setSelectedAudioFolder,
-    audioListLoading,
-    setAudioListLoading,
-    audioUploadFileNames,
-    setAudioUploadFileNames,
-    paperName,
-    setPaperName,
-    materialDescription,
-    setMaterialDescription,
-    materialTranscript,
-    setMaterialTranscript,
-    materialSource,
-    setMaterialSource,
-    materialLanguage,
-    setMaterialLanguage,
-    materialTags,
-    setMaterialTags,
-    materialDifficulty,
-    setMaterialDifficulty,
-    materialChapterName,
-    setMaterialChapterName,
-    materialType,
-    setMaterialType,
-    subtitleNoAudio,
-    setSubtitleNoAudio,
-    subtitleSourceType,
-    setSubtitleSourceType,
-    subtitleWorkTitle,
-    setSubtitleWorkTitle,
-    subtitleSeason,
-    setSubtitleSeason,
-    subtitleEpisode,
-    setSubtitleEpisode,
-    isDragging,
-    setIsDragging,
-    isAudioDragging,
-    setIsAudioDragging,
-    pickedAssFiles,
-    setPickedAssFiles,
-    selectedFileNames,
-    setSelectedFileNames,
-    assAudioOverrides,
-    setAssAudioOverrides,
-    addQuestions,
-    setAddQuestions,
-    fileInputRef,
-    audioInputRef,
-  }
-}
 
 export default function UploadForm({
   levels,
@@ -582,7 +127,7 @@ export default function UploadForm({
     setAddQuestions,
     fileInputRef,
     audioInputRef,
-  } = useUploadFormState(papers.length > 0)
+  } = useAudioUploadState(papers.length > 0)
   const isMediaSubtitleVariant = variant === 'media-subtitle'
   const [pastedAssSubtitle, setPastedAssSubtitle] = useState('')
   const [subtitleCopyState, setSubtitleCopyState] = useState<
@@ -642,7 +187,7 @@ export default function UploadForm({
         setSelectedPaperId('')
         return
       }
-      const resolvedType = targetPaper?.materialType || 'LISTENING'
+      const resolvedType: MaterialType = 'LISTENING'
       const latest = findLatestLessonByMaterialType(targetPaper, resolvedType)
       if (targetPaper && targetPaper.lessons.length > 0) {
         setTitle(autoIncrementString(latest?.title || ''))
@@ -652,13 +197,10 @@ export default function UploadForm({
         setAudioFile('/audios/')
       }
       setMaterialType(resolvedType)
-      if (resolvedType === 'SPEAKING') {
-        setMaterialChapterName((latest?.chapterName || '').trim())
-      } else {
-        setMaterialChapterName('')
-      }
+      setMaterialChapterName('')
     }
   }, [
+    materialType,
     mode,
     papers,
     selectedPaperId,
@@ -705,74 +247,19 @@ export default function UploadForm({
     setSubtitleNoAudio,
   ])
 
-  useEffect(() => {
-    const loadAudioFiles = async () => {
-      setAudioListLoading(true)
-      const res = await listPublicAudioFiles()
-      if (res.success) {
-        setExistingAudioFiles(res.files)
-      }
-      setAudioListLoading(false)
-    }
-    void loadAudioFiles()
-  }, [setAudioListLoading, setExistingAudioFiles])
-
-  const audioFolderMap = useMemo(() => {
-    const folderMap = new Map<string, string[]>()
-
-    for (const filePath of existingAudioFiles) {
-      const normalized = filePath.startsWith('/audios/')
-        ? filePath.slice('/audios/'.length)
-        : filePath.replace(/^\/+/, '')
-      const segments = normalized.split('/').filter(Boolean)
-      const folder =
-        segments.length > 1 ? segments.slice(0, -1).join('/') : '(根目录)'
-
-      if (!folderMap.has(folder)) folderMap.set(folder, [])
-      folderMap.get(folder)?.push(filePath)
-    }
-
-    const sortedEntries = [...folderMap.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(
-        ([folder, files]) =>
-          [folder, files.sort((a, b) => a.localeCompare(b))] as const,
-      )
-
-    return new Map(sortedEntries)
-  }, [existingAudioFiles])
-
-  const audioFolders = useMemo(
-    () => [...audioFolderMap.keys()],
-    [audioFolderMap],
-  )
-
-  const filesInSelectedFolder = useMemo(
-    () => audioFolderMap.get(selectedAudioFolder) || [],
-    [audioFolderMap, selectedAudioFolder],
-  )
-
-  const siteAudioByStem = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const audioPath of existingAudioFiles) {
-      const stem = getStem(audioPath.split('/').pop() || audioPath)
-      const bucket = map.get(stem) || []
-      bucket.push(audioPath)
-      map.set(stem, bucket)
-    }
-    return map
-  }, [existingAudioFiles])
-
-  const scopedAudioByStem = useMemo(() => {
-    const map = new Map<string, string[]>()
-    for (const audioPath of filesInSelectedFolder) {
-      const stem = getStem(audioPath.split('/').pop() || audioPath)
-      const bucket = map.get(stem) || []
-      bucket.push(audioPath)
-      map.set(stem, bucket)
-    }
-    return map
-  }, [filesInSelectedFolder])
+  const {
+    audioFolderMap,
+    audioFolders,
+    filesInSelectedFolder,
+    siteAudioByStem,
+    scopedAudioByStem,
+  } = useAudioFileCatalog({
+    existingAudioFiles,
+    selectedAudioFolder,
+    loadFiles: listPublicAudioFiles,
+    setExistingAudioFiles,
+    setLoading: setAudioListLoading,
+  })
 
   const uploadedAudioByStem = useMemo(() => {
     const map = new Map<string, string[]>()
@@ -1098,6 +585,7 @@ export default function UploadForm({
     () =>
       toCollectionBrowserOptions(
         papers.filter(paper =>
+          paper.materialType === materialType &&
           isCollectionTypeAllowedForMaterial(
             materialType,
             String(paper.collectionType || 'PAPER'),
@@ -1124,7 +612,7 @@ export default function UploadForm({
   return (
     <form
       onSubmit={handleSubmit}
-      className='animate-in fade-in mx-auto flex w-full max-w-5xl flex-col gap-4 pb-16 md:gap-6 md:pb-20'>
+      className='animate-in fade-in mx-auto flex w-full max-w-4xl flex-col gap-4'>
       <input
         type='hidden'
         name='uploadMode'
@@ -1156,18 +644,18 @@ export default function UploadForm({
       />
 
       {!isMediaSubtitleVariant && (
-        <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
-        <div className='absolute left-0 top-0 h-full w-2 rounded-l-3xl bg-blue-500'></div>
-        <legend className='mb-4 flex items-center gap-2 px-2 text-lg font-black tracking-wide text-gray-800 md:mb-6 md:px-4 md:text-xl'>
-          集合归属
+        <fieldset className='relative overflow-visible rounded-xl border border-slate-200 bg-white p-4 md:p-6'>
+        <legend className='px-1 text-base font-bold text-slate-900 md:text-lg'>
+          <span className='mr-2 text-blue-600'>1</span>
+          选择归属
         </legend>
 
-        <div className='mb-5 grid grid-cols-1 gap-2 border border-gray-100/50 bg-gray-50/80 p-2 sm:grid-cols-2 md:mb-6 md:gap-4 md:p-2.5'>
+        <div className='mb-4 mt-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
           <label
-            className={`flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-colors md:py-3
+            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors
               ${
                 mode === 'existing'
-                  ? 'border border-gray-200/50 bg-white text-blue-600'
+                  ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-gray-500 hover:bg-gray-100'
               }
               ${papers.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
@@ -1182,10 +670,10 @@ export default function UploadForm({
           </label>
 
           <label
-            className={`flex cursor-pointer items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold transition-colors md:py-3
+            className={`flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors
               ${
                 mode === 'new'
-                  ? 'border border-gray-200/50 bg-white text-blue-600'
+                  ? 'bg-white text-slate-900 shadow-sm'
                   : 'text-gray-500 hover:bg-gray-100'
               }`}>
             <input
@@ -1223,14 +711,14 @@ export default function UploadForm({
 
               <div className='flex-[1]'>
                 <input type='hidden' name='collectionType' value={selectedLevelId} />
-                <CustomDropdown
+                <SearchableDropdown
                   options={levelOptions}
                   value={selectedLevelId}
                   onChange={setSelectedLevelId}
                   placeholder='选择集合用途'
                 />
-                <p className='mt-2 text-xs font-semibold text-gray-500'>
-                  正式试卷会出现在试卷练习页；普通集合适合教材或自定义练习；收藏夹适合临时整理。
+                <p className='mt-2 text-xs text-gray-500'>
+                  用途决定内容在练习页或资料库中的位置。
                 </p>
               </div>
             </div>
@@ -1239,24 +727,29 @@ export default function UploadForm({
         </fieldset>
       )}
 
-      <fieldset className='relative overflow-visible border border-gray-100 bg-white p-4 md:p-8'>
-        <div className='absolute left-0 top-0 h-full w-2 rounded-l-3xl bg-blue-400'></div>
+      <fieldset className='relative overflow-visible rounded-xl border border-slate-200 bg-white p-4 md:p-6'>
 
-        <div className='mb-4 flex flex-col gap-2 px-2 md:mb-6 md:flex-row md:items-center md:justify-between md:px-4'>
-          <legend className='flex items-center gap-2 text-lg font-black tracking-wide text-gray-800 md:text-xl'>
-            语料基本信息
+        <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
+          <legend className='text-base font-bold text-slate-900 md:text-lg'>
+            <span className='mr-2 text-blue-600'>
+              {isMediaSubtitleVariant ? '1' : '2'}
+            </span>
+            {isMediaSubtitleVariant ? '设置字幕归属' : '准备材料'}
           </legend>
           {mode === 'existing' && selectedPaperId && (
-            <span className='flex items-center gap-1.5 border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600'>
-              <span className='animate-pulse'>✨</span>
-              已根据上条记录自动填充
+            <span className='rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700'>
+              已沿用集合上一条记录
             </span>
           )}
         </div>
 
-        <div className='mb-4 pl-1 md:mb-5 md:pl-2'>
-          <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
-            {isBatchAss ? '标题前缀（可选）' : '标题'}
+        <div className='mb-4'>
+          <label className='mb-1.5 block text-sm font-semibold text-slate-700'>
+            {isBatchAss
+              ? '标题前缀（可选）'
+              : isMediaSubtitleVariant
+                ? '字幕标题（可选）'
+                : '标题'}
           </label>
           <input
             name='title'
@@ -1265,6 +758,8 @@ export default function UploadForm({
             placeholder={
               isBatchAss
                 ? '例：N1 听力（留空则直接用字幕文件名）'
+                : isMediaSubtitleVariant
+                  ? '留空则使用字幕文件名'
                 : '例：问题 1-01（可留空，不填则用字幕文件名）'
             }
             className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
@@ -1285,20 +780,14 @@ export default function UploadForm({
           </div>
         )}
 
-        <div className='pl-1 md:pl-2'>
-          {isMediaSubtitleVariant && (
-            <div className='mb-4 border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-700 md:p-4'>
-              当前为影视字幕专用上传：固定为“无音频字幕导入”，并归档到电影/电视剧。
-            </div>
-          )}
-
+        <div>
           {isMediaSubtitleVariant && (
             <div className='mb-4 border border-slate-200 bg-slate-50 p-3 md:p-4'>
               <p className='mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500'>
                 字幕归属
               </p>
               <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
-                <select
+                <CustomSelect
                   value={subtitleSourceType}
                   onChange={e =>
                     setSubtitleSourceType(e.currentTarget.value as 'MOVIE' | 'TV')
@@ -1306,7 +795,7 @@ export default function UploadForm({
                   className='w-full border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'>
                   <option value='MOVIE'>电影</option>
                   <option value='TV'>电视剧</option>
-                </select>
+                </CustomSelect>
                 <input
                   value={subtitleWorkTitle}
                   onChange={e => setSubtitleWorkTitle(e.target.value)}
@@ -1330,14 +819,21 @@ export default function UploadForm({
                   </>
                 )}
               </div>
-              <p className='mt-3 text-sm font-semibold text-emerald-700'>
-                无音频，仅导入字幕文本（已固定）
-              </p>
             </div>
           )}
 
           {isMediaSubtitleVariant && (
-            <div className='mb-4 border border-emerald-200 bg-white p-3 md:p-4'>
+            <details className='group mb-4 rounded-lg border border-slate-200 bg-white'>
+              <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
+                从 ASS 文本提取台词
+                <span className='text-xs font-normal text-slate-400 group-open:hidden'>
+                  辅助工具
+                </span>
+                <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
+                  收起
+                </span>
+              </summary>
+              <div className='border-t border-slate-200 p-3 md:p-4'>
               <div className='mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
                 <div>
                   <p className='text-[11px] font-black uppercase tracking-wider text-emerald-700'>
@@ -1382,37 +878,13 @@ export default function UploadForm({
                   {pastedSubtitleText || '粘贴字幕后，这里会显示可复制的文本内容。'}
                 </pre>
               </div>
-            </div>
-          )}
-
-          {!isMediaSubtitleVariant && (
-            <div className='mb-4'>
-            <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
-              内容类型
-            </label>
-            <select
-              value={materialType}
-              onChange={e => setMaterialType(e.currentTarget.value as MaterialType)}
-              className='w-full border border-gray-200 bg-gray-50 p-3 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'>
-              <option value='LISTENING'>{MATERIAL_TYPE_LABEL.LISTENING}</option>
-              <option value='READING'>{MATERIAL_TYPE_LABEL.READING}</option>
-              <option value='VOCAB_GRAMMAR'>{MATERIAL_TYPE_LABEL.VOCAB_GRAMMAR}</option>
-              <option value='SPEAKING'>{MATERIAL_TYPE_LABEL.SPEAKING}</option>
-            </select>
-            {mode === 'existing' && selectedPaperId && (
-              <p className='mt-1 text-xs font-semibold text-blue-600'>
-                集合当前主类型：{MATERIAL_TYPE_LABEL[
-                  papers.find(item => item.id === selectedPaperId)?.materialType ||
-                    'LISTENING'
-                ]}
-              </p>
-            )}
-            </div>
+              </div>
+            </details>
           )}
 
           {!isMediaSubtitleVariant && (
             <>
-              <label className='mb-1.5 block text-[10px] font-black uppercase tracking-wider text-gray-400'>
+              <label className='mb-1.5 block text-sm font-semibold text-slate-700'>
                 音频来源
               </label>
 
@@ -1484,7 +956,7 @@ export default function UploadForm({
 
                   <div className='grid grid-cols-1 gap-2 md:grid-cols-5'>
                     <div className='md:col-span-2'>
-                      <CustomDropdown
+                      <SearchableDropdown
                         value={selectedAudioFolder}
                         onChange={setSelectedAudioFolder}
                         options={audioFolders.map(folder => ({
@@ -1515,7 +987,7 @@ export default function UploadForm({
                       </div>
                     ) : (
                       <div className='md:col-span-3'>
-                        <CustomDropdown
+                        <SearchableDropdown
                           value={audioFile}
                           onChange={setAudioFile}
                           options={filesInSelectedFolder.map(item => ({
@@ -1630,10 +1102,17 @@ export default function UploadForm({
         </div>
 
         {isMediaSubtitleVariant ? (
-          <div className='mt-5 border border-emerald-100 bg-emerald-50/50 p-3 md:mt-6 md:p-4'>
-            <p className='mb-3 text-xs font-black uppercase tracking-wider text-emerald-700'>
-              影视补充信息（可选）
-            </p>
+          <details className='group mt-4 rounded-lg border border-slate-200 bg-slate-50'>
+            <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
+              补充检索信息
+              <span className='text-xs font-normal text-slate-400 group-open:hidden'>
+                可选
+              </span>
+              <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
+                收起
+              </span>
+            </summary>
+            <div className='border-t border-slate-200 p-3 md:p-4'>
             <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
               <input
                 name='materialLanguage'
@@ -1672,12 +1151,20 @@ export default function UploadForm({
               placeholder='全文文本（可选，便于检索）'
               className='custom-scrollbar mt-2 min-h-[100px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
             />
-          </div>
+            </div>
+          </details>
         ) : (
-          <div className='mt-5 border border-blue-100 bg-blue-50/40 p-3 md:mt-6 md:p-4'>
-            <p className='mb-3 text-xs font-black uppercase tracking-wider text-blue-700'>
-              扩展材料属性（可选）
-            </p>
+          <details className='group mt-4 rounded-lg border border-slate-200 bg-slate-50'>
+            <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
+              补充来源、难度与检索信息
+              <span className='text-xs font-normal text-slate-400 group-open:hidden'>
+                可选
+              </span>
+              <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
+                收起
+              </span>
+            </summary>
+            <div className='border-t border-slate-200 p-3 md:p-4'>
             {materialType === 'SPEAKING' && (
               <input
                 name='materialChapterName'
@@ -1732,16 +1219,36 @@ export default function UploadForm({
               placeholder='全文文本（可选，便于检索与后续处理）'
               className='custom-scrollbar mt-2 min-h-[100px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
             />
-          </div>
+            </div>
+          </details>
         )}
       </fieldset>
 
-      <div
-        onClick={handleZoneClick}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden border-2 p-8 transition-[background-color,border-color,color,transform] md:p-14
+      <section className='rounded-xl border border-slate-200 bg-white p-4 md:p-6'>
+        <h3 className='text-base font-bold text-slate-900 md:text-lg'>
+          <span className='mr-2 text-blue-600'>
+            {isMediaSubtitleVariant ? '2' : '3'}
+          </span>
+          上传字幕并确认
+        </h3>
+        <p className='mb-4 mt-1 text-sm text-slate-500'>
+          一个字幕创建一条材料；选择多个文件会自动进入批量模式。
+        </p>
+        <div
+          role='button'
+          tabIndex={0}
+          aria-label='选择 ASS 字幕文件'
+          onClick={handleZoneClick}
+          onKeyDown={event => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              handleZoneClick()
+            }
+          }}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 p-7 outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 md:p-10
           ${
             isDragging
               ? 'scale-[1.02] border-blue-400 bg-blue-50/80'
@@ -1796,116 +1303,46 @@ export default function UploadForm({
             </div>
           </div>
         )}
-      </div>
+        </div>
 
-      <p className='text-xs text-gray-500'>
-        {isMediaSubtitleVariant
-          ? '批量导入规则：会按文件逐个创建语料，并仅保存字幕文本（无音频）。'
-          : '批量导入规则：会按文件逐个创建语料。若音频路径以 `/` 结尾（如 /audios/n1/2026-07/），系统将按字幕文件名自动映射为同名 .mp3；排序会自动续接。'}
-      </p>
+        {isBatchAss && (
+          <details className='mt-3 text-xs text-slate-500'>
+            <summary className='cursor-pointer font-semibold text-slate-600'>
+              查看批量匹配规则
+            </summary>
+            <p className='mt-2 leading-5'>
+              {isMediaSubtitleVariant
+                ? '系统会按文件逐个创建字幕材料，只保存字幕文本。'
+                : '系统会按字幕文件名匹配同名录音，并自动续接排序；找不到匹配时可在下方预览中手动调整。'}
+            </p>
+          </details>
+        )}
+      </section>
 
       {!isMediaSubtitleVariant && !subtitleNoAudio && previewRows.length > 0 && (
-        <section className='border border-blue-100 bg-blue-50/30 p-4 md:p-6'>
-          <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-            <h3 className='text-sm font-black text-blue-900 md:text-base'>
-              {isBatchAss ? '多音频题目录入预览' : '音频配对预览'}
-            </h3>
-            <span className='rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-bold text-blue-700'>
-              {previewRows.length} 条
-            </span>
-          </div>
-
-          <p className='mb-3 text-xs font-semibold text-blue-700'>
-            当前集合：{selectedPaperLabel}
-          </p>
-
-          <div className='space-y-2'>
-            {previewRows.map(row => {
-              const overrideValue = assAudioOverrides[row.key] ?? row.autoValue
-              const uniqueCandidates = Array.from(
-                new Set([
-                  ...row.scopedCandidates,
-                  ...row.siteCandidates,
-                  ...row.uploadCandidates.map(() => `upload://${row.stem}`),
-                ]),
-              )
-
-              return (
-                <div
-                  key={row.key}
-                  className='border border-blue-100 bg-white p-3'>
-                  <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
-                    <p className='truncate text-xs font-bold text-gray-700 md:text-sm'>
-                      {row.name}
-                    </p>
-
-                    <button
-                      type='button'
-                      onClick={() =>
-                        setAssAudioOverrides(prev => ({
-                          ...prev,
-                          [row.key]: row.autoValue,
-                        }))
-                      }
-                      className='rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100'>
-                      恢复自动
-                    </button>
-                  </div>
-
-                  <p className='mb-2 text-[11px] font-medium text-blue-700'>
-                    自动结果：{row.autoLabel}
-                  </p>
-
-                  {uniqueCandidates.length > 0 && (
-                    <div className='mb-2 flex flex-wrap gap-1.5'>
-                      {uniqueCandidates.slice(0, 6).map(candidate => (
-                        <button
-                          key={`${row.key}-${candidate}`}
-                          type='button'
-                          onClick={() =>
-                            setAssAudioOverrides(prev => ({
-                              ...prev,
-                              [row.key]: candidate,
-                            }))
-                          }
-                          className='rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-100'>
-                          {candidate.startsWith('upload://')
-                            ? `上传同名（${row.uploadCandidates[0] || row.stem}）`
-                            : candidate}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  <input
-                    type='text'
-                    value={overrideValue}
-                    onChange={e =>
-                      setAssAudioOverrides(prev => ({
-                        ...prev,
-                        [row.key]: e.currentTarget.value,
-                      }))
-                    }
-                    placeholder='可手动填写 /audios/xxx.mp3 或 upload://词干'
-                    className='w-full border border-blue-200 bg-blue-50/40 px-3 py-2 text-xs text-gray-700 outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100'
-                  />
-                </div>
-              )
-            })}
-          </div>
-        </section>
+        <AudioMatchPreview
+          rows={previewRows}
+          isBatch={isBatchAss}
+          collectionLabel={selectedPaperLabel}
+          overrides={assAudioOverrides}
+          onOverride={(rowKey, value) =>
+            setAssAudioOverrides(previous => ({
+              ...previous,
+              [rowKey]: value,
+            }))
+          }
+        />
       )}
 
       {!isMediaSubtitleVariant && (
-        <div className='flex items-center justify-between border border-gray-100 bg-white px-5 py-4'>
-          <div>
-            <p className='text-sm font-bold text-gray-800'>导入后添加听力题目</p>
-            <p className='mt-0.5 text-xs font-medium text-gray-400'>
-              开启后导入成功会显示编辑链接，方便直接跟听力材料配套的题目
-            </p>
-          </div>
+        <div className='flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3.5 md:px-5'>
+          <p className='text-sm font-semibold text-gray-800'>
+            导入完成后继续添加题目
+          </p>
           <button
             type='button'
+            aria-label='导入后添加听力题目'
+            aria-pressed={addQuestions}
             onClick={() => setAddQuestions(prev => !prev)}
             className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 ${
               addQuestions ? 'bg-blue-500' : 'bg-gray-300'
@@ -1922,13 +1359,17 @@ export default function UploadForm({
       <button
         type='submit'
         disabled={status.type === 'loading'}
-        className={`mt-2 flex w-full items-center justify-center gap-3 py-4 text-base font-black shadow-lg transition-[background-color,border-color,color,box-shadow,transform,opacity] active:scale-95 md:mt-4 md:py-5 md:text-xl
+        className={`flex min-h-12 w-full items-center justify-center gap-3 rounded-xl px-4 py-3 text-base font-bold transition-[background-color,border-color,color,transform,opacity] active:scale-[0.99]
           ${
             status.type === 'loading'
               ? 'bg-gray-200 text-gray-500'
               : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}>
-        {status.type === 'loading' ? '正在导入...' : '开始导入'}
+        {status.type === 'loading'
+          ? '正在导入...'
+          : selectedFileNames.length > 1
+            ? `导入 ${selectedFileNames.length} 条材料`
+            : '确认导入'}
       </button>
 
       {status.message && (
@@ -1956,8 +1397,8 @@ export default function UploadForm({
                   key={id}
                   href={
                     isMediaSubtitleVariant
-                      ? `/media-subtitles/${id}`
-                      : `/collections/lesson/${id}`
+                      ? `/subtitles/${id}`
+                      : `/manage/collections/lesson/${id}`
                   }
                   className='inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors'>
                   {isMediaSubtitleVariant

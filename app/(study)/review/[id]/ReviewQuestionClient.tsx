@@ -4,11 +4,11 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 
-import type { RetryQueueItem } from '@/app/actions/retry'
+import type { RetryQueueItem } from '@/modules/review/actions/mistakes'
 import {
   resetRetryQuestionAccuracy,
   submitRetryAnswer,
-} from '@/app/actions/retry'
+} from '@/modules/review/actions/mistakes'
 import { QuestionRenderer } from '@/components/exam/QuestionRenderer'
 import WordTooltip from '@/components/exam/WordTooltip'
 import ToggleSwitch from '@/components/ToggleSwitch'
@@ -395,7 +395,7 @@ export default function ReviewQuestionClient({
             </button>
           ) : (
             <Link
-              href='/review'
+              href='/review/mistakes'
               className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800'>
               返回队列
             </Link>

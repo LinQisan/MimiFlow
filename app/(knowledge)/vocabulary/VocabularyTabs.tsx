@@ -5,15 +5,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  addVocabulariesToWordbook,
-  createWordbook,
   deleteVocabulary,
   searchSentencesForWord,
   addVocabularySentence,
-  moveVocabularyToGroup,
-  moveWordbook,
-  renameWordbook,
-  renameVocabularyGroup,
   updateVocabularyPronunciationById,
   assignVocabularySentenceMeaning,
   clearVocabularySentenceMeaning,
@@ -21,8 +15,14 @@ import {
   updateVocabularyPartsOfSpeechById,
   updateVocabularySentencePosTags,
   updateVocabularyTags,
-} from '@/app/actions/content'
-import { rateVocabularyMemory } from '@/app/actions/fsrs'
+} from '@/modules/knowledge/vocabulary/actions'
+import {
+  addVocabulariesToWordbook,
+  createWordbook,
+  moveWordbook,
+  renameWordbook,
+} from '@/modules/knowledge/wordbooks/actions'
+import { rateVocabularyMemory } from '@/modules/review/actions/memory'
 import { useDialog } from '@/context/DialogContext'
 import WordPronunciation from '@/components/vocabulary/WordPronunciation'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
@@ -31,360 +31,43 @@ import {
   hasJapanese,
   useShowPronunciation,
 } from '@/hooks/usePronunciationPrefs'
-import { buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
 import {
   inferContextualPos,
   posBadgeClass,
   getPosOptions,
   posWordHighlightClass,
 } from '@/utils/language/posTagger'
-import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
 import { Rating } from 'ts-fsrs'
-
-type SentenceItem = {
-  text: string
-  source: string
-  sourceUrl: string
-  translation?: string | null
-  audioFile?: string | null
-  meaningIndex?: number | null
-  posTags?: string[]
-}
-
-type AudioData = {
-  audioFile: string
-  start: number
-  end: number
-}
-
-type VocabItem = {
-  id: string
-  word: string
-  languageCode?: string
-  wordAudio?: string | null
-  pronunciation?: string | null
-  pronunciations?: string[]
-  partOfSpeech?: string | null
-  partsOfSpeech?: string[]
-  meanings?: string[]
-  tags?: string[]
-  createdAt: Date
-  folderId?: string | null
-  folderName?: string | null
-  sourceType: string
-  sentences: SentenceItem[]
-  audioData: AudioData | null
-  review?: {
-    id: string
-    due: Date | string
-    state: number
-    stability: number
-    difficulty: number
-    elapsed_days: number
-    scheduled_days: number
-    reps: number
-    lapses: number
-    learning_steps: number
-    last_review: Date | string | null
-  } | null
-}
-
-type FolderItem = {
-  id: string
-  name: string
-  parentId: string | null
-}
-
-type InflectionVariant = {
-  word: string
-  sentenceHits: number
-  sentenceTotal: number
-}
-
-type InflectionFamily = {
-  lemma: string
-  totalVariants: number
-  coveredVariants: number
-  coverage: number
-  variants: InflectionVariant[]
-}
-
-const LANG_NAMES: Record<string, string> = {
-  ja: '日语',
-  en: '英语',
-  ko: '韩语',
-  zh: '中文',
-  other: '更多',
-}
-
-const splitListInput = (value: string) =>
-  Array.from(
-    new Set(
-      value
-        .split(/[\n,，；;]+/)
-        .map(item => item.trim())
-        .filter(Boolean),
-    ),
-  )
-
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-const firstSentencePosTag = (tags?: string[]) => {
-  if (!Array.isArray(tags)) return ''
-  const first = tags.map(item => item.trim()).find(Boolean)
-  return first || ''
-}
-
-const getPrimaryPronunciation = (vocab: VocabItem) => {
-  const fromList = (vocab.pronunciations || [])
-    .map(item => item.trim())
-    .find(Boolean)
-  if (fromList) return fromList
-  return (vocab.pronunciation || '').trim()
-}
-
-const normalizeLanguageCode = (value: string) => {
-  const text = value.trim().toLowerCase()
-  if (text === 'ja' || text.includes('日语') || text.includes('日本'))
-    return 'ja'
-  if (text === 'en' || text.includes('英语') || text.includes('english'))
-    return 'en'
-  if (text === 'ko' || text.includes('韩语') || text.includes('korean'))
-    return 'ko'
-  if (text === 'zh' || text.includes('中文') || text.includes('chinese'))
-    return 'zh'
-  return 'other'
-}
-
-const supportsPronunciationByLanguage = (languageCode?: string) =>
-  languageCode === 'ja' || languageCode === 'en'
-
-const stripLeadingIcons = (text: string) =>
-  text.replace(/^[^\p{L}\p{N}\u4e00-\u9fa5ぁ-んァ-ヶ]+/u, '').trim()
-
-const getSentenceSourceType = (sentence: SentenceItem) => {
-  const sourceText = stripLeadingIcons(sentence.source || '')
-  if (sourceText.includes('题目')) return '题目'
-  if (sentence.sourceUrl.startsWith('/practice')) return '题目'
-  if (sentence.sourceUrl.startsWith('/articles/')) return '文章'
-  if (sentence.sourceUrl.startsWith('/shadowing/')) return '听力'
-  if (sentence.sourceUrl.startsWith('/lessons/')) return '听力'
-  if (sourceText.includes('阅读')) return '文章'
-  if (sourceText.includes('听力')) return '听力'
-  if (sourceText.includes('题')) return '题目'
-  return ''
-}
-
-const getSentenceSourceDetail = (sentence: SentenceItem) => {
-  const sourceText = stripLeadingIcons(sentence.source || '')
-  const [, ...rest] = sourceText.split(/[：:]/)
-  const detail = rest.join('：').trim()
-  if (!detail || detail === '未知来源') return ''
-  return detail
-}
-
-const getSentenceSourceDisplay = (sentence: SentenceItem) => {
-  const sourceType = getSentenceSourceType(sentence)
-  const detail = getSentenceSourceDetail(sentence)
-  if (!sourceType && !detail) return ''
-  if (!sourceType) return detail
-  if (!detail || detail === sourceType) return sourceType
-  return `${sourceType} · ${detail}`
-}
-
-const detectInflectedSurface = (word: string, sentenceText: string) => {
-  const cleanWord = word.trim()
-  if (!cleanWord || !sentenceText) return ''
-  if (!/[\u3040-\u30ff\u4e00-\u9fff]/.test(cleanWord)) return ''
-  const escapedWord = escapeRegExp(cleanWord)
-  const suffixes = [
-    'しませんでした',
-    'しなかった',
-    'くなかった',
-    'ませんでした',
-    'ました',
-    'ません',
-    'なかった',
-    'ている',
-    'ていた',
-    'られる',
-    'かった',
-    'します',
-    'しない',
-    'して',
-    'した',
-    'ない',
-    'たい',
-    'ます',
-    'です',
-    'だ',
-    'た',
-    'て',
-    'な',
-    'に',
-    'く',
-  ]
-  for (const suffix of suffixes) {
-    const regex = new RegExp(`${escapedWord}${escapeRegExp(suffix)}`)
-    const matched = sentenceText.match(regex)?.[0] || ''
-    if (matched && matched !== cleanWord) return matched
-  }
-  return ''
-}
-
-const dateToMs = (value?: Date | string | null) => {
-  if (!value) return Number.NaN
-  const ts = new Date(value).getTime()
-  return Number.isFinite(ts) ? ts : Number.NaN
-}
-
-const seededShuffle = <T,>(list: T[], seed: number) => {
-  const arr = [...list]
-  let s = Math.max(1, seed % 2147483647)
-  const next = () => {
-    s = (s * 48271) % 2147483647
-    return s / 2147483647
-  }
-  for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(next() * (i + 1))
-    const tmp = arr[i]
-    arr[i] = arr[j]
-    arr[j] = tmp
-  }
-  return arr
-}
-
-const resolveInconsistentMemoryRating = (first: Rating, second: Rating) => {
-  if (first === second) return first
-  const diff = second - first
-
-  // 二次评分更低：认为用户在看完整内容后修正了高估，直接采用更低分。
-  if (diff < 0) return second
-
-  // 二次评分更高：看完完整内容后信心上升，但为避免虚高，只上调一级。
-  if (first === Rating.Again) return Rating.Hard
-  if (first === Rating.Hard) return Rating.Good
-  return Rating.Easy
-}
-
-type DropdownOption = {
-  value: string
-  label: string
-}
-
-type FolderTreeNode = FolderItem & {
-  children: FolderTreeNode[]
-}
-
-const buildFolderTree = (folders: FolderItem[]) => {
-  const nodeMap = new Map<string, FolderTreeNode>()
-  folders.forEach(folder => nodeMap.set(folder.id, { ...folder, children: [] }))
-  const roots: FolderTreeNode[] = []
-  nodeMap.forEach(node => {
-    if (node.parentId && nodeMap.has(node.parentId)) {
-      nodeMap.get(node.parentId)!.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  })
-  return roots
-}
-
-const flattenFolderTree = (
-  nodes: FolderTreeNode[],
-  depth = 0,
-  acc: Array<FolderItem & { depth: number; pathLabel: string }> = [],
-) => {
-  nodes
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, 'zh-Hans-CN'))
-    .forEach(node => {
-      const prefix = depth > 0 ? `${'— '.repeat(depth)}` : ''
-      acc.push({
-        id: node.id,
-        name: node.name,
-        parentId: node.parentId,
-        depth,
-        pathLabel: `${prefix}${node.name}`,
-      })
-      flattenFolderTree(node.children, depth + 1, acc)
-    })
-  return acc
-}
-
-function ControlDropdown({
-  value,
-  onChange,
-  options,
-  ariaLabel,
-  className = '',
-}: {
-  value: string
-  onChange: (value: string) => void
-  options: DropdownOption[]
-  ariaLabel: string
-  className?: string
-}) {
-  const [open, setOpen] = useState(false)
-  const rootRef = useRef<HTMLDivElement | null>(null)
-  const selected = options.find(option => option.value === value) || options[0]
-
-  useEffect(() => {
-    if (!open) return
-    const handleOutside = (event: MouseEvent) => {
-      if (!(event.target instanceof Node)) return
-      if (rootRef.current?.contains(event.target)) return
-      setOpen(false)
-    }
-    window.addEventListener('mousedown', handleOutside)
-    return () => window.removeEventListener('mousedown', handleOutside)
-  }, [open])
-
-  return (
-    <div ref={rootRef} className={`relative min-w-[9.5rem] ${className}`}>
-      <button
-        type='button'
-        aria-label={ariaLabel}
-        aria-expanded={open}
-        onClick={() => setOpen(prev => !prev)}
-        className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus-visible:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-100'>
-        <span className='truncate'>{selected?.label || ''}</span>
-        <span
-          className={`ml-2 text-[11px] font-black text-gray-400 transition-transform ${
-            open ? 'rotate-180' : ''
-          }`}>
-          ▾
-        </span>
-      </button>
-      {open && (
-        <div className='absolute left-0 right-0 top-[calc(100%+0.35rem)] z-50 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl'>
-          <div className='max-h-56 overflow-auto p-1'>
-            {options.map(option => {
-              const active = option.value === value
-              return (
-                <button
-                  key={`${ariaLabel}-${option.value}`}
-                  type='button'
-                  onClick={() => {
-                    onChange(option.value)
-                    setOpen(false)
-                  }}
-                  className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
-                    active
-                      ? 'bg-slate-100 text-slate-800'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}>
-                  {option.label}
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+import ControlDropdown from '@/modules/knowledge/vocabulary/components/ControlDropdown'
+import SentenceSearchPanel from '@/modules/knowledge/vocabulary/components/SentenceSearchPanel'
+import SentenceEditControls from '@/modules/knowledge/vocabulary/components/SentenceEditControls'
+import VocabularySentenceText from '@/modules/knowledge/vocabulary/components/VocabularySentenceText'
+import {
+  FlashCardNavigation,
+  MemoryRatingControls,
+} from '@/modules/knowledge/vocabulary/components/MemoryCardControls'
+import {
+  LANGUAGE_NAMES,
+  buildFlashVocabularyList,
+  buildFolderTree,
+  buildInflectionFamilyMap,
+  detectInflectedSurface,
+  filterAndSortVocabulary,
+  firstSentencePosTag,
+  flattenFolderTree,
+  getPrimaryPronunciation,
+  getSentenceSourceDisplay,
+  getVocabularyPosOptions,
+  normalizeLanguageCode,
+  resolveInconsistentMemoryRating,
+  splitListInput,
+  supportsPronunciationByLanguage,
+} from '@/modules/knowledge/vocabulary/domain/workbench'
+import type {
+  FolderItem,
+  SentenceItem,
+  VocabItem,
+} from '@/modules/knowledge/vocabulary/types'
 
 export default function VocabularyTabs({
   groupedData,
@@ -456,8 +139,6 @@ export default function VocabularyTabs({
   >(null)
 
   // 🌟 轻量级分组移动控制
-  const [activeMoveId, setActiveMoveId] = useState<string | null>(null)
-  const [newGroupInput, setNewGroupInput] = useState('')
   const [activePronEditId, setActivePronEditId] = useState<string | null>(null)
   const [pronInput, setPronInput] = useState('')
   const [activeFolderEditId, setActiveFolderEditId] = useState<string | null>(
@@ -618,43 +299,6 @@ export default function VocabularyTabs({
     dialog.toast('删除成功', { tone: 'success' })
   }
 
-  const handleMoveGroup = async (
-    vocabId: string,
-    fromGroup: string,
-    targetGroup: string,
-  ) => {
-    const target = targetGroup.trim()
-    if (!target || target === fromGroup) {
-      setActiveMoveId(null)
-      return
-    }
-
-    setLocalData(prev => {
-      const itemToMove = prev[fromGroup].find(
-        (i: VocabItem) => i.id === vocabId,
-      )
-      if (!itemToMove) return prev
-      const newData = { ...prev }
-      newData[fromGroup] = newData[fromGroup].filter(
-        (i: VocabItem) => i.id !== vocabId,
-      )
-      if (!newData[target]) newData[target] = []
-      newData[target] = [itemToMove, ...newData[target]]
-      return newData
-    })
-    if (viewMode === 'flashcard') {
-      setCurrentIndex(prev =>
-        Math.max(
-          0,
-          prev >= visibleList.length - 1 ? visibleList.length - 2 : prev,
-        ),
-      )
-    }
-    setActiveMoveId(null)
-    setNewGroupInput('')
-    await moveVocabularyToGroup(vocabId, target)
-  }
-
   const handleSearchSentences = async (id: string, word: string) => {
     if (searchResults[id]) {
       setSearchingId(searchingId === id ? null : id)
@@ -782,42 +426,7 @@ export default function VocabularyTabs({
     dialog.toast('单词书已移动', { tone: 'success' })
   }
 
-  const handleRenameGroup = async () => {
-    const currentGroup = activeTab.trim()
-    if (!currentGroup) return
-    const nextName = await dialog.prompt('新的分组名称', {
-      title: `重命名分组：${currentGroup}`,
-      defaultValue: currentGroup,
-      confirmText: '保存',
-    })
-    if (nextName == null) return
-    const trimmed = nextName.trim()
-    if (!trimmed) {
-      dialog.toast('分组名称不能为空', { tone: 'error' })
-      return
-    }
-    const result = await renameVocabularyGroup(currentGroup, trimmed)
-    if (!result.success) {
-      dialog.toast(result.message || '分组重命名失败', { tone: 'error' })
-      return
-    }
-    setLocalData(prev => {
-      if (!prev[currentGroup] || currentGroup === trimmed) return prev
-      const next = { ...prev }
-      const moving = next[currentGroup]
-      delete next[currentGroup]
-      next[trimmed] = [...(next[trimmed] || []), ...moving]
-      return next
-    })
-    setActiveTab(trimmed)
-    router.refresh()
-    dialog.toast(`分组已重命名（影响 ${result.changed || 0} 条）`, {
-      tone: 'success',
-    })
-  }
-
   const handleOpenPronEditor = (vocab: VocabItem) => {
-    setActiveMoveId(null)
     setActiveFolderEditId(null)
     setActivePronEditId(vocab.id)
     setPronInput(getPrimaryPronunciation(vocab))
@@ -869,7 +478,6 @@ export default function VocabularyTabs({
   }
 
   const openTagEditor = (vocab: VocabItem) => {
-    setActiveMoveId(null)
     setActivePronEditId(null)
     setActiveFolderEditId(null)
     setActiveTagEditorId(vocab.id)
@@ -1117,146 +725,30 @@ export default function VocabularyTabs({
     [activeTab, localData],
   )
   const inflectionByWordId = useMemo(() => {
-    const allVocab = Object.values(localData).flat()
-    const familyBuckets = new Map<string, VocabItem[]>()
-    const isJaVerbOrAdj = (item: VocabItem) => {
-      const tags = item.partsOfSpeech || []
-      const hasTargetPos = tags.some(
-        tag =>
-          tag.includes('動詞') ||
-          tag.includes('形容詞') ||
-          tag.includes('形容動詞'),
-      )
-      if (!hasTargetPos) return false
-      return /[\u3040-\u30ff\u4e00-\u9fff]/.test(item.word)
-    }
-
-    allVocab.forEach(item => {
-      if (!isJaVerbOrAdj(item)) return
-      const lemma = normalizeVocabularyHeadword(
-        item.word,
-        item.partsOfSpeech || [],
-      )
-      if (!lemma) return
-      const list = familyBuckets.get(lemma) || []
-      list.push(item)
-      familyBuckets.set(lemma, list)
-    })
-
-    const byId = new Map<string, InflectionFamily>()
-    familyBuckets.forEach((items, lemma) => {
-      const uniqueWords = Array.from(
-        new Set(items.map(item => item.word.trim()).filter(Boolean)),
-      )
-      if (uniqueWords.length <= 1) return
-      const allSentences = items.flatMap(item => item.sentences || [])
-      const variants: InflectionVariant[] = uniqueWords
-        .map(word => {
-          const regex = new RegExp(escapeRegExp(word), 'g')
-          const sentenceHits = allSentences.filter(sent =>
-            regex.test(sent.text),
-          ).length
-          return {
-            word,
-            sentenceHits,
-            sentenceTotal: allSentences.length,
-          }
-        })
-        .sort(
-          (a, b) =>
-            b.sentenceHits - a.sentenceHits ||
-            a.word.localeCompare(b.word, 'ja'),
-        )
-      const coveredVariants = variants.filter(
-        item => item.sentenceHits > 0,
-      ).length
-      const totalVariants = variants.length
-      const coverage =
-        totalVariants > 0
-          ? Math.round((coveredVariants / totalVariants) * 100)
-          : 0
-      const payload: InflectionFamily = {
-        lemma,
-        totalVariants,
-        coveredVariants,
-        coverage,
-        variants,
-      }
-      items.forEach(item => {
-        byId.set(item.id, payload)
-      })
-    })
-    return byId
+    return buildInflectionFamilyMap(localData)
   }, [localData])
   const activeTabLanguageCode = normalizeLanguageCode(activeTab)
   const posFilterOptions = useMemo(
     () =>
-      Array.from(
-        new Set(
-          currentList.flatMap(item =>
-            (item.partsOfSpeech || []).map(pos => pos.trim()).filter(Boolean),
-          ),
-        ),
-      ).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN')),
+      getVocabularyPosOptions(currentList),
     [currentList],
   )
   const visibleList = useMemo(() => {
-    const filtered = currentList.filter(item => {
-      const matchPos =
-        selectedPosFilter === 'all' ||
-        (item.partsOfSpeech || []).some(pos => pos === selectedPosFilter)
-      const matchFolder =
-        selectedFolderFilter === 'all' ||
-        (selectedFolderFilter === 'none'
-          ? !item.folderId
-          : item.folderId === selectedFolderFilter)
-      return matchPos && matchFolder
-    })
-    return [...filtered].sort((a, b) => {
-      if (sortMode === 'word') {
-        return a.word.localeCompare(b.word, 'ja')
-      }
-      if (sortMode === 'pos') {
-        const aPos = (a.partsOfSpeech || [])[0] || ''
-        const bPos = (b.partsOfSpeech || [])[0] || ''
-        if (aPos === bPos) return b.createdAt.getTime() - a.createdAt.getTime()
-        return aPos.localeCompare(bPos, 'zh-Hans-CN')
-      }
-      return b.createdAt.getTime() - a.createdAt.getTime()
-    })
+    return filterAndSortVocabulary(
+      currentList,
+      selectedPosFilter,
+      selectedFolderFilter,
+      sortMode,
+    )
   }, [currentList, selectedPosFilter, selectedFolderFilter, sortMode])
   const flashList = useMemo(() => {
-    let list = [...visibleList]
-    if (memoryMode) {
-      const due: VocabItem[] = []
-      const fresh: VocabItem[] = []
-      const upcoming: VocabItem[] = []
-      list.forEach(item => {
-        const dueMs = dateToMs(item.review?.due || null)
-        if (Number.isNaN(dueMs)) {
-          fresh.push(item)
-          return
-        }
-        if (dueMs <= memoryNowMs) {
-          due.push(item)
-          return
-        }
-        upcoming.push(item)
-      })
-      due.sort(
-        (a, b) =>
-          dateToMs(a.review?.due || null) - dateToMs(b.review?.due || null),
-      )
-      upcoming.sort(
-        (a, b) =>
-          dateToMs(a.review?.due || null) - dateToMs(b.review?.due || null),
-      )
-      list = [...due, ...fresh, ...upcoming]
-    }
-    if (randomOrder && list.length > 1) {
-      list = seededShuffle(list, shuffleSeed)
-    }
-    return list
+    return buildFlashVocabularyList(
+      visibleList,
+      memoryMode,
+      memoryNowMs,
+      randomOrder,
+      shuffleSeed,
+    )
   }, [visibleList, memoryMode, memoryNowMs, randomOrder, shuffleSeed])
   const currentFlashVocab = flashList[currentIndex] || null
   const allExistingGroups = useMemo(() => {
@@ -1278,13 +770,11 @@ export default function VocabularyTabs({
   // 点击外部关闭移动菜单
   useEffect(() => {
     const handleClickOutside = () => {
-      setActiveMoveId(null)
       setActivePronEditId(null)
       setActiveFolderEditId(null)
       setActiveTagEditorId(null)
     }
     if (
-      activeMoveId ||
       activePronEditId ||
       activeFolderEditId ||
       activeTagEditorId
@@ -1292,7 +782,7 @@ export default function VocabularyTabs({
       window.addEventListener('click', handleClickOutside)
     }
     return () => window.removeEventListener('click', handleClickOutside)
-  }, [activeMoveId, activePronEditId, activeFolderEditId, activeTagEditorId])
+  }, [activePronEditId, activeFolderEditId, activeTagEditorId])
 
   useEffect(() => {
     setPendingSentenceIndex(null)
@@ -1300,7 +790,6 @@ export default function VocabularyTabs({
 
   useEffect(() => {
     if (!isEditMode) {
-      setActiveMoveId(null)
       setActivePronEditId(null)
       setActiveFolderEditId(null)
       setActiveTagEditorId(null)
@@ -1388,10 +877,10 @@ export default function VocabularyTabs({
     if (allChecked !== isSelectAllChecked) setIsSelectAllChecked(allChecked)
   }, [visibleList, selectedVocabIds, isSelectAllChecked])
 
-  const pushVocabularyGroup = (groupName: string | null) => {
+  const pushVocabularyGroup = (languageGroup: string | null) => {
     const params = buildVocabularySearchParams({
       page: '1',
-      group: groupName,
+      group: languageGroup,
     })
     router.push(`${pathname}?${params.toString()}`)
   }
@@ -1457,41 +946,29 @@ export default function VocabularyTabs({
     sentence: SentenceItem,
     vocab: VocabItem,
   ) => {
-    const escapedWord = vocab.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const wordRegex = new RegExp(escapedWord, 'g')
     const targetPron = getPrimaryPronunciation(vocab)
     const sentencePos = sentencePosTagsFromItem(vocab, sentence)[0] || ''
     const highlightClass = posWordHighlightClass(sentencePos)
-
-    let html = sentence.text
-    if (
-      hasJapanese(vocab.word) &&
-      shouldShowPronunciationForVocab(vocab) &&
-      targetPron
-    ) {
-      const rubyHtml = buildJapaneseRubyHtml(vocab.word, targetPron, {
-        rubyClassName: 'jp-ruby font-semibold text-slate-900',
-        rtClassName: 'jp-ruby-rt text-[9px] font-semibold text-slate-500',
-      })
-      html = html.replace(
-        wordRegex,
-        `<span class="inline-block align-baseline rounded-sm px-1 py-0.5 ${highlightClass}">${rubyHtml}</span>`,
-      )
-    } else {
-      html = html.replace(
-        wordRegex,
-        `<span class="rounded px-1 py-0.5 font-semibold ${highlightClass}">${vocab.word}</span>`,
-      )
-    }
-    return <span dangerouslySetInnerHTML={{ __html: html }} />
+    return (
+      <VocabularySentenceText
+        text={sentence.text}
+        word={vocab.word}
+        pronunciation={targetPron}
+        highlightClass={highlightClass}
+        showPronunciation={
+          hasJapanese(vocab.word) &&
+          shouldShowPronunciationForVocab(vocab) &&
+          Boolean(targetPron)
+        }
+      />
+    )
   }
 
   const canPlaySentenceAudio = (vocab: VocabItem, sentence: SentenceItem) => {
     if (sentence.audioFile) return true
     if (!vocab.audioData) return false
     return (
-      sentence.sourceUrl.startsWith('/shadowing/') ||
-      sentence.sourceUrl.startsWith('/lessons/') ||
+      sentence.sourceUrl.startsWith('/listening/') ||
       sentence.source.includes('听力')
     )
   }
@@ -1853,46 +1330,14 @@ export default function VocabularyTabs({
   const cardTransitionOpacity = cardTransitionState === 'idle' ? 1 : 0.14
 
   return (
-    <div className='theme-page-vocab space-y-6'>
-      <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5'>
-        <div className='flex flex-wrap items-center justify-between gap-3'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700'>
-              当前分组 {LANG_NAMES[activeTab] || activeTab}
-            </span>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600'>
-              本页 {visibleList.length} 条
-            </span>
-            <span className='rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600'>
-              闪卡 {flashList.length} 条
-            </span>
-          </div>
-          <div className='flex flex-wrap items-center gap-2'>
-            <button
-              onClick={() => setIsEditMode(prev => !prev)}
-              className={`rounded-xl border px-3 py-2 text-xs font-bold transition-colors ${
-                isEditMode
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-              }`}>
-              {isEditMode ? '退出编辑' : '编辑'}
-            </button>
-            {viewMode !== 'flashcard' && (
-              <button
-                type='button'
-                onClick={() => void handleRenameGroup()}
-                className='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50'>
-                重命名分组
-              </button>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5'>
-        <div className='flex flex-col gap-4'>
+    <div className='theme-page-vocab space-y-3'>
+      <section className='rounded-xl border border-slate-200 bg-white p-3 md:p-4'>
+        <div className='flex flex-col gap-3'>
           {viewMode !== 'flashcard' ? (
-            <div className='flex w-full flex-wrap gap-2 overflow-x-auto border-b border-slate-100 pb-3 scrollbar-hide'>
+            <div className='flex w-full flex-wrap items-center gap-2 border-b border-slate-100 pb-3'>
+              <span className='mr-1 text-xs font-bold text-slate-500'>
+                语言分组
+              </span>
               {allExistingGroups.map(name => (
                 <button
                   key={name}
@@ -1904,22 +1349,32 @@ export default function VocabularyTabs({
                     setCurrentIndex(0)
                     setViewMode('list')
                   }}
-                  className={`rounded-full whitespace-nowrap px-4 py-2 font-bold transition-colors ${
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-bold transition-colors ${
                     activeTab === name
-                      ? 'border border-slate-200 bg-slate-900 text-white'
-                      : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                   }`}>
-                  {LANG_NAMES[name] || name}
+                  {LANGUAGE_NAMES[name] || name}
                   <span className='ml-1 opacity-75'>
                     ({currentGroupCountMap[name] || 0})
                   </span>
                 </button>
               ))}
+              <button
+                type='button'
+                onClick={() => setIsEditMode(prev => !prev)}
+                className={`ml-auto rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
+                  isEditMode
+                    ? 'border-rose-200 bg-rose-50 text-rose-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}>
+                {isEditMode ? '退出编辑' : '管理'}
+              </button>
             </div>
           ) : null}
 
           <div
-            className={`space-y-4 ${viewMode !== 'flashcard' ? 'border-b border-slate-200 pb-4' : ''}`}>
+            className={`space-y-3 ${viewMode !== 'flashcard' ? 'border-b border-slate-200 pb-3' : ''}`}>
             <div className='flex flex-wrap items-center justify-between gap-3'>
               <div className='flex flex-wrap items-center gap-2'>
                 {isEditMode && (
@@ -2004,30 +1459,44 @@ export default function VocabularyTabs({
                   />
                 )}
               </div>
-              <div className='flex items-center gap-2 rounded-xl bg-slate-100 p-1'>
-                <button
-                  type='button'
-                  onClick={() => setViewMode('list')}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
-                    viewMode === 'list'
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-400 hover:text-slate-700'
-                  }`}>
-                  列表
-                </button>
-                <button
-                  type='button'
-                  onClick={() => {
-                    setViewMode('flashcard')
-                    setCurrentIndex(0)
-                  }}
-                  className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
-                    viewMode === 'flashcard'
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-400 hover:text-slate-700'
-                  }`}>
-                  闪卡
-                </button>
+              <div className='flex items-center gap-2'>
+                {viewMode === 'flashcard' ? (
+                  <button
+                    type='button'
+                    onClick={() => setIsEditMode(prev => !prev)}
+                    className={`rounded-lg border px-3 py-2 text-xs font-bold ${
+                      isEditMode
+                        ? 'border-rose-200 bg-rose-50 text-rose-700'
+                        : 'border-slate-200 bg-white text-slate-600'
+                    }`}>
+                    {isEditMode ? '退出编辑' : '管理'}
+                  </button>
+                ) : null}
+                <div className='flex items-center gap-1 rounded-lg bg-slate-100 p-1'>
+                  <button
+                    type='button'
+                    onClick={() => setViewMode('list')}
+                    className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
+                      viewMode === 'list'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-400 hover:text-slate-700'
+                    }`}>
+                    列表
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setViewMode('flashcard')
+                      setCurrentIndex(0)
+                    }}
+                    className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
+                      viewMode === 'flashcard'
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-400 hover:text-slate-700'
+                    }`}>
+                    闪卡
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2158,8 +1627,7 @@ export default function VocabularyTabs({
                   ))}
                 </div>
 
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr] sm:items-center'>
-                  <span className='text-xs font-bold text-gray-500'>词性</span>
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
                   <ControlDropdown
                     ariaLabel='按词性筛选'
                     value={selectedPosFilter}
@@ -2173,9 +1641,6 @@ export default function VocabularyTabs({
                       })),
                     ]}
                   />
-                </div>
-
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
                   <ControlDropdown
                     ariaLabel='单词书筛选'
                     value={selectedFolderFilter}
@@ -2200,17 +1665,10 @@ export default function VocabularyTabs({
                       })),
                     ]}
                   />
-                  <button
-                    type='button'
-                    onClick={() =>
-                      void handleCreateFolder(activeFolderContextId || null)
-                    }
-                    className='h-10 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100'>
-                    {activeFolderContextId ? '新建子单词书' : '新建单词书'}
-                  </button>
                 </div>
 
-                <div className='flex flex-wrap items-center gap-2'>
+                {isEditMode ? (
+                <div className='flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2'>
                   <span className='text-xs font-bold text-gray-500'>
                     单词书管理
                   </span>
@@ -2229,6 +1687,14 @@ export default function VocabularyTabs({
                       })),
                     ]}
                   />
+                  <button
+                    type='button'
+                    onClick={() =>
+                      void handleCreateFolder(activeFolderContextId || null)
+                    }
+                    className='ui-btn ui-btn-sm'>
+                    {activeFolderContextId ? '新建子单词书' : '新建单词书'}
+                  </button>
                   <button
                     type='button'
                     disabled={!activeFolderContextId}
@@ -2260,6 +1726,7 @@ export default function VocabularyTabs({
                     移动
                   </button>
                 </div>
+                ) : null}
 
                 <div className='flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 text-xs text-gray-600'>
                   <span>
@@ -2303,7 +1770,7 @@ export default function VocabularyTabs({
 
       {/* 列表模式：仅显示单词和基础操作 */}
       {viewMode === 'list' && (
-        <div className='min-h-[56vh] divide-y divide-slate-100 border-y border-slate-100 bg-white'>
+        <div className='grid min-h-[40vh] grid-cols-1 gap-px overflow-hidden rounded-xl border border-slate-200 bg-slate-200 md:grid-cols-2'>
           {visibleList.map((vocab, idx) => {
             const displayPronunciations = vocab.pronunciations || []
 
@@ -2318,10 +1785,10 @@ export default function VocabularyTabs({
                   setCurrentIndex(nextIndex >= 0 ? nextIndex : idx)
                   setViewMode('flashcard')
                 }}
-                className={`px-4 py-3 md:px-6 lg:px-8 transition-colors hover:bg-slate-50/50 ${
+                className={`px-3 py-2.5 transition-colors hover:bg-slate-50 ${
                   isEditMode ? 'bg-slate-50/20' : 'bg-white'
                 }`}>
-                <div className='flex items-center justify-between gap-4'>
+                <div className='flex items-center justify-between gap-3'>
                   <div className='flex min-w-0 items-center gap-3'>
                     {isEditMode && (
                       <input
@@ -2340,14 +1807,21 @@ export default function VocabularyTabs({
                         className='h-4 w-4 shrink-0 rounded border-gray-300 accent-slate-900'
                       />
                     )}
-                    <WordPronunciation
-                      word={vocab.word}
-                      pronunciation={getPrimaryPronunciation(vocab)}
-                      pronunciations={displayPronunciations}
-                      showPronunciation={shouldShowPronunciationForVocab(vocab)}
-                      wordClassName='text-[28px] font-black tracking-tight text-slate-900 md:text-[32px]'
-                      hintClassName='text-[11px] font-semibold text-slate-500'
-                    />
+                    <div className='min-w-0'>
+                      <WordPronunciation
+                        word={vocab.word}
+                        pronunciation={getPrimaryPronunciation(vocab)}
+                        pronunciations={displayPronunciations}
+                        showPronunciation={shouldShowPronunciationForVocab(vocab)}
+                        wordClassName='text-[22px] font-black tracking-tight text-slate-900 md:text-[24px]'
+                        hintClassName='text-[10px] font-semibold text-slate-500'
+                      />
+                      {(vocab.meanings || []).length > 0 ? (
+                        <p className='mt-0.5 line-clamp-1 text-xs text-slate-500'>
+                          {(vocab.meanings || []).slice(0, 2).join('；')}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                   {vocab.wordAudio && (
                     <button
@@ -2388,7 +1862,7 @@ export default function VocabularyTabs({
             )
           })}
           {visibleList.length === 0 && (
-            <div className='py-12 text-center text-sm font-medium text-slate-500'>
+            <div className='col-span-full bg-white py-12 text-center text-sm font-medium text-slate-500'>
               当前筛选条件下没有词条
             </div>
           )}
@@ -2421,7 +1895,6 @@ export default function VocabularyTabs({
                           setActivePronEditId(null)
                           return
                         }
-                        setActiveMoveId(null)
                         setActiveFolderEditId(null)
                         handleOpenPronEditor(current)
                       }}
@@ -2459,71 +1932,6 @@ export default function VocabularyTabs({
                             className='ui-btn ui-btn-sm bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800'>
                             保存
                           </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className='relative'>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        setActivePronEditId(null)
-                        setActiveFolderEditId(null)
-                        setActiveMoveId(
-                          activeMoveId === currentFlashVocab.id
-                            ? null
-                            : currentFlashVocab.id,
-                        )
-                      }}
-                      className={`ui-btn ui-btn-sm px-3 text-xs font-bold transition-colors ${
-                        activeMoveId === currentFlashVocab.id
-                          ? 'bg-slate-100 text-slate-800'
-                          : 'bg-white text-slate-400 hover:text-slate-700'
-                      }`}>
-                      移动
-                    </button>
-
-                    {/* 闪卡模式的专属下拉菜单 */}
-                    {activeMoveId === currentFlashVocab.id && (
-                      <div
-                        onClick={e => e.stopPropagation()}
-                        className='absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-2 duration-200 text-left'>
-                        <div className='px-1 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400'>
-                          移动至
-                        </div>
-                        {allExistingGroups
-                          .filter(g => g !== activeTab)
-                          .map(g => (
-                            <button
-                              key={g}
-                              onClick={() =>
-                                handleMoveGroup(
-                                  currentFlashVocab.id,
-                                  activeTab,
-                                  g,
-                                )
-                              }
-                              className='w-full rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-800'>
-                              {LANG_NAMES[g] || g}
-                            </button>
-                          ))}
-                        <div className='mt-2 border-t border-slate-100 pt-2'>
-                          <input
-                            autoFocus
-                            placeholder='新分组...'
-                            className='mb-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100'
-                            value={newGroupInput}
-                            onChange={e => setNewGroupInput(e.target.value)}
-                            onKeyDown={e =>
-                              e.key === 'Enter' &&
-                              handleMoveGroup(
-                                currentFlashVocab.id,
-                                activeTab,
-                                newGroupInput,
-                              )
-                            }
-                          />
                         </div>
                       </div>
                     )}
@@ -3068,49 +2476,27 @@ export default function VocabularyTabs({
                               {renderSentenceTranslation(sentObj)}
                               {renderSentenceMetaRow(currentVocab, sentObj)}
                               {isEditMode && (
-                                <div className='mt-2 flex flex-wrap gap-1.5'>
-                                  {getPosOptions(
-                                    currentVocab.word,
-                                    sentObj.text,
-                                  ).map(option => {
-                                    const active = sentencePosTagsFromItem(
-                                      currentVocab,
-                                      sentObj,
-                                    ).includes(option)
-                                    return (
-                                      <button
-                                        key={`${currentVocab.id}-sent-${i}-pos-option-${option}`}
-                                        type='button'
-                                        onClick={event => {
-                                          event.stopPropagation()
-                                          handleToggleSentencePosTag(
-                                            currentVocab.id,
-                                            i,
-                                            option,
-                                          )
-                                        }}
-                                        className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold transition-colors ${
-                                          active
-                                            ? 'border-slate-200 bg-slate-100 text-slate-800'
-                                            : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                                        }`}>
-                                        {option}
-                                      </button>
+                                <SentenceEditControls
+                                  word={currentVocab.word}
+                                  sentence={sentObj.text}
+                                  activePartsOfSpeech={sentencePosTagsFromItem(
+                                    currentVocab,
+                                    sentObj,
+                                  )}
+                                  onTogglePartOfSpeech={option =>
+                                    handleToggleSentencePosTag(
+                                      currentVocab.id,
+                                      i,
+                                      option,
                                     )
-                                  })}
-                                  <button
-                                    type='button'
-                                    onClick={event => {
-                                      event.stopPropagation()
-                                      void handleDeleteSentence(
-                                        currentVocab.id,
-                                        i,
-                                      )
-                                    }}
-                                    className='rounded-md border border-rose-200 bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-700 transition-colors hover:bg-rose-100'>
-                                    删除例句
-                                  </button>
-                                </div>
+                                  }
+                                  onDelete={() =>
+                                    void handleDeleteSentence(
+                                      currentVocab.id,
+                                      i,
+                                    )
+                                  }
+                                />
                               )}
                             </div>
                           ))}
@@ -3121,121 +2507,44 @@ export default function VocabularyTabs({
                 )
               })()}
 
-              <button
-                onClick={() =>
+              <SentenceSearchPanel
+                vocabulary={currentFlashVocab}
+                searching={searchingId === currentFlashVocab.id}
+                loading={isSearchingMore}
+                results={searchResults[currentFlashVocab.id] || []}
+                onToggleSearch={() =>
                   handleSearchSentences(
                     currentFlashVocab.id,
                     currentFlashVocab.word,
                   )
                 }
-                className='w-full py-3 text-sm font-semibold text-slate-500 transition-colors hover:text-slate-700'>
-                {searchingId === currentFlashVocab.id ? '收起' : '更多例句'}
-              </button>
-
-              {/* 搜索结果 */}
-              {searchingId === currentFlashVocab.id && (
-                <div className='mt-4 space-y-3 max-h-60 overflow-y-auto pr-2'>
-                  {isSearchingMore && (
-                    <div className='py-3 text-sm text-slate-400'>
-                      正在搜索例句...
-                    </div>
-                  )}
-                  {!isSearchingMore &&
-                    (searchResults[currentFlashVocab.id] || []).length ===
-                      0 && (
-                      <div className='py-3 text-sm text-slate-400'>
-                        未找到可追加例句
-                      </div>
-                    )}
-                  {(searchResults[currentFlashVocab.id] || []).map(
-                    (sentObj, idx) => {
-                      const isAdded = currentFlashVocab.sentences.some(
-                        (s: SentenceItem) => s.text === sentObj.text,
-                      )
-                      return (
-                        <div
-                          key={`${currentFlashVocab.id}-search-sent-${sentObj.sourceUrl || 'unknown'}-${sentObj.text}-${idx}`}
-                          className={`p-4 rounded-2xl border flex flex-col gap-3 transition-[background-color,border-color,color,opacity] ${isAdded ? 'bg-gray-50 border-gray-100 opacity-50' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                          <div className='text-[11px] text-slate-400 font-medium'>
-                            {getSentenceSourceDisplay(sentObj)}
-                          </div>
-                          <div className='text-sm text-slate-700 font-medium'>
-                            {sentObj.text}
-                          </div>
-                          {!isAdded && (
-                            <button
-                              onClick={() =>
-                                handleAddSentence(
-                                  activeTab,
-                                  currentFlashVocab.id,
-                                  sentObj,
-                                )
-                              }
-                              className='self-end rounded-xl border border-slate-300 bg-slate-700 px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-slate-800'>
-                              追加例句
-                            </button>
-                          )}
-                        </div>
-                      )
-                    },
-                  )}
-                </div>
-              )}
+                onAdd={sentence =>
+                  handleAddSentence(
+                    activeTab,
+                    currentFlashVocab.id,
+                    sentence,
+                  )
+                }
+              />
             </div>
 
             {memoryMode && (
-              <div
-                className={`mt-auto grid grid-cols-2 gap-2 border-t border-gray-100 pt-4 md:grid-cols-4 ${
-                  isSubmittingRating ? 'pointer-events-none opacity-55' : ''
-                }`}>
-                {(
-                  [
-                    { rating: Rating.Again, label: '忘了' },
-                    { rating: Rating.Hard, label: '吃力' },
-                    { rating: Rating.Good, label: '记住' },
-                    { rating: Rating.Easy, label: '秒答' },
-                  ] as const
-                ).map(item => {
-                  const selected = pendingMemoryRating === item.rating
-                  return (
-                    <button
-                      key={`memory-rate-${item.rating}`}
-                      type='button'
-                      onClick={() => void handleMemoryRateTap(item.rating)}
-                      className={`rounded-xl border px-3 py-3 text-sm font-bold transition-colors ${
-                        selected
-                          ? 'border-slate-200 bg-slate-100 text-slate-800'
-                          : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
-                      }`}>
-                      {item.label}
-                    </button>
-                  )
-                })}
-              </div>
+              <MemoryRatingControls
+                pendingRating={pendingMemoryRating}
+                isSubmitting={isSubmittingRating}
+                onRate={rating => void handleMemoryRateTap(rating)}
+              />
             )}
           </div>
 
           {!memoryMode && (
-            <div className='mt-4 flex items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white p-2'>
-              <button
-                onClick={goPrevCard}
-                disabled={currentIndex === 0 || cardTransitionState !== 'idle'}
-                className='inline-flex min-w-28 items-center justify-center rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700 shadow-sm disabled:opacity-40 hover:bg-gray-100'>
-                上一张
-              </button>
-              <div className='px-2 text-xs font-bold text-gray-400'>
-                可左右拖拽切换
-              </div>
-              <button
-                onClick={goNextCard}
-                disabled={
-                  currentIndex === flashList.length - 1 ||
-                  cardTransitionState !== 'idle'
-                }
-                className='inline-flex min-w-28 items-center justify-center rounded-xl border border-slate-300 bg-slate-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40 hover:bg-slate-800'>
-                下一张
-              </button>
-            </div>
+            <FlashCardNavigation
+              currentIndex={currentIndex}
+              total={flashList.length}
+              transitioning={cardTransitionState !== 'idle'}
+              onPrevious={goPrevCard}
+              onNext={goNextCard}
+            />
           )}
 
           <div className='mt-6 flex flex-col items-center gap-3 w-full animate-in fade-in slide-in-from-bottom-4 duration-500'>
@@ -3258,7 +2567,7 @@ export default function VocabularyTabs({
                         ? 'bg-white text-slate-900 shadow-[0_2px_10px_rgba(0,0,0,0.06)] ring-1 ring-black/5'
                         : 'text-gray-500 hover:text-gray-800 hover:bg-gray-200/50'
                     }`}>
-                    {LANG_NAMES[name] || name}
+                    {LANGUAGE_NAMES[name] || name}
                     <span
                       className={`text-[10px] font-black px-1.5 py-0.5 rounded-md transition-colors ${
                         isActive
@@ -3271,12 +2580,6 @@ export default function VocabularyTabs({
                 )
               })}
             </div>
-            <button
-              type='button'
-              onClick={() => void handleRenameGroup()}
-              className='text-[11px] font-bold text-gray-400 hover:text-gray-600 transition-colors bg-white/50 border border-gray-200/50 px-3 py-1 rounded-full'>
-              重命名组: {LANG_NAMES[activeTab] || activeTab}
-            </button>
           </div>
         </div>
       )}

@@ -19,6 +19,7 @@ type SortingQuestionProps = {
   currentAnswer?: string
   onSelect: OnSelectOption
   isSubmitted?: boolean
+  isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -94,6 +95,7 @@ export function SortingQuestion({
   currentAnswer,
   onSelect,
   isSubmitted = false,
+  isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
   annotation,
 }: SortingQuestionProps) {
@@ -185,7 +187,7 @@ export function SortingQuestion({
   }, [currentAnswer, onSelect, slots, starIndex])
 
   const moveToSlot = (option: ExamQuestionOption, slotIndex?: number) => {
-    if (isSubmitted) return
+    if (isInteractionLocked) return
     const targetIndex =
       typeof slotIndex === 'number'
         ? slotIndex
@@ -203,7 +205,7 @@ export function SortingQuestion({
   }
 
   const moveBackToPool = (option: ExamQuestionOption, slotIndex: number) => {
-    if (isSubmitted) return
+    if (isInteractionLocked) return
     setSlots(prev => {
       const next = [...prev]
       next[slotIndex] = null
@@ -253,7 +255,7 @@ export function SortingQuestion({
               key={`sorting-slot-${slotIndex}-${index}`}
               type='button'
               onClick={() => filled && moveBackToPool(filled, slotIndex)}
-              aria-disabled={isSubmitted}
+              disabled={isInteractionLocked}
               data-source-type='QUIZ_QUESTION'
               data-source-id={question.id}
               data-context-block='true'
@@ -286,7 +288,9 @@ export function SortingQuestion({
       <div className='min-h-24 border-b border-gray-200 bg-gray-50 p-6'>
         {!isSubmitted && (
           <div className='mb-5 text-center text-xs font-semibold tracking-wide text-gray-500'>
-            点击选项填入上方空缺处
+            {isInteractionLocked
+              ? '本题未作答，本次不显示答案'
+              : '点击选项填入上方空缺处'}
           </div>
         )}
         {isSubmitted && (
@@ -310,12 +314,12 @@ export function SortingQuestion({
                 key={option.id}
                 type='button'
                 onClick={() => moveToSlot(option)}
-                aria-disabled={isSubmitted}
+                disabled={isInteractionLocked}
                 data-source-type='QUIZ_QUESTION'
                 data-source-id={question.id}
                 data-context-block='true'
                 data-context-role='sorting-option'
-                className='select-none border border-orange-200 bg-white px-6 py-3 font-semibold text-orange-700 transition-colors hover:border-orange-400 active:scale-95'>
+                className='select-none border border-orange-200 bg-white px-6 py-3 font-semibold text-orange-700 transition-colors hover:border-orange-400 active:scale-95 disabled:cursor-default disabled:border-slate-200 disabled:text-slate-500 disabled:hover:border-slate-200'>
                 <span
                   className={isJapanesePaper ? 'exam-japanese-text' : ''}
                   dangerouslySetInnerHTML={{

@@ -8,6 +8,7 @@ import type {
   ExamQuestionOption,
 } from './types'
 import { formatMediaTime } from '@/utils/time/format'
+import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 
 type DialogueLine =
   NonNullable<NonNullable<ExamQuestion['lesson']>['dialogues']>[number]
@@ -34,9 +35,12 @@ export function ListeningTranscript({
 
   const sortedDialogues = useMemo(
     () =>
-      [...dialogues].sort(
-        (a, b) => a.start - b.start || (a.sequenceId || 0) - (b.sequenceId || 0),
-    ),
+      [...dialogues]
+        .filter(line => (line.text || '').trim())
+        .sort(
+          (a, b) =>
+            a.start - b.start || (a.sequenceId || 0) - (b.sequenceId || 0),
+        ),
     [dialogues],
   )
 
@@ -136,18 +140,22 @@ export function ListeningTranscript({
   }
 
   return (
-    <div className='mt-6 rounded-[18px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-5'>
-      <div className='mb-3 flex items-center justify-between'>
-        <h3 className='text-sm font-bold tracking-tight text-slate-900'>
-          听力原文（交卷后可查看）
-        </h3>
-        <div className='flex items-center gap-2'>
-          <span className='text-xs text-slate-400'>点击句子跳播</span>
+    <section className='mt-8 border-t border-slate-200 pt-6'>
+      <div className='mb-3 flex items-start justify-between gap-3'>
+        <div>
+          <h3 className='text-base font-bold tracking-tight text-slate-900'>
+            听力原文
+          </h3>
+          <p className='mt-1 text-xs text-slate-500'>
+            共 {sortedDialogues.length} 句 · 点按时间可从该处播放
+          </p>
+        </div>
+        <div className='flex shrink-0 items-center gap-2'>
           <button
             type='button'
             onClick={() => void handleCopyTranscript()}
             disabled={!copyPayload}
-            className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
               copyState === 'copied'
                 ? 'border-slate-300 bg-slate-100 text-slate-900'
                 : copyState === 'error'
@@ -163,36 +171,45 @@ export function ListeningTranscript({
         </div>
       </div>
 
-      <div className='custom-scrollbar max-h-[45vh] space-y-2 overflow-y-auto pr-1'>
+      <div className='divide-y divide-slate-100 border-y border-slate-200'>
         {sortedDialogues.map(line => {
           const isActive = activeLineId === line.id
           return (
-            <button
+            <div
               key={`dialogue-${lessonId}-${line.id}`}
-              type='button'
-              onClick={() => handleLineClick(line)}
-              data-source-type='AUDIO_DIALOGUE'
-              data-source-id={String(line.id)}
-              data-context-block='true'
-              data-context-role='listening-dialogue-line'
-              className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
+              className={`grid w-full grid-cols-[4rem_minmax(0,1fr)] gap-3 px-2 py-3 text-left transition-colors md:grid-cols-[4.75rem_minmax(0,1fr)] md:px-3 ${
                 isActive
-                  ? 'border-slate-900 bg-slate-100'
-                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  ? 'bg-slate-100'
+                  : 'bg-white hover:bg-slate-50'
               }`}>
-              <div className='mb-1 text-[11px] font-medium text-slate-400'>
-                {formatMediaTime(line.start)} - {formatMediaTime(line.end)}
-              </div>
+              <button
+                type='button'
+                onClick={() => handleLineClick(line)}
+                aria-label={`从 ${formatMediaTime(line.start)} 播放`}
+                className={`h-fit rounded-md px-1.5 py-1 font-mono text-[11px] font-medium transition-colors ${
+                  isActive
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
+                }`}>
+                {formatMediaTime(line.start)}
+              </button>
               <div
-                className='text-[15px] leading-7 text-slate-800'
+                data-source-type='AUDIO_DIALOGUE'
+                data-source-id={buildAudioDialogueSourceId(
+                  lessonId,
+                  String(line.sequenceId || line.id),
+                )}
+                data-context-block='true'
+                data-context-role='listening-dialogue-line'
+                className='cursor-text select-text text-[15px] leading-7 text-slate-800 md:text-base md:leading-8'
                 dangerouslySetInnerHTML={{
                   __html: annotateExamText({ text: line.text, settings: annotation }),
                 }}
               />
-            </button>
+            </div>
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }

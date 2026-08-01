@@ -456,7 +456,7 @@ export async function deleteVocabularyAdmin(vocabId: string) {
   try {
     await prisma.vocabulary.delete({ where: { id: vocabId } })
     revalidatePath('/')
-    revalidatePath('/vocabulary/manage')
+    revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
     return { success: true }
   } catch (error: unknown) {
@@ -483,9 +483,9 @@ export async function updateVocabularyMetaAdmin(
       },
     })
 
-    revalidatePath('/vocabulary/manage')
+    revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
-    revalidatePath('/articles')
+    revalidatePath('/reading')
     return { success: true }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '更新失败'
@@ -524,7 +524,7 @@ export async function updateVocabularyTagsAdmin(
       }
     }
 
-    revalidatePath('/vocabulary/manage')
+    revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
     return { success: true }
   } catch (error: unknown) {
@@ -595,9 +595,9 @@ export async function batchUpdateVocabularyMetaAdmin(
       }),
     )
 
-    revalidatePath('/vocabulary/manage')
+    revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
-    revalidatePath('/articles')
+    revalidatePath('/reading')
     revalidatePath('/practice')
     return { success: true, updatedCount: rows.length }
   } catch (error: unknown) {
@@ -654,7 +654,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
     await prisma.$transaction(async tx => {
       const all = await tx.vocabulary.findMany({
         where: { id: { in: [keepId, ...uniqMergeIds] } },
-        include: { sentenceLinks: true },
+        include: { sentenceLinks: true, wordbooks: true },
       })
 
       const keep = all.find(item => item.id === keepId)
@@ -674,20 +674,32 @@ export async function mergeVocabularyDuplicateGroupAdmin(
         ...sources.flatMap(item => parseJsonStringList(item.meanings)),
       ])
 
-      const fallbackFolderId =
-        keep.folderId || sources.find(item => !!item.folderId)?.folderId || null
-
       await tx.vocabulary.update({
         where: { id: keepId },
         data: {
           pronunciations: toJsonStringList(mergedPronunciations),
           partsOfSpeech: toJsonStringList(mergedPartsOfSpeech),
           meanings: toJsonStringList(mergedMeanings),
-          folderId: fallbackFolderId,
         },
       })
 
       for (const source of sources) {
+        for (const entry of source.wordbooks) {
+          await tx.wordbookVocabulary.upsert({
+            where: {
+              wordbookId_vocabularyId: {
+                wordbookId: entry.wordbookId,
+                vocabularyId: keepId,
+              },
+            },
+            update: {},
+            create: {
+              wordbookId: entry.wordbookId,
+              vocabularyId: keepId,
+              sortOrder: entry.sortOrder,
+            },
+          })
+        }
         for (const link of source.sentenceLinks) {
           const existed = await tx.vocabularySentenceLink.findUnique({
             where: {
@@ -732,9 +744,9 @@ export async function mergeVocabularyDuplicateGroupAdmin(
       })
     })
 
-    revalidatePath('/vocabulary/manage')
+    revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
-    revalidatePath('/articles')
+    revalidatePath('/reading')
     revalidatePath('/practice')
     return { success: true, mergedCount: uniqMergeIds.length }
   } catch (error: unknown) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 
-import { updateQuestionNote } from '@/app/actions/content'
+import { updateQuestionNote } from '@/modules/practice/actions/questions'
 
 type Props = {
   questionId: string

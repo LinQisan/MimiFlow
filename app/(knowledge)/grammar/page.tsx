@@ -1,11 +1,10 @@
-import Link from 'next/link'
 import prisma from '@/lib/prisma'
+import PageHeader from '@/components/layout/PageHeader'
 
 export const revalidate = 0
 
 export default async function GrammarPage() {
-  const [grammars, totalTags, totalClusters] = await Promise.all([
-    prisma.grammar.findMany({
+  const grammars = await prisma.grammar.findMany({
       orderBy: { createdAt: 'desc' },
       take: 120,
       include: {
@@ -26,80 +25,31 @@ export default async function GrammarPage() {
           },
         },
       },
-    }),
-    prisma.grammarTag.count(),
-    prisma.grammarCluster.count(),
-  ])
+    })
 
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-7xl space-y-4'>
-        <header className='rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)] md:p-6'>
-          <div className='flex flex-col gap-4 md:flex-row md:items-end md:justify-between'>
-            <div>
-              <div className='flex items-center gap-2'>
-                <Link
-                  href='/'
-                  className='inline-flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50'
-                  aria-label='返回首页'>
-                  返回首页
-                </Link>
-              </div>
-              <p className='mt-3 text-xs font-semibold uppercase tracking-[0.24em] text-slate-500'>
-                Grammar
-              </p>
-              <h1 className='mt-2 text-3xl font-black tracking-tight text-slate-900 md:text-4xl'>
-                语法库
-              </h1>
-              <p className='mt-2 max-w-2xl text-sm text-slate-600 md:text-base'>
-                聚焦接续与例句，快速浏览语法结构与用法场景。
-              </p>
-            </div>
-            <div className='flex flex-wrap gap-2'>
-              <div className='rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 shadow-sm'>
-                <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                  语法条目
-                </p>
-                <p className='mt-1 text-2xl font-black'>{grammars.length}</p>
-              </div>
-              <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
-                <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                  标签
-                </p>
-                <p className='mt-1 text-2xl font-black'>{totalTags}</p>
-              </div>
-              <div className='rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm'>
-                <p className='text-[11px] font-semibold uppercase tracking-wider'>
-                  相似组
-                </p>
-                <p className='mt-1 text-2xl font-black'>{totalClusters}</p>
-              </div>
-              <Link
-                href='/grammar/edit'
-                className='rounded-2xl border border-slate-900 bg-slate-900 px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-slate-800'>
-                进入编辑页
-              </Link>
-            </div>
-          </div>
-        </header>
+      <div className='mx-auto max-w-6xl space-y-4'>
+        <PageHeader
+          title='语法库'
+          description='按接续、意思和例句浏览语法。'
+          meta={<span>共 {grammars.length} 条</span>}
+        />
 
-        <section className='rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)] md:p-6'>
+        <section>
           <div className='flex items-center justify-between gap-3'>
             <h2 className='text-lg font-black text-slate-900'>语法展示</h2>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600'>
-              共 {grammars.length} 条
-            </span>
           </div>
           {grammars.length === 0 ? (
             <p className='mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500'>
-              暂无语法，请先前往编辑页创建。
+              暂无语法内容。
             </p>
           ) : (
             <div className='mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
               {grammars.map(item => (
                 <article
                   key={item.id}
-                  className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm'>
+                  className='border-t border-slate-200 py-4'>
                   <div className='flex flex-wrap items-start justify-between gap-2'>
                     <h3 className='line-clamp-1 text-[15px] font-black leading-snug text-slate-900'>
                       {item.name}

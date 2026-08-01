@@ -35,7 +35,6 @@ export async function logStudyTime(kind: StudyTimeKind, seconds: number) {
       },
     })
 
-    revalidatePath('/game')
     revalidatePath('/')
 
     return { success: true }

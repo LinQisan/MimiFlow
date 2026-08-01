@@ -89,7 +89,7 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   }
 
   const currentContent = asRecord(current.content)
-  const nextContext = contextText || promptText || '（未填写语境句）'
+  const nextContext = contextText || promptText || null
 
   const data: Prisma.QuestionUpdateInput = {
     prompt: promptText || null,
@@ -138,11 +138,11 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   })
 
   const paperId = current.material.collectionMaterials[0]?.collectionId
-  revalidatePath('/papers/manage')
+  revalidatePath('/manage/practice')
   if (paperId) {
-    revalidatePath(`/papers/manage/${paperId}`)
-    revalidatePath(`/exam/papers/${paperId}`)
-    revalidatePath(`/exam/papers/${paperId}/do`)
+    revalidatePath(`/manage/practice/${paperId}`)
+    revalidatePath(`/practice/${paperId}`)
+    revalidatePath(`/practice/${paperId}/do`)
   }
 
   return { success: true, message: '题目已保存。' }

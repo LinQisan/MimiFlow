@@ -1,4 +1,4 @@
-import { MaterialType, QuestionTemplate, QuestionType } from '@prisma/client'
+import { MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { toLegacyMaterialId } from '../materials'
@@ -39,38 +39,6 @@ function asPositiveIntegerString(...values: unknown[]) {
     }
   }
   return ''
-}
-
-function toQuestionType(
-  content: unknown,
-  templateType: QuestionTemplate,
-  materialType: MaterialType,
-): QuestionType {
-  const payload = asRecord(content)
-  const explicit = asString(payload.questionType)
-  if (explicit) {
-    if (
-      materialType === MaterialType.VOCAB_GRAMMAR &&
-      (explicit === QuestionType.FILL_BLANK ||
-        explicit === QuestionType.READING_COMPREHENSION)
-    ) {
-      return QuestionType.GRAMMAR
-    }
-    return explicit as QuestionType
-  }
-  if (materialType === MaterialType.READING) {
-    if (templateType === QuestionTemplate.FILL_BLANK) return QuestionType.FILL_BLANK
-    if (templateType === QuestionTemplate.CLOZE_TEST) return QuestionType.SORTING
-    return QuestionType.READING_COMPREHENSION
-  }
-  if (materialType === MaterialType.LISTENING) return QuestionType.LISTENING
-  if (materialType === MaterialType.VOCAB_GRAMMAR) {
-    if (templateType === QuestionTemplate.CLOZE_TEST) return QuestionType.SORTING
-    return QuestionType.GRAMMAR
-  }
-  if (templateType === QuestionTemplate.FILL_BLANK) return QuestionType.FILL_BLANK
-  if (templateType === QuestionTemplate.CLOZE_TEST) return QuestionType.SORTING
-  return QuestionType.PRONUNCIATION
 }
 
 function normalizeQuestionOptions(options: unknown, answer: unknown) {
@@ -185,7 +153,11 @@ export async function getCollectionManageDetail(collectionId: string) {
     id: collection.id,
     title: collection.title,
     createdAt: collection.createdAt,
-    listening: items.filter(item => item.type === MaterialType.LISTENING),
+    audio: items.filter(
+      item =>
+        item.type === MaterialType.LISTENING ||
+        item.type === MaterialType.SPEAKING,
+    ),
     reading: items.filter(item => item.type === MaterialType.READING),
     quizzes: items.filter(item => item.type === MaterialType.VOCAB_GRAMMAR),
   }
@@ -222,11 +194,7 @@ export async function getReadingEditData(maybeId: string) {
     category: { levelId: material.collectionMaterials[0]?.collection.id || null },
     questions: material.questions.map(question => ({
       id: question.id,
-      questionType: toQuestionType(
-        question.content,
-        question.templateType,
-        material.type,
-      ),
+      questionType: question.questionType,
       prompt: question.prompt,
       contextSentence: question.context || question.prompt || '',
       options: normalizeQuestionOptions(question.options, question.answer),
@@ -263,11 +231,7 @@ export async function getQuizEditData(maybeId: string) {
       const content = asRecord(question.content)
       return {
         id: question.id,
-        questionType: toQuestionType(
-          question.content,
-          question.templateType,
-          material.type,
-        ),
+        questionType: question.questionType,
         contextSentence: asString(content.contextSentence) || question.context || '',
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,
@@ -373,11 +337,7 @@ export async function getListeningEditData(maybeId: string) {
       const content = asRecord(question.content)
       return {
         id: question.id,
-        questionType: toQuestionType(
-          question.content,
-          question.templateType,
-          material.type,
-        ),
+        questionType: question.questionType,
         contextSentence: asString(content.contextSentence) || question.context || '',
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,
@@ -487,11 +447,7 @@ export async function getSpeakingEditData(maybeId: string) {
       const content = asRecord(question.content)
       return {
         id: question.id,
-        questionType: toQuestionType(
-          question.content,
-          question.templateType,
-          material.type,
-        ),
+        questionType: question.questionType,
         contextSentence: asString(content.contextSentence) || question.context || '',
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,

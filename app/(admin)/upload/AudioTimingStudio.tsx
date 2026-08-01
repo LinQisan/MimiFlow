@@ -6,8 +6,8 @@ import type { CollectionType, MaterialType } from '@prisma/client'
 
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
-} from '@/components/manage/upload/CollectionBrowserSelect'
-import { toCollectionBrowserOptions } from '@/components/manage/upload/collectionBrowserOptions'
+} from '@/components/manage/import/CollectionBrowserSelect'
+import { toCollectionBrowserOptions } from '@/components/manage/import/collectionBrowserOptions'
 import { createShadowingFromTimedAudio } from './action'
 import { formatMediaTime } from '@/utils/time/format'
 
@@ -1106,7 +1106,7 @@ export default function AudioTimingStudio({
                 {status.message}
                 {status.type === 'success' && status.lessonId && (
                   <Link
-                    href={`/shadowing/${status.lessonId}`}
+                    href={`/listening/${status.lessonId}`}
                     className='mt-2 block font-black underline'>
                     打开跟读材料
                   </Link>

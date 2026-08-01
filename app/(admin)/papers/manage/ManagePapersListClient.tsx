@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import type { ExamHubLevelSummary } from '@/lib/repositories/exam'
-import PaperAttributeForm from '@/app/(study)/exam/papers/PaperAttributeForm'
-import PaperAdminPanel from '@/app/(study)/exam/papers/PaperAdminPanel'
-import FavoriteCollectionCreateForm from '@/app/(study)/exam/papers/FavoriteCollectionCreateForm'
+import PaperAttributeForm from '@/app/(study)/practice/PaperAttributeForm'
+import PaperAdminPanel from '@/app/(study)/practice/PaperAdminPanel'
 import { formatTokyoDateTime } from '@/utils/time/format'
 
 type Props = {
@@ -14,18 +13,11 @@ type Props = {
   totalPaperCount: number
 }
 
-const collectionTypeLabel: Record<string, string> = {
-  PAPER: '正式试卷',
-  CUSTOM_GROUP: '普通集合',
-  FAVORITES: '收藏夹',
-}
-
 export default function ManagePapersListClient({
   levels,
   totalPaperCount,
 }: Props) {
   const [query, setQuery] = useState('')
-  const [typeFilter, setTypeFilter] = useState('ALL')
   const [expandedPaperId, setExpandedPaperId] = useState<string | null>(null)
   const allPapers = useMemo(
     () => levels.flatMap(level => level.papers),
@@ -38,12 +30,6 @@ export default function ManagePapersListClient({
         .map(level => ({
           ...level,
           papers: level.papers.filter(paper => {
-            if (
-              typeFilter !== 'ALL' &&
-              String(paper.collectionType) !== typeFilter
-            ) {
-              return false
-            }
             if (!normalizedQuery) return true
             return [
               paper.name,
@@ -59,7 +45,7 @@ export default function ManagePapersListClient({
           }),
         }))
         .filter(level => level.papers.length > 0),
-    [levels, normalizedQuery, typeFilter],
+    [levels, normalizedQuery],
   )
   const visiblePaperCount = filteredLevels.reduce(
     (sum, level) => sum + level.papers.length,
@@ -80,86 +66,48 @@ export default function ManagePapersListClient({
 
   return (
     <div className='min-h-screen bg-slate-50 pb-12 font-sans text-slate-900'>
-      <header className='sticky top-0 z-10 border-b border-slate-200 bg-white/95 backdrop-blur'>
-        <div className='mx-auto flex max-w-7xl flex-col gap-3 px-4 py-4 md:px-6'>
+      <section className='border-b border-slate-200 bg-white'>
+        <div className='mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 md:px-6 md:py-6'>
           <div className='flex flex-wrap items-center gap-2'>
-            <Link
-              href='/'
-              className='ui-btn ui-btn-sm'
-              aria-label='返回首页'
-              title='返回首页'>
-              ←
-            </Link>
             <div>
-              <h1 className='text-xl font-black tracking-tight text-slate-900'>
-                试卷结构管理
+              <h1 className='text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
+                试卷管理
               </h1>
-              <p className='mt-0.5 text-xs font-medium text-slate-500'>
-                按真实考试结构维护：试卷、模块、听力部分、题目。
+              <p className='mt-1 text-sm text-slate-500'>
+                只维护正式试卷的分区、材料和题目。
               </p>
             </div>
             <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <Link href='/exam/papers' className='ui-btn ui-btn-sm'>
-                查看试卷页
+              <Link href='/manage/import?type=questions' className='ui-btn ui-btn-primary ui-btn-sm'>
+                导入题目
               </Link>
-              <span className='rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600'>
-                {visiblePaperCount} / {totalPaperCount} 套
-              </span>
+              <Link href='/practice' className='ui-btn ui-btn-sm'>
+                查看练习页
+              </Link>
             </div>
           </div>
 
-          <div className='grid gap-2 md:grid-cols-[minmax(240px,1fr)_180px_auto]'>
+          <div className='grid gap-2 sm:grid-cols-[minmax(240px,1fr)_auto]'>
             <input
               value={query}
               onChange={event => setQuery(event.target.value)}
               placeholder='搜索试卷名 / 语言 / 等级 / 描述'
               className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
             />
-            <select
-              value={typeFilter}
-              onChange={event => setTypeFilter(event.target.value)}
-              className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
-              <option value='ALL'>全部类型</option>
-              <option value='PAPER'>试卷</option>
-              <option value='CUSTOM_GROUP'>分组</option>
-              <option value='FAVORITES'>收藏夹</option>
-            </select>
             <button
               type='button'
-              onClick={() => {
-                setQuery('')
-                setTypeFilter('ALL')
-              }}
+              onClick={() => setQuery('')}
               className='ui-btn h-10'>
-              重置
+              清除搜索
             </button>
           </div>
+          <p className='text-xs font-semibold text-slate-500'>
+            {visiblePaperCount} / {totalPaperCount} 套 · {totalQuestionCount} 题 · {totalListeningSections} 个听力部分 · {totalAttempts} 次作答
+          </p>
         </div>
-      </header>
+      </section>
 
-      <main className='mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-6'>
-        <section className='grid gap-3 md:grid-cols-4'>
-          <Metric label='试卷' value={totalPaperCount} />
-          <Metric label='总题数' value={totalQuestionCount} />
-          <Metric label='听力部分' value={totalListeningSections} />
-          <Metric label='作答记录' value={totalAttempts} />
-        </section>
-
-        <section className='border border-slate-200 bg-white p-4 shadow-sm'>
-          <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-            <div>
-              <h2 className='text-sm font-black text-slate-900'>新建入口</h2>
-              <p className='text-xs font-medium text-slate-500'>
-                用集合承载一套试卷，再从上传中心或详情页维护材料与题目。
-              </p>
-            </div>
-            <Link href='/upload' className='ui-btn ui-btn-primary ui-btn-sm'>
-              去上传中心
-            </Link>
-          </div>
-          <FavoriteCollectionCreateForm />
-        </section>
-
+      <main className='mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6'>
         {filteredLevels.length === 0 ? (
           <section className='border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500'>
             没有匹配的试卷。
@@ -189,15 +137,14 @@ export default function ManagePapersListClient({
                   return (
                     <article
                       key={paper.id}
-                      className='border border-slate-200 bg-white shadow-sm'>
+                      className='rounded-xl border border-slate-200 bg-white shadow-sm'>
                       <div className='grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]'>
                         <div className='min-w-0'>
                           <div className='flex flex-wrap items-start justify-between gap-3'>
                             <div className='min-w-0'>
                               <div className='mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500'>
                                 <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1'>
-                                  {collectionTypeLabel[String(paper.collectionType)] ||
-                                    paper.collectionType}
+                                  正式试卷
                                 </span>
                                 <span>{paper.language || '语言未设置'}</span>
                                 <span>{paper.level || '等级未设置'}</span>
@@ -222,7 +169,7 @@ export default function ManagePapersListClient({
                             </div>
                           </div>
 
-                          <div className='mt-4 grid gap-2 sm:grid-cols-3'>
+                          <div className='mt-4 grid grid-cols-3 gap-2'>
                             <StructureTile
                               label='文字语法'
                               primary={`${paper.quizQuestionCount} 题`}
@@ -251,7 +198,7 @@ export default function ManagePapersListClient({
                                 {paper.manageSections.map(section => (
                                   <Link
                                     key={section.key}
-                                    href={`/papers/manage/${encodeURIComponent(
+                                    href={`/manage/practice/${encodeURIComponent(
                                       paper.id,
                                     )}?section=${encodeURIComponent(section.key)}`}
                                     className='inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'>
@@ -270,28 +217,20 @@ export default function ManagePapersListClient({
                           <div className='grid grid-cols-2 gap-2 text-xs'>
                             <Info label='正确率' value={accuracy} />
                             <Info label='作答' value={`${paper.attemptCount} 次`} />
-                            <Info
-                              label='创建'
-                              value={formatTokyoDateTime(paper.createdAt)}
-                            />
-                            <Info
-                              label='更新'
-                              value={formatTokyoDateTime(paper.updatedAt)}
-                            />
                           </div>
                           <div className='mt-3 grid grid-cols-2 gap-2'>
                             <Link
-                              href={`/papers/manage/${encodeURIComponent(paper.id)}`}
+                              href={`/manage/practice/${encodeURIComponent(paper.id)}`}
                               className='ui-btn ui-btn-primary h-9 justify-center text-sm'>
                               编辑结构
                             </Link>
                             <Link
-                              href={`/exam/papers/${encodeURIComponent(paper.id)}`}
+                              href={`/practice/${encodeURIComponent(paper.id)}`}
                               className='ui-btn h-9 justify-center text-sm'>
                               预览
                             </Link>
                             <Link
-                              href={`/exam/papers/${encodeURIComponent(paper.id)}/do`}
+                              href={`/practice/${encodeURIComponent(paper.id)}/do`}
                               className='ui-btn h-9 justify-center text-sm'>
                               作答
                             </Link>
@@ -310,7 +249,7 @@ export default function ManagePapersListClient({
                       {isExpanded && (
                         <div className='border-t border-slate-200 bg-white p-4'>
                           <div className='mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
-                            Metadata
+                            试卷信息与管理
                           </div>
                           <PaperAttributeForm
                             paperId={paper.id}
@@ -339,19 +278,6 @@ export default function ManagePapersListClient({
   )
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className='border border-slate-200 bg-white p-4 shadow-sm'>
-      <div className='text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
-        {label}
-      </div>
-      <div className='mt-2 text-2xl font-black tabular-nums text-slate-900'>
-        {value}
-      </div>
-    </div>
-  )
-}
-
 function StructureTile({
   label,
   primary,
@@ -362,7 +288,7 @@ function StructureTile({
   secondary: string
 }) {
   return (
-    <div className='border border-slate-200 bg-slate-50 p-3'>
+    <div className='min-w-0 border border-slate-200 bg-slate-50 p-2.5 md:p-3'>
       <div className='text-xs font-bold text-slate-500'>{label}</div>
       <div className='mt-1 text-sm font-black text-slate-900'>{primary}</div>
       <div className='mt-0.5 text-xs font-medium text-slate-500'>
