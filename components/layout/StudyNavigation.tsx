@@ -26,11 +26,11 @@ export default function StudyNavigation() {
   if (pathname.startsWith('/manage') || isFocusRoute(pathname)) return null
 
   return (
-    <header className='z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur md:sticky md:top-0'>
-      <div className='mx-auto flex min-h-14 max-w-6xl flex-wrap items-center gap-2 px-4 py-2 md:flex-nowrap md:gap-3 md:px-6'>
+    <header className='editorial-nav z-40 border-b border-slate-300 bg-[#f6f5f1]/95 backdrop-blur md:sticky md:top-0'>
+      <div className='mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-3 px-4 py-2 md:min-h-[4.5rem] md:flex-nowrap md:gap-5 md:px-8'>
         <Link
           href='/'
-          className='shrink-0 text-sm font-black tracking-[0.18em] text-slate-950'>
+          className='editorial-brand shrink-0 text-sm font-semibold tracking-[0.22em] text-slate-950'>
           MIMIFLOW
         </Link>
         <nav
@@ -44,10 +44,10 @@ export default function StudyNavigation() {
                 key={item.href}
                 href={item.href}
                 aria-current={active ? 'page' : undefined}
-                className={`inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-sm font-semibold transition ${
+                className={`inline-flex h-10 shrink-0 items-center border-b px-2 text-[13px] font-medium tracking-wide transition ${
                   active
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                    ? 'border-slate-900 text-slate-950'
+                    : 'border-transparent text-slate-600 hover:border-slate-300 hover:text-slate-950'
                 }`}>
                 {item.label}
               </Link>
@@ -60,7 +60,7 @@ export default function StudyNavigation() {
           </Link>
           <Link
             href='/manage'
-            className='hidden h-9 items-center rounded-lg px-3 text-sm font-semibold text-slate-500 hover:bg-slate-100 md:inline-flex'>
+            className='hidden h-9 items-center border-b border-transparent px-3 text-[13px] font-medium tracking-wide text-slate-500 hover:border-slate-400 hover:text-slate-950 md:inline-flex'>
             管理
           </Link>
           <ResourceMenu />

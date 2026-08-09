@@ -18,11 +18,6 @@ type ResolveResumeActionsInput = {
   learningMode?: string | null
 }
 
-function toLegacyId(materialId: string): string {
-  const idx = materialId.indexOf(':')
-  return idx >= 0 ? materialId.slice(idx + 1) : materialId
-}
-
 function normalizeProgress(progressPercent?: number | null): number {
   if (typeof progressPercent !== 'number' || Number.isNaN(progressPercent)) {
     return 0
@@ -43,10 +38,9 @@ function resolveMaterialEntry(
   materialId: string,
   learningMode?: string | null,
 ): string {
-  const legacyId = toLegacyId(materialId)
-  if (type === MaterialType.LISTENING) return `/listening/${legacyId}`
-  if (type === MaterialType.MEDIA_SUBTITLE) return `/subtitles/${legacyId}`
-  if (type === MaterialType.READING) return `/reading/articles/${legacyId}`
+  if (type === MaterialType.LISTENING) return `/listening/${materialId}`
+  if (type === MaterialType.MEDIA_SUBTITLE) return `/subtitles/${materialId}`
+  if (type === MaterialType.READING) return `/reading/articles/${materialId}`
   return resolveQuizEntryByMode(learningMode)
 }
 

@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import {
   batchUpdateVocabularyMetaAdmin,
   deleteVocabularyAdmin,
@@ -11,7 +10,7 @@ import {
   mergeVocabularyDuplicateGroupAdmin,
   updateVocabularyMetaAdmin,
   updateVocabularyTagsAdmin,
-} from '@/app/(knowledge)/vocabulary/manage/searchActions'
+} from '@/features/vocabulary/admin-actions'
 import { useDialog } from '@/context/DialogContext'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
 import WordPronunciation from '@/components/vocabulary/WordPronunciation'
@@ -363,24 +362,10 @@ export default function VocabularyManagePage() {
   }
 
   return (
-    <div className='mx-auto max-w-6xl p-4 pb-24 md:p-8'>
-      <div className='mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 pb-24 md:px-8 md:py-8'>
+      <div className='mx-auto mb-6 flex max-w-7xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-end md:justify-between'>
         <div>
-          <Link
-            href='/'
-            className='mb-1 inline-flex items-center gap-1.5 text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900 md:text-sm'
-            aria-label='返回首页'
-            title='返回首页'>
-            <span>MimiFlow</span>
-            <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-              <path
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                strokeWidth={2}
-                d='M15 19l-7-7 7-7'
-              />
-            </svg>
-          </Link>
+          <p className='text-xs font-black tracking-[0.18em] text-slate-400 uppercase'>内容管理</p>
           <h1 className='text-2xl font-black text-gray-900'>词库管理</h1>
           <p className='mt-1 text-sm text-gray-500'>
             维护单词注音和释义，可多值保存。
@@ -388,16 +373,16 @@ export default function VocabularyManagePage() {
         </div>
         <div className='flex flex-col gap-2'>
           <div className='grid grid-cols-2 gap-2 text-sm'>
-            <div className='border border-gray-200 bg-white px-3 py-2'>
+            <div className='rounded-xl border border-gray-200 bg-white px-3 py-2'>
               <p className='text-xs text-gray-500'>词条</p>
               <p className='text-lg font-bold text-gray-900'>{totalCount}</p>
             </div>
-            <div className='border border-gray-200 bg-white px-3 py-2'>
+            <div className='rounded-xl border border-gray-200 bg-white px-3 py-2'>
               <p className='text-xs text-gray-500'>释义总数</p>
               <p className='text-lg font-bold text-gray-900'>{totalMeanings}</p>
             </div>
           </div>
-          <div className='inline-flex w-full border border-gray-200 bg-white p-1 md:w-auto'>
+          <div className='inline-flex w-full rounded-xl border border-gray-200 bg-white p-1 md:w-auto'>
               <button
                 type='button'
                 onClick={() => setViewMode('card')}
@@ -421,6 +406,7 @@ export default function VocabularyManagePage() {
           </div>
         </div>
       </div>
+      <div className='mx-auto max-w-7xl'>
 
       <div className='mb-4 border border-gray-200 bg-white p-3 md:p-4'>
         <label className='mb-1 block text-xs font-bold text-gray-500'>
@@ -1251,6 +1237,7 @@ export default function VocabularyManagePage() {
           </div>
         )}
       </div>
-    </div>
+      </div>
+    </main>
   )
 }

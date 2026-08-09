@@ -1,13 +1,13 @@
 // Focused listening session route.
 import { notFound } from 'next/navigation'
 import AudioPlayer from '@/components/AudioPlayer/AudioPlayer'
-import prisma from '@/lib/prisma'
 import {
-  getLessonByLegacyId,
-  getSpeakingByLegacyId,
+  getLessonById,
+  getSpeakingById,
 } from '@/lib/repositories/materials'
-import { buildAudioDialogueSourceIdCandidates } from '@/utils/audioDialogue/sourceId'
+import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { getListeningDetailSupport } from '@/features/listening/server/repository'
 
 export default async function ListeningDetailPage({
   params,
@@ -15,8 +15,8 @@ export default async function ListeningDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const speakingData = await getSpeakingByLegacyId(id)
-  const listeningData = speakingData ? null : await getLessonByLegacyId(id)
+  const speakingData = await getSpeakingById(id)
+  const listeningData = speakingData ? null : await getLessonById(id)
   const lessonData = speakingData || listeningData
 
   if (!lessonData) {
@@ -45,31 +45,13 @@ export default async function ListeningDetailPage({
     levelId: lessonData.paper.levelId || 'collections',
   }
 
-  const dialogueSourceIds = lessonData.dialogues.flatMap(item =>
-    buildAudioDialogueSourceIdCandidates(
-      currentMaterialId,
-      String(item.id),
-      item.id,
-    ),
+  const dialogueSourceIds = lessonData.dialogues.map(item =>
+    buildAudioDialogueSourceId(currentMaterialId, String(item.id)),
   )
-  const relatedVocab = await prisma.vocabulary.findMany({
-    where: {
-      sentenceLinks: {
-        some: {
-          sentence: {
-            sourceType: 'AUDIO_DIALOGUE',
-            sourceId: { in: dialogueSourceIds },
-          },
-        },
-      },
-    },
-    select: {
-      word: true,
-      pronunciations: true,
-      partsOfSpeech: true,
-      meanings: true,
-    },
-  })
+  const { relatedVocab, playtimeStat } = await getListeningDetailSupport(
+    currentMaterialId,
+    dialogueSourceIds,
+  )
 
   const vocabularyMetaMap = relatedVocab.reduce<Record<string, VocabularyMeta>>(
     (acc, item) => {
@@ -78,24 +60,6 @@ export default async function ListeningDetailPage({
     },
     {},
   )
-
-  let playtimeStat: { totalSeconds: number; playedDays: number } | null = null
-  try {
-    playtimeStat = await prisma.materialPlaytimeStat.findUnique({
-      where: {
-        profileId_materialId: {
-          profileId: 'default',
-          materialId: currentMaterialId,
-        },
-      },
-      select: {
-        totalSeconds: true,
-        playedDays: true,
-      },
-    })
-  } catch {
-    playtimeStat = null
-  }
 
   return (
     <main className='min-h-screen bg-slate-50'>

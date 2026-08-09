@@ -9,10 +9,10 @@ export default async function AllPapersPage() {
 
   if (levels.length === 0) {
     return (
-      <div className='min-h-screen bg-[#f7f8fb] px-4 py-10 font-sans text-slate-900 md:px-6'>
-        <div className='mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center border border-dashed border-slate-300 bg-white px-6 py-10 text-center'>
-          <p className='text-2xl font-black text-slate-950'>暂无试卷数据</p>
-          <p className='mt-2 text-sm text-slate-500'>导入试卷后会显示在这里。</p>
+      <div className='min-h-screen bg-[#f6f5f1] px-4 py-12 font-sans text-slate-900 md:px-6'>
+        <div className='mx-auto flex min-h-[62vh] max-w-3xl flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-[0_18px_50px_-42px_rgba(15,23,42,0.5)]'>
+          <h1 className='text-3xl font-semibold tracking-tight text-slate-950'>暂无试卷数据</h1>
+          <p className='mt-3 text-sm leading-6 text-slate-500'>导入第一份试卷后，就可以从这里开始练习。</p>
           <div className='mt-6 flex flex-wrap justify-center gap-2'>
             <Link href='/practice' className='ui-btn ui-btn-primary'>
               返回试卷库

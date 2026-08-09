@@ -1,7 +1,4 @@
-import { notFound } from 'next/navigation'
-
-import EditQuizUI from '@/app/(library)/collections/quiz/[id]/EditQuizUI'
-import { getQuizEditData } from '@/lib/repositories/collection/manage'
+import { redirect } from 'next/navigation'
 
 export default async function ManageCollectionQuizEditPage({
   params,
@@ -9,7 +6,5 @@ export default async function ManageCollectionQuizEditPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const quiz = await getQuizEditData(id)
-  if (!quiz) return notFound()
-  return <EditQuizUI quiz={quiz} />
+  redirect(`/manage/questions/${id}`)
 }

@@ -1,4 +1,5 @@
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import type { OptionLabelFormat } from '@/utils/questions/optionLabels'
 
 export type ExamQuestionOption = {
   id: string
@@ -18,6 +19,8 @@ export type ExamQuestion = {
   contextSentence?: string | null
   targetWord?: string | null
   options?: ExamQuestionOption[]
+  optionLabelFormat?: OptionLabelFormat | null
+  customOptionLabels?: string[]
   passageId?: string | null
   lessonId?: string | null
   passage?: {

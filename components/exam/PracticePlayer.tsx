@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import Link from 'next/link'
 import ToggleSwitch from '@/components/ToggleSwitch'
 import {
   useShowMeaning,
@@ -20,6 +21,8 @@ interface PracticePlayerProps {
   paperLanguage?: string | null
   mode?: 'exam' | 'random' | 'single'
   initialIndex?: number
+  exitHref?: string
+  exitLabel?: string
   pronunciationMap: Record<string, string>
   vocabularyMetaMap: Record<string, VocabularyMeta>
 }
@@ -45,6 +48,8 @@ export function PracticePlayer({
   paperLanguage = null,
   mode = 'exam',
   initialIndex = 0,
+  exitHref = '/practice',
+  exitLabel = '返回试卷库',
   pronunciationMap,
   vocabularyMetaMap,
 }: PracticePlayerProps) {
@@ -300,18 +305,20 @@ export function PracticePlayer({
                 已答 {session.answeredCount}/{questions.length}
               </span>
             )}
-            {mode !== 'single' && (
+            {mode !== 'single' && session.isSubmitted && persistState !== 'saving' ? (
+              <Link
+                href={exitHref}
+                className='ui-btn ui-btn-primary h-9 px-3 text-xs md:h-10 md:px-5 md:text-sm'>
+                {exitLabel}
+              </Link>
+            ) : mode !== 'single' ? (
               <button
                 onClick={() => void handleSubmit()}
                 disabled={session.isSubmitted || persistState === 'saving'}
                 className='ui-btn ui-btn-primary h-9 px-3 text-xs disabled:cursor-not-allowed disabled:opacity-50 md:h-10 md:px-5 md:text-sm'>
-                {session.isSubmitted
-                  ? '已交卷'
-                  : persistState === 'saving'
-                    ? '交卷中...'
-                    : '交卷'}
+                {persistState === 'saving' ? '保存中...' : '交卷'}
               </button>
-            )}
+            ) : null}
           </div>
         </div>
         {!isSingleMode && (

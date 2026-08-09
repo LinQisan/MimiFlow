@@ -6,7 +6,7 @@ import {
   searchGlobalContent,
   type GlobalSearchResult,
   type GlobalSearchType,
-} from '@/app/actions/globalSearch'
+} from '@/features/search/actions'
 
 const SEARCH_TYPES: GlobalSearchType[] = [
   'vocabulary',
@@ -122,7 +122,7 @@ export default function HomeHeaderSearch() {
         previewResults.map(item => (
           <Link
             key={`home-search-${item.id}`}
-            href={item.href}
+            href={item.targetHref || item.href}
             onClick={closeSearch}
             className='block rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-slate-200 hover:bg-slate-50'>
             <div className='flex items-center gap-2'>

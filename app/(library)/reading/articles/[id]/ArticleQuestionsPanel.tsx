@@ -91,7 +91,7 @@ export default function ArticleQuestionsPanel({
   }
 
   return (
-    <section className='mx-auto max-w-3xl border-t border-slate-200 pt-6'>
+    <section className='border-t border-slate-200 pt-8'>
       <div className='border-b border-slate-100 pb-4'>
         <h2 className='text-lg font-black text-slate-900'>理解练习</h2>
       </div>
@@ -103,7 +103,7 @@ export default function ArticleQuestionsPanel({
           return (
             <article
               key={question.id}
-              className='rounded-lg border border-slate-200 bg-white p-4 md:p-5'>
+              className='border-b border-slate-200 py-6 md:py-8'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <h3 className='text-sm font-bold text-slate-900'>
                   第 {index + 1} 题

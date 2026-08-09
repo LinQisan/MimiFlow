@@ -1,17 +1,26 @@
 // app/vocabulary/page.tsx
 import Link from 'next/link'
-import { Prisma } from '@prisma/client'
-import prisma from '@/lib/prisma'
 import VocabularyTabs from './VocabularyTabs'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
-import WordbooksBrowser from '@/app/(knowledge)/vocabulary/wordbooks/WordbooksBrowser'
+import WordbooksBrowser from '@/features/vocabulary/ui/WordbooksBrowser'
 import PageHeader from '@/components/layout/PageHeader'
 import {
   resolveVocabularyGroupName,
   resolveVocabularyLanguageCode,
 } from '@/modules/knowledge/vocabulary/domain/language'
+import {
+  findVocabularyDetail,
+  listVocabularyDetails,
+  listVocabularyGroups,
+  listVocabularySentenceLinks,
+  type VocabularyDetailRow,
+} from '@/modules/knowledge/vocabulary/server/repository'
+import {
+  listWordbookOptions,
+  listWordbookShelf,
+} from '@/modules/knowledge/wordbooks/repository'
 
 type SentenceSource = {
   text: string
@@ -73,43 +82,6 @@ const normalizeSentencePosTags = (list?: string[] | null) =>
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
   ).slice(0, 1)
 
-const VOCABULARY_DETAIL_INCLUDE = {
-  wordbooks: {
-    orderBy: { createdAt: 'asc' },
-    include: {
-      wordbook: {
-        select: { id: true, title: true },
-      },
-    },
-  },
-  tags: {
-    include: {
-      tag: {
-        select: { name: true },
-      },
-    },
-  },
-  review: {
-    select: {
-      id: true,
-      due: true,
-      state: true,
-      stability: true,
-      difficulty: true,
-      elapsed_days: true,
-      scheduled_days: true,
-      reps: true,
-      lapses: true,
-      learning_steps: true,
-      last_review: true,
-    },
-  },
-} satisfies Prisma.VocabularyInclude
-
-type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
-  include: typeof VOCABULARY_DETAIL_INCLUDE
-}>
-
 export default async function VocabularyPage({
   searchParams,
 }: {
@@ -140,17 +112,7 @@ export default async function VocabularyPage({
   const wordbookFilter = (wordbookValue || 'all').trim()
 
   if (activeView === 'wordbooks') {
-    const wordbooks = await prisma.wordbook.findMany({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-      select: {
-        id: true,
-        title: true,
-        parentId: true,
-        _count: {
-          select: { entries: true },
-        },
-      },
-    })
+    const wordbooks = await listWordbookShelf()
     const totalWordbooks = wordbooks.length
     const totalEntries = wordbooks.reduce(
       (sum, item) => sum + item._count.entries,
@@ -159,7 +121,7 @@ export default async function VocabularyPage({
 
     return (
       <main className='min-h-screen bg-slate-50 pb-16'>
-        <div className='mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8'>
+        <div className='mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8'>
           <PageHeader
             title='词汇中心'
             description='浏览单词书和已收录词汇。'
@@ -194,10 +156,7 @@ export default async function VocabularyPage({
     )
   }
 
-  const allWordbooks = await prisma.wordbook.findMany({
-    orderBy: { createdAt: 'asc' },
-    select: { id: true, title: true, parentId: true },
-  })
+  const allWordbooks = await listWordbookOptions()
   const getWordbookDescendantIds = (wordbookId: string) => {
     const childrenByParent = allWordbooks.reduce<Record<string, string[]>>(
       (acc, folder) => {
@@ -234,16 +193,7 @@ export default async function VocabularyPage({
         ? { wordbooks: { none: {} } }
         : { wordbooks: { some: { wordbookId: { in: wordbookFilterIds } } } }
 
-  const vocabularyGroupRows = await prisma.vocabulary.findMany({
-    where: whereClause,
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      word: true,
-      pronunciations: true,
-      sourceType: true,
-    },
-  })
+  const vocabularyGroupRows = await listVocabularyGroups(whereClause)
 
   const groupedTotals: Record<string, number> = {}
   const filteredVocabularyIds: string[] = []
@@ -269,10 +219,7 @@ export default async function VocabularyPage({
   let pageVocabularies: VocabularyDetailRow[] =
     pageVocabularyIds.length === 0
       ? []
-      : await prisma.vocabulary.findMany({
-          where: { id: { in: pageVocabularyIds } },
-          include: VOCABULARY_DETAIL_INCLUDE,
-        })
+      : await listVocabularyDetails(pageVocabularyIds)
 
   const pageVocabularyOrder = new Map(
     pageVocabularyIds.map((id, index) => [id, index] as const),
@@ -284,10 +231,7 @@ export default async function VocabularyPage({
   )
 
   if (focusId && !pageVocabularies.some(item => item.id === focusId)) {
-    const focusedVocabulary = await prisma.vocabulary.findUnique({
-      where: { id: focusId },
-      include: VOCABULARY_DETAIL_INCLUDE,
-    })
+    const focusedVocabulary = await findVocabularyDetail(focusId)
     if (
       focusedVocabulary &&
       (!groupValue ||
@@ -306,11 +250,7 @@ export default async function VocabularyPage({
     parentId: item.parentId,
   }))
   const vocabularyIds = pageVocabularies.map(item => item.id)
-  const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
-    where: { vocabularyId: { in: vocabularyIds } },
-    include: { sentence: true },
-    orderBy: { createdAt: 'asc' },
-  })
+  const sentenceLinks = await listVocabularySentenceLinks(vocabularyIds)
   const sentenceLinksByVocabularyId = sentenceLinks.reduce<
     Record<string, SentenceSource[]>
   >((acc, link) => {
@@ -391,7 +331,7 @@ export default async function VocabularyPage({
 
   return (
     <main className='min-h-screen bg-slate-50 pb-16'>
-      <div className='mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8'>
+      <div className='mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8'>
         <PageHeader
           title='词汇中心'
           description='复习生词，整理释义和例句。'

@@ -2,10 +2,14 @@
 import Link from 'next/link'
 import PageHeader from '@/components/layout/PageHeader'
 import { notFound } from 'next/navigation'
-import prisma from '@/lib/prisma'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import WordbookDetailClient from './WordbookDetailClient'
 import { syncAnkiSentenceSourcesForWordbook } from '@/modules/knowledge/wordbooks/actions'
+import {
+  findWordbookWithChildren,
+  listWordbookEntries,
+  listWordbookOptions,
+} from '@/modules/knowledge/wordbooks/repository'
 
 type SearchParams = Record<string, string | string[] | undefined>
 
@@ -30,82 +34,27 @@ export default async function WordbookDetailPage({
   const PAGE_SIZE = 48
 
   const [wordbook, allWordbooks] = await Promise.all([
-    prisma.wordbook.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        title: true,
-        parentId: true,
-        parent: {
-          select: { id: true, title: true },
-        },
-        children: {
-          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-          select: {
-            id: true,
-            title: true,
-            _count: {
-              select: { entries: true },
-            },
-          },
-        },
-      },
-    }),
-    prisma.wordbook.findMany({
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-      select: { id: true, title: true, parentId: true },
-    }),
+    findWordbookWithChildren(id),
+    listWordbookOptions(),
   ])
 
   if (!wordbook) notFound()
 
   await syncAnkiSentenceSourcesForWordbook(id)
 
-  const totalCount = await prisma.wordbookVocabulary.count({
-    where: { wordbookId: id },
-  })
-  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
-  const normalizedPage = Math.min(currentPage, totalPages)
-  const rows = await prisma.wordbookVocabulary.findMany({
-    where: { wordbookId: id },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-    skip: (normalizedPage - 1) * PAGE_SIZE,
-    take: PAGE_SIZE,
-    include: {
-      vocabulary: {
-        select: {
-          id: true,
-          word: true,
-          wordAudio: true,
-          pronunciations: true,
-          partsOfSpeech: true,
-          createdAt: true,
-          sentenceLinks: {
-            orderBy: { createdAt: 'asc' },
-            take: 6,
-            select: {
-              sentence: {
-                select: {
-                  text: true,
-                  translation: true,
-                  audioFile: true,
-                  source: true,
-                  sourceUrl: true,
-                  sourceId: true,
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  })
+  const {
+    totalCount,
+    totalPages,
+    page: normalizedPage,
+    rows,
+  } = await listWordbookEntries({ wordbookId: id, page: currentPage, pageSize: PAGE_SIZE })
 
   return (
     <main className='min-h-screen bg-slate-50 text-slate-900'>
       <div className='mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8'>
         <div className='mb-6'>
           <PageHeader
+            showTitle
             title={wordbook.title}
             description='浏览目录、词条和记忆卡片。'
             actions={<>

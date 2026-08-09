@@ -1,7 +1,4 @@
-import { notFound } from 'next/navigation'
-
-import EditArticleUI from '@/app/(library)/collections/article/[id]/EditArticleUI'
-import { getReadingEditData } from '@/lib/repositories/collection/manage'
+import { redirect } from 'next/navigation'
 
 export default async function ManageCollectionArticleEditPage({
   params,
@@ -9,7 +6,5 @@ export default async function ManageCollectionArticleEditPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const article = await getReadingEditData(id)
-  if (!article) return notFound()
-  return <EditArticleUI article={article} />
+  redirect(`/manage/reading/${id}`)
 }

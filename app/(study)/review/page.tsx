@@ -28,15 +28,15 @@ export default async function ReviewPage() {
   ]
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-4xl space-y-5'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-5'>
         <PageHeader title='复习中心' description='处理到期记忆和需要巩固的错题。' />
 
         <section className='grid gap-4 md:grid-cols-2'>
           {sections.map(section => (
             <article
               key={section.title}
-              className='border-t border-slate-200 py-5'>
+              className='rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
               <div className='flex items-start justify-between gap-4'>
                 <div>
                   <h2 className='text-xl font-black text-slate-900'>
@@ -44,14 +44,14 @@ export default async function ReviewPage() {
                   </h2>
                   <p className='mt-2 text-sm leading-6 text-slate-600'>{section.description}</p>
                 </div>
-                <span className='min-w-12 rounded-full bg-slate-900 px-3 py-1 text-center text-sm font-bold text-white'>
+                <span className='min-w-16 border-l border-slate-300 pl-4 text-right font-sans text-2xl font-semibold text-slate-800'>
                   {section.count}
                 </span>
               </div>
               <p className='mt-5 text-xs text-slate-500'>{section.detail}</p>
               <Link
                 href={section.href}
-                className='mt-4 inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white hover:bg-slate-800'>
+                className='ui-btn ui-btn-primary mt-4'>
                 {section.count > 0 ? section.action : '查看'}
               </Link>
             </article>

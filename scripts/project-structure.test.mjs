@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 const ROOT = process.cwd()
-const SOURCE_DIRS = ['app', 'components', 'hooks', 'lib', 'modules', 'utils']
+const SOURCE_DIRS = ['app', 'components', 'features', 'hooks', 'lib', 'modules', 'utils']
 
 async function sourceFiles(directory) {
   const absolute = path.join(ROOT, directory)
@@ -41,7 +41,6 @@ test('removed product routes are not referenced by source code', async () => {
     '/search/result',
     '/manage/upload',
     '/manage/papers',
-    '/manage/shadowing',
     '/manage/audio',
     '/manage/fsrs',
     '/grammar/edit',
@@ -75,6 +74,9 @@ test('review routes and feature modules exist', async () => {
     'app/(library)/subtitles/[id]/page.tsx',
     'app/(admin)/manage/import/page.tsx',
     'app/(admin)/manage/grammar/page.tsx',
+    'app/(admin)/manage/listening/page.tsx',
+    'app/(admin)/manage/shadowing/page.tsx',
+    'app/(admin)/manage/reading/page.tsx',
     'app/(admin)/manage/system/page.tsx',
     'components/layout/StudyNavigation.tsx',
     'components/layout/ManageShell.tsx',
@@ -106,11 +108,119 @@ test('review routes and feature modules exist', async () => {
     'modules/import/audio/hooks/useAudioFileCatalog.ts',
     'modules/media-subtitles/components/SubtitleReaderControls.tsx',
     'modules/practice/server/attempt-service.ts',
+    'lib/actions/result.ts',
+    'lib/errors/domain-error.ts',
+    'lib/validation/schema.ts',
+    'lib/codecs/material-payload.ts',
+    'lib/codecs/question-content.ts',
+    'features/collections/ui/DndSystem.tsx',
+    'features/content/ui/EditArticleUI.tsx',
+    'features/content/ui/EditQuizUI.tsx',
+    'features/import/ui/UploadCenterUI.tsx',
+    'features/import/ui/AudioTimingWaveforms.tsx',
+    'features/import/hooks/useAudioTimingStudioState.ts',
+    'features/import/hooks/useUploadMutations.ts',
+    'features/listening/ui/ListeningListClient.tsx',
+    'features/listening/ui/ListeningViewSwitcher.tsx',
+    'features/listening/hooks/useListeningListQuery.ts',
+    'features/listening/hooks/useListeningListState.ts',
+    'features/listening/hooks/useListeningListMutations.ts',
+    'features/practice/ui/PaperQuestionEditor.tsx',
+    'features/practice/ui/PaperLibraryItem.tsx',
+    'features/practice/domain/paper-library.ts',
+    'features/practice/hooks/usePaperLibraryState.ts',
+    'features/questions/domain/editor.ts',
+    'features/questions/domain/paper-editor.ts',
+    'features/questions/components/QuestionTypeBadge.tsx',
+    'features/questions/hooks/useQuestionEditorMutations.ts',
+    'features/questions/hooks/useQuestionEditorPageState.ts',
+    'features/questions/hooks/useQuestionListEditorState.ts',
+    'features/questions/hooks/usePaperQuestionEditorState.ts',
+    'features/reading/ui/ArticleReaderClient.tsx',
+    'modules/knowledge/vocabulary/hooks/useVocabularyMutations.ts',
+    'modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState.ts',
+    'modules/media-subtitles/domain/editor.ts',
+    'modules/media-subtitles/components/HighlightedSubtitleText.tsx',
+    'modules/media-subtitles/hooks/useMediaSubtitleEditorState.ts',
+    'modules/media-subtitles/hooks/useMediaSubtitleMutations.ts',
   ]
 
   for (const file of required) {
     assert.equal((await stat(path.join(ROOT, file))).isFile(), true)
   }
+})
+
+test('route, persistence, validation, and action boundaries stay explicit', async () => {
+  const files = (
+    await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
+  ).flat()
+  const violations = []
+
+  for (const file of files) {
+    const relative = path.relative(ROOT, file)
+    const content = await readFile(file, 'utf8')
+
+    if (
+      /^(app|components)\/.+\.tsx$/.test(relative) &&
+      /(?:@\/lib\/prisma|\bprisma\.)/.test(content)
+    ) {
+      violations.push(`${relative} -> direct Prisma access`)
+    }
+
+    if (
+      relative !== 'app/layout.tsx' &&
+      /from\s+['"]@\/app\//.test(content)
+    ) {
+      violations.push(`${relative} -> route-to-route import`)
+    }
+
+    if (/\b(?:asRecord|asString|asBoolean|asFiniteNumber)\b/.test(content)) {
+      violations.push(`${relative} -> legacy unknown-value coercion`)
+    }
+
+    if (
+      /\b(?:toLegacyMaterialId|toMaterialId|legacyId|ByLegacyId)\b|endsWith:\s*`?:/.test(
+        content,
+      )
+    ) {
+      violations.push(`${relative} -> legacy material ID path`)
+    }
+
+    if (/readJsonRecord\([^\n]*contentPayload/.test(content)) {
+      violations.push(`${relative} -> material payload bypasses codec`)
+    }
+  }
+
+  assert.deepEqual(violations, [])
+})
+
+test('review workflows preserve submitted state and keep clear exits', async () => {
+  const questionReview = await readFile(
+    path.join(ROOT, 'app/(study)/review/[id]/ReviewQuestionClient.tsx'),
+    'utf8',
+  )
+  const memoryReview = await readFile(
+    path.join(ROOT, 'app/(study)/review/memory/MemoryReviewClient.tsx'),
+    'utf8',
+  )
+  const mistakeActions = await readFile(
+    path.join(ROOT, 'modules/review/actions/mistakes.ts'),
+    'utf8',
+  )
+  const questionRenderer = await readFile(
+    path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
+    'utf8',
+  )
+
+  assert.match(questionReview, /if \(item\.retryId === currentItem\.retryId\) return/)
+  assert.match(questionReview, /href='\/review'/)
+  assert.match(questionReview, /href=\{item\.sourceUrl\}/)
+  assert.match(questionReview, /disabled=\{!selectedOptionId \|\| isPending\}/)
+  assert.equal(questionReview.includes('优化后正确率'), false)
+  assert.equal(questionReview.includes('满足条件后可轻度清理'), false)
+  assert.equal(questionRenderer.includes('作答面板'), false)
+  assert.match(memoryReview, />\s*\u8fd4\u56de\u590d\u4e60\u4e2d\u5fc3\s*</)
+  assert.match(mistakeActions, /\/do\?qid=/)
 })
 
 test('large feature entry points delegate distinct responsibilities', async () => {
@@ -119,7 +229,7 @@ test('large feature entry points delegate distinct responsibilities', async () =
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadCenterUI.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
     'utf8',
   )
   const vocabularyTabs = await readFile(
@@ -145,17 +255,82 @@ test('large feature entry points delegate distinct responsibilities', async () =
   assert.match(vocabularyTabs, /vocabulary\/components\/VocabularySentenceText/)
 })
 
+test('large interactive editors keep state, mutations, domain logic, and views separated', async () => {
+  const entries = [
+    ['app/(knowledge)/vocabulary/VocabularyTabs.tsx', [
+      /useVocabularyWorkspaceState/,
+      /useVocabularyMutations/,
+      /vocabulary\/domain\/workbench/,
+      /vocabulary\/components\//,
+    ]],
+    ['features/import/ui/UploadForm.tsx', [
+      /useAudioUploadState/,
+      /useUploadFormMutations/,
+      /import\/audio\/domain/,
+      /AudioMatchPreview/,
+    ]],
+    ['features/import/ui/UploadCenterUI.tsx', [
+      /useUploadCenterState/,
+      /useUploadCenterMutations/,
+      /article-question-builder/,
+      /ArticleImportPanel/,
+    ]],
+    ['features/import/ui/AudioTimingStudio.tsx', [
+      /useAudioTimingStudioState/,
+      /useAudioTimingMutations/,
+      /domain\/audio-timing/,
+      /AudioTimingWaveforms/,
+    ]],
+    ['app/(library)/subtitles/[id]/MediaSubtitleEditor.tsx', [
+      /useMediaSubtitleEditorState/,
+      /useMediaSubtitleMutations/,
+      /media-subtitles\/domain\/editor/,
+      /HighlightedSubtitleText/,
+    ]],
+    ['features/listening/ui/ListeningListClient.tsx', [
+      /useListeningListQuery/,
+      /useListeningListState/,
+      /useListeningListMutations/,
+      /ListeningQuickClassifyForm/,
+    ]],
+    ['features/content/ui/EditQuizUI.tsx', [
+      /useQuestionListEditorState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/editor/,
+      /QuestionTypeBadge/,
+    ]],
+    ['features/collections/ui/LessonQuestionsPanel.tsx', [
+      /useLessonQuestionPageState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/editor/,
+      /QuestionTypeBadge/,
+    ]],
+    ['features/practice/ui/PaperQuestionEditor.tsx', [
+      /usePaperQuestionEditorState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/paper-editor/,
+      /CustomSelect/,
+    ]],
+  ]
+
+  for (const [file, boundaries] of entries) {
+    const content = await readFile(path.join(ROOT, file), 'utf8')
+    assert.equal(content.includes('useState'), false, `${file} keeps local useState`)
+    for (const boundary of boundaries) assert.match(content, boundary)
+  }
+})
+
 test('content import keeps one task visible at a time', async () => {
   const importPage = await readFile(
     path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadCenterUI.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
     'utf8',
   )
   const uploadForm = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadForm.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
     'utf8',
   )
 
@@ -166,8 +341,55 @@ test('content import keeps one task visible at a time', async () => {
   assert.match(uploadCenter, /题目录入方式/)
   assert.match(uploadForm, /补充来源、难度与检索信息/)
   assert.match(uploadForm, /const resolvedType: MaterialType = 'LISTENING'/)
-  assert.match(uploadForm, /paper\.materialType === materialType/)
+  assert.equal(uploadForm.includes('paper.materialType === materialType'), false)
+  assert.match(uploadForm, /name='collectionIds'/)
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
+})
+
+test('content import loads the audio catalogue on demand without effect loops', async () => {
+  const uploadState = await readFile(
+    path.join(ROOT, 'modules/import/audio/hooks/useAudioUploadState.ts'),
+    'utf8',
+  )
+  const audioCatalogue = await readFile(
+    path.join(ROOT, 'modules/import/audio/hooks/useAudioFileCatalog.ts'),
+    'utf8',
+  )
+  const uploadForm = await readFile(
+    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
+    'utf8',
+  )
+
+  assert.match(uploadState, /const setters = useMemo/)
+  assert.match(audioCatalogue, /if \(!enabled \|\| existingAudioFiles\.length > 0\) return/)
+  assert.match(uploadForm, /enabled: audioSourceType === 'existing'/)
+})
+
+test('content import filters collections by explicit material capabilities', async () => {
+  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
+  const repository = await readFile(
+    path.join(ROOT, 'lib/repositories/manage/index.ts'),
+    'utf8',
+  )
+  const importPage = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
+    'utf8',
+  )
+  const capabilityMigration = await readFile(
+    path.join(
+      ROOT,
+      'prisma/migrations/20260810000200_add_collection_material_capabilities/migration.sql',
+    ),
+    'utf8',
+  )
+
+  assert.match(schema, /acceptedMaterialTypes MaterialType\[\]/)
+  assert.match(repository, /acceptedMaterialTypes: \{ has: materialType \}/)
+  assert.match(importPage, /reading: 'READING'/)
+  assert.match(
+    capabilityMigration,
+    /ARRAY\['READING', 'SPEAKING'\].*title = '天声人语'/s,
+  )
 })
 
 test('management pages keep classification, exams, and audio responsibilities separate', async () => {
@@ -176,11 +398,11 @@ test('management pages keep classification, exams, and audio responsibilities se
     'utf8',
   )
   const practicePage = await readFile(
-    path.join(ROOT, 'app/(admin)/papers/manage/ManagePapersListClient.tsx'),
+    path.join(ROOT, 'features/practice/ui/ManagePapersListClient.tsx'),
     'utf8',
   )
   const listeningPage = await readFile(
-    path.join(ROOT, 'app/(study)/listening/ListeningListClient.tsx'),
+    path.join(ROOT, 'features/listening/ui/ListeningListClient.tsx'),
     'utf8',
   )
   const examRepository = await readFile(
@@ -191,15 +413,47 @@ test('management pages keep classification, exams, and audio responsibilities se
     path.join(ROOT, 'lib/repositories/collection/manage.ts'),
     'utf8',
   )
+  const listeningEditor = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/listening/[id]/page.tsx'),
+    'utf8',
+  )
+  const listeningQuestionEditor = await readFile(
+    path.join(
+      ROOT,
+      'features/collections/ui/LessonQuestionsPanel.tsx',
+    ),
+    'utf8',
+  )
+  const paperQuestionEditor = await readFile(
+    path.join(
+      ROOT,
+      'features/practice/ui/PaperQuestionEditor.tsx',
+    ),
+    'utf8',
+  )
 
-  assert.match(collectionPage, /编辑分类信息/)
-  assert.match(collectionPage, /个子分类/)
+  assert.match(collectionPage, /调整名称、位置与顺序/)
+  assert.match(collectionPage, /个下级/)
+  assert.match(collectionPage, /前往试卷管理/)
+  assert.match(collectionPage, /item\.collectionType === 'PAPER'/)
   assert.match(examRepository, /collectionType: CollectionType\.PAPER/)
   assert.equal(practicePage.includes('FavoriteCollectionCreateForm'), false)
   assert.equal(practicePage.includes('全部类型'), false)
-  assert.match(listeningPage, /音频材料/)
+  assert.match(listeningPage, /听力材料/)
+  assert.match(listeningPage, /跟读材料/)
   assert.match(listeningPage, /管理书籍与章节/)
+  assert.match(listeningPage, /添加题目/)
+  assert.match(listeningPage, /`\/manage\/listening\/\$\{item\.id\}#questions`/)
+  assert.match(listeningPage, /`\/manage\/shadowing\/\$\{item\.id\}`/)
   assert.equal(listeningPage.includes('groupedByChapterRows'), false)
+  assert.match(listeningEditor, /getListeningEditData/)
+  assert.equal(listeningEditor.includes('getSpeakingEditData'), false)
+  assert.match(listeningEditor, /LessonQuestionsPanel/)
+  assert.match(listeningQuestionEditor, /aria-label='材料所属問題'/)
+  assert.equal(listeningQuestionEditor.includes('所属問題（1、2、3…）'), false)
+  assert.match(paperQuestionEditor, /getQuestionTypeDisplay/)
+  assert.match(paperQuestionEditor, /搜索题干、语境、解析或材料名/)
+  assert.match(paperQuestionEditor, /保存题目/)
   assert.match(collectionRepository, /item\.type === MaterialType\.SPEAKING/)
 })
 
@@ -210,5 +464,9 @@ test('schema keeps one vocabulary organization model and a typed question', asyn
   assert.equal(schema.includes('model GameSessionLog'), false)
   assert.equal(schema.includes('model OutputPractice'), false)
   assert.match(schema, /questionType\s+QuestionType/)
+  assert.match(
+    schema,
+    /templateType\s+QuestionTemplate\s+@default\(CHOICE_QUIZ\)\s+@map\("template_type"\)/,
+  )
   assert.match(schema, /model LearnerProfile/)
 })

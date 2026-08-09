@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { StudyTimeKind } from '@prisma/client'
 
 import { addSentenceToReview } from '@/modules/review/actions/memory'
-import { logMaterialPlaytime } from '@/app/actions/materialPlaytime'
+import { logMaterialPlaytime } from '@/features/audio/actions'
 
 import type { TooltipSaveState } from '@/components/vocabulary/VocabularyTooltip'
 import WordTooltip from '@/components/exam/WordTooltip'

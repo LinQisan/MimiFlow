@@ -45,6 +45,12 @@ enum QuestionType {
   LISTENING // 听力理解题
 }
 
+enum QuestionTemplate {
+  CHOICE_QUIZ
+  CLOZE_TEST
+  FILL_BLANK
+}
+
 model Material {
   id             String       @id @default(uuid())
   type           MaterialType
@@ -61,6 +67,7 @@ model Material {
   playtimeStats       MaterialPlaytimeStat[]
   mediaSubtitleLines  MediaSubtitleLine[]
 
+  @@index([type, createdAt])
   @@map("materials")
 }
 
@@ -108,6 +115,7 @@ model Vocabulary {
 
   @@index([word])
   @@index([createdAt])
+  @@index([sourceType, sourceId])
 }
 
 model VocabularyTag {
@@ -332,27 +340,32 @@ model SentenceReview {
   last_review    DateTime? // 记录上一次复习的精确时间
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+
+  @@index([due])
+  @@index([sourceType, sourceId])
 }
 
 model Question {
-  id           String       @id @default(uuid())
-  materialId   String       @map("material_id")
-  questionType QuestionType @default(PRONUNCIATION) @map("question_type")
+  id           String           @id @default(uuid())
+  materialId   String           @map("material_id")
+  templateType QuestionTemplate @default(CHOICE_QUIZ) @map("template_type")
+  questionType QuestionType     @default(PRONUNCIATION) @map("question_type")
   content      Json
-  prompt       String?      @db.Text
-  context      String?      @db.Text
+  prompt       String?          @db.Text
+  context      String?          @db.Text
   options      Json?
   answer       Json
-  analysis     String?      @db.Text
-  note         String?      @db.Text
-  createdAt    DateTime     @default(now()) @map("created_at")
-  updatedAt    DateTime     @updatedAt @map("updated_at")
-  sortOrder    Int          @default(0) @map("sort_order")
+  analysis     String?          @db.Text
+  note         String?          @db.Text
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  sortOrder    Int              @default(0) @map("sort_order")
 
   material   Material          @relation(fields: [materialId], references: [id], onDelete: Cascade)
   attempts   QuestionAttempt[]
   retryQueue QuestionRetry?
 
+  @@index([materialId, sortOrder])
   @@map("questions")
 }
 
@@ -363,6 +376,7 @@ model Collection {
   language       String?
   level          String?
   collectionType CollectionType @map("collection_type")
+  acceptedMaterialTypes MaterialType[] @default([]) @map("accepted_material_types")
   parentId       String?        @map("parent_id")
   sortOrder      Int            @default(0) @map("sort_order")
   createdAt      DateTime       @default(now()) @map("created_at")
@@ -387,6 +401,7 @@ model CollectionMaterial {
   material   Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([collectionId, materialId])
+  @@index([materialId])
   @@map("collection_materials")
 }
 
@@ -403,6 +418,8 @@ model QuestionAttempt {
   // 💡 未来如果你加了用户登录系统，可以把下面两行取消注释，绑定到具体用户
   // userId      String?
   // user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([questionId, createdAt])
 }
 
 model QuestionRetry {

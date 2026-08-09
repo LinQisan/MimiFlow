@@ -4,6 +4,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --page-canvas: #ffffff;
   --color-primary: #4f46e5;
   --color-primary-strong: #4338ca;
   --color-primary-surface: #eef2ff;
@@ -28,6 +29,7 @@
 html.dark {
   --background: #020617;
   --foreground: #e2e8f0;
+  --page-canvas: #020617;
   --color-primary: #818cf8;
   --color-primary-strong: #6366f1;
   --color-primary-surface: rgba(99, 102, 241, 0.16);
@@ -75,11 +77,21 @@ html.dark {
 }
 
 body {
-  background: var(--background);
+  background: var(--page-canvas);
   color: var(--foreground);
   font-family: var(--font-ui-default);
   text-rendering: optimizeLegibility;
   font-kerning: normal;
+}
+
+/* Route surfaces share one canvas. Component-level rounding and elevation are
+   preserved so interactive surfaces can use the modern design system below. */
+.flat-ui main {
+  background-color: var(--page-canvas) !important;
+}
+
+.flat-ui :where(main, div)[class*='min-h-screen'][class*='bg-slate-50'] {
+  background-color: var(--page-canvas) !important;
 }
 
 /* Keep native select behavior while giving every closed control one visual
@@ -238,40 +250,42 @@ html.theme-switching *::after {
 
 .font-word-zh {
   font-family:
-    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', serif;
+    'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'Microsoft YaHei', sans-serif;
   letter-spacing: 0.01em;
 }
 
 .font-word-ja {
   font-family:
-    'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', 'HGSMinchoE', serif;
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'BIZ UDPGothic', 'Noto Sans JP',
+    'Meiryo', sans-serif;
   letter-spacing: 0.01em;
 }
 
 .font-word-en {
   font-family:
-    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Georgia',
-    'Times New Roman', serif;
+    'Inter', 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 0.01em;
 }
 
 .font-reading-zh {
   font-family:
-    'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', 'STSong', serif;
+    'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC',
+    'Microsoft YaHei', sans-serif;
   letter-spacing: 0.01em;
 }
 
 .font-reading-ja {
   font-family:
-    'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', 'HGSMinchoE', serif;
+    'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'BIZ UDPGothic', 'Noto Sans JP',
+    'Meiryo', sans-serif;
   font-feature-settings: 'palt' 1;
   letter-spacing: 0.01em;
 }
 
 .font-reading-en {
   font-family:
-    'Source Serif 4', 'Iowan Old Style', 'Palatino Linotype', 'Georgia',
-    'Times New Roman', serif;
+    'Inter', 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 0.01em;
 }
 
@@ -292,8 +306,7 @@ html.theme-switching *::after {
 
 .font-reading-body-en {
   font-family:
-    'Source Serif 4', 'Iowan Old Style', 'Charter', 'Georgia',
-    'Times New Roman', serif;
+    'Inter', 'Avenir Next', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   letter-spacing: 0.005em;
 }
 
@@ -339,7 +352,7 @@ rt::selection {
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1;
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
   transition:
     background-color 0.15s ease,
     border-color 0.15s ease,
@@ -364,7 +377,7 @@ html.dark .ui-btn:hover {
   height: 2.25rem;
   padding: 0 0.75rem;
   font-size: 0.8125rem;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
 }
 
 .ui-btn-primary {
@@ -469,7 +482,7 @@ html.dark .ui-input::placeholder {
 /* Fallback: keep interaction layer from feeling too hard even when a button
    has not been migrated to ui-btn yet. Tailwind rounded-* classes still win. */
 button {
-  border-radius: 0.625rem;
+  border-radius: 0.375rem;
 }
 
 .ui-tag-muted {
@@ -595,6 +608,20 @@ html.dark .ui-tag-warn {
 .manage-upload-surface [class*='focus:ring-blue-'],
 .manage-upload-surface [class*='focus:ring-indigo-'] {
   --tw-ring-color: rgba(15, 23, 42, 0.14);
+}
+
+.manage-upload-surface :where(
+  input[type='text'],
+  input[type='number'],
+  input[type='url'],
+  input[type='search'],
+  textarea
+) {
+  border-radius: 0.75rem;
+}
+
+.manage-upload-surface :where(input[type='text'], input[type='number'], input[type='url'], input[type='search']) {
+  min-height: 2.75rem;
 }
 
 .ui-mobile-py-sm {
@@ -1423,4 +1450,219 @@ html.dark .theme-page-article .article-blank-missed {
 
 html.dark .theme-page-article .article-blank-correct {
   color: #86efac !important;
+}
+
+/* Editorial system ---------------------------------------------------------
+   A reading-first visual language: warm paper, restrained type, hairlines and
+   whitespace. Page content stays flat; elevation is reserved for transient UI. */
+body.editorial-ui {
+  --background: #f6f5f1;
+  --foreground: #20242b;
+  --page-canvas: #f6f5f1;
+  --editorial-paper: #f6f5f1;
+  --editorial-paper-raised: #ffffff;
+  --editorial-paper-muted: #efeee9;
+  --editorial-ink: #20242b;
+  --editorial-muted: #667085;
+  --editorial-faint: #98a0ad;
+  --editorial-rule: #dde1e6;
+  --editorial-rule-strong: #bcc3cc;
+  --modern-radius-sm: 0.5rem;
+  --modern-radius-md: 0.75rem;
+  --modern-radius-lg: 1rem;
+  --font-editorial-display: var(--font-ui-default);
+  background: var(--editorial-paper);
+  color: var(--editorial-ink);
+  font-size: 15px;
+  line-height: 1.65;
+  letter-spacing: 0.008em;
+}
+
+body.editorial-ui main,
+body.editorial-ui :where(main, div)[class*='min-h-screen'][class*='bg-slate-50'],
+body.editorial-ui :where(main, div)[class*='min-h-screen'][class*='bg-gray-50'],
+body.editorial-ui :where(main, div)[class*='min-h-screen'][class*='bg-[#f7f8fb]'] {
+  background-color: var(--editorial-paper) !important;
+}
+
+body.editorial-ui main h1,
+body.editorial-ui main h2,
+body.editorial-ui main h3,
+.editorial-brand {
+  font-family: var(--font-editorial-display);
+  color: var(--editorial-ink);
+  text-wrap: balance;
+}
+
+body.editorial-ui main h1 {
+  font-weight: 700 !important;
+  letter-spacing: -0.025em !important;
+  line-height: 1.15;
+}
+
+body.editorial-ui main h2,
+body.editorial-ui main h3 {
+  font-weight: 600 !important;
+  letter-spacing: -0.012em !important;
+}
+
+.editorial-page-header {
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+body.editorial-ui main :where(p, li) {
+  text-wrap: pretty;
+}
+
+body.editorial-ui .editorial-nav {
+  border-color: var(--editorial-rule) !important;
+  box-shadow: none !important;
+}
+
+body.editorial-ui :where(header, footer)[class*='bg-white'],
+body.editorial-ui > div[class*='min-h-screen'][class*='bg-white'] {
+  background-color: var(--editorial-paper-raised) !important;
+}
+
+body.editorial-ui .editorial-nav nav a {
+  border-radius: 0;
+}
+
+body.editorial-ui :where(.border-slate-100, .border-slate-200, .border-gray-100, .border-gray-200) {
+  border-color: var(--editorial-rule) !important;
+}
+
+body.editorial-ui :where(.border-slate-300, .border-gray-300) {
+  border-color: var(--editorial-rule-strong) !important;
+}
+
+body.editorial-ui main :where(article, section, aside, fieldset, details) {
+  border-radius: var(--modern-radius-lg) !important;
+}
+
+body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'] {
+  background-color: var(--editorial-paper-raised) !important;
+}
+
+body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'][class*='border'] {
+  box-shadow: 0 12px 36px -32px rgba(15, 23, 42, 0.5);
+}
+
+body.editorial-ui main :where(div, a)[class*='rounded-xl'][class*='border'],
+body.editorial-ui main :where(div, a)[class*='rounded-2xl'][class*='border'],
+body.editorial-ui main :where(div, a)[class*='rounded-3xl'][class*='border'] {
+  border-radius: var(--modern-radius-lg) !important;
+}
+
+body.editorial-ui main :where(.bg-white) {
+  background-color: var(--editorial-paper-raised) !important;
+}
+
+body.editorial-ui main :where(.bg-slate-50, .bg-gray-50) {
+  background-color: var(--editorial-paper-muted) !important;
+}
+
+body.editorial-ui .ui-btn,
+body.editorial-ui main button:not([role='switch']) {
+  border-radius: var(--modern-radius-sm);
+  box-shadow: none;
+  font-weight: 500;
+  letter-spacing: 0.035em;
+}
+
+body.editorial-ui .ui-btn {
+  border-color: var(--editorial-rule-strong);
+  background: transparent;
+  color: var(--editorial-ink);
+}
+
+body.editorial-ui .ui-btn:hover {
+  border-color: var(--editorial-ink);
+  background: var(--editorial-paper-muted);
+}
+
+body.editorial-ui .ui-btn-primary {
+  border-color: var(--editorial-ink);
+  background: var(--editorial-ink);
+  color: #fff;
+}
+
+body.editorial-ui .ui-btn-primary:hover {
+  border-color: #090908;
+  background: #090908;
+}
+
+body.editorial-ui :where(.ui-input, .ui-number-stepper),
+body.editorial-ui main :where(input, textarea, select) {
+  border-radius: var(--modern-radius-md) !important;
+  border-color: var(--editorial-rule-strong) !important;
+  box-shadow: none !important;
+}
+
+body.editorial-ui main :where(input, textarea, select):focus {
+  border-color: var(--editorial-ink) !important;
+  box-shadow: 0 1px 0 var(--editorial-ink) !important;
+}
+
+body.editorial-ui .ui-tag,
+body.editorial-ui main span[class*='rounded-full'][class*='border'] {
+  border-radius: 999px;
+  background: transparent;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+body.editorial-ui main a {
+  text-underline-offset: 0.22em;
+}
+
+body.editorial-ui main a[class*='hover:bg-slate-50']:hover,
+body.editorial-ui main a[class*='hover:bg-gray-50']:hover {
+  background-color: rgba(212, 206, 194, 0.28) !important;
+}
+
+body.editorial-ui :where(.ui-pop, [role='dialog'], [role='menu'], [role='listbox']) {
+  --editorial-paper: #fbfaf6;
+}
+
+body.editorial-ui .ui-pop {
+  border-radius: var(--modern-radius-lg);
+  box-shadow: 0 14px 34px rgba(54, 49, 41, 0.14);
+}
+
+body.editorial-ui main .ui-pop {
+  border-radius: var(--modern-radius-lg) !important;
+  box-shadow: 0 14px 34px rgba(54, 49, 41, 0.14) !important;
+}
+
+body.editorial-ui main[class*='min-h-screen'] {
+  padding-top: 0;
+}
+
+body.editorial-ui main[class*='min-h-screen'] > :first-child[class*='py-'] {
+  padding-top: 0;
+}
+
+@media (min-width: 768px) {
+  body.editorial-ui main[class*='min-h-screen'] {
+    padding-bottom: clamp(4rem, 8vw, 7rem);
+  }
+}
+
+html.dark body.editorial-ui {
+  --background: #111318;
+  --foreground: #edf0f4;
+  --page-canvas: #111318;
+  --editorial-paper: #111318;
+  --editorial-paper-raised: #191c22;
+  --editorial-paper-muted: #22262e;
+  --editorial-ink: #edf0f4;
+  --editorial-muted: #a6afbd;
+  --editorial-faint: #77808e;
+  --editorial-rule: #303640;
+  --editorial-rule-strong: #4b5563;
+}
+
+body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'] {
+  background-color: transparent !important;
 }

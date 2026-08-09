@@ -1,17 +1,12 @@
 // Subtitle library route.
 import Link from 'next/link'
-import { MaterialType } from '@prisma/client'
-
-import prisma from '@/lib/prisma'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
+import { listMediaSubtitleMaterials } from '@/features/subtitles/server/repository'
+import { subtitlePayloadSchema } from '@/features/subtitles/domain/schema'
 
 export const revalidate = 60
 
-type JsonRecord = Record<string, unknown>
-
 type MediaItem = {
   id: string
-  legacyId: string
   title: string
   sourceType: 'MOVIE' | 'TV'
   workTitle: string
@@ -22,21 +17,6 @@ type MediaItem = {
   createdAt: Date
   collectionTitle: string
   href: string
-}
-
-function asRecord(value: unknown): JsonRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonRecord
-  }
-  return {}
-}
-
-function asString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function asBoolean(value: unknown) {
-  return value === true
 }
 
 function asNumber(value: string) {
@@ -66,38 +46,17 @@ function formatShortDate(value: Date) {
 }
 
 export default async function MediaSubtitlesPage() {
-  const rows = await prisma.material.findMany({
-    where: {
-      type: MaterialType.MEDIA_SUBTITLE,
-    },
-    orderBy: [{ createdAt: 'desc' }],
-    take: 300,
-    select: {
-      id: true,
-      title: true,
-      type: true,
-      createdAt: true,
-      contentPayload: true,
-      collectionMaterials: {
-        take: 1,
-        select: {
-          collection: { select: { id: true, title: true } },
-        },
-      },
-    },
-  })
+  const rows = await listMediaSubtitleMaterials()
 
   const items = rows
     .map(row => {
-      const payload = asRecord(row.contentPayload)
-      const sourceType = asString(payload.subtitleSourceType)
-      const workTitle = asString(payload.subtitleWorkTitle)
-      const subtitleNoAudio = asBoolean(payload.subtitleNoAudio)
-      const season = asString(payload.subtitleSeason)
-      const episode = asString(payload.subtitleEpisode)
-      const dialogues = Array.isArray(payload.dialogues)
-        ? payload.dialogues.length
-        : 0
+      const payload = subtitlePayloadSchema.parse(row.contentPayload)
+      const sourceType = payload.subtitleSourceType
+      const workTitle = payload.subtitleWorkTitle
+      const subtitleNoAudio = payload.subtitleNoAudio
+      const season = payload.subtitleSeason
+      const episode = payload.subtitleEpisode
+      const dialogues = payload.dialogues.length
       const isMedia =
         sourceType === 'MOVIE' ||
         sourceType === 'TV' ||
@@ -105,10 +64,8 @@ export default async function MediaSubtitlesPage() {
         Boolean(workTitle)
       if (!isMedia) return null
 
-      const legacyId = toLegacyMaterialId(row.id)
       return {
         id: row.id,
-        legacyId,
         title: row.title,
         sourceType: sourceType === 'TV' ? 'TV' : 'MOVIE',
         workTitle,
@@ -118,7 +75,7 @@ export default async function MediaSubtitlesPage() {
         dialogues,
         createdAt: row.createdAt,
         collectionTitle: row.collectionMaterials[0]?.collection.title || '未归属集合',
-        href: `/subtitles/${legacyId}`,
+        href: `/subtitles/${row.id}`,
       } satisfies MediaItem
     })
     .filter(Boolean) as MediaItem[]
@@ -230,14 +187,10 @@ export default async function MediaSubtitlesPage() {
     0,
   )
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl'>
-        <header className='border-b border-slate-200 pb-5'>
-          <h1 className='text-3xl font-black tracking-tight text-slate-950'>影视字幕库</h1>
-          <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-600'>
-            按作品、季和集浏览字幕。
-          </p>
-          <p className='mt-4 text-sm text-slate-500'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl'>
+        <header className='border-b border-slate-200 py-4'>
+          <p className='text-xs tracking-wide text-slate-500'>
             {tvGroups.length} 部电视剧 · {tvEpisodeCount} 集 · {movieGroups.length} 部电影 · {totalDialogues} 行字幕
           </p>
         </header>
@@ -318,12 +271,12 @@ export default async function MediaSubtitlesPage() {
                                     {season.items.length} 集
                                   </span>
                                 </div>
-                                <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 md:grid-cols-2 xl:grid-cols-3'>
+                                <div className='min-w-0 divide-y divide-slate-200 border-y border-slate-200'>
                                   {season.items.map(item => (
                                     <Link
                                       key={item.id}
                                       href={item.href}
-                                      className='block min-w-0 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/40'>
+                                      className='block min-w-0 px-3 py-3 transition hover:bg-teal-50/40'>
                                       <div className='flex items-start justify-between gap-3'>
                                         <div className='min-w-0'>
                                           <p className='truncate text-sm font-black text-slate-950'>
@@ -374,11 +327,11 @@ export default async function MediaSubtitlesPage() {
                     目前还没有电影字幕。
                   </div>
                 ) : (
-                  <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 p-4 md:grid-cols-2 xl:grid-cols-3'>
+                  <div className='min-w-0 divide-y divide-slate-200 border-y border-slate-200 p-4'>
                     {movieGroups.map(group => (
                       <div
                         key={`movie-group-${group.key}`}
-                        className='rounded-lg border border-slate-200 bg-white p-3'>
+                        className='py-4'>
                         <div className='flex items-start justify-between gap-3'>
                           <div className='min-w-0'>
                             <h3 className='truncate text-base font-black text-slate-950'>
@@ -398,7 +351,7 @@ export default async function MediaSubtitlesPage() {
                             <Link
                               key={item.id}
                               href={item.href}
-                              className='block rounded-md border border-slate-200 bg-slate-50 px-3 py-2 transition hover:border-amber-300 hover:bg-amber-50/50'>
+                              className='block border-t border-slate-200 px-1 py-2 transition hover:bg-amber-50/50'>
                               <p className='truncate text-sm font-bold text-slate-900'>
                                 {item.title}
                               </p>

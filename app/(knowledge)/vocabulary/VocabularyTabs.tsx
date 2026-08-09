@@ -1,28 +1,9 @@
 // app/vocabulary/VocabularyTabs.tsx
 'use client'
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import {
-  deleteVocabulary,
-  searchSentencesForWord,
-  addVocabularySentence,
-  updateVocabularyPronunciationById,
-  assignVocabularySentenceMeaning,
-  clearVocabularySentenceMeaning,
-  deleteVocabularySentence,
-  updateVocabularyPartsOfSpeechById,
-  updateVocabularySentencePosTags,
-  updateVocabularyTags,
-} from '@/modules/knowledge/vocabulary/actions'
-import {
-  addVocabulariesToWordbook,
-  createWordbook,
-  moveWordbook,
-  renameWordbook,
-} from '@/modules/knowledge/wordbooks/actions'
-import { rateVocabularyMemory } from '@/modules/review/actions/memory'
 import { useDialog } from '@/context/DialogContext'
 import WordPronunciation from '@/components/vocabulary/WordPronunciation'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
@@ -68,6 +49,8 @@ import type {
   SentenceItem,
   VocabItem,
 } from '@/modules/knowledge/vocabulary/types'
+import { useVocabularyWorkspaceState } from '@/modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState'
+import { useVocabularyMutations } from '@/modules/knowledge/vocabulary/hooks/useVocabularyMutations'
 
 export default function VocabularyTabs({
   groupedData,
@@ -95,65 +78,53 @@ export default function VocabularyTabs({
   const dialog = useDialog()
   const router = useRouter()
   const pathname = usePathname()
-  const [activeTab, setActiveTab] = useState(
-    initialGroupFilter || Object.keys(groupedData)[0] || '未分类',
-  )
-  const [localData, setLocalData] = useState(groupedData)
-  const [viewMode, setViewMode] = useState<'list' | 'flashcard'>('list')
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [memoryMode, setMemoryMode] = useState(false)
-  const [randomOrder, setRandomOrder] = useState(false)
-  const [shuffleSeed, setShuffleSeed] = useState(1)
+  const {
+    deleteVocabulary,
+    searchSentencesForWord,
+    addVocabularySentence,
+    updateVocabularyPronunciationById,
+    assignVocabularySentenceMeaning,
+    clearVocabularySentenceMeaning,
+    deleteVocabularySentence,
+    updateVocabularyPartsOfSpeechById,
+    updateVocabularySentencePosTags,
+    updateVocabularyTags,
+    addVocabulariesToWordbook,
+    createWordbook,
+    moveWordbook,
+    renameWordbook,
+    rateVocabularyMemory,
+  } = useVocabularyMutations()
+  const workspace = useVocabularyWorkspaceState({
+    groupedData,
+    folders,
+    initialFolderFilter,
+    initialGroupFilter,
+  })
+  const {
+    activeTab, setActiveTab, localData, setLocalData, viewMode, setViewMode,
+    currentIndex, setCurrentIndex, memoryMode, setMemoryMode, randomOrder,
+    setRandomOrder, shuffleSeed, setShuffleSeed, memoryNowMs, setMemoryNowMs,
+    isSubmittingRating, setIsSubmittingRating, memoryReveal, setMemoryReveal,
+    pendingMemoryRating, setPendingMemoryRating, isEditMode, setIsEditMode,
+    selectedVocabIds, setSelectedVocabIds, bulkTagsInput, setBulkTagsInput,
+    bulkTagPanelOpen, setBulkTagPanelOpen, activeTagEditorId,
+    setActiveTagEditorId, tagDraft, setTagDraft, isSavingTags,
+    setIsSavingTags, isSelectAllChecked, setIsSelectAllChecked,
+    bulkWordbookId, setBulkWordbookId, isBulkAddingToWordbook,
+    setIsBulkAddingToWordbook, sortMode, setSortMode, selectedPosFilter,
+    setSelectedPosFilter, selectedFolderFilter, setSelectedFolderFilter,
+    selectedGroupFilter, setSelectedGroupFilter, folderList, setFolderList,
+    selectedFolderManageId, setSelectedFolderManageId, activePronEditId,
+    setActivePronEditId, pronInput, setPronInput, activeFolderEditId,
+    setActiveFolderEditId, expandedInflectionIds, setExpandedInflectionIds,
+    dragOffsetX, setDragOffsetX, cardTransitionState, setCardTransitionState,
+    cardTransitionDirection, setCardTransitionDirection, searchingId,
+    setSearchingId, isSearchingMore, setIsSearchingMore, searchResults,
+    setSearchResults, pendingSentenceIndex, setPendingSentenceIndex,
+  } = workspace
   const shuffleSeedRef = useRef(1)
-  const [memoryNowMs, setMemoryNowMs] = useState(0)
-  const [isSubmittingRating, setIsSubmittingRating] = useState(false)
-  const [memoryReveal, setMemoryReveal] = useState(false)
-  const [pendingMemoryRating, setPendingMemoryRating] = useState<Rating | null>(
-    null,
-  )
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [selectedVocabIds, setSelectedVocabIds] = useState<Set<string>>(
-    new Set(),
-  )
-  const [bulkTagsInput, setBulkTagsInput] = useState('')
-  const [bulkTagPanelOpen, setBulkTagPanelOpen] = useState(false)
-  const [activeTagEditorId, setActiveTagEditorId] = useState<string | null>(
-    null,
-  )
-  const [tagDraft, setTagDraft] = useState('')
-  const [isSavingTags, setIsSavingTags] = useState(false)
-  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false)
-  const [bulkWordbookId, setBulkWordbookId] = useState('none')
-  const [isBulkAddingToWordbook, setIsBulkAddingToWordbook] = useState(false)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
-  const [sortMode, setSortMode] = useState<'recent' | 'word' | 'pos'>('recent')
-  const [selectedPosFilter, setSelectedPosFilter] = useState('all')
-  const [selectedFolderFilter, setSelectedFolderFilter] =
-    useState(initialFolderFilter)
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState(
-    initialGroupFilter || '',
-  )
-  const [folderList, setFolderList] = useState(folders)
-  const [selectedFolderManageId, setSelectedFolderManageId] = useState<
-    string | null
-  >(null)
-
-  // 🌟 轻量级分组移动控制
-  const [activePronEditId, setActivePronEditId] = useState<string | null>(null)
-  const [pronInput, setPronInput] = useState('')
-  const [activeFolderEditId, setActiveFolderEditId] = useState<string | null>(
-    null,
-  )
-  const [expandedInflectionIds, setExpandedInflectionIds] = useState<
-    Record<string, boolean>
-  >({})
-  const [dragOffsetX, setDragOffsetX] = useState(0)
-  const [cardTransitionState, setCardTransitionState] = useState<
-    'idle' | 'leaving' | 'entering'
-  >('idle')
-  const [cardTransitionDirection, setCardTransitionDirection] = useState<
-    'next' | 'prev'
-  >('next')
   const appliedFocusIdRef = useRef<string | null>(null)
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const transitionRafRef = useRef<number | null>(null)
@@ -169,14 +140,6 @@ export default function VocabularyTabs({
     deltaX: 0,
   })
 
-  const [searchingId, setSearchingId] = useState<string | null>(null)
-  const [isSearchingMore, setIsSearchingMore] = useState(false)
-  const [searchResults, setSearchResults] = useState<
-    Record<string, SentenceItem[]>
-  >({})
-  const [pendingSentenceIndex, setPendingSentenceIndex] = useState<
-    number | null
-  >(null)
   const lastAutoPlayedWordIdRef = useRef<string | null>(null)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -782,11 +745,18 @@ export default function VocabularyTabs({
       window.addEventListener('click', handleClickOutside)
     }
     return () => window.removeEventListener('click', handleClickOutside)
-  }, [activePronEditId, activeFolderEditId, activeTagEditorId])
+  }, [
+    activePronEditId,
+    activeFolderEditId,
+    activeTagEditorId,
+    setActivePronEditId,
+    setActiveFolderEditId,
+    setActiveTagEditorId,
+  ])
 
   useEffect(() => {
     setPendingSentenceIndex(null)
-  }, [activeTab, currentIndex, viewMode])
+  }, [activeTab, currentIndex, viewMode, setPendingSentenceIndex])
 
   useEffect(() => {
     if (!isEditMode) {
@@ -796,12 +766,19 @@ export default function VocabularyTabs({
       setBulkTagPanelOpen(false)
       setPendingSentenceIndex(null)
     }
-  }, [isEditMode])
+  }, [
+    isEditMode,
+    setActivePronEditId,
+    setActiveFolderEditId,
+    setActiveTagEditorId,
+    setBulkTagPanelOpen,
+    setPendingSentenceIndex,
+  ])
 
   useEffect(() => {
     setSelectedPosFilter('all')
     setCurrentIndex(0)
-  }, [activeTab])
+  }, [activeTab, setCurrentIndex, setSelectedPosFilter])
 
   useEffect(() => {
     setLocalData(groupedData)
@@ -819,31 +796,37 @@ export default function VocabularyTabs({
       return
     }
     if (!groups.includes(activeTab)) setActiveTab(groups[0])
-  }, [groupedData, initialGroupFilter, activeTab])
+  }, [
+    groupedData,
+    initialGroupFilter,
+    activeTab,
+    setActiveTab,
+    setLocalData,
+  ])
 
   useEffect(() => {
     setFolderList(folders)
-  }, [folders])
+  }, [folders, setFolderList])
 
   useEffect(() => {
     if (!selectedFolderManageId) return
     if (folderList.some(item => item.id === selectedFolderManageId)) return
     setSelectedFolderManageId(null)
-  }, [folderList, selectedFolderManageId])
+  }, [folderList, selectedFolderManageId, setSelectedFolderManageId])
 
   useEffect(() => {
     if (bulkWordbookId === 'none') return
     if (folderList.some(item => item.id === bulkWordbookId)) return
     setBulkWordbookId('none')
-  }, [bulkWordbookId, folderList])
+  }, [bulkWordbookId, folderList, setBulkWordbookId])
 
   useEffect(() => {
     setSelectedFolderFilter(initialFolderFilter || 'all')
-  }, [initialFolderFilter])
+  }, [initialFolderFilter, setSelectedFolderFilter])
 
   useEffect(() => {
     setSelectedGroupFilter(initialGroupFilter || '')
-  }, [initialGroupFilter])
+  }, [initialGroupFilter, setSelectedGroupFilter])
 
   useEffect(() => {
     if (!initialFocusId) return
@@ -865,7 +848,14 @@ export default function VocabularyTabs({
       setViewMode('flashcard')
       appliedFocusIdRef.current = initialFocusId
     }
-  }, [initialFocusId, initialFocusGroup, localData])
+  }, [
+    initialFocusId,
+    initialFocusGroup,
+    localData,
+    setActiveTab,
+    setCurrentIndex,
+    setViewMode,
+  ])
 
   useEffect(() => {
     const visibleIds = visibleList.map(item => item.id)
@@ -875,7 +865,12 @@ export default function VocabularyTabs({
     }
     const allChecked = visibleIds.every(id => selectedVocabIds.has(id))
     if (allChecked !== isSelectAllChecked) setIsSelectAllChecked(allChecked)
-  }, [visibleList, selectedVocabIds, isSelectAllChecked])
+  }, [
+    visibleList,
+    selectedVocabIds,
+    isSelectAllChecked,
+    setIsSelectAllChecked,
+  ])
 
   const pushVocabularyGroup = (languageGroup: string | null) => {
     const params = buildVocabularySearchParams({
@@ -889,7 +884,7 @@ export default function VocabularyTabs({
     if (currentIndex >= flashList.length) {
       setCurrentIndex(Math.max(0, flashList.length - 1))
     }
-  }, [currentIndex, flashList.length])
+  }, [currentIndex, flashList.length, setCurrentIndex])
 
   useEffect(() => {
     return () => {
@@ -1142,7 +1137,14 @@ export default function VocabularyTabs({
         })
       })
     }, 150)
-  }, [cardTransitionState, currentIndex, flashList.length])
+  }, [
+    cardTransitionState,
+    currentIndex,
+    flashList.length,
+    setCardTransitionDirection,
+    setCardTransitionState,
+    setCurrentIndex,
+  ])
 
   const goPrevCard = useCallback(() => {
     runCardTransition(currentIndex - 1, 'prev')
@@ -1234,12 +1236,17 @@ export default function VocabularyTabs({
   useEffect(() => {
     setPendingMemoryRating(null)
     setMemoryReveal(false)
-  }, [currentFlashVocab?.id, memoryMode])
+  }, [
+    currentFlashVocab?.id,
+    memoryMode,
+    setMemoryReveal,
+    setPendingMemoryRating,
+  ])
 
   useEffect(() => {
     if (!memoryMode) return
     setMemoryNowMs(Date.now())
-  }, [memoryMode, currentFlashVocab?.id, localData])
+  }, [memoryMode, currentFlashVocab?.id, localData, setMemoryNowMs])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

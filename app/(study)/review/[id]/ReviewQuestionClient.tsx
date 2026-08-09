@@ -98,16 +98,19 @@ export default function ReviewQuestionClient({
   )
 
   useEffect(() => {
-    // Only reset local answering state when switching to another retry item.
-    // Server revalidation after submit may refresh summary/props for the same item.
-    // We should keep submitted state so user can click "下一题".
-    setItem(currentItem)
     setSummary(initialSummary)
+  }, [initialSummary])
+
+  useEffect(() => {
+    // Revalidation can refresh props for the same retry item after submission.
+    // Preserve the submitted result unless navigation actually changes the item.
+    if (item.retryId === currentItem.retryId) return
+    setItem(currentItem)
     setSelectedOptionId('')
     setFeedback('')
     setIsSubmitted(false)
     setResettingId(null)
-  }, [currentItem, initialSummary])
+  }, [currentItem, item.retryId])
 
   const handleSubmit = () => {
     if (!selectedOptionId) {
@@ -228,66 +231,53 @@ export default function ReviewQuestionClient({
 
   return (
     <main className='min-h-screen bg-slate-50 pb-24'>
-      <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur md:px-8'>
-        <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3'>
-          <div>
+      <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur'>
+        <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-8'>
+          <div className='min-w-0'>
             <h1 className='text-base font-black text-slate-900 md:text-lg'>
               错题回看
             </h1>
-            <p className='text-xs text-slate-500'>
+            <p className='truncate text-xs text-slate-500'>
               第 {currentIndex + 1} / {queue.length} 题，到期 {summary.dueCount} 题
             </p>
           </div>
-          <div className='flex items-center gap-2'>
-            <span className='rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700'>
+          <div className='flex shrink-0 items-center gap-2'>
+            <span className='hidden rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 sm:inline-flex'>
               下一到期 {formatTokyoDateTime(summary.nextDueAt)}
             </span>
             <Link
-              href='/'
-              className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-sm transition-colors hover:bg-slate-50'>
-              首页
+              href='/review'
+              className='ui-btn ui-btn-sm'>
+              复习中心
             </Link>
           </div>
+        </div>
+        <div
+          className='h-1 bg-slate-100'
+          role='progressbar'
+          aria-label={`错题复习进度 ${currentIndex + 1} / ${queue.length}`}
+          aria-valuemin={1}
+          aria-valuemax={queue.length}
+          aria-valuenow={currentIndex + 1}>
+          <div
+            className='h-full bg-slate-900 transition-[width]'
+            style={{ width: `${((currentIndex + 1) / queue.length) * 100}%` }}
+          />
         </div>
       </header>
 
       <div className='mx-auto w-full max-w-7xl space-y-4 px-4 py-4 md:px-8 md:py-6'>
-        <section className='rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)]'>
-          <div className='mb-3 flex flex-wrap items-center gap-2 text-xs'>
+        <section className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4'>
+          <div className='flex flex-wrap items-center gap-2 text-xs'>
             <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              错题作答 {item.stats.attemptTotal} 次
+              复习阶段 {item.stage + 1} / 3
             </span>
             <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              阶段 {item.stage + 1}
-            </span>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              错误率 {formatPercent(1 - item.stats.accuracy)}
-            </span>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              优化后正确率 {formatPercent(item.stats.optimizedAccuracy)}
-            </span>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              近期连对 {item.stats.recentStreak}
+              历史正确率 {formatPercent(item.stats.accuracy)}
             </span>
           </div>
 
           <div className='flex flex-wrap gap-2'>
-            <button
-              type='button'
-              disabled={isPending || isSubmitted}
-              onClick={handleSubmit}
-              className='rounded-xl bg-slate-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-60'>
-              提交复盘
-            </button>
-            <button
-              type='button'
-              disabled={
-                isPending || resettingId === item.retryId || !item.stats.resetEligible
-              }
-              onClick={handleSoftReset}
-              className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40'>
-              轻度重置错误率
-            </button>
             <button
               type='button'
               onClick={() => void handleCopyCurrentQuestion()}
@@ -314,12 +304,28 @@ export default function ReviewQuestionClient({
               checked={showMeaning}
               onChange={setShowMeaning}
             />
-            <span className='self-center text-[11px] text-slate-400'>
-              满足条件后可轻度清理早期错误记录，逐步修复历史偏差。
-            </span>
+            {item.stats.resetEligible ? (
+              <button
+                type='button'
+                disabled={isPending || resettingId === item.retryId}
+                onClick={handleSoftReset}
+                className='rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-50 disabled:opacity-40'>
+                重置早期错误
+              </button>
+            ) : null}
           </div>
 
-          {feedback && <p className='mt-2 text-xs text-slate-500'>{feedback}</p>}
+          {feedback && (
+            <p
+              role='status'
+              className={`basis-full rounded-lg px-3 py-2 text-xs font-medium ${
+                feedback.includes('失败') || feedback.includes('请先')
+                  ? 'bg-rose-50 text-rose-700'
+                  : 'bg-slate-100 text-slate-700'
+              }`}>
+              {feedback}
+            </p>
+          )}
         </section>
 
         <QuestionRenderer
@@ -371,32 +377,43 @@ export default function ReviewQuestionClient({
         )}
       </div>
 
-      <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-4 backdrop-blur'>
-        <div className='mx-auto flex w-full max-w-5xl items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2'>
+      <footer className='fixed bottom-0 z-40 w-full border-t border-slate-200/90 bg-white/95 p-2 backdrop-blur md:p-4'>
+        <div className='mx-auto grid w-full max-w-5xl grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-2 md:gap-4 md:px-3'>
           <button
             type='button'
             disabled={!prevRetryId || isPending}
             onClick={() => prevRetryId && router.push(`/review/${prevRetryId}`)}
-            className='rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40'>
+            className='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 md:px-4 md:text-sm'>
             上一题
           </button>
 
-          <div className='text-xs text-slate-500'>
-            来源：{item.sourceTitle} · 历史错 {item.wrongCount}
-          </div>
+          <Link
+            href={item.sourceUrl}
+            title={item.sourceTitle}
+            className='min-w-0 truncate text-center text-[11px] font-medium text-slate-500 hover:text-slate-900 md:text-xs'>
+            来源：{item.sourceTitle}
+          </Link>
 
-          {nextRetryId ? (
+          {!isSubmitted ? (
             <button
               type='button'
-              disabled={!isSubmitted || isPending}
+              disabled={!selectedOptionId || isPending}
+              onClick={handleSubmit}
+              className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 md:px-4 md:text-sm'>
+              {isPending ? '提交中…' : '提交复盘'}
+            </button>
+          ) : nextRetryId ? (
+            <button
+              type='button'
+              disabled={isPending}
               onClick={() => router.push(`/review/${nextRetryId}`)}
-              className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800 disabled:opacity-40'>
+              className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40 md:px-4 md:text-sm'>
               下一题
             </button>
           ) : (
             <Link
               href='/review/mistakes'
-              className='rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800'>
+              className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 md:px-4 md:text-sm'>
               返回队列
             </Link>
           )}

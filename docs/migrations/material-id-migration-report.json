@@ -1,0 +1,656 @@
+{
+  "generatedAt": "2026-08-09T15:41:55.680Z",
+  "namespace": "9ba593d8-9461-4b5b-9d5f-2c28cdbd2af0",
+  "strategy": "保留原 ID 或冒号后缀中的合法 UUID；其他旧 ID 使用固定 namespace 的 UUIDv5。",
+  "totals": {
+    "materials": 91,
+    "idsToChange": 89,
+    "questions": 115,
+    "questionContentRowsToClean": 115
+  },
+  "referenceRowsToRewrite": {
+    "Vocabulary.sourceId": 99,
+    "VocabularySentence.sourceId": 80,
+    "SentenceReview.sourceId": 0,
+    "VocabularySentence.sourceUrl": 23
+  },
+  "mapping": [
+    {
+      "oldId": "lesson:3701bcf5-6a2a-4cc6-8e27-a1df7a7488f9",
+      "legacyAlias": "3701bcf5-6a2a-4cc6-8e27-a1df7a7488f9",
+      "uuid": "3701bcf5-6a2a-4cc6-8e27-a1df7a7488f9",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:48dd89c9-e5c4-48d7-84d3-c3e3c55bd347",
+      "legacyAlias": "48dd89c9-e5c4-48d7-84d3-c3e3c55bd347",
+      "uuid": "48dd89c9-e5c4-48d7-84d3-c3e3c55bd347",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:54e3ac0f-6ab9-4a87-8991-e4f4ea03130e",
+      "legacyAlias": "54e3ac0f-6ab9-4a87-8991-e4f4ea03130e",
+      "uuid": "54e3ac0f-6ab9-4a87-8991-e4f4ea03130e",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:69ed5fe8-fa93-4a09-b112-a6be23945227",
+      "legacyAlias": "69ed5fe8-fa93-4a09-b112-a6be23945227",
+      "uuid": "69ed5fe8-fa93-4a09-b112-a6be23945227",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:75e25b3d-95ec-46b7-8dfb-f599ebf10c5a",
+      "legacyAlias": "75e25b3d-95ec-46b7-8dfb-f599ebf10c5a",
+      "uuid": "75e25b3d-95ec-46b7-8dfb-f599ebf10c5a",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:7c9a58f0-c254-492b-a585-703070039ceb",
+      "legacyAlias": "7c9a58f0-c254-492b-a585-703070039ceb",
+      "uuid": "7c9a58f0-c254-492b-a585-703070039ceb",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:d7e1e406-9869-4c8d-8c8f-6d9f1897c068",
+      "legacyAlias": "d7e1e406-9869-4c8d-8c8f-6d9f1897c068",
+      "uuid": "d7e1e406-9869-4c8d-8c8f-6d9f1897c068",
+      "type": "LISTENING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:1e2d815d-24f8-459a-91e2-1af9f72aa57f",
+      "legacyAlias": "1e2d815d-24f8-459a-91e2-1af9f72aa57f",
+      "uuid": "1e2d815d-24f8-459a-91e2-1af9f72aa57f",
+      "type": "MEDIA_SUBTITLE",
+      "changed": true
+    },
+    {
+      "oldId": "media:9ca51cd4-28eb-4034-ac60-51fd60f0f625",
+      "legacyAlias": "9ca51cd4-28eb-4034-ac60-51fd60f0f625",
+      "uuid": "9ca51cd4-28eb-4034-ac60-51fd60f0f625",
+      "type": "MEDIA_SUBTITLE",
+      "changed": true
+    },
+    {
+      "oldId": "c7311f6b-58f5-4b3b-bb3f-f15ac3625c67",
+      "legacyAlias": "c7311f6b-58f5-4b3b-bb3f-f15ac3625c67",
+      "uuid": "c7311f6b-58f5-4b3b-bb3f-f15ac3625c67",
+      "type": "READING",
+      "changed": false
+    },
+    {
+      "oldId": "passage:cmnep2dfb000a6f3q7ae0o4ur",
+      "legacyAlias": "cmnep2dfb000a6f3q7ae0o4ur",
+      "uuid": "66f1466e-ed8f-5b10-8a9e-5d0e075d66d2",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnha94q00031sh3qgiknzjl2",
+      "legacyAlias": "cmnha94q00031sh3qgiknzjl2",
+      "uuid": "ae4c8ab5-1003-5376-bad7-bebd8cc6241b",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnhcv7010001xx3qbxwvr1iu",
+      "legacyAlias": "cmnhcv7010001xx3qbxwvr1iu",
+      "uuid": "161e83c3-9b2b-5c71-a2e5-ba41f8ae848b",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnhi8ha6000a0e3qmpwo03p0",
+      "legacyAlias": "cmnhi8ha6000a0e3qmpwo03p0",
+      "uuid": "9534d7f7-aa39-5fbf-b174-87581353c310",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnhiap63000g0e3qshdgwvjr",
+      "legacyAlias": "cmnhiap63000g0e3qshdgwvjr",
+      "uuid": "9f5d6b49-0c80-5e03-ab82-35447659a3b9",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnhicj1h000m0e3qae0kwaah",
+      "legacyAlias": "cmnhicj1h000m0e3qae0kwaah",
+      "uuid": "a1ddf2b0-c287-5abb-95b7-8f8b5660a2c1",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmninae8i001hkz3qqrnoe4zq",
+      "legacyAlias": "cmninae8i001hkz3qqrnoe4zq",
+      "uuid": "4d3a0c16-d4e7-5fa0-a42b-51f488348e86",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj04uan0016x23qy4yhf2js",
+      "legacyAlias": "cmnj04uan0016x23qy4yhf2js",
+      "uuid": "74b3f5e4-301d-5693-b517-558edb7dc63a",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj0qsmw001wx23qatn89q1d",
+      "legacyAlias": "cmnj0qsmw001wx23qatn89q1d",
+      "uuid": "22a15efd-87b2-503e-a9fb-249f1ba59e08",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj1joqz0028x23qoz4ofaed",
+      "legacyAlias": "cmnj1joqz0028x23qoz4ofaed",
+      "uuid": "b1c905b5-31d6-582d-b8f2-0af2a5dd4615",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj1vevs002nx23q6vtypzp7",
+      "legacyAlias": "cmnj1vevs002nx23q6vtypzp7",
+      "uuid": "b782b626-ffd0-5d0b-83ac-004c01eeb060",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj31ayu0033x23qm6nmxp1i",
+      "legacyAlias": "cmnj31ayu0033x23qm6nmxp1i",
+      "uuid": "a3c0f6f9-6ade-57b5-a87b-bf61a13eac5d",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj38l1x003ex23q1lqjurnr",
+      "legacyAlias": "cmnj38l1x003ex23q1lqjurnr",
+      "uuid": "dd3dbe1b-d51f-5c3d-8877-aafe079dc46a",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "passage:cmnj3fvaa003ux23q0kumq7ho",
+      "legacyAlias": "cmnj3fvaa003ux23q0kumq7ho",
+      "uuid": "4bb2b125-2818-5961-9574-75116d1dc0fe",
+      "type": "READING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:06c2264e-7de1-4978-ae6a-b8e52e42db2a",
+      "legacyAlias": "06c2264e-7de1-4978-ae6a-b8e52e42db2a",
+      "uuid": "06c2264e-7de1-4978-ae6a-b8e52e42db2a",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:0acbcf0f-c7cc-456e-8683-6d7ec5682db3",
+      "legacyAlias": "0acbcf0f-c7cc-456e-8683-6d7ec5682db3",
+      "uuid": "0acbcf0f-c7cc-456e-8683-6d7ec5682db3",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:13ae6244-f6cd-4e9c-adc3-5d9115fd60ca",
+      "legacyAlias": "13ae6244-f6cd-4e9c-adc3-5d9115fd60ca",
+      "uuid": "13ae6244-f6cd-4e9c-adc3-5d9115fd60ca",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:1c261fe6-384a-43ec-8c15-c3cb8dc6a187",
+      "legacyAlias": "1c261fe6-384a-43ec-8c15-c3cb8dc6a187",
+      "uuid": "1c261fe6-384a-43ec-8c15-c3cb8dc6a187",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:1dc8ed96-7b68-4399-8c49-c7aeeda355bd",
+      "legacyAlias": "1dc8ed96-7b68-4399-8c49-c7aeeda355bd",
+      "uuid": "1dc8ed96-7b68-4399-8c49-c7aeeda355bd",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:1f304e9d-91c6-4e9c-9bf1-3a47b67a5985",
+      "legacyAlias": "1f304e9d-91c6-4e9c-9bf1-3a47b67a5985",
+      "uuid": "1f304e9d-91c6-4e9c-9bf1-3a47b67a5985",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:1fca87f8-e492-4255-8839-73a6852ef0e6",
+      "legacyAlias": "1fca87f8-e492-4255-8839-73a6852ef0e6",
+      "uuid": "1fca87f8-e492-4255-8839-73a6852ef0e6",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:23976af0-bb55-49b7-8fc1-c674a63af074",
+      "legacyAlias": "23976af0-bb55-49b7-8fc1-c674a63af074",
+      "uuid": "23976af0-bb55-49b7-8fc1-c674a63af074",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:24e941e1-9be2-49a1-9fb4-6d72f74c0002",
+      "legacyAlias": "24e941e1-9be2-49a1-9fb4-6d72f74c0002",
+      "uuid": "24e941e1-9be2-49a1-9fb4-6d72f74c0002",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:2f4d626c-0469-4d13-bf08-c2ec6a78a926",
+      "legacyAlias": "2f4d626c-0469-4d13-bf08-c2ec6a78a926",
+      "uuid": "2f4d626c-0469-4d13-bf08-c2ec6a78a926",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:33e2209d-b1ae-4128-b772-4743dd8e0325",
+      "legacyAlias": "33e2209d-b1ae-4128-b772-4743dd8e0325",
+      "uuid": "33e2209d-b1ae-4128-b772-4743dd8e0325",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:3a316851-fcf7-4848-8ea6-284d2b1d1de7",
+      "legacyAlias": "3a316851-fcf7-4848-8ea6-284d2b1d1de7",
+      "uuid": "3a316851-fcf7-4848-8ea6-284d2b1d1de7",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:3a6bd11d-9c2e-450f-bd5a-2d488b1a49e2",
+      "legacyAlias": "3a6bd11d-9c2e-450f-bd5a-2d488b1a49e2",
+      "uuid": "3a6bd11d-9c2e-450f-bd5a-2d488b1a49e2",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:3b9b9a98-f8ee-47e4-980b-06789c373cbd",
+      "legacyAlias": "3b9b9a98-f8ee-47e4-980b-06789c373cbd",
+      "uuid": "3b9b9a98-f8ee-47e4-980b-06789c373cbd",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:3d087181-0b2a-4cd3-bca0-fb7193b2732d",
+      "legacyAlias": "3d087181-0b2a-4cd3-bca0-fb7193b2732d",
+      "uuid": "3d087181-0b2a-4cd3-bca0-fb7193b2732d",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:40829ea9-5b8e-4443-81be-785c1222f738",
+      "legacyAlias": "40829ea9-5b8e-4443-81be-785c1222f738",
+      "uuid": "40829ea9-5b8e-4443-81be-785c1222f738",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:440ebb77-7b2d-4ff4-8ad4-5e7ceb80f8c5",
+      "legacyAlias": "440ebb77-7b2d-4ff4-8ad4-5e7ceb80f8c5",
+      "uuid": "440ebb77-7b2d-4ff4-8ad4-5e7ceb80f8c5",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:4d49dbca-49e3-4692-aa3c-21acded6b2ae",
+      "legacyAlias": "4d49dbca-49e3-4692-aa3c-21acded6b2ae",
+      "uuid": "4d49dbca-49e3-4692-aa3c-21acded6b2ae",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:535bce76-0d3b-49fb-a893-b7673ac66cf5",
+      "legacyAlias": "535bce76-0d3b-49fb-a893-b7673ac66cf5",
+      "uuid": "535bce76-0d3b-49fb-a893-b7673ac66cf5",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:5440873f-ec99-4f16-81f2-f37488ec76c6",
+      "legacyAlias": "5440873f-ec99-4f16-81f2-f37488ec76c6",
+      "uuid": "5440873f-ec99-4f16-81f2-f37488ec76c6",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:54dfe784-c3cd-45c8-9fa4-4ce5e2c38645",
+      "legacyAlias": "54dfe784-c3cd-45c8-9fa4-4ce5e2c38645",
+      "uuid": "54dfe784-c3cd-45c8-9fa4-4ce5e2c38645",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:57db63cb-2213-4ba2-8a68-769307f7f6d5",
+      "legacyAlias": "57db63cb-2213-4ba2-8a68-769307f7f6d5",
+      "uuid": "57db63cb-2213-4ba2-8a68-769307f7f6d5",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:5b33f3e3-d90a-4185-9814-bf02f8d72491",
+      "legacyAlias": "5b33f3e3-d90a-4185-9814-bf02f8d72491",
+      "uuid": "5b33f3e3-d90a-4185-9814-bf02f8d72491",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:5e4ae333-91e6-44df-88c0-526bf016729e",
+      "legacyAlias": "5e4ae333-91e6-44df-88c0-526bf016729e",
+      "uuid": "5e4ae333-91e6-44df-88c0-526bf016729e",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:5e60d9ec-1d75-4a7d-8e17-ff77b1d7881e",
+      "legacyAlias": "5e60d9ec-1d75-4a7d-8e17-ff77b1d7881e",
+      "uuid": "5e60d9ec-1d75-4a7d-8e17-ff77b1d7881e",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:6554b1d8-d777-4e70-9064-a1773e13d0b0",
+      "legacyAlias": "6554b1d8-d777-4e70-9064-a1773e13d0b0",
+      "uuid": "6554b1d8-d777-4e70-9064-a1773e13d0b0",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:6610a8a2-798f-440c-95a0-b075b31b6eda",
+      "legacyAlias": "6610a8a2-798f-440c-95a0-b075b31b6eda",
+      "uuid": "6610a8a2-798f-440c-95a0-b075b31b6eda",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:72fd6ddf-1d8e-487f-9c52-6bfd6a328bfd",
+      "legacyAlias": "72fd6ddf-1d8e-487f-9c52-6bfd6a328bfd",
+      "uuid": "72fd6ddf-1d8e-487f-9c52-6bfd6a328bfd",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:732dff00-86c2-404f-a7bb-1bab2562d28f",
+      "legacyAlias": "732dff00-86c2-404f-a7bb-1bab2562d28f",
+      "uuid": "732dff00-86c2-404f-a7bb-1bab2562d28f",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:799daa7e-321a-4424-b8d7-3d61ed5c1562",
+      "legacyAlias": "799daa7e-321a-4424-b8d7-3d61ed5c1562",
+      "uuid": "799daa7e-321a-4424-b8d7-3d61ed5c1562",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:79c4dff6-d257-4812-9421-47587a1c939d",
+      "legacyAlias": "79c4dff6-d257-4812-9421-47587a1c939d",
+      "uuid": "79c4dff6-d257-4812-9421-47587a1c939d",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:7e3ced5c-ea5c-40b0-aa63-c276f0477857",
+      "legacyAlias": "7e3ced5c-ea5c-40b0-aa63-c276f0477857",
+      "uuid": "7e3ced5c-ea5c-40b0-aa63-c276f0477857",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:7e914df0-9fc9-4ad8-b1c6-3adcda30051c",
+      "legacyAlias": "7e914df0-9fc9-4ad8-b1c6-3adcda30051c",
+      "uuid": "7e914df0-9fc9-4ad8-b1c6-3adcda30051c",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:83cb3bd4-f4f4-4cea-ab7b-e102e9100040",
+      "legacyAlias": "83cb3bd4-f4f4-4cea-ab7b-e102e9100040",
+      "uuid": "83cb3bd4-f4f4-4cea-ab7b-e102e9100040",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:8434e546-c97d-4ce4-817d-84f5f8fc4fd6",
+      "legacyAlias": "8434e546-c97d-4ce4-817d-84f5f8fc4fd6",
+      "uuid": "8434e546-c97d-4ce4-817d-84f5f8fc4fd6",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:8b0e16f0-5bde-4890-a3db-a988aca429d0",
+      "legacyAlias": "8b0e16f0-5bde-4890-a3db-a988aca429d0",
+      "uuid": "8b0e16f0-5bde-4890-a3db-a988aca429d0",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:8ba676c9-021f-4ea2-a34c-2f02fef31be2",
+      "legacyAlias": "8ba676c9-021f-4ea2-a34c-2f02fef31be2",
+      "uuid": "8ba676c9-021f-4ea2-a34c-2f02fef31be2",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:92b18576-ef9d-4d1a-ae54-13e9f1fabb55",
+      "legacyAlias": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55",
+      "uuid": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:981e560e-7a6b-46ad-ba34-811c1033a7d4",
+      "legacyAlias": "981e560e-7a6b-46ad-ba34-811c1033a7d4",
+      "uuid": "981e560e-7a6b-46ad-ba34-811c1033a7d4",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:9e18cca2-2d25-459c-b9f4-82ded4269008",
+      "legacyAlias": "9e18cca2-2d25-459c-b9f4-82ded4269008",
+      "uuid": "9e18cca2-2d25-459c-b9f4-82ded4269008",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:b16abc92-6513-4048-8a5f-6330e25141c8",
+      "legacyAlias": "b16abc92-6513-4048-8a5f-6330e25141c8",
+      "uuid": "b16abc92-6513-4048-8a5f-6330e25141c8",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:b262491d-c752-4008-b68c-72bc338a6192",
+      "legacyAlias": "b262491d-c752-4008-b68c-72bc338a6192",
+      "uuid": "b262491d-c752-4008-b68c-72bc338a6192",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:b360ed6d-a963-4911-8069-d190d13d7ede",
+      "legacyAlias": "b360ed6d-a963-4911-8069-d190d13d7ede",
+      "uuid": "b360ed6d-a963-4911-8069-d190d13d7ede",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:b5eb3538-7c2f-4431-80b2-9f4b6b1cb680",
+      "legacyAlias": "b5eb3538-7c2f-4431-80b2-9f4b6b1cb680",
+      "uuid": "b5eb3538-7c2f-4431-80b2-9f4b6b1cb680",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:c5a0b231-e8d6-4143-8d60-a00c026ba884",
+      "legacyAlias": "c5a0b231-e8d6-4143-8d60-a00c026ba884",
+      "uuid": "c5a0b231-e8d6-4143-8d60-a00c026ba884",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:c6fce3d7-f50f-42ad-9628-22fcb3c3f761",
+      "legacyAlias": "c6fce3d7-f50f-42ad-9628-22fcb3c3f761",
+      "uuid": "c6fce3d7-f50f-42ad-9628-22fcb3c3f761",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:ca49434c-c48f-49a0-8a30-03f580ee88f6",
+      "legacyAlias": "ca49434c-c48f-49a0-8a30-03f580ee88f6",
+      "uuid": "ca49434c-c48f-49a0-8a30-03f580ee88f6",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:d0c28b3c-6801-4562-9a6d-e26297529ccb",
+      "legacyAlias": "d0c28b3c-6801-4562-9a6d-e26297529ccb",
+      "uuid": "d0c28b3c-6801-4562-9a6d-e26297529ccb",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:d2ca1291-2cb3-4453-8850-d90cdc1d385f",
+      "legacyAlias": "d2ca1291-2cb3-4453-8850-d90cdc1d385f",
+      "uuid": "d2ca1291-2cb3-4453-8850-d90cdc1d385f",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:dac04ef8-e7cd-458b-84ff-3f0a6701a218",
+      "legacyAlias": "dac04ef8-e7cd-458b-84ff-3f0a6701a218",
+      "uuid": "dac04ef8-e7cd-458b-84ff-3f0a6701a218",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:db7c54cf-2fb6-43c0-b42f-ec0faf0377bc",
+      "legacyAlias": "db7c54cf-2fb6-43c0-b42f-ec0faf0377bc",
+      "uuid": "db7c54cf-2fb6-43c0-b42f-ec0faf0377bc",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:dbd5c8ef-f774-478e-9950-ec3566f11674",
+      "legacyAlias": "dbd5c8ef-f774-478e-9950-ec3566f11674",
+      "uuid": "dbd5c8ef-f774-478e-9950-ec3566f11674",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:de0e8757-714c-4b99-82ba-0c5e4cc1115f",
+      "legacyAlias": "de0e8757-714c-4b99-82ba-0c5e4cc1115f",
+      "uuid": "de0e8757-714c-4b99-82ba-0c5e4cc1115f",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:dfec4764-554f-497f-ba65-3690f8ed0e06",
+      "legacyAlias": "dfec4764-554f-497f-ba65-3690f8ed0e06",
+      "uuid": "dfec4764-554f-497f-ba65-3690f8ed0e06",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:e274efb5-fd65-40f1-923f-c96998e72096",
+      "legacyAlias": "e274efb5-fd65-40f1-923f-c96998e72096",
+      "uuid": "e274efb5-fd65-40f1-923f-c96998e72096",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:e2d44893-787a-4000-9891-175e73d8711a",
+      "legacyAlias": "e2d44893-787a-4000-9891-175e73d8711a",
+      "uuid": "e2d44893-787a-4000-9891-175e73d8711a",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:e669063b-f8a2-475a-9025-f3e4155f12bb",
+      "legacyAlias": "e669063b-f8a2-475a-9025-f3e4155f12bb",
+      "uuid": "e669063b-f8a2-475a-9025-f3e4155f12bb",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:ea45cb1e-7b87-42c7-90a1-1cc6766412db",
+      "legacyAlias": "ea45cb1e-7b87-42c7-90a1-1cc6766412db",
+      "uuid": "ea45cb1e-7b87-42c7-90a1-1cc6766412db",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f0c907cb-592b-45a0-86aa-b8cfeb3f6f33",
+      "legacyAlias": "f0c907cb-592b-45a0-86aa-b8cfeb3f6f33",
+      "uuid": "f0c907cb-592b-45a0-86aa-b8cfeb3f6f33",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f2102cb3-0b43-4791-9370-e03c74ec5a73",
+      "legacyAlias": "f2102cb3-0b43-4791-9370-e03c74ec5a73",
+      "uuid": "f2102cb3-0b43-4791-9370-e03c74ec5a73",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f2604d89-d8e4-4dd4-ae30-bff221ae7a4c",
+      "legacyAlias": "f2604d89-d8e4-4dd4-ae30-bff221ae7a4c",
+      "uuid": "f2604d89-d8e4-4dd4-ae30-bff221ae7a4c",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f371154c-e1a6-4b4c-8a9b-f582c6d76df3",
+      "legacyAlias": "f371154c-e1a6-4b4c-8a9b-f582c6d76df3",
+      "uuid": "f371154c-e1a6-4b4c-8a9b-f582c6d76df3",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f7b1199c-fab5-40ca-90f6-734ae95ffc7c",
+      "legacyAlias": "f7b1199c-fab5-40ca-90f6-734ae95ffc7c",
+      "uuid": "f7b1199c-fab5-40ca-90f6-734ae95ffc7c",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "lesson:f7c5bcf0-c1cb-4562-93ca-e6ceeb414827",
+      "legacyAlias": "f7c5bcf0-c1cb-4562-93ca-e6ceeb414827",
+      "uuid": "f7c5bcf0-c1cb-4562-93ca-e6ceeb414827",
+      "type": "SPEAKING",
+      "changed": true
+    },
+    {
+      "oldId": "9bdb0939-6c9b-41bd-9042-eadfe03acced",
+      "legacyAlias": "9bdb0939-6c9b-41bd-9042-eadfe03acced",
+      "uuid": "9bdb0939-6c9b-41bd-9042-eadfe03acced",
+      "type": "VOCAB_GRAMMAR",
+      "changed": false
+    },
+    {
+      "oldId": "quiz:cmneqtzyh00146f3qzes7m1qu",
+      "legacyAlias": "cmneqtzyh00146f3qzes7m1qu",
+      "uuid": "84ccd2a2-0649-5f12-b01f-de85d08aa0ae",
+      "type": "VOCAB_GRAMMAR",
+      "changed": true
+    },
+    {
+      "oldId": "quiz:cmnj4hkqz004ex23q6x7u9slg",
+      "legacyAlias": "cmnj4hkqz004ex23q6x7u9slg",
+      "uuid": "1f5b4eeb-4d32-5bc7-b5e6-d381a0701335",
+      "type": "VOCAB_GRAMMAR",
+      "changed": true
+    }
+  ]
+}

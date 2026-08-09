@@ -1,44 +1,14 @@
 // Grammar management route.
 import Link from 'next/link'
-import prisma from '@/lib/prisma'
 import GrammarCreatePanel from './GrammarCreatePanel'
 import GrammarEditTable from './GrammarEditTable'
 import type { ConstructionDraft } from './GrammarConstructionsEditor'
+import { getGrammarManagementData } from '@/features/grammar/server/repository'
 
 export const revalidate = 0
 
 export default async function GrammarEditPage() {
-  const [grammars, tagRows, clusterRows] = await Promise.all([
-    prisma.grammar.findMany({
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        tags: { include: { tag: true } },
-        clusters: { include: { cluster: true } },
-        constructions: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            examples: {
-              orderBy: { createdAt: 'asc' },
-              select: {
-                source: true,
-                sentenceText: true,
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.grammarTag.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 120,
-      select: { name: true },
-    }),
-    prisma.grammarCluster.findMany({
-      orderBy: { updatedAt: 'desc' },
-      take: 120,
-      select: { title: true },
-    }),
-  ])
+  const { grammars, tagRows, clusterRows } = await getGrammarManagementData()
 
   const grammarOptions = grammars.map(item => ({ id: item.id, name: item.name }))
   const tagSuggestions = Array.from(new Set(tagRows.map(item => item.name)))
@@ -73,8 +43,8 @@ export default async function GrammarEditPage() {
   })
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl space-y-4'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-4'>
         <header className='border-b border-slate-200 pb-5'>
           <div className='flex flex-col gap-4 md:flex-row md:items-end md:justify-between'>
             <div>

@@ -1,6 +1,6 @@
 // Practice paper editor route.
 import { notFound } from 'next/navigation'
-import PaperQuestionEditor from '@/app/(admin)/papers/manage/[id]/PaperQuestionEditor'
+import PaperQuestionEditor from '@/features/practice/ui/PaperQuestionEditor'
 import { getManagePaperEditData } from '@/lib/repositories/exam'
 
 export default async function ManageExamPaperDetailPage({

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Language, useI18n } from '@/context/I18nContext'
 
 export default function LanguageSwitcher() {

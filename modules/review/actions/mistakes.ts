@@ -8,7 +8,6 @@ import {
   softResetRetryAccuracy,
   submitRetryAnswerWithSchedule,
 } from '@/modules/review/server/mistake-repository'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
 
 const RETRY_HOURS = [24, 72, 168] as const
 
@@ -51,22 +50,31 @@ export type RetryQueueItem = {
 }
 
 const mapRetrySource = (item: {
+  questionId: string
   question: {
-    quiz: { id: string; title: string | null } | null
+    quiz: {
+      id: string
+      title: string | null
+      paperId: string | null
+      paperTitle: string | null
+    } | null
     readingSource: { id: string; title: string | null } | null
   }
 }) => {
   if (item.question.quiz) {
+    const paperId = item.question.quiz.paperId
     return {
-      sourceTitle: `题库 · ${item.question.quiz.title || '未命名题库'}`,
-      sourceUrl: `/practice/${item.question.quiz.id}`,
+      sourceTitle: `试卷 · ${item.question.quiz.paperTitle || item.question.quiz.title || '未命名试卷'}`,
+      sourceUrl: paperId
+        ? `/practice/${encodeURIComponent(paperId)}/do?qid=${encodeURIComponent(item.questionId)}`
+        : '/practice',
     }
   }
 
   if (item.question.readingSource) {
     return {
       sourceTitle: `阅读 · ${item.question.readingSource.title || '未命名文章'}`,
-      sourceUrl: `/reading/articles/${toLegacyMaterialId(item.question.readingSource.id)}`,
+      sourceUrl: `/reading/articles/${item.question.readingSource.id}`,
     }
   }
 

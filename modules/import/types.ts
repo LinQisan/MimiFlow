@@ -11,6 +11,7 @@ export type UploadCollectionLite = {
   parentId?: string | null
   sortOrder?: number
   collectionType?: CollectionType
+  acceptedMaterialTypes?: MaterialType[]
   materialType?: MaterialType
   language?: string
   examLevel?: string

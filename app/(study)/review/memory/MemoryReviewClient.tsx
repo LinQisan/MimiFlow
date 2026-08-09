@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Rating } from 'ts-fsrs'
 
 import {
@@ -24,6 +25,7 @@ export default function MemoryReviewClient({
 }) {
   const router = useRouter()
   const [items, setItems] = useState(initialItems)
+  const [total] = useState(initialItems.length)
   const [revealed, setRevealed] = useState(false)
   const [message, setMessage] = useState('')
   const [isPending, startTransition] = useTransition()
@@ -34,6 +36,14 @@ export default function MemoryReviewClient({
       <section className='rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-sm'>
         <h1 className='text-2xl font-black text-slate-900'>今日记忆复习已完成</h1>
         <p className='mt-2 text-sm text-slate-600'>没有更多到期的单词或句子。</p>
+        <div className='mt-6 flex flex-wrap justify-center gap-2'>
+          <Link href='/review' className='ui-btn ui-btn-primary'>
+            返回复习中心
+          </Link>
+          <Link href='/practice/custom' className='ui-btn'>
+            去做新题
+          </Link>
+        </div>
       </section>
     )
   }
@@ -64,11 +74,25 @@ export default function MemoryReviewClient({
         </span>
         <span className='text-xs text-slate-500'>剩余 {items.length}</span>
       </div>
+      <div
+        className='mt-4 h-1.5 overflow-hidden rounded-full bg-slate-100'
+        role='progressbar'
+        aria-label={`记忆复习进度 已完成 ${total - items.length} / ${total}`}
+        aria-valuemin={0}
+        aria-valuemax={total}
+        aria-valuenow={total - items.length}>
+        <div
+          className='h-full rounded-full bg-slate-900 transition-[width]'
+          style={{
+            width: `${total > 0 ? ((total - items.length) / total) * 100 : 100}%`,
+          }}
+        />
+      </div>
 
       <div className='flex min-h-64 flex-col items-center justify-center py-8 text-center'>
-        <h1 className='text-3xl font-black leading-relaxed text-slate-900'>
+        <h2 className='text-3xl font-black leading-relaxed text-slate-900'>
           {current.text}
-        </h1>
+        </h2>
         {current.kind === 'vocabulary' && revealed ? (
           <div className='mt-5 space-y-2'>
             {current.pronunciations.length > 0 ? (
@@ -81,6 +105,10 @@ export default function MemoryReviewClient({
                 {meaning}
               </p>
             ))}
+            {current.pronunciations.length === 0 &&
+            current.meanings.length === 0 ? (
+              <p className='text-sm text-slate-500'>暂无读音和释义，请根据自己的回忆评分。</p>
+            ) : null}
           </div>
         ) : null}
         {current.kind === 'sentence' && revealed ? (
@@ -106,12 +134,16 @@ export default function MemoryReviewClient({
               disabled={isPending}
               onClick={() => rate(item.value)}
               className={`h-11 rounded-xl border bg-white text-sm font-bold disabled:opacity-50 ${item.className}`}>
-              {item.label}
+              {isPending ? '保存中…' : item.label}
             </button>
           ))}
         </div>
       )}
-      {message ? <p className='mt-3 text-sm text-red-600'>{message}</p> : null}
+      {message ? (
+        <p role='status' className='mt-3 text-sm text-red-600'>
+          {message}
+        </p>
+      ) : null}
     </section>
   )
 }

@@ -1,35 +1,22 @@
 // Listening management route.
 import {
   listListeningLessonsForShadowing,
-  listListeningMaterialsForShadowing,
 } from '@/lib/repositories/materials'
-import prisma from '@/lib/prisma'
-import ListeningListClient from '@/app/(study)/listening/ListeningListClient'
+import ListeningListClient from '@/features/listening/ui/ListeningListClient'
+import { listCollectionsByTypes } from '@/features/listening/server/repository'
 
-export default async function ManageShadowingPage() {
-  const [speakingRows, listeningRows, collections] = await Promise.all([
-    listListeningMaterialsForShadowing(),
+export default async function ManageListeningPage() {
+  const [listeningRows, collections] = await Promise.all([
     listListeningLessonsForShadowing(),
-    prisma.collection.findMany({
-      where: {
-        collectionType: { in: ['LIBRARY_ROOT', 'BOOK', 'CHAPTER'] as const },
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-      select: {
-        id: true,
-        title: true,
-        collectionType: true,
-        parentId: true,
-        sortOrder: true,
-      },
-    }),
+    listCollectionsByTypes(['PAPER']),
   ])
 
   return (
     <ListeningListClient
-      rows={[...speakingRows, ...listeningRows]}
+      rows={listeningRows}
       collections={collections}
       mode='manage'
+      workspace='listening'
     />
   )
 }

@@ -4,6 +4,9 @@ import {
   normalizeQuestionContext,
   normalizeQuestionOptions,
 } from '@/lib/repositories/materials'
+import { readString } from '@/lib/validation/schema'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
 
 export type RetryQueueRow = {
   id: string
@@ -40,7 +43,12 @@ export type RetryQueueRow = {
       recentStreak: number
       resetEligible: boolean
     }
-    quiz: { id: string; title: string | null } | null
+    quiz: {
+      id: string
+      title: string | null
+      paperId: string | null
+      paperTitle: string | null
+    } | null
     readingSource: { id: string; title: string | null } | null
   }
 }
@@ -49,17 +57,6 @@ type AttemptLite = {
   id: string
   isCorrect: boolean
   createdAt: Date
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function calcRecentStreakDesc(attemptsDesc: AttemptLite[]) {
@@ -134,7 +131,20 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
           answer: true,
           content: true,
           material: {
-            select: { id: true, title: true, type: true, contentPayload: true },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              contentPayload: true,
+              collectionMaterials: {
+                where: { collection: { collectionType: 'PAPER' } },
+                orderBy: { sortOrder: 'asc' },
+                take: 1,
+                select: {
+                  collection: { select: { id: true, title: true } },
+                },
+              },
+            },
           },
           attempts: {
             orderBy: { createdAt: 'desc' },
@@ -151,8 +161,11 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
   })
 
   return rows.map(row => {
-    const questionContent = asRecord(row.question.content)
-    const payload = asRecord(row.question.material.contentPayload)
+    const questionContent = decodeQuestionContent(row.question.content)
+    const payload = decodeMaterialPayloadRecord(
+      row.question.material.type,
+      row.question.material.contentPayload,
+    )
     return {
     id: row.id,
     questionId: row.questionId,
@@ -167,7 +180,7 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.prompt,
         row.question.context,
       ),
-      targetWord: asString(questionContent.targetWord),
+      targetWord: readString(questionContent.targetWord),
       options: normalizeQuestionOptions(row.question.options, row.question.answer),
       passageId:
         row.question.material.type === 'READING' ? row.question.material.id : null,
@@ -175,7 +188,7 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: asString(payload.text) || asString(payload.transcript) || '',
+              content: readString(payload.text) || readString(payload.transcript) || '',
             }
           : null,
       lessonId:
@@ -184,14 +197,25 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
-              dialogues: materialDialogueItems(row.question.material.contentPayload),
+              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              dialogues: materialDialogueItems(
+                row.question.material.type,
+                row.question.material.contentPayload,
+              ),
             }
           : null,
       stats: buildRetryStats(row.question.attempts),
       quiz:
         row.question.material.type === 'VOCAB_GRAMMAR'
-          ? { id: row.question.material.id, title: row.question.material.title }
+          ? {
+              id: row.question.material.id,
+              title: row.question.material.title,
+              paperId:
+                row.question.material.collectionMaterials[0]?.collection.id || null,
+              paperTitle:
+                row.question.material.collectionMaterials[0]?.collection.title ||
+                null,
+            }
           : null,
       readingSource:
         row.question.material.type === 'READING'
@@ -216,7 +240,20 @@ export async function getRetryQuestionRowById(retryId: string) {
           answer: true,
           content: true,
           material: {
-            select: { id: true, title: true, type: true, contentPayload: true },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              contentPayload: true,
+              collectionMaterials: {
+                where: { collection: { collectionType: 'PAPER' } },
+                orderBy: { sortOrder: 'asc' },
+                take: 1,
+                select: {
+                  collection: { select: { id: true, title: true } },
+                },
+              },
+            },
           },
           attempts: {
             orderBy: { createdAt: 'desc' },
@@ -234,8 +271,11 @@ export async function getRetryQuestionRowById(retryId: string) {
 
   if (!row) return null
 
-  const questionContent = asRecord(row.question.content)
-  const payload = asRecord(row.question.material.contentPayload)
+  const questionContent = decodeQuestionContent(row.question.content)
+  const payload = decodeMaterialPayloadRecord(
+    row.question.material.type,
+    row.question.material.contentPayload,
+  )
 
   return {
     id: row.id,
@@ -251,7 +291,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.prompt,
         row.question.context,
       ),
-      targetWord: asString(questionContent.targetWord),
+      targetWord: readString(questionContent.targetWord),
       options: normalizeQuestionOptions(row.question.options, row.question.answer),
       passageId:
         row.question.material.type === 'READING' ? row.question.material.id : null,
@@ -259,7 +299,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: asString(payload.text) || asString(payload.transcript) || '',
+              content: readString(payload.text) || readString(payload.transcript) || '',
             }
           : null,
       lessonId:
@@ -268,14 +308,25 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
-              dialogues: materialDialogueItems(row.question.material.contentPayload),
+              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              dialogues: materialDialogueItems(
+                row.question.material.type,
+                row.question.material.contentPayload,
+              ),
             }
           : null,
       stats: buildRetryStats(row.question.attempts),
       quiz:
         row.question.material.type === 'VOCAB_GRAMMAR'
-          ? { id: row.question.material.id, title: row.question.material.title }
+          ? {
+              id: row.question.material.id,
+              title: row.question.material.title,
+              paperId:
+                row.question.material.collectionMaterials[0]?.collection.id || null,
+              paperTitle:
+                row.question.material.collectionMaterials[0]?.collection.title ||
+                null,
+            }
           : null,
       readingSource:
         row.question.material.type === 'READING'

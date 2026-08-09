@@ -23,16 +23,16 @@ export const normalizeQuestionTypeForMaterial = (
 }
 
 export const toQuestionRecordPayload = (
-  prompt: string | null,
-  context: string | null,
+  _prompt: string | null,
+  _context: string | null,
   targetWord: string | null,
-  explanation: string | null,
-) => ({
-  prompt,
-  contextSentence: context,
-  targetWord,
-  explanation,
-})
+  _explanation: string | null,
+) => {
+  void _prompt
+  void _context
+  void _explanation
+  return { targetWord }
+}
 
 export const toQuestionOptionsAndAnswer = (
   options: Array<{ text: string; isCorrect: boolean }>,

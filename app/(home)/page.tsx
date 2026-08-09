@@ -1,9 +1,9 @@
 import Link from 'next/link'
 
-import prisma from '@/lib/prisma'
 import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
 import { getTodayStudyPlan } from '@/modules/progress/server/today-plan'
+import { getHomeDashboardData } from '@/features/home/server/repository'
 
 export const revalidate = 60
 
@@ -53,11 +53,11 @@ const coreEntrances: HomeEntrance[] = [
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <div className='mb-5 flex items-center gap-2'>
-      <div className='h-5 w-1.5 rounded-full bg-slate-900' />
-      <h2 className='text-lg font-semibold tracking-tight text-slate-900 md:text-xl'>
+    <div className='mb-6 flex items-baseline justify-between border-b border-slate-200 pb-3'>
+      <h2 className='text-xl font-semibold tracking-tight text-slate-900 md:text-2xl'>
         {title}
       </h2>
+      <span className='text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400'>Index</span>
     </div>
   )
 }
@@ -105,66 +105,23 @@ export default async function HomePage() {
   const weekStartKey = toDateKeyInTokyo(sixDaysAgo)
   const todayKey = toDateKeyInTokyo(now)
 
-  const [
+  const [todayPlan, dashboard] = await Promise.all([
+    getTodayStudyPlan(),
+    getHomeDashboardData({ weekStartKey, todayKey }),
+  ])
+  const {
     vocabCount,
-    weekStudyAgg,
+    weekStudySeconds,
     paperCount,
     questionCount,
-    todayPlan,
     recentStudyRows,
     recentPlaytimeRows,
-  ] = await Promise.all([
-    prisma.vocabulary.count(),
-    prisma.studyTimeDaily.aggregate({
-      _sum: { seconds: true },
-      where: {
-        dateKey: {
-          gte: weekStartKey,
-          lte: todayKey,
-        },
-      },
-    }),
-    prisma.collection.count({ where: { collectionType: 'PAPER' } }),
-    prisma.question.count(),
-    getTodayStudyPlan(),
-    prisma.materialStudyProgress.findMany({
-      where: { profileId: 'default' },
-      orderBy: { updatedAt: 'desc' },
-      take: 6,
-      include: {
-        material: {
-          select: {
-            id: true,
-            title: true,
-            type: true,
-          },
-        },
-      },
-    }),
-    prisma.materialPlaytimeStat.findMany({
-      where: {
-        profileId: 'default',
-        material: { type: MaterialType.LISTENING },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 6,
-      include: {
-        material: {
-          select: {
-            id: true,
-            title: true,
-            type: true,
-          },
-        },
-      },
-    }),
-  ])
+  } = dashboard
 
   const wrongCount =
     todayPlan.tasks.find(task => task.id === 'retry')?.targetCount || 0
 
-  const totalWeekSeconds = weekStudyAgg._sum.seconds || 0
-  const weekHours = (totalWeekSeconds / 3600).toFixed(1)
+  const weekHours = (weekStudySeconds / 3600).toFixed(1)
 
   const todayTaskRecords: HomeContinueItem[] = todayPlan.tasks
     .filter(task => !task.disabled)
@@ -255,18 +212,10 @@ export default async function HomePage() {
 
   return (
     <main className='min-h-screen bg-white text-slate-900'>
-      <div className='mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8'>
-        <header className='mb-7 border-b border-slate-200 pb-6'>
-          <div className='mb-5'>
-            <p className='text-xs font-semibold uppercase tracking-[0.22em] text-slate-400'>
-              Today
-            </p>
-            <h1 className='mt-1 text-3xl font-black tracking-tight text-slate-950'>
-              今日学习
-            </h1>
-          </div>
+      <div className='mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10'>
+        <header className='mb-8 border-b border-slate-200 pb-7 md:mb-10 md:pb-8'>
           <div className='grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
-            <div className='grid grid-cols-2 gap-x-6 gap-y-4 border-t border-slate-200 pt-5 md:grid-cols-4 md:pt-0'>
+            <div className='grid grid-cols-2 gap-x-8 gap-y-6 border-y border-slate-200 py-5 md:grid-cols-4'>
               <div>
                 <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
                   本周学习
@@ -303,7 +252,7 @@ export default async function HomePage() {
           </div>
         </header>
 
-        <section className='mb-6'>
+        <section className='mb-14 md:mb-20'>
           <SectionTitle title='今日继续' />
           {studyRecords.length === 0 ? (
             <div className='border-t border-slate-200 py-5'>
@@ -331,7 +280,7 @@ export default async function HomePage() {
                   <div className='flex shrink-0 flex-wrap gap-2'>
                     <Link
                       href={card.primaryHref}
-                      className={`inline-flex h-9 items-center rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 ${
+                      className={`ui-btn ui-btn-primary ${
                         card.kind === 'task' && card.disabled
                           ? 'pointer-events-none opacity-50'
                           : ''
@@ -341,7 +290,7 @@ export default async function HomePage() {
                     {card.kind === 'resume' ? (
                       <Link
                         href={card.secondaryHref}
-                        className='inline-flex h-9 items-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900'>
+                        className='ui-btn'>
                         {card.secondaryLabel}
                       </Link>
                     ) : null}
@@ -352,7 +301,7 @@ export default async function HomePage() {
           )}
         </section>
 
-        <section className='mb-6'>
+        <section className='mb-10'>
           <SectionTitle title='资料与工具' />
           <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 lg:grid-cols-2'>
             {coreEntrances.map(card => (
@@ -374,8 +323,8 @@ export default async function HomePage() {
                       </p>
                     ) : null}
                   </div>
-                  <span className='rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600'>
-                    进入
+                  <span className='text-lg font-light text-slate-400 transition-transform group-hover:translate-x-1'>
+                    →
                   </span>
                 </div>
               </Link>

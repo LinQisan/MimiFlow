@@ -1,6 +1,5 @@
 'use client'
 
-import React from 'react'
 import { annotateExamText } from './annotate'
 import { OptionsList } from './OptionsList'
 import { SortingQuestion } from './SortingQuestion'
@@ -9,6 +8,7 @@ import type {
   ExamQuestion,
   OnSelectOption,
 } from './types'
+import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 
 type StandardQuestionProps = {
   question: ExamQuestion
@@ -18,17 +18,6 @@ type StandardQuestionProps = {
   isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
-}
-
-const TYPE_LABEL_MAP: Record<string, string> = {
-  PRONUNCIATION: '读音题',
-  SYNONYM_REPLACEMENT: '同义词替换',
-  WORD_DISTINCTION: '单词辨析',
-  GRAMMAR: '语法题',
-  FILL_BLANK: '完形填空',
-  SORTING: '排序题',
-  LISTENING: '听力题',
-  READING_COMPREHENSION: '阅读题',
 }
 
 export function StandardQuestion({
@@ -43,7 +32,7 @@ export function StandardQuestion({
   const questionType = question.questionType || 'UNKNOWN'
   const contextText = (question.contextSentence || '').trim()
   const promptText = (question.prompt || '').trim()
-  const typeLabel = TYPE_LABEL_MAP[questionType] || '题目'
+  const typeLabel = getQuestionTypeLabel(questionType)
   const isReadingFillBlank =
     questionType === 'FILL_BLANK' && Boolean(question.passageId)
   const shouldUseBlankAndFullSentence =
@@ -85,6 +74,8 @@ export function StandardQuestion({
           isSubmitted={isSubmitted}
           isInteractionLocked={isInteractionLocked}
           isJapanesePaper={isJapanesePaper}
+          optionLabelFormat={question.optionLabelFormat}
+          customOptionLabels={question.customOptionLabels}
           annotation={annotation}
         />
       </div>
@@ -178,6 +169,8 @@ export function StandardQuestion({
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
         isJapanesePaper={isJapanesePaper}
+        optionLabelFormat={question.optionLabelFormat}
+        customOptionLabels={question.customOptionLabels}
         annotation={annotation}
       />
     </div>

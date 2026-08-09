@@ -2,6 +2,7 @@ import { CollectionType, MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 
 type UploadPageLevelLite = {
   id: string
@@ -13,6 +14,7 @@ type UploadPageCollectionLite = {
   name: string
   parentId?: string | null
   collectionType: CollectionType
+  acceptedMaterialTypes: MaterialType[]
   materialType: MaterialType
   sortOrder?: number
   language?: string
@@ -74,11 +76,20 @@ export async function getManageIndexData() {
   }
 }
 
-export async function getUploadPageSeedData(): Promise<{
+export async function getUploadPageSeedData({
+  includeLessons = true,
+  materialType,
+}: {
+  includeLessons?: boolean
+  materialType?: MaterialType
+} = {}): Promise<{
   dbLevels: UploadPageLevelLite[]
   dbCollections: UploadPageCollectionLite[]
 }> {
   const collections = await prisma.collection.findMany({
+    where: materialType
+      ? { acceptedMaterialTypes: { has: materialType } }
+      : undefined,
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -86,11 +97,12 @@ export async function getUploadPageSeedData(): Promise<{
       parentId: true,
       sortOrder: true,
       collectionType: true,
+      acceptedMaterialTypes: true,
       language: true,
       level: true,
       materials: {
         orderBy: { sortOrder: 'desc' },
-        take: 30,
+        take: includeLessons ? 30 : 0,
         select: {
           material: {
             select: {
@@ -111,19 +123,6 @@ export async function getUploadPageSeedData(): Promise<{
     { id: CollectionType.FAVORITES, title: '收藏夹 - 临时归类 / 精选内容' },
   ]
 
-  const collectionIds = collections.map(item => item.id)
-  const collectionMaterialTypes = await prisma.collectionMaterial.findMany({
-    where: { collectionId: { in: collectionIds } },
-    select: {
-      collectionId: true,
-      material: {
-        select: {
-          type: true,
-        },
-      },
-    },
-  })
-
   const priorityByType: Record<MaterialType, number> = {
     [MaterialType.LISTENING]: 4,
     [MaterialType.MEDIA_SUBTITLE]: 3,
@@ -136,16 +135,16 @@ export async function getUploadPageSeedData(): Promise<{
     string,
     Record<MaterialType, number>
   >()
-  for (const row of collectionMaterialTypes) {
-    const current = typeCountByCollection.get(row.collectionId) || {
+  for (const collection of collections) {
+    const current = {
       [MaterialType.LISTENING]: 0,
       [MaterialType.MEDIA_SUBTITLE]: 0,
       [MaterialType.READING]: 0,
       [MaterialType.VOCAB_GRAMMAR]: 0,
       [MaterialType.SPEAKING]: 0,
     }
-    current[row.material.type] += 1
-    typeCountByCollection.set(row.collectionId, current)
+    for (const row of collection.materials) current[row.material.type] += 1
+    typeCountByCollection.set(collection.id, current)
   }
   for (const [collectionId, countMap] of typeCountByCollection.entries()) {
     const ranked = (Object.keys(countMap) as MaterialType[]).sort((a, b) => {
@@ -161,11 +160,10 @@ export async function getUploadPageSeedData(): Promise<{
 
   const dbCollections: UploadPageCollectionLite[] = collections.map(collection => {
     const lessons = collection.materials.map(row => {
-      const payload =
-        row.material.contentPayload &&
-        typeof row.material.contentPayload === 'object'
-          ? (row.material.contentPayload as Record<string, unknown>)
-          : {}
+      const payload = decodeMaterialPayloadRecord(
+        row.material.type,
+        row.material.contentPayload,
+      )
 
       return {
         title: getMaterialDisplayTitle(
@@ -186,6 +184,7 @@ export async function getUploadPageSeedData(): Promise<{
       parentId: collection.parentId,
       sortOrder: collection.sortOrder,
       collectionType: collection.collectionType,
+      acceptedMaterialTypes: collection.acceptedMaterialTypes,
       materialType:
         dominantMaterialTypeByCollection.get(collection.id) ||
         MaterialType.LISTENING,

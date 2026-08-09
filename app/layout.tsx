@@ -1,4 +1,5 @@
 import '@/app/globals.css'
+import 'katex/dist/katex.min.css'
 
 import { I18nProvider } from '@/context/I18nContext'
 import { DialogProvider } from '@/context/DialogContext'
@@ -17,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang='zh' data-lang='zh' suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body className='flat-ui editorial-ui' suppressHydrationWarning>
         <I18nProvider>
           <DialogProvider>
             <StudyNavigation />

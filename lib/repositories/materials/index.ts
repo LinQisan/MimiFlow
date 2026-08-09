@@ -3,63 +3,31 @@ import { MaterialType } from '@prisma/client'
 import {
   getMaterialDisplayTitle,
   getReadingCardTitle,
+  isReadingTitleDerivedFromContent,
 } from './material-title'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
+import { prepareEbookChapters } from '@/lib/ebooks/chapter-display'
+import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
+import { readFiniteNumber, readString, readStringArray } from '@/lib/validation/schema'
+import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
 
 type JsonRecord = Record<string, unknown>
-
-const MATERIAL_PREFIX: Record<MaterialType, string> = {
-  [MaterialType.LISTENING]: 'lesson:',
-  [MaterialType.MEDIA_SUBTITLE]: 'media:',
-  [MaterialType.READING]: 'passage:',
-  [MaterialType.VOCAB_GRAMMAR]: 'quiz:',
-  [MaterialType.SPEAKING]: 'lesson:',
-}
-
-function asRecord(value: unknown): JsonRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonRecord
-  }
-  return {}
-}
 
 function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
 }
 
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
-}
-
-function asNumber(value: unknown, fallback = 0): number {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : fallback
-}
-
-function asStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return []
-  return value.filter(item => typeof item === 'string') as string[]
-}
-
 function asChapterArray(value: unknown) {
   return asArray<JsonRecord>(value)
     .map((item, index) => ({
-      id: asString(item.id) || `chapter-${index + 1}`,
-      title: asString(item.title) || `第 ${index + 1} 页`,
-      text: asString(item.text) || '',
-      href: asString(item.href) || '',
+      id: readString(item.id) || `chapter-${index + 1}`,
+      title: readString(item.title) || `第 ${index + 1} 页`,
+      text: readString(item.text) || '',
+      href: readString(item.href) || '',
     }))
     .filter(item => item.text.trim())
-}
-
-export function toMaterialId(type: MaterialType, legacyId: string): string {
-  return `${MATERIAL_PREFIX[type]}${legacyId}`
-}
-
-export function toLegacyMaterialId(materialId: string): string {
-  const index = materialId.indexOf(':')
-  return index >= 0 ? materialId.slice(index + 1) : materialId
 }
 
 function toAnswerIds(answer: unknown): string[] {
@@ -76,10 +44,10 @@ export function normalizeQuestionOptions(
 ): Array<{ id: string; text: string; isCorrect: boolean }> {
   const answerIds = new Set(toAnswerIds(answer))
   return asArray<JsonRecord>(options).map(item => {
-    const id = asString(item.id) || ''
+    const id = readString(item.id) || ''
     return {
       id,
-      text: asString(item.text) || '',
+      text: readString(item.text) || '',
       isCorrect: answerIds.has(id),
     }
   })
@@ -92,26 +60,25 @@ export function normalizeQuestionContext(
   return context || prompt || ''
 }
 
-const buildMaterialLookupIds = (type: MaterialType, id: string) => {
-  const trimmedId = id.trim()
-  const legacyId = toLegacyMaterialId(trimmedId)
-  return Array.from(
-    new Set(
-      [trimmedId, legacyId, toMaterialId(type, legacyId)]
-        .map(item => item.trim())
-        .filter(Boolean),
-    ),
-  )
-}
-
-export function materialDialogueItems(contentPayload: unknown) {
-  return asArray<JsonRecord>(asRecord(contentPayload).dialogues).map(
+export function materialDialogueItems(
+  type: MaterialType,
+  contentPayload: unknown,
+) {
+  const payload =
+    type === MaterialType.LISTENING
+      ? decodeMaterialPayload(MaterialType.LISTENING, contentPayload)
+      : type === MaterialType.SPEAKING
+        ? decodeMaterialPayload(MaterialType.SPEAKING, contentPayload)
+        : type === MaterialType.MEDIA_SUBTITLE
+          ? decodeMaterialPayload(MaterialType.MEDIA_SUBTITLE, contentPayload)
+          : null
+  return (payload?.dialogues ?? []).map(
     (item, index) => ({
-      id: asNumber(item.id, index + 1),
-      text: asString(item.text) || '',
-      start: asNumber(item.start),
-      end: asNumber(item.end),
-      sequenceId: asNumber(item.sequenceId, index + 1),
+      id: readFiniteNumber(item.id, index + 1),
+      text: readString(item.text) || '',
+      start: readFiniteNumber(item.start),
+      end: readFiniteNumber(item.end),
+      sequenceId: readFiniteNumber(item.sequenceId, index + 1),
     }),
   )
 }
@@ -157,12 +124,9 @@ const buildVocabularyMetaMapForText = async (text: string, sourceIds: string[]) 
   )
 }
 
-export async function getArticleByLegacyId(legacyId: string) {
+export async function getArticleById(id: string) {
   const material = await prisma.material.findFirst({
-    where: {
-      type: MaterialType.READING,
-      id: { in: buildMaterialLookupIds(MaterialType.READING, legacyId) },
-    },
+    where: { type: MaterialType.READING, id },
     include: {
       collectionMaterials: {
         take: 1,
@@ -171,6 +135,7 @@ export async function getArticleByLegacyId(legacyId: string) {
             select: {
               id: true,
               title: true,
+              collectionType: true,
             },
           },
         },
@@ -195,39 +160,39 @@ export async function getArticleByLegacyId(legacyId: string) {
 
   if (!material) return null
 
-  const payload = asRecord(material.contentPayload)
+  const payload = decodeMaterialPayload(MaterialType.READING, material.contentPayload)
   const category = material.collectionMaterials[0]?.collection
-  const legacyMaterialId = toLegacyMaterialId(material.id)
-  const materialText = asString(payload.text) || asString(payload.transcript) || ''
+  const materialText = readString(payload.text) || readString(payload.transcript) || ''
+  const displayTitle = getMaterialDisplayTitle(
+    material.type,
+    material.title,
+    material.contentPayload,
+    id,
+  )
+  const hasAuthenticTitle = !(
+    category?.collectionType === 'PAPER' &&
+    isReadingTitleDerivedFromContent(displayTitle, materialText)
+  )
   const vocabularyMetaMap = await buildVocabularyMetaMapForText(
     materialText,
-    [legacyMaterialId, material.id],
+    [material.id],
   )
 
   return {
-    id: legacyId,
+    id: material.id,
     materialId: material.id,
-    title: getMaterialDisplayTitle(
-      material.type,
-      material.title,
-      material.contentPayload,
-      legacyId,
-    ),
-    shortTitle: getReadingCardTitle(
-      getMaterialDisplayTitle(
-        material.type,
-        material.title,
-        material.contentPayload,
-        legacyId,
-      ),
-    ),
+    title: displayTitle,
+    shortTitle: getReadingCardTitle(displayTitle),
+    hasAuthenticTitle,
     content: materialText,
-    sourceKind: asString(payload.sourceKind),
-    author: asString(payload.author),
-    description: asString(payload.description),
+    sourceKind: readString(payload.sourceKind),
+    author: readString(payload.author),
+    description: readString(payload.description),
     chapters: asChapterArray(payload.chapters),
     vocabularyMetaMap,
-    category: category ? { name: category.title } : null,
+    category: category
+      ? { name: category.title, collectionType: category.collectionType }
+      : null,
     progress: material.studyProgresses[0]
       ? {
           percent: material.studyProgresses[0].progressPercent,
@@ -268,6 +233,7 @@ export async function listReadingMaterials() {
             select: {
               id: true,
               title: true,
+              collectionType: true,
             },
           },
         },
@@ -286,29 +252,33 @@ export async function listReadingMaterials() {
   })
 
   return rows.map(material => {
-    const payload = asRecord(material.contentPayload)
+    const payload = decodeMaterialPayload(material.type, material.contentPayload)
     const category = material.collectionMaterials[0]?.collection
+    const content = readString(payload.text) || readString(payload.transcript) || ''
+    const displayTitle = getMaterialDisplayTitle(
+      material.type,
+      material.title,
+      material.contentPayload,
+      material.id,
+    )
+    const hasAuthenticTitle = !(
+      category?.collectionType === 'PAPER' &&
+      isReadingTitleDerivedFromContent(displayTitle, content)
+    )
+    const chapters = asChapterArray(payload.chapters)
     return {
-      id: toLegacyMaterialId(material.id),
-      title: getMaterialDisplayTitle(
-        material.type,
-        material.title,
-        material.contentPayload,
-        toLegacyMaterialId(material.id),
-      ),
-      shortTitle: getReadingCardTitle(
-        getMaterialDisplayTitle(
-          material.type,
-          material.title,
-          material.contentPayload,
-          toLegacyMaterialId(material.id),
-        ),
-      ),
-      description: asString(payload.description),
-      content: asString(payload.text) || asString(payload.transcript) || '',
-      sourceKind: asString(payload.sourceKind),
-      author: asString(payload.author),
-      chapterCount: asChapterArray(payload.chapters).length,
+      id: material.id,
+      title: displayTitle,
+      shortTitle: getReadingCardTitle(displayTitle),
+      hasAuthenticTitle,
+      description: readString(payload.description),
+      content,
+      sourceKind: readString(payload.sourceKind),
+      author: readString(payload.author),
+      chapterCount:
+        isEbookSourceKind(readString(payload.sourceKind))
+          ? prepareEbookChapters(chapters, displayTitle).length
+          : chapters.length,
       progress: material.studyProgresses[0]
         ? {
             percent: material.studyProgresses[0].progressPercent,
@@ -328,9 +298,9 @@ export async function listReadingMaterials() {
   })
 }
 
-export async function getLessonByLegacyId(legacyId: string) {
+export async function getLessonById(id: string) {
   const material = await prisma.material.findUnique({
-    where: { id: toMaterialId(MaterialType.LISTENING, legacyId) },
+    where: { id },
     include: {
       collectionMaterials: {
         take: 1,
@@ -358,30 +328,30 @@ export async function getLessonByLegacyId(legacyId: string) {
 
   if (!material) return null
 
-  const payload = asRecord(material.contentPayload)
+  const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
   const collection = material.collectionMaterials[0]?.collection
   const siblings =
     collection?.materials
       .map(item => item.material)
       .filter(item => item.type === MaterialType.LISTENING)
       .map(item => ({
-        id: toLegacyMaterialId(item.id),
+        id: item.id,
         title: item.title,
       })) || []
 
-  const currentIndex = siblings.findIndex(item => item.id === legacyId)
+  const currentIndex = siblings.findIndex(item => item.id === id)
 
   return {
-    id: legacyId,
+    id: material.id,
     materialId: material.id,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
       material.contentPayload,
-      legacyId,
+      material.id,
     ),
-    audioFile: asString(payload.audioFile) || asString(payload.audioUrl) || '',
-    dialogues: materialDialogueItems(material.contentPayload),
+    audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
+    dialogues: materialDialogueItems(MaterialType.LISTENING, material.contentPayload),
     paper: collection
       ? {
           id: collection.id,
@@ -405,24 +375,9 @@ export async function getLessonByLegacyId(legacyId: string) {
   }
 }
 
-export async function getSpeakingByLegacyId(legacyId: string) {
-  const trimmedId = legacyId.trim()
-  const normalizedLegacyId = trimmedId.includes(':')
-    ? trimmedId.slice(trimmedId.lastIndexOf(':') + 1)
-    : trimmedId
-  const prefixedId = toMaterialId(MaterialType.LISTENING, normalizedLegacyId)
-  const candidateIds = Array.from(
-    new Set([trimmedId, normalizedLegacyId, prefixedId].filter(Boolean)),
-  )
-
+export async function getSpeakingById(id: string) {
   const material = await prisma.material.findFirst({
-    where: {
-      type: MaterialType.SPEAKING,
-      OR: [
-        { id: { in: candidateIds } },
-        { id: { endsWith: `:${normalizedLegacyId}` } },
-      ],
-    },
+    where: { type: MaterialType.SPEAKING, id },
     select: {
       id: true,
       type: true,
@@ -446,8 +401,7 @@ export async function getSpeakingByLegacyId(legacyId: string) {
 
   if (!material) return null
 
-  const payload = asRecord(material.contentPayload)
-  const resolvedLegacyId = toLegacyMaterialId(material.id)
+  const payload = decodeMaterialPayload(MaterialType.SPEAKING, material.contentPayload)
   const collectionId = material.collectionMaterials[0]?.collectionId || null
   const collection = material.collectionMaterials[0]?.collection || null
 
@@ -472,31 +426,30 @@ export async function getSpeakingByLegacyId(legacyId: string) {
     : []
 
   const siblings = siblingRows.map(row => {
-    const siblingLegacyId = toLegacyMaterialId(row.material.id)
     return {
-      id: siblingLegacyId,
+      id: row.material.id,
       title: getMaterialDisplayTitle(
         row.material.type,
         row.material.title,
         row.material.contentPayload,
-        siblingLegacyId,
+        row.material.id,
       ),
     }
   })
 
-  const currentIndex = siblings.findIndex(item => item.id === resolvedLegacyId)
+  const currentIndex = siblings.findIndex(item => item.id === material.id)
 
   return {
-    id: resolvedLegacyId,
+    id: material.id,
     materialId: material.id,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
       material.contentPayload,
-      resolvedLegacyId,
+      material.id,
     ),
-    audioFile: asString(payload.audioFile) || asString(payload.audioUrl) || '',
-    dialogues: materialDialogueItems(material.contentPayload),
+    audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
+    dialogues: materialDialogueItems(MaterialType.SPEAKING, material.contentPayload),
     paper: collection
       ? {
           id: collection.id || 'default',
@@ -527,6 +480,7 @@ export async function getTopMaterialSnapshots() {
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
+        type: true,
         title: true,
         contentPayload: true,
       },
@@ -553,39 +507,45 @@ export async function getTopMaterialSnapshots() {
   return {
     topLesson: topLesson
       ? {
-          id: toLegacyMaterialId(topLesson.id),
+          id: topLesson.id,
           title: getMaterialDisplayTitle(
             MaterialType.LISTENING,
             topLesson.title,
             topLesson.contentPayload,
-            toLegacyMaterialId(topLesson.id),
+            topLesson.id,
           ),
-          _count: { dialogues: materialDialogueItems(topLesson.contentPayload).length },
+          _count: {
+            dialogues: materialDialogueItems(
+              topLesson.type,
+              topLesson.contentPayload,
+            ).length,
+          },
         }
       : null,
     topArticle: topArticle
       ? {
-          id: toLegacyMaterialId(topArticle.id),
+          id: topArticle.id,
           title: getMaterialDisplayTitle(
             MaterialType.READING,
             topArticle.title,
             topArticle.contentPayload,
-            toLegacyMaterialId(topArticle.id),
+            topArticle.id,
           ),
           content:
-            asString(asRecord(topArticle.contentPayload).text) ||
-            asString(asRecord(topArticle.contentPayload).transcript) ||
-            '',
+            decodeMaterialPayload(
+              MaterialType.READING,
+              topArticle.contentPayload,
+            ).text,
         }
       : null,
     topQuiz: topQuiz
       ? {
-          id: toLegacyMaterialId(topQuiz.id),
+          id: topQuiz.id,
           title: getMaterialDisplayTitle(
             MaterialType.VOCAB_GRAMMAR,
             topQuiz.title,
             null,
-            toLegacyMaterialId(topQuiz.id),
+            topQuiz.id,
           ),
         }
       : null,
@@ -605,16 +565,19 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
             select: {
               id: true,
               title: true,
+              language: true,
               collectionType: true,
               parent: {
                 select: {
                   id: true,
                   title: true,
+                  language: true,
                   collectionType: true,
                   parent: {
                     select: {
                       id: true,
                       title: true,
+                      language: true,
                       collectionType: true,
                     },
                   },
@@ -624,16 +587,17 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
           },
         },
       },
-      _count: {
-        select: { questions: true },
+      questions: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { content: true },
       },
     },
   })
 
   return rows.map(material => {
-    const payload = asRecord(material.contentPayload)
+    const payload = decodeMaterialPayload(material.type, material.contentPayload)
     const collection = material.collectionMaterials[0]?.collection || null
-    const tags = asStringArray(payload.tags)
+    const tags = readStringArray(payload.tags)
     const parent = collection?.parent || null
     const grandParent = parent?.parent || null
 
@@ -653,6 +617,34 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
           : null
     const chapterCollection =
       collection?.collectionType === 'CHAPTER' ? collection : null
+    const paperCollection =
+      collection?.collectionType === 'PAPER' ? collection : null
+
+    const listeningSectionNumbers = material.questions
+      .map(question => {
+        const content = decodeQuestionContent(question.content)
+        const raw =
+          content.listeningSectionNumber ??
+          content.sectionNumber ??
+          content.partNumber ??
+          content.jlptPartNumber
+        const parsed = Number(raw)
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+      })
+      .filter((value): value is number => value !== null)
+    const rawMaterialSectionNumber =
+      payload.listeningSectionNumber ??
+      payload.sectionNumber ??
+      payload.partNumber ??
+      payload.jlptPartNumber
+    const parsedMaterialSectionNumber = Number(rawMaterialSectionNumber)
+    const materialSectionNumber =
+      Number.isInteger(parsedMaterialSectionNumber) && parsedMaterialSectionNumber > 0
+        ? parsedMaterialSectionNumber
+        : null
+    const listeningSectionNumber =
+      listeningSectionNumbers[0] || materialSectionNumber || null
+    const isExamMaterial = Boolean(paperCollection)
 
     const hierarchyPath = [
       rootCollection?.title,
@@ -661,7 +653,7 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
     ].filter(Boolean) as string[]
 
     return {
-      id: toLegacyMaterialId(material.id),
+      id: material.id,
       materialId: material.id,
       materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
       chapterName: (material.chapterName || '').trim(),
@@ -669,18 +661,36 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
         material.type,
         material.title,
         material.contentPayload,
-        toLegacyMaterialId(material.id),
+        material.id,
       ),
-      audioFile: asString(payload.audioFile) || asString(payload.audioUrl) || '',
-      description: asString(payload.description) || '',
-      transcript: asString(payload.transcript) || '',
-      source: asString(payload.source) || '',
-      language: asString(payload.language) || '',
-      difficulty: asString(payload.difficulty) || '',
+      audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
+      description: readString(payload.description) || '',
+      transcript: readString(payload.transcript) || '',
+      source: readString(payload.source) || '',
+      language:
+        readString(payload.language) ||
+        collection?.language?.trim() ||
+        parent?.language?.trim() ||
+        grandParent?.language?.trim() ||
+        '',
+      difficulty: readString(payload.difficulty) || '',
       tags,
       tagsText: tags.join(', '),
-      dialogueCount: materialDialogueItems(material.contentPayload).length,
-      questionCount: material._count.questions,
+      dialogueCount: materialDialogueItems(
+        material.type,
+        material.contentPayload,
+      ).length,
+      questionCount: material.questions.length,
+      listeningSectionNumber,
+      needsQuestion:
+        material.type === MaterialType.LISTENING && material.questions.length === 0,
+      needsSection:
+        material.type === MaterialType.LISTENING &&
+        material.questions.length > 0 &&
+        listeningSectionNumbers.length !== material.questions.length,
+      collectionId: collection?.id || null,
+      collectionType: collection?.collectionType || null,
+      isExamMaterial,
       rootId: rootCollection?.id || null,
       bookId: bookCollection?.id || null,
       chapterId: chapterCollection?.id || null,
@@ -689,7 +699,7 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
         hierarchyPath.length > 0
           ? hierarchyPath.join(' / ')
           : collection?.title || '未归类',
-      isClassified: Boolean(chapterCollection?.id),
+      isClassified: Boolean(paperCollection?.id || chapterCollection?.id),
       collection: collection
         ? {
             id: collection.id,
@@ -709,9 +719,9 @@ export async function listListeningLessonsForShadowing() {
   return listMaterialsForShadowingByType(MaterialType.LISTENING)
 }
 
-export async function getListeningMaterialEditorByLegacyId(legacyId: string) {
+export async function getListeningMaterialEditorById(id: string) {
   const material = await prisma.material.findFirst({
-    where: { id: { endsWith: `:${legacyId}` }, type: 'SPEAKING' as MaterialType },
+    where: { id, type: MaterialType.SPEAKING },
     include: {
       collectionMaterials: {
         take: 1,
@@ -732,12 +742,12 @@ export async function getListeningMaterialEditorByLegacyId(legacyId: string) {
     },
   })
   if (!material) return null
-  const payload = asRecord(material.contentPayload)
+  const payload = decodeMaterialPayload(material.type, material.contentPayload)
   const collection = material.collectionMaterials[0]?.collection || null
-  const tags = asStringArray(payload.tags)
+  const tags = readStringArray(payload.tags)
 
   return {
-    id: toLegacyMaterialId(material.id),
+    id: material.id,
     materialId: material.id,
     materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
     chapterName: (material.chapterName || '').trim(),
@@ -746,17 +756,20 @@ export async function getListeningMaterialEditorByLegacyId(legacyId: string) {
       material.type,
       material.title,
       material.contentPayload,
-      toLegacyMaterialId(material.id),
+      material.id,
     ),
-    audioFile: asString(payload.audioFile) || asString(payload.audioUrl) || '',
-    description: asString(payload.description) || '',
-    transcript: asString(payload.transcript) || '',
-    source: asString(payload.source) || '',
-    language: asString(payload.language) || '',
-    difficulty: asString(payload.difficulty) || '',
+    audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
+    description: readString(payload.description) || '',
+    transcript: readString(payload.transcript) || '',
+    source: readString(payload.source) || '',
+    language: readString(payload.language) || '',
+    difficulty: readString(payload.difficulty) || '',
     tags,
     tagsText: tags.join(', '),
-    dialogueCount: materialDialogueItems(material.contentPayload).length,
+    dialogueCount: materialDialogueItems(
+      material.type,
+      material.contentPayload,
+    ).length,
     questionCount: material._count.questions,
     collection: collection
       ? {

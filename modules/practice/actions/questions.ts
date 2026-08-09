@@ -2,8 +2,11 @@
 
 import { MaterialType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 
 import prisma from '@/lib/prisma'
+import { executeAction } from '@/lib/actions/result'
+import { parseInput } from '@/lib/validation/schema'
 import {
   recordQuizAttempts,
   type QuizAttemptInput,
@@ -12,33 +15,21 @@ import {
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'
 
-const resolveMaterialIdByLegacy = async (
+const resolveMaterialId = async (
   type: MaterialType,
-  maybeLegacyId: string,
+  id: string,
 ) => {
   const direct = await prisma.material.findUnique({
-    where: { id: maybeLegacyId },
+    where: { id },
     select: { id: true, type: true },
   })
   if (direct && direct.type === type) return direct.id
-  const prefix =
-    type === MaterialType.READING
-      ? 'passage'
-      : type === MaterialType.VOCAB_GRAMMAR
-        ? 'quiz'
-        : type === MaterialType.LISTENING
-          ? 'lesson'
-          : 'media'
-  const legacy = await prisma.material.findUnique({
-    where: { id: `${prefix}:${maybeLegacyId}` },
-    select: { id: true, type: true },
-  })
-  return legacy?.type === type ? legacy.id : null
+  return null
 }
 
 export async function deleteArticle(passageId: string) {
   try {
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.READING,
       passageId.trim(),
     )
@@ -115,7 +106,7 @@ export async function updateQuestionNote(questionId: string, note: string) {
 
 export async function deleteQuiz(quizId: string) {
   try {
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.VOCAB_GRAMMAR,
       quizId.trim(),
     )
@@ -146,24 +137,37 @@ export type SortableModel =
   | 'Question'
   | 'Level'
 
+const sortOrderInputSchema = z.object({
+  model: z.enum(['Papers', 'Lesson', 'Passage', 'Quiz', 'Question', 'Level']),
+  orderedIds: z.array(z.string().trim().min(1)).max(1000),
+})
+
 export async function updateSortOrder(
   model: SortableModel,
   orderedIds: string[],
 ) {
-  try {
-    const updatePromises = orderedIds.map((id, index) => {
-      if (model === 'Question') {
+  return executeAction(
+    async () => {
+      const input = parseInput(sortOrderInputSchema, { model, orderedIds })
+      const updatePromises = input.orderedIds.map((id, index) => {
+        if (input.model === 'Question') {
         return prisma.question.update({
           where: { id },
           data: { sortOrder: index },
         })
       }
-      if (model === 'Lesson' || model === 'Passage' || model === 'Quiz') {
+        if (
+          input.model === 'Lesson' ||
+          input.model === 'Passage' ||
+          input.model === 'Quiz'
+        ) {
         return prisma.collectionMaterial.updateMany({
           where: {
             OR: [
               { materialId: id },
-              { materialId: `${model === 'Lesson' ? 'lesson' : model === 'Passage' ? 'passage' : 'quiz'}:${id}` },
+              {
+                materialId: `${input.model === 'Lesson' ? 'lesson' : input.model === 'Passage' ? 'passage' : 'quiz'}:${id}`,
+              },
             ],
           },
           data: { sortOrder: index },
@@ -173,20 +177,19 @@ export async function updateSortOrder(
         where: { materialId: id },
         data: { sortOrder: index },
       })
-    })
+      })
 
-    await prisma.$transaction(updatePromises)
+      await prisma.$transaction(updatePromises)
 
     // Keep manage/public pages in sync after drag-sort persistence.
-    revalidatePath('/')
-    revalidatePath('/manage/import')
-    revalidatePath('/listening/[id]', 'page')
-    revalidatePath('/reading')
-    revalidatePath('/practice')
+      revalidatePath('/')
+      revalidatePath('/manage/import')
+      revalidatePath('/listening/[id]', 'page')
+      revalidatePath('/reading')
+      revalidatePath('/practice')
 
-    return { success: true }
-  } catch (error) {
-    console.error(`更新 ${model} 排序失败:`, error)
-    return { success: false, error: '排序更新失败' }
-  }
+      return {}
+    },
+    { fallbackMessage: `更新 ${model} 排序失败。` },
+  )
 }
