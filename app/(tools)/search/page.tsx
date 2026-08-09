@@ -7,7 +7,7 @@ import {
   searchGlobalContent,
   type GlobalSearchResult,
   type GlobalSearchType,
-} from '@/app/actions/globalSearch'
+} from '@/features/search/actions'
 
 const SEARCH_TYPES: Array<{
   key: GlobalSearchType
@@ -203,25 +203,10 @@ export default function SearchPage() {
   }, [])
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-10'>
-      <div className='mx-auto max-w-6xl'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl'>
         <section className='overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm'>
           <div className='p-5 md:p-8'>
-            <div className='flex flex-wrap items-end justify-between gap-3'>
-              <div>
-                <p className='text-xs font-black tracking-[0.18em] text-slate-400 uppercase'>Search</p>
-                <h1 className='mt-1 text-3xl font-black tracking-tight text-slate-950 md:text-4xl'>
-                  搜索学习内容
-                </h1>
-                <p className='mt-2 text-sm leading-6 text-slate-500'>
-                  搜索日文、中文释义、题目或来源，并直接进入对应学习页面。
-                </p>
-              </div>
-              <span className='hidden rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 font-mono text-xs text-slate-400 md:inline'>
-                / 聚焦搜索
-              </span>
-            </div>
-
             <form
               role='search'
               className='mt-5 flex flex-col gap-2 sm:flex-row'

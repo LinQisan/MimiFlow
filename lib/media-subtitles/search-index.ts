@@ -1,10 +1,10 @@
 import { Prisma, PrismaClient } from '@prisma/client'
 import {
-  asFiniteNumber,
-  asRecord,
-  asString,
-  type UnknownRecord,
-} from '@/utils/validation/unknown'
+  readFiniteNumber,
+  readJsonRecord,
+  readString,
+} from '@/lib/validation/schema'
+import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 
 type MediaSubtitleMaterialSnapshot = {
   id: string
@@ -27,29 +27,29 @@ export function normalizeMediaSubtitleSearchText(value: string) {
 export function buildMediaSubtitleSearchIndexRows(
   material: MediaSubtitleMaterialSnapshot,
 ) {
-  const payload = asRecord(material.contentPayload)
+  const payload = decodeMaterialPayload('MEDIA_SUBTITLE', material.contentPayload)
   const rawDialogues = Array.isArray(payload.dialogues)
-    ? (payload.dialogues as UnknownRecord[])
+    ? payload.dialogues
     : []
   const materialTitle = material.title.trim()
-  const workTitle = asString(payload.subtitleWorkTitle).trim()
-  const season = asString(payload.subtitleSeason).trim()
-  const episode = asString(payload.subtitleEpisode).trim()
+  const workTitle = readString(payload.subtitleWorkTitle).trim()
+  const season = readString(payload.subtitleSeason).trim()
+  const episode = readString(payload.subtitleEpisode).trim()
   const subtitleSourceType =
-    asString(payload.subtitleSourceType).trim() === 'TV' ? 'TV' : 'MOVIE'
+    readString(payload.subtitleSourceType).trim() === 'TV' ? 'TV' : 'MOVIE'
   const subtitleTypeLabel = subtitleSourceType === 'TV' ? '电视剧' : '电影'
 
   return rawDialogues
     .map((rawDialogue, index) => {
-      const dialogue = asRecord(rawDialogue)
-      const text = asString(dialogue.text).trim()
-      const stableId = asString(dialogue.stableId).trim()
+      const dialogue = readJsonRecord(rawDialogue)
+      const text = readString(dialogue.text).trim()
+      const stableId = readString(dialogue.stableId).trim()
       if (!text || !stableId) return null
 
-      const note = asString(dialogue.note).trim()
+      const note = readString(dialogue.note).trim()
       const sequenceId = Math.max(
         1,
-        asFiniteNumber(dialogue.id, index + 1),
+        readFiniteNumber(dialogue.id, index + 1),
       )
       const searchText = normalizeMediaSubtitleSearchText(
         [
@@ -75,8 +75,8 @@ export function buildMediaSubtitleSearchIndexRows(
         normalizedText: normalizeMediaSubtitleSearchText(text),
         searchText,
         note: note || null,
-        start: Number(asFiniteNumber(dialogue.start, 0).toFixed(2)),
-        end: Number(asFiniteNumber(dialogue.end, 0).toFixed(2)),
+        start: Number(readFiniteNumber(dialogue.start, 0).toFixed(2)),
+        end: Number(readFiniteNumber(dialogue.end, 0).toFixed(2)),
         materialTitle,
         workTitle: workTitle || null,
         season: season || null,

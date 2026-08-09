@@ -8,6 +8,9 @@ import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
+import { readJsonRecord, readString } from '@/lib/validation/schema'
 
 export type ExamHubPaperSummary = {
   id: string
@@ -73,19 +76,8 @@ function shuffleList<T>(list: T[]): T[] {
   return copied
 }
 
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
-}
-
 function asArray<T = unknown>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function toAnswerIds(answer: unknown): string[] {
@@ -280,16 +272,16 @@ function buildQuestionView(
   },
   fallbackOrder: number,
 ) {
-  const content = asRecord(row.content)
-  const payload = asRecord(material.contentPayload)
+  const content = decodeQuestionContent(row.content)
+  const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
   const questionType = row.questionType
   const answerIds = new Set(toAnswerIds(row.answer))
 
   const options = asArray<Record<string, unknown>>(row.options).map(item => {
-    const id = asString(item.id) || ''
+    const id = readString(item.id) || ''
     return {
       id,
-      text: asString(item.text) || '',
+      text: readString(item.text) || '',
       isCorrect: answerIds.has(id),
     }
   })
@@ -303,9 +295,9 @@ function buildQuestionView(
     questionType,
     prompt: normalizeQuestionDisplayText(row.prompt),
     contextSentence: normalizeQuestionDisplayText(row.context),
-    targetWord: asString(content.targetWord),
+    targetWord: readString(content.targetWord),
     options: orderedOptions,
-    optionLabelFormat: asString(content.optionLabelFormat)
+    optionLabelFormat: readString(content.optionLabelFormat)
       ? normalizeOptionLabelFormat(content.optionLabelFormat)
       : null,
     customOptionLabels: parseCustomOptionLabels(content.customOptionLabels),
@@ -317,7 +309,7 @@ function buildQuestionView(
       passageId: material.id,
       passage: {
         id: material.id,
-        content: asString(payload.text) || asString(payload.transcript) || '',
+        content: readString(payload.text) || readString(payload.transcript) || '',
       },
     }
   }
@@ -327,12 +319,12 @@ function buildQuestionView(
     const section = resolveListeningSection({
       content,
       payload,
-      metadata: asRecord(material.metadata),
+      metadata: readJsonRecord(material.metadata),
       chapterName: material.chapterName,
     })
     const dialogues = rawDialogues.map((item, index) => ({
       id: Number(item.id ?? index + 1),
-      text: asString(item.text) || '',
+      text: readString(item.text) || '',
       start: Number(item.start ?? 0),
       end: Number(item.end ?? 0),
       sequenceId: Number(item.sequenceId ?? index + 1),
@@ -343,7 +335,7 @@ function buildQuestionView(
       lessonId: material.id,
       lesson: {
         id: material.id,
-        audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+        audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
         sectionKey: section.key,
         sectionTitle: section.title,
         sectionNumber: section.partNumber,
@@ -442,8 +434,11 @@ export async function findLevelsWithPapersAndCounts(): Promise<
       )
       const listeningSectionKeys = new Set<string>()
       for (const material of lessonMaterials) {
-        const payload = asRecord(material.contentPayload)
-        const metadata = asRecord(material.metadata)
+        const payload = decodeMaterialPayloadRecord(
+          material.type,
+          material.contentPayload,
+        )
+        const metadata = readJsonRecord(material.metadata)
         if (material.questions.length === 0) {
           const section = resolveListeningSection({
             content: {},
@@ -456,7 +451,7 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         }
         for (const question of material.questions) {
           const section = resolveListeningSection({
-            content: asRecord(question.content),
+            content: decodeQuestionContent(question.content),
             payload,
             metadata,
             chapterName: material.chapterName,
@@ -486,13 +481,16 @@ export async function findLevelsWithPapersAndCounts(): Promise<
               }
             >
           >((acc, material) => {
-            const payload = asRecord(material.contentPayload)
-            const metadata = asRecord(material.metadata)
+            const payload = decodeMaterialPayloadRecord(
+              material.type,
+              material.contentPayload,
+            )
+            const metadata = readJsonRecord(material.metadata)
             const questionRows =
               material.questions.length > 0 ? material.questions : [{ content: {} }]
             for (const question of questionRows) {
               const section = resolveListeningSection({
-                content: asRecord(question.content),
+                content: decodeQuestionContent(question.content),
                 payload,
                 metadata,
                 chapterName: material.chapterName,
@@ -672,7 +670,10 @@ export async function findPaperDetailById(id: string) {
     .map(item => item.material)
     .filter(material => material.type === MaterialType.VOCAB_GRAMMAR)
     .map(material => {
-      const contentPayload = asRecord(material.contentPayload)
+      const contentPayload = decodeMaterialPayloadRecord(
+        material.type,
+        material.contentPayload,
+      )
       return {
         id: material.id,
         materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
@@ -682,9 +683,9 @@ export async function findPaperDetailById(id: string) {
           material.contentPayload,
           material.id,
         ),
-        description: asString(contentPayload.description),
+        description: readString(contentPayload.description),
         questions: material.questions.map((question, index) => {
-          const content = asRecord(question.content)
+          const content = decodeQuestionContent(question.content)
           return {
             id: question.id,
             questionType: question.questionType,
@@ -700,8 +701,8 @@ export async function findPaperDetailById(id: string) {
     .map(item => item.material)
     .filter(material => material.type === MaterialType.LISTENING)
     .map(material => {
-      const payload = asRecord(material.contentPayload)
-      const metadata = asRecord(material.metadata)
+      const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
+      const metadata = readJsonRecord(material.metadata)
       return {
         id: material.id,
         materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
@@ -711,9 +712,9 @@ export async function findPaperDetailById(id: string) {
           material.contentPayload,
           material.id,
         ),
-        audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+        audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
         questions: material.questions.map((question, index) => {
-          const content = asRecord(question.content)
+          const content = decodeQuestionContent(question.content)
           const section = resolveListeningSection({
             content,
             payload,
@@ -738,7 +739,7 @@ export async function findPaperDetailById(id: string) {
     .map(item => item.material)
     .filter(material => material.type === MaterialType.READING)
     .map(material => {
-      const payload = asRecord(material.contentPayload)
+      const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
       return {
         id: material.id,
         materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
@@ -748,7 +749,7 @@ export async function findPaperDetailById(id: string) {
           material.contentPayload,
           material.id,
         ),
-        content: asString(payload.text) || asString(payload.transcript) || '',
+        content: readString(payload.text) || readString(payload.transcript) || '',
         questions: material.questions.map(question => ({
           id: question.id,
           questionType: question.questionType,
@@ -807,8 +808,8 @@ export async function getManagePaperEditData(paperId: string) {
 
   const materials = collection.materials.map(relation => {
     const material = relation.material
-    const payload = asRecord(material.contentPayload)
-    const metadata = asRecord(material.metadata)
+    const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
+    const metadata = readJsonRecord(material.metadata)
     const materialListeningSection =
       material.type === MaterialType.LISTENING
         ? resolveListeningSection({
@@ -835,7 +836,7 @@ export async function getManagePaperEditData(paperId: string) {
         ? String(materialListeningSection.partNumber)
         : '',
       questions: material.questions.map((row, index) => {
-        const content = asRecord(row.content)
+        const content = decodeQuestionContent(row.content)
         const answerIds = new Set(toAnswerIds(row.answer))
         const listeningSection =
           material.type === MaterialType.LISTENING
@@ -848,10 +849,10 @@ export async function getManagePaperEditData(paperId: string) {
             : null
         const options = asArray<Record<string, unknown>>(row.options).map(
           (item, optionIndex) => {
-            const id = asString(item.id) || `opt_${optionIndex + 1}`
+            const id = readString(item.id) || `opt_${optionIndex + 1}`
             return {
               id,
-              text: asString(item.text) || '',
+              text: readString(item.text) || '',
               isCorrect: answerIds.has(id),
             }
           },
@@ -861,8 +862,8 @@ export async function getManagePaperEditData(paperId: string) {
           id: row.id,
           questionType: row.questionType,
           prompt: row.prompt || '',
-          contextSentence: row.context || asString(content.contextSentence) || '',
-          explanation: row.analysis || asString(content.explanation) || '',
+          contextSentence: row.context || row.prompt || '',
+          explanation: row.analysis || '',
           listeningSectionTitle: listeningSection?.title || '',
           listeningSectionKey: listeningSection?.key || '',
           listeningSectionNumber: listeningSection?.partNumber

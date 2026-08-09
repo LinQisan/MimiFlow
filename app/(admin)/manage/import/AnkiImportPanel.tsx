@@ -5,7 +5,7 @@ import {
   previewAnkiImport,
   runAnkiImport,
   syncWordbookSources,
-} from '@/app/actions/ankiImporter'
+} from '@/features/import/anki-actions'
 import { listWordbooksTree } from '@/modules/knowledge/wordbooks/actions'
 import { useDialog } from '@/context/DialogContext'
 import CustomSelect from '@/components/ui/CustomSelect'

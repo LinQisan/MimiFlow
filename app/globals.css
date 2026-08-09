@@ -610,6 +610,20 @@ html.dark .ui-tag-warn {
   --tw-ring-color: rgba(15, 23, 42, 0.14);
 }
 
+.manage-upload-surface :where(
+  input[type='text'],
+  input[type='number'],
+  input[type='url'],
+  input[type='search'],
+  textarea
+) {
+  border-radius: 0.75rem;
+}
+
+.manage-upload-surface :where(input[type='text'], input[type='number'], input[type='url'], input[type='search']) {
+  min-height: 2.75rem;
+}
+
 .ui-mobile-py-sm {
   padding-top: var(--ui-py-mobile-sm);
   padding-bottom: var(--ui-py-mobile-sm);
@@ -1442,12 +1456,12 @@ html.dark .theme-page-article .article-blank-correct {
    A reading-first visual language: warm paper, restrained type, hairlines and
    whitespace. Page content stays flat; elevation is reserved for transient UI. */
 body.editorial-ui {
-  --background: #f6f7f8;
+  --background: #f6f5f1;
   --foreground: #20242b;
-  --page-canvas: #f6f7f8;
-  --editorial-paper: #f6f7f8;
+  --page-canvas: #f6f5f1;
+  --editorial-paper: #f6f5f1;
   --editorial-paper-raised: #ffffff;
-  --editorial-paper-muted: #eef1f4;
+  --editorial-paper-muted: #efeee9;
   --editorial-ink: #20242b;
   --editorial-muted: #667085;
   --editorial-faint: #98a0ad;
@@ -1492,18 +1506,8 @@ body.editorial-ui main h3 {
   letter-spacing: -0.012em !important;
 }
 
-.editorial-kicker {
-  color: var(--editorial-faint);
-  font-family: var(--font-ui-default);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.24em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
 .editorial-page-header {
-  margin-bottom: clamp(2rem, 5vw, 4rem);
+  margin-bottom: clamp(1.5rem, 3vw, 2.5rem);
 }
 
 body.editorial-ui main :where(p, li) {
@@ -1537,7 +1541,11 @@ body.editorial-ui main :where(article, section, aside, fieldset, details) {
 }
 
 body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'] {
-  background-color: transparent !important;
+  background-color: var(--editorial-paper-raised) !important;
+}
+
+body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'][class*='border'] {
+  box-shadow: 0 12px 36px -32px rgba(15, 23, 42, 0.5);
 }
 
 body.editorial-ui main :where(div, a)[class*='rounded-xl'][class*='border'],
@@ -1627,9 +1635,16 @@ body.editorial-ui main .ui-pop {
   box-shadow: 0 14px 34px rgba(54, 49, 41, 0.14) !important;
 }
 
+body.editorial-ui main[class*='min-h-screen'] {
+  padding-top: 0;
+}
+
+body.editorial-ui main[class*='min-h-screen'] > :first-child[class*='py-'] {
+  padding-top: 0;
+}
+
 @media (min-width: 768px) {
   body.editorial-ui main[class*='min-h-screen'] {
-    padding-top: clamp(2.75rem, 5vw, 4.5rem);
     padding-bottom: clamp(4rem, 8vw, 7rem);
   }
 }

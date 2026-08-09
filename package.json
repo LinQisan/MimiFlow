@@ -18,6 +18,9 @@
     "db:generate": "prisma generate --config prisma.config.ts",
     "db:migrate:deploy": "prisma migrate deploy --config prisma.config.ts",
     "db:push": "prisma db push --config prisma.config.ts",
+    "db:report:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs",
+    "db:migrate:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs --apply",
+    "db:migrate:dialogue-source-ids": "node scripts/migrate-dialogue-source-ids.mjs --apply",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "dev:turbopack": "next dev --turbopack"
   },
@@ -29,11 +32,13 @@
     "@prisma/client": "^7.9.1",
     "dotenv": "^17.4.2",
     "jszip": "^3.10.1",
+    "katex": "^0.18.3",
     "next": "^16.3.0",
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "ts-fsrs": "^5.4.1"
+    "ts-fsrs": "^5.4.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@prisma/config": "^7.9.1",

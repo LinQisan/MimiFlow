@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 const ROOT = process.cwd()
-const SOURCE_DIRS = ['app', 'components', 'hooks', 'lib', 'modules', 'utils']
+const SOURCE_DIRS = ['app', 'components', 'features', 'hooks', 'lib', 'modules', 'utils']
 
 async function sourceFiles(directory) {
   const absolute = path.join(ROOT, directory)
@@ -108,11 +108,90 @@ test('review routes and feature modules exist', async () => {
     'modules/import/audio/hooks/useAudioFileCatalog.ts',
     'modules/media-subtitles/components/SubtitleReaderControls.tsx',
     'modules/practice/server/attempt-service.ts',
+    'lib/actions/result.ts',
+    'lib/errors/domain-error.ts',
+    'lib/validation/schema.ts',
+    'lib/codecs/material-payload.ts',
+    'lib/codecs/question-content.ts',
+    'features/collections/ui/DndSystem.tsx',
+    'features/content/ui/EditArticleUI.tsx',
+    'features/content/ui/EditQuizUI.tsx',
+    'features/import/ui/UploadCenterUI.tsx',
+    'features/import/ui/AudioTimingWaveforms.tsx',
+    'features/import/hooks/useAudioTimingStudioState.ts',
+    'features/import/hooks/useUploadMutations.ts',
+    'features/listening/ui/ListeningListClient.tsx',
+    'features/listening/ui/ListeningViewSwitcher.tsx',
+    'features/listening/hooks/useListeningListQuery.ts',
+    'features/listening/hooks/useListeningListState.ts',
+    'features/listening/hooks/useListeningListMutations.ts',
+    'features/practice/ui/PaperQuestionEditor.tsx',
+    'features/practice/ui/PaperLibraryItem.tsx',
+    'features/practice/domain/paper-library.ts',
+    'features/practice/hooks/usePaperLibraryState.ts',
+    'features/questions/domain/editor.ts',
+    'features/questions/domain/paper-editor.ts',
+    'features/questions/components/QuestionTypeBadge.tsx',
+    'features/questions/hooks/useQuestionEditorMutations.ts',
+    'features/questions/hooks/useQuestionEditorPageState.ts',
+    'features/questions/hooks/useQuestionListEditorState.ts',
+    'features/questions/hooks/usePaperQuestionEditorState.ts',
+    'features/reading/ui/ArticleReaderClient.tsx',
+    'modules/knowledge/vocabulary/hooks/useVocabularyMutations.ts',
+    'modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState.ts',
+    'modules/media-subtitles/domain/editor.ts',
+    'modules/media-subtitles/components/HighlightedSubtitleText.tsx',
+    'modules/media-subtitles/hooks/useMediaSubtitleEditorState.ts',
+    'modules/media-subtitles/hooks/useMediaSubtitleMutations.ts',
   ]
 
   for (const file of required) {
     assert.equal((await stat(path.join(ROOT, file))).isFile(), true)
   }
+})
+
+test('route, persistence, validation, and action boundaries stay explicit', async () => {
+  const files = (
+    await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
+  ).flat()
+  const violations = []
+
+  for (const file of files) {
+    const relative = path.relative(ROOT, file)
+    const content = await readFile(file, 'utf8')
+
+    if (
+      /^(app|components)\/.+\.tsx$/.test(relative) &&
+      /(?:@\/lib\/prisma|\bprisma\.)/.test(content)
+    ) {
+      violations.push(`${relative} -> direct Prisma access`)
+    }
+
+    if (
+      relative !== 'app/layout.tsx' &&
+      /from\s+['"]@\/app\//.test(content)
+    ) {
+      violations.push(`${relative} -> route-to-route import`)
+    }
+
+    if (/\b(?:asRecord|asString|asBoolean|asFiniteNumber)\b/.test(content)) {
+      violations.push(`${relative} -> legacy unknown-value coercion`)
+    }
+
+    if (
+      /\b(?:toLegacyMaterialId|toMaterialId|legacyId|ByLegacyId)\b|endsWith:\s*`?:/.test(
+        content,
+      )
+    ) {
+      violations.push(`${relative} -> legacy material ID path`)
+    }
+
+    if (/readJsonRecord\([^\n]*contentPayload/.test(content)) {
+      violations.push(`${relative} -> material payload bypasses codec`)
+    }
+  }
+
+  assert.deepEqual(violations, [])
 })
 
 test('review workflows preserve submitted state and keep clear exits', async () => {
@@ -150,7 +229,7 @@ test('large feature entry points delegate distinct responsibilities', async () =
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadCenterUI.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
     'utf8',
   )
   const vocabularyTabs = await readFile(
@@ -176,17 +255,82 @@ test('large feature entry points delegate distinct responsibilities', async () =
   assert.match(vocabularyTabs, /vocabulary\/components\/VocabularySentenceText/)
 })
 
+test('large interactive editors keep state, mutations, domain logic, and views separated', async () => {
+  const entries = [
+    ['app/(knowledge)/vocabulary/VocabularyTabs.tsx', [
+      /useVocabularyWorkspaceState/,
+      /useVocabularyMutations/,
+      /vocabulary\/domain\/workbench/,
+      /vocabulary\/components\//,
+    ]],
+    ['features/import/ui/UploadForm.tsx', [
+      /useAudioUploadState/,
+      /useUploadFormMutations/,
+      /import\/audio\/domain/,
+      /AudioMatchPreview/,
+    ]],
+    ['features/import/ui/UploadCenterUI.tsx', [
+      /useUploadCenterState/,
+      /useUploadCenterMutations/,
+      /article-question-builder/,
+      /ArticleImportPanel/,
+    ]],
+    ['features/import/ui/AudioTimingStudio.tsx', [
+      /useAudioTimingStudioState/,
+      /useAudioTimingMutations/,
+      /domain\/audio-timing/,
+      /AudioTimingWaveforms/,
+    ]],
+    ['app/(library)/subtitles/[id]/MediaSubtitleEditor.tsx', [
+      /useMediaSubtitleEditorState/,
+      /useMediaSubtitleMutations/,
+      /media-subtitles\/domain\/editor/,
+      /HighlightedSubtitleText/,
+    ]],
+    ['features/listening/ui/ListeningListClient.tsx', [
+      /useListeningListQuery/,
+      /useListeningListState/,
+      /useListeningListMutations/,
+      /ListeningQuickClassifyForm/,
+    ]],
+    ['features/content/ui/EditQuizUI.tsx', [
+      /useQuestionListEditorState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/editor/,
+      /QuestionTypeBadge/,
+    ]],
+    ['features/collections/ui/LessonQuestionsPanel.tsx', [
+      /useLessonQuestionPageState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/editor/,
+      /QuestionTypeBadge/,
+    ]],
+    ['features/practice/ui/PaperQuestionEditor.tsx', [
+      /usePaperQuestionEditorState/,
+      /useQuestionEditorMutations/,
+      /questions\/domain\/paper-editor/,
+      /CustomSelect/,
+    ]],
+  ]
+
+  for (const [file, boundaries] of entries) {
+    const content = await readFile(path.join(ROOT, file), 'utf8')
+    assert.equal(content.includes('useState'), false, `${file} keeps local useState`)
+    for (const boundary of boundaries) assert.match(content, boundary)
+  }
+})
+
 test('content import keeps one task visible at a time', async () => {
   const importPage = await readFile(
     path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadCenterUI.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
     'utf8',
   )
   const uploadForm = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadForm.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
     'utf8',
   )
 
@@ -202,17 +346,63 @@ test('content import keeps one task visible at a time', async () => {
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
 })
 
+test('content import loads the audio catalogue on demand without effect loops', async () => {
+  const uploadState = await readFile(
+    path.join(ROOT, 'modules/import/audio/hooks/useAudioUploadState.ts'),
+    'utf8',
+  )
+  const audioCatalogue = await readFile(
+    path.join(ROOT, 'modules/import/audio/hooks/useAudioFileCatalog.ts'),
+    'utf8',
+  )
+  const uploadForm = await readFile(
+    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
+    'utf8',
+  )
+
+  assert.match(uploadState, /const setters = useMemo/)
+  assert.match(audioCatalogue, /if \(!enabled \|\| existingAudioFiles\.length > 0\) return/)
+  assert.match(uploadForm, /enabled: audioSourceType === 'existing'/)
+})
+
+test('content import filters collections by explicit material capabilities', async () => {
+  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
+  const repository = await readFile(
+    path.join(ROOT, 'lib/repositories/manage/index.ts'),
+    'utf8',
+  )
+  const importPage = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
+    'utf8',
+  )
+  const capabilityMigration = await readFile(
+    path.join(
+      ROOT,
+      'prisma/migrations/20260810000200_add_collection_material_capabilities/migration.sql',
+    ),
+    'utf8',
+  )
+
+  assert.match(schema, /acceptedMaterialTypes MaterialType\[\]/)
+  assert.match(repository, /acceptedMaterialTypes: \{ has: materialType \}/)
+  assert.match(importPage, /reading: 'READING'/)
+  assert.match(
+    capabilityMigration,
+    /ARRAY\['READING', 'SPEAKING'\].*title = '天声人语'/s,
+  )
+})
+
 test('management pages keep classification, exams, and audio responsibilities separate', async () => {
   const collectionPage = await readFile(
     path.join(ROOT, 'app/(admin)/manage/collections/page.tsx'),
     'utf8',
   )
   const practicePage = await readFile(
-    path.join(ROOT, 'app/(admin)/papers/manage/ManagePapersListClient.tsx'),
+    path.join(ROOT, 'features/practice/ui/ManagePapersListClient.tsx'),
     'utf8',
   )
   const listeningPage = await readFile(
-    path.join(ROOT, 'app/(study)/listening/ListeningListClient.tsx'),
+    path.join(ROOT, 'features/listening/ui/ListeningListClient.tsx'),
     'utf8',
   )
   const examRepository = await readFile(
@@ -230,14 +420,14 @@ test('management pages keep classification, exams, and audio responsibilities se
   const listeningQuestionEditor = await readFile(
     path.join(
       ROOT,
-      'app/(library)/collections/lesson/[lessonId]/LessonQuestionsPanel.tsx',
+      'features/collections/ui/LessonQuestionsPanel.tsx',
     ),
     'utf8',
   )
   const paperQuestionEditor = await readFile(
     path.join(
       ROOT,
-      'app/(admin)/papers/manage/[id]/PaperQuestionEditor.tsx',
+      'features/practice/ui/PaperQuestionEditor.tsx',
     ),
     'utf8',
   )

@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { annotateExamText } from './annotate'
 import type {
   ExamAnnotationSettings,
@@ -28,6 +29,54 @@ type OptionsListProps = {
 const isAudioOnlyOptions = (options: ExamQuestionOption[]) =>
   options.length > 0 && options.every(option => !(option.text || '').trim())
 
+type SelectionSnapshot = {
+  text: string
+  anchorNode: Node | null
+  anchorOffset: number
+  focusNode: Node | null
+  focusOffset: number
+}
+
+const readSelectionSnapshot = (): SelectionSnapshot => {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    return {
+      text: '',
+      anchorNode: null,
+      anchorOffset: 0,
+      focusNode: null,
+      focusOffset: 0,
+    }
+  }
+
+  return {
+    text: selection.toString().trim(),
+    anchorNode: selection.anchorNode,
+    anchorOffset: selection.anchorOffset,
+    focusNode: selection.focusNode,
+    focusOffset: selection.focusOffset,
+  }
+}
+
+const selectionChanged = (
+  before: SelectionSnapshot,
+  after: SelectionSnapshot,
+) =>
+  before.text !== after.text ||
+  before.anchorNode !== after.anchorNode ||
+  before.anchorOffset !== after.anchorOffset ||
+  before.focusNode !== after.focusNode ||
+  before.focusOffset !== after.focusOffset
+
+const selectionTouchesElement = (
+  selection: SelectionSnapshot,
+  element: HTMLElement,
+) =>
+  Boolean(
+    (selection.anchorNode && element.contains(selection.anchorNode)) ||
+      (selection.focusNode && element.contains(selection.focusNode)),
+  )
+
 export function OptionsList({
   options = [],
   currentAnswer,
@@ -40,6 +89,9 @@ export function OptionsList({
   customOptionLabels = [],
   annotation,
 }: OptionsListProps) {
+  const pointerStartSelectionRef = useRef<SelectionSnapshot | null>(null)
+  const suppressNextClickRef = useRef(false)
+
   if (options.length === 0) {
     return <div className='mt-4 text-sm text-slate-400'>暂无选项</div>
   }
@@ -134,11 +186,29 @@ export function OptionsList({
           <button
             key={option.id}
             type='button'
+            onPointerDown={() => {
+              pointerStartSelectionRef.current = readSelectionSnapshot()
+              suppressNextClickRef.current = false
+            }}
+            onPointerUp={event => {
+              const before = pointerStartSelectionRef.current
+              pointerStartSelectionRef.current = null
+              if (!before) return
+
+              const after = readSelectionSnapshot()
+              // 只有本次手势新产生了选项文本选区时，才拦截 click。
+              // 页面其他位置残留的选区不应阻止选择答案。
+              suppressNextClickRef.current =
+                Boolean(after.text) &&
+                selectionChanged(before, after) &&
+                selectionTouchesElement(after, event.currentTarget)
+            }}
             onClick={() => {
               if (isInteractionLocked) return
-              const selectedText = window.getSelection()?.toString().trim() || ''
-              // 当用户在选项文本上划词时，不触发选项选择，优先弹出 WordTooltip。
-              if (selectedText.length > 0) return
+              if (suppressNextClickRef.current) {
+                suppressNextClickRef.current = false
+                return
+              }
               onSelect(option.id)
             }}
             aria-disabled={isInteractionLocked}

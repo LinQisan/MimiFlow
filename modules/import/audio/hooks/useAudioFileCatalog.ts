@@ -3,12 +3,14 @@ import { useEffect, useMemo } from 'react'
 import { getStem } from '@/modules/import/audio/domain'
 
 export function useAudioFileCatalog({
+  enabled,
   existingAudioFiles,
   selectedAudioFolder,
   loadFiles,
   setExistingAudioFiles,
   setLoading,
 }: {
+  enabled: boolean
   existingAudioFiles: string[]
   selectedAudioFolder: string
   loadFiles: () => Promise<{ success: boolean; files: string[] }>
@@ -16,6 +18,8 @@ export function useAudioFileCatalog({
   setLoading: (loading: boolean) => void
 }) {
   useEffect(() => {
+    if (!enabled || existingAudioFiles.length > 0) return
+
     let active = true
     const load = async () => {
       setLoading(true)
@@ -30,7 +34,13 @@ export function useAudioFileCatalog({
     return () => {
       active = false
     }
-  }, [loadFiles, setExistingAudioFiles, setLoading])
+  }, [
+    enabled,
+    existingAudioFiles.length,
+    loadFiles,
+    setExistingAudioFiles,
+    setLoading,
+  ])
 
   const audioFolderMap = useMemo(() => {
     const folderMap = new Map<string, string[]>()

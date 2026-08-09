@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 import { listReadingMaterials } from '@/lib/repositories/materials'
+import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 
 export default async function ManageReadingPage({
   searchParams,
@@ -12,15 +13,15 @@ export default async function ManageReadingPage({
   const status = params.status || 'all'
   const rows = await listReadingMaterials()
   const filtered = rows.filter(item => {
-    const isEbook = item.sourceKind === 'EPUB'
+    const isEbook = isEbookSourceKind(item.sourceKind)
     if (q && !`${item.title} ${item.author} ${item.description}`.toLowerCase().includes(q)) return false
     if (status === 'missingQuestions' && (isEbook || item.questionCount > 0)) return false
     if (status === 'hasQuestions' && (isEbook || item.questionCount === 0)) return false
     if (status === 'ebooks' && !isEbook) return false
     return true
   })
-  const articleRows = rows.filter(item => item.sourceKind !== 'EPUB')
-  const ebookRows = rows.filter(item => item.sourceKind === 'EPUB')
+  const articleRows = rows.filter(item => !isEbookSourceKind(item.sourceKind))
+  const ebookRows = rows.filter(item => isEbookSourceKind(item.sourceKind))
   const missingQuestions = articleRows.filter(item => item.questionCount === 0).length
 
   return (
@@ -30,7 +31,7 @@ export default async function ManageReadingPage({
           <div className='flex flex-wrap items-end justify-between gap-3'>
             <div>
               <h1 className='text-2xl font-black text-slate-900'>阅读材料</h1>
-              <p className='mt-1 text-sm text-slate-500'>维护文章正文与题目，并管理无需题目的 EPUB 电子书。</p>
+              <p className='mt-1 text-sm text-slate-500'>维护文章正文与题目，并管理 EPUB 或粘贴导入的电子书。</p>
             </div>
             <Link href='/manage/import?type=reading' className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>导入阅读</Link>
           </div>
@@ -51,7 +52,7 @@ export default async function ManageReadingPage({
           {filtered.length === 0 ? (
             <div className='rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500'>当前筛选条件下暂无阅读材料。</div>
           ) : filtered.map(item => {
-            const isEbook = item.sourceKind === 'EPUB'
+            const isEbook = isEbookSourceKind(item.sourceKind)
             return (
             <article key={item.id} className='grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center'>
               <div className='min-w-0'>

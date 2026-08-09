@@ -1,47 +1,56 @@
-// Unified content import route.
 import Link from 'next/link'
-import UploadCenterUI from '@/app/(admin)/upload/UploadCenterUI'
-import EpubImportForm from '@/app/(library)/reading/import/EpubImportForm'
+
+import UploadCenterUI from '@/features/import/ui/UploadCenterUI'
+import EpubImportForm from '@/features/reading/ui/EpubImportForm'
 import { getUploadPageSeedData } from '@/lib/repositories/manage'
 import type { UploadCenterTab } from '@/modules/import/types'
+import type { MaterialType } from '@prisma/client'
 import AnkiImportPanel from './AnkiImportPanel'
 
 const importGroups = [
   {
     label: '练习内容',
     items: [
-      ['listening', '听力材料'],
-      ['speaking', '跟读材料'],
-      ['reading', '阅读文章'],
-      ['questions', '练习题'],
+      ['listening', '听力材料', 'MP3 与字幕'],
+      ['speaking', '跟读材料', '音频与时间轴'],
+      ['reading', '阅读文章', '正文与表格'],
+      ['questions', '练习题', '单题或批量'],
     ],
   },
   {
     label: '学习资料',
     items: [
-      ['subtitles', '影视字幕'],
-      ['ebook', '电子书'],
-      ['anki', '词汇卡片'],
+      ['subtitles', '影视字幕', 'ASS 字幕'],
+      ['ebook', '电子书', '正文或 EPUB'],
+      ['anki', '词汇卡片', 'Anki 牌组'],
     ],
   },
 ] as const
 
-const importTypeValues = [
-  'listening',
-  'speaking',
-  'reading',
-  'questions',
-  'subtitles',
-  'ebook',
-  'anki',
-] as const
+const importTypeValues = importGroups.flatMap(group =>
+  group.items.map(([value]) => value),
+)
+type ImportType = (typeof importTypeValues)[number]
 
-const uploadTabs: Record<string, UploadCenterTab> = {
+const uploadTabs: Partial<Record<ImportType, UploadCenterTab>> = {
   listening: 'audio',
   speaking: 'timed-audio',
   reading: 'article',
   questions: 'quiz',
   subtitles: 'media',
+}
+
+const importMaterialTypes: Partial<Record<ImportType, MaterialType>> = {
+  listening: 'LISTENING',
+  speaking: 'SPEAKING',
+  reading: 'READING',
+  questions: 'VOCAB_GRAMMAR',
+  subtitles: 'MEDIA_SUBTITLE',
+  ebook: 'READING',
+}
+
+function isImportType(value: string | undefined): value is ImportType {
+  return importTypeValues.some(item => item === value)
 }
 
 export default async function UnifiedImportPage({
@@ -50,64 +59,68 @@ export default async function UnifiedImportPage({
   searchParams: Promise<{ type?: string }>
 }) {
   const { type } = await searchParams
-  const importType = importTypeValues.includes(
-    type as (typeof importTypeValues)[number],
-  )
-    ? type!
-    : 'listening'
-  const { dbLevels, dbCollections } = await getUploadPageSeedData()
+  const importType: ImportType = isImportType(type) ? type : 'listening'
+  const needsCollections = importType !== 'anki'
+  const needsLessons = ['listening', 'speaking', 'subtitles'].includes(importType)
+  const { dbLevels, dbCollections } = needsCollections
+    ? await getUploadPageSeedData({
+        includeLessons: needsLessons,
+        materialType: importMaterialTypes[importType],
+      })
+    : { dbLevels: [], dbCollections: [] }
 
   return (
-    <main className='manage-upload-surface min-h-screen bg-slate-50 px-3 py-4 md:px-6 md:py-6'>
-      <div className='mx-auto max-w-6xl space-y-5'>
-        <header className='border-b border-slate-200 pb-4'>
-          <h1 className='text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
-            内容导入
-          </h1>
-          <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
-            一次处理一种内容。先选择类型，再按页面提示准备必要信息。
-          </p>
+    <main className='manage-upload-surface min-h-screen bg-[#f6f5f1] pb-16 font-sans text-slate-900'>
+      <h1 className='sr-only'>内容导入</h1>
+      <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 md:px-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
+        <aside className='min-w-0 lg:sticky lg:top-24 lg:self-start'>
           <nav
             aria-label='导入类型'
-            className='mt-4 grid gap-3 md:grid-cols-2 md:gap-4'>
-            {importGroups.map(group => (
-              <div key={group.label} className='min-w-0'>
-                <p className='mb-2 text-xs font-bold text-slate-400'>
-                  {group.label}
-                </p>
-                <div className='flex gap-2 overflow-x-auto pb-1'>
-                  {group.items.map(([value, label]) => (
-                    <Link
-                      key={value}
-                      href={`/manage/import?type=${value}`}
-                      aria-current={importType === value ? 'page' : undefined}
-                      className={`inline-flex h-9 shrink-0 items-center rounded-lg px-3 text-sm font-semibold transition-colors ${
-                        importType === value
-                          ? 'bg-slate-900 text-white'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}>
-                      {label}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            ))}
+            className='overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] lg:overflow-visible lg:p-4'>
+            <div className='flex gap-5 lg:block lg:space-y-6'>
+              {importGroups.map(group => (
+                <section key={group.label} className='shrink-0'>
+                  <h2 className='mb-2 px-2 text-[11px] font-bold tracking-[0.08em] text-slate-400'>
+                    {group.label}
+                  </h2>
+                  <div className='flex gap-1 lg:flex-col'>
+                    {group.items.map(([value, label]) => {
+                      const active = importType === value
+                      return (
+                        <Link
+                          key={value}
+                          href={`/manage/import?type=${value}`}
+                          aria-current={active ? 'page' : undefined}
+                          className={`flex min-w-max items-center rounded-xl px-3 py-2.5 text-sm transition-colors lg:min-w-0 ${
+                            active
+                              ? 'bg-slate-950 font-semibold text-white'
+                              : 'font-semibold text-slate-600 hover:bg-white hover:text-slate-900'
+                          }`}>
+                          <span>{label}</span>
+                        </Link>
+                      )
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
           </nav>
-        </header>
-        {importType === 'ebook' ? (
-          <section className='rounded-2xl border border-slate-200 bg-white p-4 md:p-6'>
+        </aside>
+
+        <section className='min-w-0'>
+          {importType === 'ebook' ? (
             <EpubImportForm collections={dbCollections} />
-          </section>
-        ) : importType === 'anki' ? (
-          <AnkiImportPanel />
-        ) : (
-          <UploadCenterUI
-            key={importType}
-            dbLevels={dbLevels}
-            dbCollections={dbCollections}
-            initialTab={uploadTabs[importType]}
-          />
-        )}
+          ) : importType === 'anki' ? (
+            <AnkiImportPanel />
+          ) : (
+            <UploadCenterUI
+              key={importType}
+              dbLevels={dbLevels}
+              dbCollections={dbCollections}
+              initialTab={uploadTabs[importType]}
+            />
+          )}
+        </section>
       </div>
     </main>
   )

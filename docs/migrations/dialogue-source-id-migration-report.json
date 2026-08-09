@@ -1,0 +1,848 @@
+{
+  "generatedAt": "2026-08-09T16:01:59.653Z",
+  "strategy": "按旧行号缩小候选范围，并用句子相似度或词条包含关系确定唯一素材。",
+  "totals": {
+    "rows": 93,
+    "matched": 93,
+    "unresolved": 0
+  },
+  "mapping": [
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmgrif001g2x3qfweaerqt",
+      "oldSourceId": "19",
+      "sourceText": "受注",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::19",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnsxdxvu000lt33qqy917qqs",
+      "oldSourceId": "6",
+      "sourceText": "整って",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnu77h23001ft33qo3n9ys9u",
+      "oldSourceId": "4",
+      "sourceText": "格差",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::4",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnyldd140030np3qnthoyw2l",
+      "oldSourceId": "3",
+      "sourceText": "専念",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo00xods0002rt3q5zptf0j5",
+      "oldSourceId": "9",
+      "sourceText": "TOEIC",
+      "newSourceId": "d0c28b3c-6801-4562-9a6d-e26297529ccb::9",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo3tb96n00094m3qq9nqoxyc",
+      "oldSourceId": "28",
+      "sourceText": "逮捕",
+      "newSourceId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f::417d84f9-19e8-41c2-9444-5628a9005a62",
+      "newSourceType": "MEDIA_SUBTITLE_LINE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoa0mp90000p1p3qgx0de19b",
+      "oldSourceId": "28",
+      "sourceText": "戦略",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::28",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoaudvqw000h4t3qpw9ejcrg",
+      "oldSourceId": "30",
+      "sourceText": "起業",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::30",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoslgs0d00022x3qw559w780",
+      "oldSourceId": "12",
+      "sourceText": "在宅",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::12",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm8pmc000g2x3qd89v7ds2",
+      "oldSourceId": "9",
+      "sourceText": "米国",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::9",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmd68k000v2x3qpjh5dbrx",
+      "oldSourceId": "15",
+      "sourceText": "自粛",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::15",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmey3200142x3q369it43m",
+      "oldSourceId": "17",
+      "sourceText": "悠長",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::17",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmglb5001d2x3q0qlagfe5",
+      "oldSourceId": "19",
+      "sourceText": "新規",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::19",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmlktf001p2x3qgxm9b1ha",
+      "oldSourceId": "21",
+      "sourceText": "生じる",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::21",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmobxj001y2x3qnt3wmtix",
+      "oldSourceId": "3",
+      "sourceText": "原油",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnhl2a9c0006r73q4ic7rril",
+      "oldSourceId": "651",
+      "sourceText": "増員",
+      "newSourceId": "d7e1e406-9869-4c8d-8c8f-6d9f1897c068::651",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnea9yb5000b3e3qqr24zhcm",
+      "oldSourceId": "670",
+      "sourceText": "食洗機",
+      "newSourceId": "7c9a58f0-c254-492b-a585-703070039ceb::670",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnegro4s00111e3qtu1b6k4x",
+      "oldSourceId": "792",
+      "sourceText": "チクチク",
+      "newSourceId": "13ae6244-f6cd-4e9c-adc3-5d9115fd60ca::792",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnejckck00000q3qym64kwdj",
+      "oldSourceId": "879",
+      "sourceText": "ホワイトボード",
+      "newSourceId": "c6fce3d7-f50f-42ad-9628-22fcb3c3f761::879",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnejq99x00030q3qtfowomws",
+      "oldSourceId": "892",
+      "sourceText": "マンネリ",
+      "newSourceId": "3b9b9a98-f8ee-47e4-980b-06789c373cbd::892",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnejuj7900040q3q717xnybu",
+      "oldSourceId": "901",
+      "sourceText": "バクテリア",
+      "newSourceId": "3b9b9a98-f8ee-47e4-980b-06789c373cbd::901",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmneq5s1p00136f3qlqn6cesc",
+      "oldSourceId": "927",
+      "sourceText": "スムーズ",
+      "newSourceId": "b5eb3538-7c2f-4431-80b2-9f4b6b1cb680::927",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnsxfqla000ot33q33duuphm",
+      "oldSourceId": "7",
+      "sourceText": "奨学金",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::7",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnylejbx0033np3q9m0dh04p",
+      "oldSourceId": "6",
+      "sourceText": "充て",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo01dt8n000crt3qc9m5tu7g",
+      "oldSourceId": "18",
+      "sourceText": "持続",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::18",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoa0ncjr000s1p3qlq4ecok5",
+      "oldSourceId": "29",
+      "sourceText": "就職",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::29",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm124b00072x3qz0hefuza",
+      "oldSourceId": "6",
+      "sourceText": "全日空",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm98bv000j2x3qoz9gf7lm",
+      "oldSourceId": "9",
+      "sourceText": "破綻",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::9",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmdere000y2x3q6t78txir",
+      "oldSourceId": "15",
+      "sourceText": "公共",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::15",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmfhy800172x3q2bk55x28",
+      "oldSourceId": "18",
+      "sourceText": "節約",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::18",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmhhaf001j2x3q5sz41cwq",
+      "oldSourceId": "19",
+      "sourceText": "サプライチェーン",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::19",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmnclj001s2x3qdt3415qz",
+      "oldSourceId": "3",
+      "sourceText": "不透明",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmplef00212x3q7w017bzv",
+      "oldSourceId": "6",
+      "sourceText": "航空",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo73qimi00061p3q9x1h8rpd",
+      "oldSourceId": "56",
+      "sourceText": "教訓",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::56",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoau8yzc000b4t3qw6e6mmc8",
+      "oldSourceId": "28",
+      "sourceText": "中小企業",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::28",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnlnfyyd00621x3q75dvllnw",
+      "oldSourceId": "1237",
+      "sourceText": "プロポーズ",
+      "newSourceId": "b262491d-c752-4008-b68c-72bc338a6192::1237",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnsxh1ao000tt33q2hxbbida",
+      "oldSourceId": "7",
+      "sourceText": "充実",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::7",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnylfk190036np3q6y1mojcw",
+      "oldSourceId": "8",
+      "sourceText": "貯め",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::8",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo01hwki000krt3qxs6hbs7g",
+      "oldSourceId": "6",
+      "sourceText": "克服",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnh8ijhe0007sh3qj2zlqyjp",
+      "oldSourceId": "579",
+      "sourceText": "橋渡し",
+      "newSourceId": "54e3ac0f-6ab9-4a87-8991-e4f4ea03130e::579",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo3t8ah400034m3qy3axbj7y",
+      "oldSourceId": "24",
+      "sourceText": "小路",
+      "newSourceId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f::3acb54dd-8f9d-48af-b82e-871a838a43c8",
+      "newSourceType": "MEDIA_SUBTITLE_LINE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm76it000a2x3qlyfy9bpy",
+      "oldSourceId": "6",
+      "sourceText": "運賃",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm9m75000m2x3qsyqvwc5h",
+      "oldSourceId": "10",
+      "sourceText": "中東",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::10",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmo73vgxz000b1p3qcfi6clo7",
+      "oldSourceId": "8",
+      "sourceText": "筆記",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::8",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmoaud4yi000e4t3qtr479afn",
+      "oldSourceId": "29",
+      "sourceText": "経験",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::29",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnke4s3d001l1x3qyhwyawiv",
+      "oldSourceId": "1149",
+      "sourceText": "継続",
+      "newSourceId": "f2102cb3-0b43-4791-9370-e03c74ec5a73::1149",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnlnzqeh00691x3qi5ps2idc",
+      "oldSourceId": "1185",
+      "sourceText": "無沙汰",
+      "newSourceId": "dbd5c8ef-f774-478e-9950-ec3566f11674::1185",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnr5xo6g0004pn3qxyinz9y2",
+      "oldSourceId": "21",
+      "sourceText": "両立",
+      "newSourceId": "8b0e16f0-5bde-4890-a3db-a988aca429d0::21",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnu76rwq001ct33ql8on56d2",
+      "oldSourceId": "3",
+      "sourceText": "発展",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnylckra002xnp3qy4p3rcxl",
+      "oldSourceId": "1",
+      "sourceText": "負担",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::1",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmnylfx4l0039np3q28onkf8n",
+      "oldSourceId": "8",
+      "sourceText": "貯金",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::8",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosm7j6x000d2x3q2tlmeizu",
+      "oldSourceId": "6",
+      "sourceText": "燃油",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmao5s000p2x3q2t8xe3pb",
+      "oldSourceId": "10",
+      "sourceText": "依存度",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::10",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmatrt000s2x3qp8b1qnjf",
+      "oldSourceId": "10",
+      "sourceText": "石油",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::10",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmdvo300112x3q7v9z9ny0",
+      "oldSourceId": "15",
+      "sourceText": "減速",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::15",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmfqg1001a2x3qbkwxyrwy",
+      "oldSourceId": "18",
+      "sourceText": "要請",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::18",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmkvlc001m2x3qx0ct0k9k",
+      "oldSourceId": "21",
+      "sourceText": "推奨",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::21",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "Vocabulary",
+      "rowId": "cmosmnm4x001v2x3qk9sz7ujp",
+      "oldSourceId": "3",
+      "sourceText": "情勢",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnsxfqle000pt33qp44amrrx",
+      "oldSourceId": "7",
+      "sourceText": "生活の支援、また奨学金なども充実していることを聞きました。",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::7",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnylckrj002ynp3qfnnfn1pr",
+      "oldSourceId": "1",
+      "sourceText": "15、学費は誰が負担しますか。",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::1",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnhl2aah0007r73qcftgbdvb",
+      "oldSourceId": "651",
+      "sourceText": "あー、小さいお子さんたちだと、担当者の増員が必要だね。",
+      "newSourceId": "d7e1e406-9869-4c8d-8c8f-6d9f1897c068::651",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnlnfz4h00631x3qd69ajim7",
+      "oldSourceId": "1237",
+      "sourceText": "え、それってプロポーズ？",
+      "newSourceId": "b262491d-c752-4008-b68c-72bc338a6192::1237",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnu76rxv001dt33qbgqe830e",
+      "oldSourceId": "3",
+      "sourceText": "私の国、ベトナムは今まさに経済発展をしています。",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnlnzqes006a1x3q28crfkic",
+      "oldSourceId": "1185",
+      "sourceText": "1、先生、ご無沙汰しています。",
+      "newSourceId": "dbd5c8ef-f774-478e-9950-ec3566f11674::1185",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnu77h2m001gt33q9ji9s9ae",
+      "oldSourceId": "4",
+      "sourceText": "しかし、これは光の部分で陰の部分は地方と都市部の経済格差や、",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::4",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnyldd180031np3qeudgobsb",
+      "oldSourceId": "3",
+      "sourceText": "父からは勉強に専念するように言われています。",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnsxcjge000it33qr61akdc8",
+      "oldSourceId": "6",
+      "sourceText": "その先輩から、留学生にとって学習環境が整っていることや、",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnke4s49001m1x3q1wi2s43p",
+      "oldSourceId": "1149",
+      "sourceText": "「継続は力なり」ですね。",
+      "newSourceId": "f2102cb3-0b43-4791-9370-e03c74ec5a73::1149",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnr5xo7f0005pn3qipke3nj7",
+      "oldSourceId": "21",
+      "sourceText": "はい、両立できるように頑張ります。",
+      "newSourceId": "8b0e16f0-5bde-4890-a3db-a988aca429d0::21",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnylejen0034np3qm5lq05bo",
+      "oldSourceId": "6",
+      "sourceText": "生活費はアルバイト代を充てたいと思っています。",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo3t8ah900044m3q9attmcw9",
+      "oldSourceId": "24",
+      "sourceText": "#24收藏笔记编辑桜小路しずくは名の知れた主婦ブロガーbloggerで",
+      "newSourceId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f::3acb54dd-8f9d-48af-b82e-871a838a43c8",
+      "newSourceType": "MEDIA_SUBTITLE_LINE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo73qimp00071p3qedvoh3ja",
+      "oldSourceId": "56",
+      "sourceText": "新聞や雑誌の記事には経営についてもいろいろなヒントや教訓になることが書かれています。",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::56",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnylfk1f0037np3qgdoywmzm",
+      "oldSourceId": "8",
+      "sourceText": "3年間、国で働いて貯めた貯金があります。",
+      "newSourceId": "3a316851-fcf7-4848-8ea6-284d2b1d1de7::8",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo73vgy1000c1p3qt55lfk22",
+      "oldSourceId": "8",
+      "sourceText": "えー、面接の前の筆記試験はどうでしたか。",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::8",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmoslgs0j00032x3qc2klaya7",
+      "oldSourceId": "12",
+      "sourceText": "フィリピンは、公務員に最低週１回の在宅勤務を命じた。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::12",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmd68n000w2x3qic78ggpb",
+      "oldSourceId": "15",
+      "sourceText": "航空機の利用自粛、公共交通の利用、高速道路の減速、車の乗り合い。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::15",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmkvlh001n2x3qf8u9u8lz",
+      "oldSourceId": "21",
+      "sourceText": "海外では在宅勤務を推奨することで、車通勤で生じる石油の消費と負担を減らすべきだとの声も上がる。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::21",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo00xofb0003rt3qd17o4si7",
+      "oldSourceId": "9",
+      "sourceText": "TOEICやIELTSは受けたことがありませんが、",
+      "newSourceId": "d0c28b3c-6801-4562-9a6d-e26297529ccb::9",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo3tb96q000a4m3qh1c1ump3",
+      "oldSourceId": "28",
+      "sourceText": "#28收藏笔记编辑逮捕されたのはしずくの夫 桜小こう路じ要一(よういち)",
+      "newSourceId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f::417d84f9-19e8-41c2-9444-5628a9005a62",
+      "newSourceType": "MEDIA_SUBTITLE_LINE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmoa0mp96000q1p3qiro4dd8a",
+      "oldSourceId": "28",
+      "sourceText": "私は中小企業のマーケティングや市場戦略について学びたいと考えています。",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::28",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmey3600152x3qzobygcuf",
+      "oldSourceId": "17",
+      "sourceText": "こうして世界を見渡すと日本は悠長にすぎやしないかと心配になってくる。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::17",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmncll001t2x3qmqd5wt4w",
+      "oldSourceId": "3",
+      "sourceText": "不透明なイラン情勢で原油高が続くとみて、",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::3",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo01dt8y000drt3qaf109k7t",
+      "oldSourceId": "18",
+      "sourceText": "持続可能な社会のためには環境について学ぶ必要があると思います。",
+      "newSourceId": "5b33f3e3-d90a-4185-9814-bf02f8d72491::18",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmoa0ncju000t1p3qu09azh29",
+      "oldSourceId": "29",
+      "sourceText": "卒業後はできれば日本で就職して経験をつみ、",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::29",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosm8poq000h2x3qz21ztuig",
+      "oldSourceId": "9",
+      "sourceText": "米国では傾いていた航空会社が経営破綻した。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::9",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmfhyc00182x3q4wxin4en",
+      "oldSourceId": "18",
+      "sourceText": "政府は国民への節約要請は否定している。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::18",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmo01hwkn000lrt3qw3w83ln1",
+      "oldSourceId": "6",
+      "sourceText": "日本は経済成長を続ける中でこうした課題を上手に克服してきました。",
+      "newSourceId": "3d087181-0b2a-4cd3-bca0-fb7193b2732d::6",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmoaudvr0000i4t3qsywp2ry2",
+      "oldSourceId": "30",
+      "sourceText": "その後、帰国して自分自身も起業したいと考えています。",
+      "newSourceId": "8ba676c9-021f-4ea2-a34c-2f02fef31be2::30",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosm9m7p000n2x3qthefx4v0",
+      "oldSourceId": "10",
+      "sourceText": "日常生活がすでに大きく変化しているのが、中東への石油依存度が高いアジアの国々だ。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::10",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmnh8ijhl0008sh3qqgved1oc",
+      "oldSourceId": "579",
+      "sourceText": "はい、私たちの団体は飼い主のいない保護猫と飼いたい方の橋渡しをしています。",
+      "newSourceId": "54e3ac0f-6ab9-4a87-8991-e4f4ea03130e::579",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "VocabularySentence",
+      "rowId": "cmosmglb9001e2x3qsdds9zej",
+      "oldSourceId": "19",
+      "sourceText": "だが、サプライチェーンの現場では石油製品の大幅な値上げや新規受注の停止も起きている。",
+      "newSourceId": "92b18576-ef9d-4d1a-ae54-13e9f1fabb55::19",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "SentenceReview",
+      "rowId": "cmng0ym9e0000s13qarii6dot",
+      "oldSourceId": "592",
+      "sourceText": "バスケットボールのサークルで来月合宿に行くんですけど、その手続きに参りました。",
+      "newSourceId": "75e25b3d-95ec-46b7-8dfb-f599ebf10c5a::592",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    },
+    {
+      "table": "SentenceReview",
+      "rowId": "cmnk5xvjd000w1x3q7nd96uc6",
+      "oldSourceId": "595",
+      "sourceText": "申請には別途活動計画書も必要なんですが、お持ちですか？",
+      "newSourceId": "75e25b3d-95ec-46b7-8dfb-f599ebf10c5a::595",
+      "newSourceType": "AUDIO_DIALOGUE",
+      "matched": true
+    }
+  ]
+}

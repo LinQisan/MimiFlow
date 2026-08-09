@@ -28,34 +28,105 @@ import {
 } from '../utils/questions/optionLabels.ts'
 import { getQuestionTypeLabel } from '../utils/questions/typeLabels.ts'
 import { isReadingTitleDerivedFromContent } from '../lib/repositories/materials/material-title.ts'
+import { parseArticleContentBlocks } from '../features/reading/domain/article-blocks.ts'
 import {
   prepareEbookChapters,
   removeRepeatedEbookHeadings,
 } from '../lib/ebooks/chapter-display.ts'
+import { parsePastedBookText } from '../lib/ebooks/pasted-book.ts'
+import { parseMultiQuizText } from '../modules/import/domain/quiz-text-parser.ts'
 import {
   isPathInsideRoot,
   resolvePathInsideRoot,
 } from '../utils/files/path.ts'
 import {
-  asBoolean,
-  asFiniteNumber,
-  asRecord,
-  asString,
-} from '../utils/validation/unknown.ts'
+  parseInput,
+  readBoolean,
+  readFiniteNumber,
+  readJsonRecord,
+  readString,
+} from '../lib/validation/schema.ts'
+import { z } from 'zod'
+import { actionFailure, actionSuccess } from '../lib/actions/result.ts'
+import { DomainError } from '../lib/errors/domain-error.ts'
 import {
   getMaterialCollectionTypeError,
   isCollectionTypeAllowedForMaterial,
 } from '../modules/import/collection-policy.ts'
+import {
+  decodeMaterialPayload,
+  materialPayloadEnvelopeSchema,
+} from '../lib/codecs/material-payload.ts'
+import {
+  decodeQuestionContent,
+  encodeQuestionContent,
+} from '../lib/codecs/question-content.ts'
 
 const ROOT = process.cwd()
 
 test('untrusted values are normalized at data boundaries', () => {
-  assert.deepEqual(asRecord({ title: 'ok' }), { title: 'ok' })
-  assert.deepEqual(asRecord(['not', 'a', 'record']), {})
-  assert.equal(asString(12), '')
-  assert.equal(asBoolean('true'), false)
-  assert.equal(asFiniteNumber('12.5'), 12.5)
-  assert.equal(asFiniteNumber('invalid', 3), 3)
+  assert.deepEqual(readJsonRecord({ title: 'ok' }), { title: 'ok' })
+  assert.deepEqual(readJsonRecord(['not', 'a', 'record']), {})
+  assert.equal(readString(12), '')
+  assert.equal(readBoolean('true'), false)
+  assert.equal(readFiniteNumber('12.5'), 12.5)
+  assert.equal(readFiniteNumber('invalid', 3), 3)
+})
+
+test('material payloads are discriminated by material type', () => {
+  const reading = decodeMaterialPayload('READING', {
+    text: '本文',
+    dialogues: [{ text: 'wrong domain' }],
+  })
+  assert.equal(reading.text, '本文')
+  assert.equal(reading.description, '')
+
+  const listening = materialPayloadEnvelopeSchema.parse({
+    type: 'LISTENING',
+    payload: { dialogues: [{ text: '会話', start: 1, end: 2 }] },
+  })
+  assert.equal(listening.payload.dialogues[0].text, '会話')
+  assert.deepEqual(listening.payload.tags, [])
+})
+
+test('question content stores extensions but never canonical question fields', () => {
+  const encoded = encodeQuestionContent({
+    prompt: 'duplicate',
+    contextSentence: 'duplicate',
+    explanation: 'duplicate',
+    targetWord: '語彙',
+    optionLabelFormat: 'numeric',
+  })
+  assert.deepEqual(encoded, {
+    targetWord: '語彙',
+    optionLabelFormat: 'numeric',
+    customOptionLabels: [],
+  })
+  assert.equal(decodeQuestionContent(encoded).targetWord, '語彙')
+})
+
+test('server actions share a serializable result and domain error contract', () => {
+  assert.deepEqual(actionSuccess({ id: 'saved' }, '已保存'), {
+    success: true,
+    message: '已保存',
+    id: 'saved',
+  })
+  assert.deepEqual(
+    actionFailure(new DomainError('NOT_FOUND', '内容不存在。')),
+    {
+      success: false,
+      message: '内容不存在。',
+      error: { code: 'NOT_FOUND', message: '内容不存在。' },
+    },
+  )
+  assert.throws(
+    () =>
+      parseInput(
+        z.object({ title: z.string().trim().min(1, '标题不能为空。') }),
+        { title: '' },
+      ),
+    error => error instanceof DomainError && error.code === 'VALIDATION_ERROR',
+  )
 })
 
 test('filesystem paths cannot escape the configured audio root', () => {
@@ -67,7 +138,7 @@ test('filesystem paths cannot escape the configured audio root', () => {
 
 test('audio library keeps uploads organized and folders hierarchical', async () => {
   const action = await readFile(
-    path.join(ROOT, 'app/(admin)/audio/manage/action.ts'),
+    path.join(ROOT, 'features/audio/manage-actions.ts'),
     'utf8',
   )
   const page = await readFile(
@@ -108,6 +179,62 @@ test('paper reading excerpts are not presented as real article titles', () => {
       '近年、日本では働き方についての議論が続いている。',
     ),
     false,
+  )
+})
+
+test('plain-text article tables become semantic reading blocks', () => {
+  const blocks = parseArticleContentBlocks([
+    '■ クリーニング基本料金\n　コート　　　　2,500円　　　セーター　　　800円\n　ジャケット　　1,300円　　　ワイシャツ　　400円',
+    '■ お届けまでの日数\n　　　　　　16時までのご発送　　16時以降のご発送\n特別会員　　　　3日後　　　　　　　4日後\n普通会員　　　　6日後　　　　　　　7日後',
+  ])
+
+  assert.deepEqual(blocks[0], { type: 'text', text: '■ クリーニング基本料金' })
+  assert.deepEqual(blocks[1], {
+    type: 'table',
+    hasHeader: false,
+    rows: [
+      ['コート', '2,500円', 'セーター', '800円'],
+      ['ジャケット', '1,300円', 'ワイシャツ', '400円'],
+    ],
+  })
+  assert.equal(blocks[3].type, 'table')
+  assert.equal(blocks[3].hasHeader, true)
+  assert.deepEqual(blocks[3].rows[0], ['', '16時までのご発送', '16時以降のご発送'])
+})
+
+test('professional books preserve chapters and mathematical notation', () => {
+  const parsed = parsePastedBookText(
+    '# 第一章 集合\n\n集合 $A$ を考える。\n\n$$\\sum_{i=1}^{n} i$$\n\n第2章　極限\n\n\\(x \\to 0\\) とする。',
+    '解析学入門',
+  )
+  const blocks = parseArticleContentBlocks(
+    parsed.chapters[0].text.split(/\n{2,}/),
+  )
+
+  assert.equal(parsed.chapterCount, 2)
+  assert.equal(parsed.displayMathCount, 1)
+  assert.equal(parsed.inlineMathCount, 2)
+  assert.deepEqual(blocks[1], {
+    type: 'math',
+    expression: '\\sum_{i=1}^{n} i',
+  })
+})
+
+test('listening quick entry accepts option-only lines separated by full-width spaces', () => {
+  const parsed = parseMultiQuizText(
+    '1　受信機の反応を良くする\n2　車の本体を軽くする\n3　タイヤを大きくする\n4　パワーの強いバッテリーに替える',
+  )
+
+  assert.equal(parsed.length, 1)
+  assert.equal(parsed[0].prompt, '')
+  assert.deepEqual(
+    parsed[0].options.map(option => option.text),
+    [
+      '受信機の反応を良くする',
+      '車の本体を軽くする',
+      'タイヤを大きくする',
+      'パワーの強いバッテリーに替える',
+    ],
   )
 })
 
@@ -280,7 +407,7 @@ test('content writes use null instead of internal question placeholders', async 
     'utf8',
   )
   const paperActions = await readFile(
-    path.join(ROOT, 'app/(admin)/papers/manage/actions.ts'),
+    path.join(ROOT, 'features/practice/admin-actions.ts'),
     'utf8',
   )
 
@@ -381,6 +508,20 @@ test('management routes use one prefix and obsolete page routes are gone', async
   }
 })
 
+test('review scheduling explains status before exposing diagnostics', async () => {
+  const page = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/system/review/page.tsx'),
+    'utf8',
+  )
+
+  assert.match(page, /等待复习数据/)
+  assert.match(page, /目前不需要处理/)
+  assert.match(page, /<details className=/)
+  assert.match(page, /高级调度信息/)
+  assert.match(page, /eventCount7d \? `\$\{data\.stats\.successRate7d\}%` : '—'/)
+  assert.equal(page.includes("value={data.profile.lastEngineMode"), false)
+})
+
 test('route surfaces use the shared editorial visual language', async () => {
   const rootLayout = await readFile(path.join(ROOT, 'app/layout.tsx'), 'utf8')
   const globalStyles = await readFile(path.join(ROOT, 'app/globals.css'), 'utf8')
@@ -392,12 +533,21 @@ test('route surfaces use the shared editorial visual language', async () => {
     path.join(ROOT, 'components/layout/ManageShell.tsx'),
     'utf8',
   )
+  const pageHeader = await readFile(
+    path.join(ROOT, 'components/layout/PageHeader.tsx'),
+    'utf8',
+  )
 
   assert.match(rootLayout, /className='flat-ui editorial-ui'/)
   assert.match(globalStyles, /\.flat-ui main/)
   assert.match(globalStyles, /--font-editorial-display/)
-  assert.match(globalStyles, /--editorial-paper: #f6f7f8/)
+  assert.match(globalStyles, /--editorial-paper: #f6f5f1/)
+  assert.match(globalStyles, /--editorial-paper-raised: #ffffff/)
+  assert.match(studyNavigation, /max-w-7xl/)
+  assert.match(manageShell, /max-w-7xl/)
   assert.match(globalStyles, /body\.editorial-ui main h1/)
+  assert.match(globalStyles, /main\[class\*='min-h-screen'\][\s\S]*padding-top: 0/)
+  assert.equal(globalStyles.includes('padding-top: clamp(2.75rem'), false)
   assert.match(globalStyles, /--modern-radius-lg: 1rem/)
   assert.match(globalStyles, /border-radius: var\(--modern-radius-lg\) !important/)
   assert.match(globalStyles, /border-radius: var\(--modern-radius-sm\)/)
@@ -405,6 +555,7 @@ test('route surfaces use the shared editorial visual language', async () => {
   assert.match(manageShell, /editorial-nav/)
   assert.equal(studyNavigation.includes('border-b-2'), false)
   assert.equal(manageShell.includes('border-b-2'), false)
+  assert.equal(pageHeader.includes('border-y border-slate-200'), false)
 })
 
 test('body copy uses language-aware sans-serif font stacks', async () => {
@@ -420,7 +571,7 @@ test('body copy uses language-aware sans-serif font stacks', async () => {
   const articleReader = await readFile(
     path.join(
       ROOT,
-      'app/(library)/reading/articles/[id]/ArticleReaderClient.tsx',
+      'features/reading/ui/ArticleReaderClient.tsx',
     ),
     'utf8',
   )
@@ -437,11 +588,15 @@ test('body copy uses language-aware sans-serif font stacks', async () => {
 
 test('listening import accepts MP3 uploads and supports multiple collections', async () => {
   const uploadForm = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/UploadForm.tsx'),
+    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
     'utf8',
   )
   const uploadAction = await readFile(
-    path.join(ROOT, 'app/(admin)/upload/action.ts'),
+    path.join(ROOT, 'features/import/actions.ts'),
+    'utf8',
+  )
+  const questionEditor = await readFile(
+    path.join(ROOT, 'features/collections/ui/LessonQuestionsPanel.tsx'),
     'utf8',
   )
 
@@ -449,7 +604,12 @@ test('listening import accepts MP3 uploads and supports multiple collections', a
   assert.match(uploadForm, /normalizeListeningAudioPath/)
   assert.match(uploadForm, /name='collectionIds'/)
   assert.match(uploadForm, /继续添加其他集合/)
-  assert.match(uploadForm, /当前仅显示正式试卷/)
+  assert.doesNotMatch(uploadForm, /当前仅显示正式试卷/)
+  assert.doesNotMatch(uploadForm, /批量录入说明/)
+  assert.match(questionEditor, /快速填写题目与选项/)
+  assert.match(questionEditor, /handleQuickOptionInput/)
+  assert.match(questionEditor, /parseMultiQuizText\(value\)\[0\]/)
+  assert.match(questionEditor, /正确答案/)
   assert.equal(uploadForm.includes("paper.materialType === materialType"), false)
   assert.match(
     uploadForm,
@@ -466,7 +626,7 @@ test('listening import accepts MP3 uploads and supports multiple collections', a
 
 test('search results use domain editors instead of the hidden JSON tool', async () => {
   const searchHrefBuilder = await readFile(
-    path.join(ROOT, 'app/actions/globalSearchShared.ts'),
+    path.join(ROOT, 'features/search/domain.ts'),
     'utf8',
   )
 
@@ -572,13 +732,13 @@ test('project dropdowns use the custom listbox instead of native select menus', 
     'app/(admin)/manage/collections/CollectionEditor.tsx',
     'app/(admin)/manage/import/AnkiImportPanel.tsx',
     'app/(admin)/manage/vocabulary/page.tsx',
-    'app/(admin)/upload/UploadCenterUI.tsx',
-    'app/(admin)/upload/UploadForm.tsx',
-    'app/(study)/listening/ListeningListClient.tsx',
-    'app/(study)/listening/ListeningMetaForm.tsx',
-    'app/(study)/listening/ListeningQuickClassifyForm.tsx',
-    'app/(study)/practice/PaperAttributeForm.tsx',
-    'app/(study)/practice/PaperMaterialTypeBatchForm.tsx',
+    'features/import/ui/UploadCenterUI.tsx',
+    'features/import/ui/UploadForm.tsx',
+    'features/listening/ui/ListeningListClient.tsx',
+    'features/listening/ui/ListeningMetaForm.tsx',
+    'features/listening/ui/ListeningQuickClassifyForm.tsx',
+    'features/practice/ui/PaperAttributeForm.tsx',
+    'features/practice/ui/PaperMaterialTypeBatchForm.tsx',
     'app/(study)/practice/PapersListClient.tsx',
     'app/(study)/practice/custom/CustomPaperBuilderClient.tsx',
     'modules/import/components/BulkQuizPanel.tsx',
@@ -664,6 +824,14 @@ test('listening detail avoids idle animation work and uses scoped vocabulary sou
     path.join(ROOT, 'app/(study)/listening/page.tsx'),
     'utf8',
   )
+  const listeningRepository = await readFile(
+    path.join(ROOT, 'features/listening/server/repository.ts'),
+    'utf8',
+  )
+  const listeningFilter = await readFile(
+    path.join(ROOT, 'features/listening/ui/ListeningViewSwitcher.tsx'),
+    'utf8',
+  )
   const playerHeader = await readFile(
     path.join(ROOT, 'components/AudioPlayer/ListeningPlayerHeader.tsx'),
     'utf8',
@@ -671,18 +839,26 @@ test('listening detail avoids idle animation work and uses scoped vocabulary sou
 
   assert.match(controller, /if \(audio\.paused\)/)
   assert.match(controller, /animationFrameId = null/)
-  assert.match(detailPage, /buildAudioDialogueSourceIdCandidates/)
+  assert.match(detailPage, /buildAudioDialogueSourceId\(/)
+  assert.equal(detailPage.includes('buildAudioDialogueSourceIdCandidates'), false)
   assert.equal(detailPage.includes('listListeningMaterialsForShadowing'), false)
   assert.match(player, /useTextSelection\(\)/)
   assert.equal(player.includes('onClick={closeSelection}'), false)
   assert.match(sentenceRow, /data-context-sentence='true'/)
   assert.equal(sentenceRow.includes("isActive && currentState === 'idle'"), false)
-  assert.match(listeningLanding, /lastPlayedAt: true/)
-  assert.match(listeningLanding, /最近收听/)
+  assert.match(listeningRepository, /lastPlayedAt: true/)
+  assert.equal(listeningLanding.includes('最近收听'), false)
   assert.match(listeningLanding, /group\/chapter/)
   assert.match(listeningLanding, /group\/section/)
   assert.match(listeningLanding, /max-h-\[min\(28rem,70vh\)\]/)
-  assert.match(listeningLanding, /先展开试卷，再按問題浏览材料/)
+  assert.match(listeningLanding, /ListeningViewSwitcher/)
+  assert.match(listeningFilter, /筛选材料/)
+  assert.match(listeningFilter, /教材、章节或材料名/)
+  assert.match(listeningFilter, /filters\.kind !== 'all'/)
+  assert.match(listeningFilter, /filters\.language !== 'all'/)
+  assert.match(listeningFilter, /entry\.languages\.includes/)
+  assert.match(listeningFilter, /entry\.searchText/)
+  assert.match(listeningLanding, /materialLanguageLabel/)
   assert.equal(
     listeningLanding.includes('grid-cols-[auto_minmax(0,1fr)_auto]'),
     false,
@@ -702,12 +878,19 @@ test('vocabulary language groups use pronunciation and source evidence', async (
     path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
     'utf8',
   )
+  const vocabularyRepository = await readFile(
+    path.join(
+      ROOT,
+      'modules/knowledge/vocabulary/server/repository.ts',
+    ),
+    'utf8',
+  )
 
   assert.match(languageResolver, /pronunciations\.some\(containsKana\)/)
   assert.match(languageResolver, /JAPANESE_SOURCE_TYPES\.has\(sourceType\)/)
   assert.match(vocabularyPage, /resolveVocabularyLanguageCode/)
-  assert.match(vocabularyPage, /pronunciations: true/)
-  assert.match(vocabularyPage, /sourceType: true/)
+  assert.match(vocabularyRepository, /pronunciations: true/)
+  assert.match(vocabularyRepository, /sourceType: true/)
 })
 
 test('selection popover supports pointer, touch, keyboard and dialog semantics', async () => {

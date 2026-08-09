@@ -2,27 +2,25 @@ import Link from 'next/link'
 // Subtitle reading route.
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { MaterialType } from '@prisma/client'
-
-import prisma from '@/lib/prisma'
 import MediaSubtitleEditor from './MediaSubtitleEditor'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
-import { buildAudioDialogueSourceIdCandidates } from '@/utils/audioDialogue/sourceId'
+import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 import {
-  asBoolean,
-  asFiniteNumber,
-  asRecord,
-  asString,
-  type UnknownRecord,
-} from '@/utils/validation/unknown'
+  findMediaSubtitleById,
+  listVocabularyBySentenceSourceIds,
+} from '@/features/subtitles/server/repository'
+import {
+  subtitlePayloadSchema,
+  type SubtitlePayload,
+} from '@/features/subtitles/domain/schema'
 
-function formatSubtitleMeta(payload: UnknownRecord) {
-  const sourceType = asString(payload.subtitleSourceType) === 'TV' ? 'TV' : 'MOVIE'
-  const workTitle = asString(payload.subtitleWorkTitle)
-  const season = asString(payload.subtitleSeason)
-  const episode = asString(payload.subtitleEpisode)
-  const subtitleNoAudio = asBoolean(payload.subtitleNoAudio)
-  const dialogues = Array.isArray(payload.dialogues) ? payload.dialogues : []
+function formatSubtitleMeta(payload: SubtitlePayload) {
+  const sourceType = payload.subtitleSourceType
+  const workTitle = payload.subtitleWorkTitle
+  const season = payload.subtitleSeason
+  const episode = payload.subtitleEpisode
+  const subtitleNoAudio = payload.subtitleNoAudio
+  const dialogues = payload.dialogues
   const sourceLabel = sourceType === 'TV' ? '电视剧' : '电影'
   const episodeParts = [
     sourceLabel,
@@ -43,7 +41,7 @@ function formatSubtitleMeta(payload: UnknownRecord) {
   }
 }
 
-function buildMetadataDescription(title: string, payload: UnknownRecord) {
+function buildMetadataDescription(title: string, payload: SubtitlePayload) {
   const meta = formatSubtitleMeta(payload)
   const subject = meta.label || `影视字幕《${title}》`
   const audioLabel = meta.subtitleNoAudio ? '仅字幕' : '含音频'
@@ -59,16 +57,7 @@ export async function generateMetadata({
   params: Promise<{ id: string }>
 }): Promise<Metadata> {
   const { id } = await params
-  const row = await prisma.material.findFirst({
-    where: {
-      type: MaterialType.MEDIA_SUBTITLE,
-      id: { endsWith: `:${id}` },
-    },
-    select: {
-      title: true,
-      contentPayload: true,
-    },
-  })
+  const row = await findMediaSubtitleById(id)
 
   if (!row) {
     return {
@@ -77,7 +66,7 @@ export async function generateMetadata({
     }
   }
 
-  const payload = asRecord(row.contentPayload)
+  const payload = subtitlePayloadSchema.parse(row.contentPayload)
   const title = row.title || '影视字幕'
   const subtitleMeta = formatSubtitleMeta(payload)
   const pageTitle = subtitleMeta.label
@@ -110,63 +99,29 @@ export default async function MediaSubtitleDetailPage({
 }) {
   const { id } = await params
   const resolvedSearchParams = await searchParams
-  const row = await prisma.material.findFirst({
-    where: {
-      type: MaterialType.MEDIA_SUBTITLE,
-      id: { endsWith: `:${id}` },
-    },
-    select: {
-      id: true,
-      title: true,
-      contentPayload: true,
-    },
-  })
+  const row = await findMediaSubtitleById(id)
   if (!row) return notFound()
 
-  const payload = asRecord(row.contentPayload)
+  const payload = subtitlePayloadSchema.parse(row.contentPayload)
   const { sourceType, workTitle, season, episode, subtitleNoAudio } =
     formatSubtitleMeta(payload)
-  const dialogues = Array.isArray(payload.dialogues)
-    ? payload.dialogues.map((item, index) => {
-        const rec = asRecord(item)
-        return {
-          id: asFiniteNumber(rec.id, index + 1),
-          stableId:
-            asString(rec.stableId) ||
-            `legacy-${asFiniteNumber(rec.id, index + 1)}`,
-          text: asString(rec.text),
-          start: asFiniteNumber(rec.start),
-          end: asFiniteNumber(rec.end),
-          note: asString(rec.note),
-          favorite: asBoolean(rec.favorite),
-        }
-      })
-    : []
+  const dialogues = payload.dialogues.map((item, index) => {
+    const dialogueId = item.id ?? index + 1
+    return {
+      id: dialogueId,
+      stableId: item.stableId || `legacy-${dialogueId}`,
+      text: item.text,
+      start: item.start,
+      end: item.end,
+      note: item.note,
+      favorite: item.favorite,
+    }
+  })
 
-  const dialogueSourceIds = dialogues.flatMap(item =>
-    buildAudioDialogueSourceIdCandidates(row.id, item.stableId, item.id),
+  const dialogueSourceIds = dialogues.map(item =>
+    buildAudioDialogueSourceId(row.id, item.stableId),
   )
-  const vocabRows =
-    dialogueSourceIds.length > 0
-      ? await prisma.vocabulary.findMany({
-          where: {
-            sentenceLinks: {
-              some: {
-                sentence: {
-                  sourceType: { in: ['MEDIA_SUBTITLE_LINE', 'AUDIO_DIALOGUE'] },
-                  sourceId: { in: dialogueSourceIds },
-                },
-              },
-            },
-          },
-          select: {
-            word: true,
-            pronunciations: true,
-            partsOfSpeech: true,
-            meanings: true,
-          },
-        })
-      : []
+  const vocabRows = await listVocabularyBySentenceSourceIds(dialogueSourceIds)
 
   const initialVocabularyMetaMap = vocabRows.reduce<Record<string, VocabularyMeta>>(
     (acc, item) => {
@@ -271,7 +226,6 @@ export default async function MediaSubtitleDetailPage({
 
       <div className='mx-auto max-w-7xl px-4 py-5 md:px-6 lg:px-8'>
         <MediaSubtitleEditor
-          legacyId={id}
           materialId={row.id}
           initialTitle={row.title}
           initialDialogues={dialogues}

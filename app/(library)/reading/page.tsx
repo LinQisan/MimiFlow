@@ -3,6 +3,10 @@ import Link from 'next/link'
 import { listReadingMaterials } from '@/lib/repositories/materials'
 import PageHeader from '@/components/layout/PageHeader'
 import DeleteEbookButton from './DeleteEbookButton'
+import {
+  getEbookSourceLabel,
+  isEbookSourceKind,
+} from '@/lib/ebooks/source-kind'
 
 export const revalidate = 0
 
@@ -18,14 +22,14 @@ export default async function ReadingCenterPage({
 }) {
   const { tab } = await searchParams
   const materials = await listReadingMaterials()
-  const articles = materials.filter(item => item.sourceKind !== 'EPUB')
-  const ebooks = materials.filter(item => item.sourceKind === 'EPUB')
+  const articles = materials.filter(item => !isEbookSourceKind(item.sourceKind))
+  const ebooks = materials.filter(item => isEbookSourceKind(item.sourceKind))
   const activeTab = tab === 'ebooks' ? 'ebooks' : 'articles'
   const visibleMaterials = activeTab === 'ebooks' ? ebooks : articles
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl space-y-5'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-5'>
         <PageHeader title='阅读中心' description='阅读文章和电子书，继续上次进度。' />
 
         <section>
@@ -58,7 +62,7 @@ export default async function ReadingCenterPage({
             <div className='py-12 text-center'>
               <p className='text-sm text-slate-500'>
                 {activeTab === 'ebooks'
-                  ? '暂无电子书，可以先导入 EPUB。'
+                  ? '暂无电子书，可以粘贴专业书籍正文或导入 EPUB。'
                   : '暂无文章，可以从导入中心添加阅读材料。'}
               </p>
               <Link
@@ -68,27 +72,27 @@ export default async function ReadingCenterPage({
                     : '/manage/import?type=reading'
                 }
                 className='ui-btn ui-btn-primary mt-4'>
-                {activeTab === 'ebooks' ? '导入 EPUB' : '导入文章'}
+                {activeTab === 'ebooks' ? '导入电子书' : '导入文章'}
               </Link>
             </div>
           ) : (
-            <div className='mt-5 divide-y divide-slate-200 border-y border-slate-200'>
+            <div className='mt-5 space-y-3'>
               {visibleMaterials.map(item => {
                 const progress = Math.round(item.progress?.percent || 0)
                 const href =
-                  item.sourceKind === 'EPUB'
+                  isEbookSourceKind(item.sourceKind)
                     ? `/reading/ebooks/${encodeURIComponent(item.id)}`
                     : `/reading/articles/${encodeURIComponent(item.id)}`
                 return (
                   <article
                     key={item.id}
-                    className='flex flex-col py-5 md:px-1'>
+                    className='flex flex-col rounded-2xl border border-slate-200/80 bg-white px-5 py-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:px-6'>
                     <Link href={href} className='group flex-1'>
                       <div className='flex items-start justify-between gap-3'>
                         <div className='min-w-0'>
                           <p className='text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400'>
-                            {item.sourceKind === 'EPUB'
-                              ? 'EPUB'
+                            {isEbookSourceKind(item.sourceKind)
+                              ? getEbookSourceLabel(item.sourceKind)
                               : item.paper?.name || '文章'}
                           </p>
                           {item.hasAuthenticTitle ? (
@@ -98,7 +102,7 @@ export default async function ReadingCenterPage({
                           ) : null}
                         </div>
                         <span className='shrink-0 border-l border-slate-300 pl-3 text-[11px] font-medium tracking-wide text-slate-600'>
-                          {item.sourceKind === 'EPUB'
+                          {isEbookSourceKind(item.sourceKind)
                             ? `${Math.max(1, item.chapterCount)} 个章节`
                             : `${item.questionCount} 题`}
                         </span>
@@ -125,7 +129,7 @@ export default async function ReadingCenterPage({
                       </div>
                     </Link>
 
-                    {item.sourceKind === 'EPUB' ? (
+                    {isEbookSourceKind(item.sourceKind) ? (
                       <div className='mt-4 flex justify-end border-t border-slate-100 pt-3'>
                         <DeleteEbookButton id={item.id} title={item.title} />
                       </div>

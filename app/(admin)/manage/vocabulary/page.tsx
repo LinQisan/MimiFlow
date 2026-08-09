@@ -10,7 +10,7 @@ import {
   mergeVocabularyDuplicateGroupAdmin,
   updateVocabularyMetaAdmin,
   updateVocabularyTagsAdmin,
-} from '@/app/(knowledge)/vocabulary/manage/searchActions'
+} from '@/features/vocabulary/admin-actions'
 import { useDialog } from '@/context/DialogContext'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
 import WordPronunciation from '@/components/vocabulary/WordPronunciation'
@@ -362,8 +362,8 @@ export default function VocabularyManagePage() {
   }
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 pb-24 md:px-6 md:py-8'>
-      <div className='mx-auto mb-6 flex max-w-6xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-end md:justify-between'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 pb-24 md:px-8 md:py-8'>
+      <div className='mx-auto mb-6 flex max-w-7xl flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-end md:justify-between'>
         <div>
           <p className='text-xs font-black tracking-[0.18em] text-slate-400 uppercase'>内容管理</p>
           <h1 className='text-2xl font-black text-gray-900'>词库管理</h1>
@@ -406,7 +406,7 @@ export default function VocabularyManagePage() {
           </div>
         </div>
       </div>
-      <div className='mx-auto max-w-6xl'>
+      <div className='mx-auto max-w-7xl'>
 
       <div className='mb-4 border border-gray-200 bg-white p-3 md:p-4'>
         <label className='mb-1 block text-xs font-bold text-gray-500'>

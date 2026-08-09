@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import InlineConfirmAction from '@/components/InlineConfirmAction'
-import { deleteEpubAction } from './ebook-actions'
+import { deleteEpubAction } from '@/features/reading/ebook-actions'
 
 export default function DeleteEbookButton({
   id,

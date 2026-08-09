@@ -5,6 +5,11 @@ import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import {
+  encodeMaterialPayload,
+  patchMaterialPayload,
+} from '@/lib/codecs/material-payload'
+import { encodeQuestionContent } from '@/lib/codecs/question-content'
+import {
   normalizeQuestionTypeForMaterial,
   toQuestionOptionsAndAnswer,
   toQuestionRecordPayload,
@@ -14,11 +19,6 @@ import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
-
-const asJsonRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
 
 type QuestionOptionInput = {
   text?: string | null
@@ -55,28 +55,16 @@ type CreateQuizQuestionPayload = {
   options?: QuestionOptionInput[] | null
 }
 
-const resolveMaterialIdByLegacy = async (
+const resolveMaterialId = async (
   type: MaterialType,
-  maybeLegacyId: string,
+  id: string,
 ) => {
   const direct = await prisma.material.findUnique({
-    where: { id: maybeLegacyId },
+    where: { id },
     select: { id: true, type: true },
   })
   if (direct && direct.type === type) return direct.id
-  const prefix =
-    type === MaterialType.LISTENING
-      ? 'lesson'
-      : type === MaterialType.MEDIA_SUBTITLE
-        ? 'media'
-        : type === MaterialType.READING
-          ? 'passage'
-          : 'quiz'
-  const legacy = await prisma.material.findUnique({
-    where: { id: `${prefix}:${maybeLegacyId}` },
-    select: { id: true, type: true },
-  })
-  return legacy?.type === type ? legacy.id : null
+  return null
 }
 
 const normalizeOptions = (
@@ -130,10 +118,16 @@ export async function createArticle(data: CreateArticlePayload) {
 
     const exists = await prisma.collection.findUnique({
       where: { id: collectionId },
-      select: { id: true },
+      select: { id: true, acceptedMaterialTypes: true },
     })
     if (!exists) {
       return { success: false, message: '所属集合不存在，请刷新后重试。' }
+    }
+    if (!exists.acceptedMaterialTypes.includes(MaterialType.READING)) {
+      return {
+        success: false,
+        message: '该集合未设置为阅读内容集合，请重新选择。',
+      }
     }
 
     const nextLanguage = (data.language || '').trim()
@@ -150,10 +144,10 @@ export async function createArticle(data: CreateArticlePayload) {
       data: {
         type: MaterialType.READING,
         title: articleTitle || '未命名阅读材料',
-        contentPayload: {
+        contentPayload: encodeMaterialPayload(MaterialType.READING, {
           text: content,
           description: (data.description || '').trim() || null,
-        },
+        }),
         collectionMaterials: {
           create: {
             collectionId,
@@ -163,12 +157,12 @@ export async function createArticle(data: CreateArticlePayload) {
         questions: {
           create: normalizedQuestions.map(q => ({
             questionType: q.questionType,
-            content: toQuestionRecordPayload(
+            content: encodeQuestionContent(toQuestionRecordPayload(
               q.prompt,
               q.contextSentence,
               null,
               q.explanation || null,
-            ),
+            )),
             prompt: q.prompt,
             context: q.contextSentence,
             analysis: q.explanation || null,
@@ -222,7 +216,9 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
         data: {
           type: MaterialType.VOCAB_GRAMMAR,
           title: `${collection.title}`,
-          contentPayload: { title: collection.title },
+          contentPayload: encodeMaterialPayload(MaterialType.VOCAB_GRAMMAR, {
+            title: collection.title,
+          }),
           collectionMaterials: {
             create: {
               collectionId: data.paperId,
@@ -264,12 +260,12 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       data: {
         materialId: quizMaterialId,
         questionType,
-        content: toQuestionRecordPayload(
+        content: encodeQuestionContent(toQuestionRecordPayload(
           promptText || null,
           normalizedContext,
           (data.targetWord || '').trim() || null,
           (data.explanation || '').trim() || null,
-        ),
+        )),
         prompt: promptText || null,
         context: normalizedContext,
         analysis: (data.explanation || '').trim() || null,
@@ -317,7 +313,7 @@ export async function updateArticleWithQuestions(
     if (!content) {
       return { success: false, message: '请填写文章正文。' }
     }
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.READING,
       payload.passageId.trim(),
     )
@@ -326,6 +322,11 @@ export async function updateArticleWithQuestions(
     }
 
     await prisma.$transaction(async tx => {
+      const currentMaterial = await tx.material.findUnique({
+        where: { id: materialId },
+        select: { contentPayload: true },
+      })
+      if (!currentMaterial) throw new Error('阅读材料不存在。')
       const existingQuestions = await tx.question.findMany({
         where: { materialId },
         select: { id: true },
@@ -336,7 +337,11 @@ export async function updateArticleWithQuestions(
         where: { id: materialId },
         data: {
           title,
-          contentPayload: { text: content },
+          contentPayload: patchMaterialPayload(
+            MaterialType.READING,
+            currentMaterial.contentPayload,
+            { text: content },
+          ),
         },
       })
 
@@ -353,12 +358,12 @@ export async function updateArticleWithQuestions(
         const normalizedOptions = normalizeOptions(question.options)
         const nextQuestionData = {
           questionType,
-          content: toQuestionRecordPayload(
+          content: encodeQuestionContent(toQuestionRecordPayload(
             promptText || null,
             normalizedContext,
             null,
             null,
-          ),
+          )),
           prompt: promptText || null,
           context: normalizedContext,
           ...toQuestionOptionsAndAnswer(normalizedOptions),
@@ -438,7 +443,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
     if (!title) {
       return { success: false, message: '题库名称不能为空。' }
     }
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.VOCAB_GRAMMAR,
       payload.quizId.trim(),
     )
@@ -515,7 +520,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         }
         const nextQuestionData = {
           questionType,
-          content:
+          content: encodeQuestionContent(
             questionType === QuestionType.LISTENING
               ? {
                   ...baseContent,
@@ -525,6 +530,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
                   sectionTitle: '听力',
                 }
               : baseContent,
+          ),
           prompt: promptText || null,
           context: normalizedContext,
           analysis: explanation,
@@ -587,7 +593,7 @@ export async function updateLessonQuestions(
     if (!payload.lessonId) {
       return { success: false, message: '听力 ID 缺失。' }
     }
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.LISTENING,
       payload.lessonId.trim(),
     )
@@ -718,12 +724,15 @@ export async function updateLessonQuestions(
       await tx.material.update({
         where: { id: materialId },
         data: {
-          contentPayload: {
-            ...asJsonRecord(currentMaterial.contentPayload),
+          contentPayload: patchMaterialPayload(
+            MaterialType.LISTENING,
+            currentMaterial.contentPayload,
+            {
             questionEntryRequired: false,
             listeningSectionNumber,
             sectionNumber: listeningSectionNumber,
-          },
+            },
+          ),
         },
       })
     })
@@ -746,6 +755,7 @@ export async function createCategory(data: {
   collectionType?: string
   levelId?: string
   name: string
+  materialType?: MaterialType
 }) {
   try {
     const title = (data.name || '').trim()
@@ -770,8 +780,14 @@ export async function createCategory(data: {
       data: {
         title,
         collectionType,
+        acceptedMaterialTypes: data.materialType ? [data.materialType] : [],
       },
-      select: { id: true, title: true, collectionType: true },
+      select: {
+        id: true,
+        title: true,
+        collectionType: true,
+        acceptedMaterialTypes: true,
+      },
     })
 
     return {
@@ -780,6 +796,7 @@ export async function createCategory(data: {
         id: newCategory.id,
         name: newCategory.title,
         collectionType: newCategory.collectionType,
+        acceptedMaterialTypes: newCategory.acceptedMaterialTypes,
         level: { title: typeLabel },
       },
     }

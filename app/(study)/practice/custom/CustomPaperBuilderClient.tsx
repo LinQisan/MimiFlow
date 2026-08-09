@@ -276,17 +276,9 @@ export default function CustomPaperBuilderClient({
   }
 
   return (
-    <div className='min-h-screen bg-slate-50 px-4 py-6 pb-24 font-sans sm:pb-6 md:px-6 md:py-8'>
+    <div className='min-h-screen bg-slate-50 px-4 pb-24 pt-0 font-sans sm:pb-6 md:px-6 md:pb-8 md:pt-0'>
       <div className='mx-auto max-w-5xl'>
-        <header className='mb-5 flex items-start justify-between gap-4'>
-          <div>
-            <h1 className='text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
-              组合练习
-            </h1>
-            <p className='mt-1 text-sm text-slate-500'>
-              选择练习范围、题型和数量。
-            </p>
-          </div>
+        <header className='mb-4 flex justify-end'>
           <Link href='/practice' className='ui-btn ui-btn-sm shrink-0'>
             返回练习
           </Link>

@@ -28,15 +28,15 @@ export default async function ReviewPage() {
   ]
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-4xl space-y-5'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-5'>
         <PageHeader title='复习中心' description='处理到期记忆和需要巩固的错题。' />
 
-        <section className='grid border-y border-slate-200 md:grid-cols-2 md:divide-x md:divide-slate-200'>
+        <section className='grid gap-4 md:grid-cols-2'>
           {sections.map(section => (
             <article
               key={section.title}
-              className='border-b border-slate-200 px-1 py-8 last:border-b-0 md:border-b-0 md:px-8 md:py-10'>
+              className='rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
               <div className='flex items-start justify-between gap-4'>
                 <div>
                   <h2 className='text-xl font-black text-slate-900'>

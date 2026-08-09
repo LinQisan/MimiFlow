@@ -2,7 +2,7 @@
 import Link from 'next/link'
 
 import { findLevelsWithPapersAndCounts } from '@/lib/repositories/exam'
-import ManagePapersListClient from '@/app/(admin)/papers/manage/ManagePapersListClient'
+import ManagePapersListClient from '@/features/practice/ui/ManagePapersListClient'
 
 export default async function ManageExamPapersPage() {
   const levels = await findLevelsWithPapersAndCounts()

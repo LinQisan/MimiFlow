@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import LessonQuestionsPanel from '@/app/(library)/collections/lesson/[lessonId]/LessonQuestionsPanel'
-import LessonSiblingNav from '@/app/(library)/collections/lesson/[lessonId]/LessonSiblingNav'
+import LessonQuestionsPanel from '@/features/collections/ui/LessonQuestionsPanel'
+import LessonSiblingNav from '@/features/collections/ui/LessonSiblingNav'
 import {
   getListeningEditData,
 } from '@/lib/repositories/collection/manage'
-import ListeningTitleForm from '@/app/(study)/listening/manage/ListeningTitleForm'
-import DeleteAudioMaterialButton from '../DeleteAudioMaterialButton'
+import ListeningTitleForm from '@/features/listening/ui/ListeningTitleForm'
+import DeleteAudioMaterialButton from '@/features/listening/ui/DeleteAudioMaterialButton'
 import QuestionSectionAnchor from './QuestionSectionAnchor'
 
 export default async function ManageAudioMaterialEditPage({
@@ -129,9 +129,6 @@ export default async function ManageAudioMaterialEditPage({
 
         {isListening ? (
           <QuestionSectionAnchor>
-            <div className='rounded-xl border border-cyan-100 bg-cyan-50/60 px-4 py-3 text-sm leading-6 text-slate-700'>
-              在这里新增、编辑、排序或删除听力题。修改完成后，点击题目区右上角的“保存题目”。
-            </div>
             <LessonQuestionsPanel
               lessonId={material.id}
               initialQuestions={material.questions}

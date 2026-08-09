@@ -1,9 +1,9 @@
 import Link from 'next/link'
 
-import prisma from '@/lib/prisma'
 import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
 import { getTodayStudyPlan } from '@/modules/progress/server/today-plan'
+import { getHomeDashboardData } from '@/features/home/server/repository'
 
 export const revalidate = 60
 
@@ -105,66 +105,23 @@ export default async function HomePage() {
   const weekStartKey = toDateKeyInTokyo(sixDaysAgo)
   const todayKey = toDateKeyInTokyo(now)
 
-  const [
+  const [todayPlan, dashboard] = await Promise.all([
+    getTodayStudyPlan(),
+    getHomeDashboardData({ weekStartKey, todayKey }),
+  ])
+  const {
     vocabCount,
-    weekStudyAgg,
+    weekStudySeconds,
     paperCount,
     questionCount,
-    todayPlan,
     recentStudyRows,
     recentPlaytimeRows,
-  ] = await Promise.all([
-    prisma.vocabulary.count(),
-    prisma.studyTimeDaily.aggregate({
-      _sum: { seconds: true },
-      where: {
-        dateKey: {
-          gte: weekStartKey,
-          lte: todayKey,
-        },
-      },
-    }),
-    prisma.collection.count({ where: { collectionType: 'PAPER' } }),
-    prisma.question.count(),
-    getTodayStudyPlan(),
-    prisma.materialStudyProgress.findMany({
-      where: { profileId: 'default' },
-      orderBy: { updatedAt: 'desc' },
-      take: 6,
-      include: {
-        material: {
-          select: {
-            id: true,
-            title: true,
-            type: true,
-          },
-        },
-      },
-    }),
-    prisma.materialPlaytimeStat.findMany({
-      where: {
-        profileId: 'default',
-        material: { type: MaterialType.LISTENING },
-      },
-      orderBy: { updatedAt: 'desc' },
-      take: 6,
-      include: {
-        material: {
-          select: {
-            id: true,
-            title: true,
-            type: true,
-          },
-        },
-      },
-    }),
-  ])
+  } = dashboard
 
   const wrongCount =
     todayPlan.tasks.find(task => task.id === 'retry')?.targetCount || 0
 
-  const totalWeekSeconds = weekStudyAgg._sum.seconds || 0
-  const weekHours = (totalWeekSeconds / 3600).toFixed(1)
+  const weekHours = (weekStudySeconds / 3600).toFixed(1)
 
   const todayTaskRecords: HomeContinueItem[] = todayPlan.tasks
     .filter(task => !task.disabled)
@@ -255,18 +212,10 @@ export default async function HomePage() {
 
   return (
     <main className='min-h-screen bg-white text-slate-900'>
-      <div className='mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-16'>
-        <header className='mb-12 border-b border-slate-200 pb-10 md:mb-16 md:pb-14'>
-          <div className='mb-8'>
-            <p className='editorial-kicker'>
-              MIMIFLOW / TODAY
-            </p>
-            <h1 className='mt-4 text-4xl font-semibold tracking-tight text-slate-950 md:text-6xl'>
-              今日学习
-            </h1>
-          </div>
+      <div className='mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10'>
+        <header className='mb-8 border-b border-slate-200 pb-7 md:mb-10 md:pb-8'>
           <div className='grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
-            <div className='grid grid-cols-2 gap-x-8 gap-y-6 border-t border-slate-200 pt-6 md:grid-cols-4'>
+            <div className='grid grid-cols-2 gap-x-8 gap-y-6 border-y border-slate-200 py-5 md:grid-cols-4'>
               <div>
                 <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
                   本周学习

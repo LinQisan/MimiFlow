@@ -11,7 +11,7 @@ import {
   moveAudioFileAdmin,
   renameAudioFileAdmin,
   uploadAudioFileAdmin,
-} from '@/app/(admin)/audio/manage/action'
+} from '@/features/audio/manage-actions'
 import { useDialog } from '@/context/DialogContext'
 import { formatBytes, formatTokyoDateTime } from '@/utils/time/format'
 

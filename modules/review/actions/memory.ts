@@ -11,6 +11,8 @@ import {
 } from 'ts-fsrs'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { readFiniteNumber, readString } from '@/lib/validation/schema'
+import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import {
   toFsrsCard,
   toStoredFsrsUpdate,
@@ -56,18 +58,6 @@ type DialogueSnapshot = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-
-const asString = (value: unknown) => (typeof value === 'string' ? value : '')
-
-const asNumber = (value: unknown, fallback = 0) => {
-  const next = Number(value)
-  return Number.isFinite(next) ? next : fallback
-}
-
 async function getListeningDialoguesByIds(targetIds: number[]) {
   const normalizedIds = Array.from(
     new Set(targetIds.map(id => Number(id)).filter(Number.isFinite)),
@@ -86,20 +76,20 @@ async function getListeningDialoguesByIds(targetIds: number[]) {
   const idSet = new Set(normalizedIds)
   const snapshots: DialogueSnapshot[] = []
   for (const material of materials) {
-    const payload = asRecord(material.contentPayload)
+    const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
     const rawDialogues = Array.isArray(payload.dialogues)
       ? (payload.dialogues as Record<string, unknown>[])
       : []
-    const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
+    const audioFile = readString(payload.audioFile) || readString(payload.audioUrl)
 
     for (const row of rawDialogues) {
-      const dialogueId = asNumber(row.id, asNumber(row.sequenceId))
+      const dialogueId = readFiniteNumber(row.id, readFiniteNumber(row.sequenceId))
       if (!idSet.has(dialogueId)) continue
       snapshots.push({
         id: dialogueId,
-        text: asString(row.text),
-        start: asNumber(row.start),
-        end: asNumber(row.end),
+        text: readString(row.text),
+        start: readFiniteNumber(row.start),
+        end: readFiniteNumber(row.end),
         lesson: {
           id: material.id,
           title: material.title,
@@ -142,17 +132,17 @@ async function getListeningDialogueContextByIds(targetIds: number[]) {
   > = []
 
   for (const material of materials) {
-    const payload = asRecord(material.contentPayload)
+    const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
     const rawDialogues = Array.isArray(payload.dialogues)
       ? (payload.dialogues as Record<string, unknown>[])
       : []
     const dialogues = rawDialogues.map((row, index) => ({
-      id: asNumber(row.id, index + 1),
-      text: asString(row.text),
-      start: asNumber(row.start),
-      end: asNumber(row.end),
+      id: readFiniteNumber(row.id, index + 1),
+      text: readString(row.text),
+      start: readFiniteNumber(row.start),
+      end: readFiniteNumber(row.end),
     }))
-    const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
+    const audioFile = readString(payload.audioFile) || readString(payload.audioUrl)
 
     for (const row of dialogues) {
       if (!idSet.has(row.id)) continue

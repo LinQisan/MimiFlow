@@ -1,4 +1,5 @@
 import '@/app/globals.css'
+import 'katex/dist/katex.min.css'
 
 import { I18nProvider } from '@/context/I18nContext'
 import { DialogProvider } from '@/context/DialogContext'

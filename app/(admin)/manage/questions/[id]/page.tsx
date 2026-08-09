@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 
-import EditQuizUI from '@/app/(library)/collections/quiz/[id]/EditQuizUI'
+import EditQuizUI from '@/features/content/ui/EditQuizUI'
 import { getQuizEditData } from '@/lib/repositories/collection/manage'
 
 export default async function ManageQuestionSetEditPage({ params }: { params: Promise<{ id: string }> }) {

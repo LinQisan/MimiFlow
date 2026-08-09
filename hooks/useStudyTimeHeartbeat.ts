@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { StudyTimeKind } from '@prisma/client'
-import { logStudyTime } from '@/app/actions/studyTelemetry'
+import { logStudyTime } from '@/features/progress/actions'
 
 type Options = {
   enabled: boolean

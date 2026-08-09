@@ -11,7 +11,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   useTransition,
 } from 'react'
 
@@ -25,29 +24,21 @@ import {
 } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
-import {
-  buildPronunciationMapForText,
-  buildSurfaceAliasMapForText,
-} from '@/utils/vocabulary/japaneseInflection'
+import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
-import {
-  deleteMediaSubtitleLine,
-  updateMediaSubtitleLineMeta,
-} from '../actions'
 import SubtitleReaderControls from '@/modules/media-subtitles/components/SubtitleReaderControls'
-
-type DialogueRow = {
-  id: number
-  stableId: string
-  start: number
-  end: number
-  text: string
-  note: string
-  favorite: boolean
-}
+import {
+  remapKeyedState,
+  resequenceRows,
+  sentenceMeaningNotes,
+  filterSubtitleRows,
+  type DialogueRow,
+} from '@/modules/media-subtitles/domain/editor'
+import { highlightSubtitleKeyword as highlightKeyword } from '@/modules/media-subtitles/components/HighlightedSubtitleText'
+import { useMediaSubtitleEditorState } from '@/modules/media-subtitles/hooks/useMediaSubtitleEditorState'
+import { useMediaSubtitleMutations } from '@/modules/media-subtitles/hooks/useMediaSubtitleMutations'
 
 type Props = {
-  legacyId: string
   materialId: string
   initialTitle: string
   initialDialogues: DialogueRow[]
@@ -57,74 +48,7 @@ type Props = {
   initialFocusedStableId?: string
 }
 
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-function highlightKeyword(text: string, keyword: string) {
-  const normalizedKeyword = keyword.trim()
-  if (!normalizedKeyword || !text) return text
-
-  const parts = text.split(new RegExp(`(${escapeRegExp(normalizedKeyword)})`, 'gi'))
-  return parts.map((part, index) =>
-    part.toLowerCase() === normalizedKeyword.toLowerCase() ? (
-      <mark
-        key={`${part}-${index}`}
-        className='rounded-sm bg-yellow-200/90 px-0.5 font-bold text-slate-900'>
-        {part}
-      </mark>
-    ) : (
-      part
-    ),
-  )
-}
-
-function sentenceMeaningNotes(
-  sentence: string,
-  vocabularyMetaMap: Record<string, VocabularyMeta>,
-) {
-  const words = Object.keys(vocabularyMetaMap)
-  const aliasMap = buildSurfaceAliasMapForText(sentence, words)
-  const bestByBase = new Map<string, { word: string; meaning: string }>()
-  Object.entries(aliasMap).forEach(([surface, base]) => {
-    const meaning = vocabularyMetaMap[base]?.meanings?.[0] || ''
-    if (!meaning.trim()) return
-    const existing = bestByBase.get(base)
-    if (!existing || surface.length > existing.word.length) {
-      bestByBase.set(base, { word: surface, meaning })
-    }
-  })
-  return Array.from(bestByBase.values())
-    .sort((a, b) => b.word.length - a.word.length)
-    .slice(0, 6)
-}
-
-function resequenceRows(rows: DialogueRow[]) {
-  const idMap = new Map<number, number>()
-  const nextRows = rows.map((row, index) => {
-    const nextId = index + 1
-    idMap.set(row.id, nextId)
-    return {
-      ...row,
-      id: nextId,
-    }
-  })
-  return { rows: nextRows, idMap }
-}
-
-function remapKeyedState<T>(
-  source: Record<number, T>,
-  idMap: Map<number, number>,
-) {
-  return Object.entries(source).reduce<Record<number, T>>((acc, [key, value]) => {
-    const oldId = Number(key)
-    const nextId = idMap.get(oldId)
-    if (nextId != null) acc[nextId] = value
-    return acc
-  }, {})
-}
-
 export default function MediaSubtitleEditor({
-  legacyId,
   materialId,
   initialTitle,
   initialDialogues,
@@ -134,65 +58,30 @@ export default function MediaSubtitleEditor({
   initialFocusedStableId = '',
 }: Props) {
   const dialog = useDialog()
-  const [rows, setRows] = useState<DialogueRow[]>(
-    initialDialogues.length > 0
-      ? initialDialogues
-      : [
-          {
-            id: 1,
-            stableId: 'draft-1',
-            start: 0,
-            end: 1,
-            text: '',
-            note: '',
-            favorite: false,
-          },
-        ],
-  )
-  const [showTimeline, setShowTimeline] = useState(false)
-  const [showFavoriteOnly, setShowFavoriteOnly] = useState(false)
-  const [pageSize, setPageSize] = useState(40)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [searchKeyword, setSearchKeyword] = useState(initialSearchKeyword)
+  const { deleteMediaSubtitleLine, updateMediaSubtitleLineMeta } =
+    useMediaSubtitleMutations()
+  const editorState = useMediaSubtitleEditorState({
+    initialDialogues,
+    initialSearchKeyword,
+    initialPronunciationMap,
+    initialVocabularyMetaMap,
+  })
+  const {
+    rows, setRows, showTimeline, setShowTimeline, showFavoriteOnly,
+    setShowFavoriteOnly, pageSize, setPageSize, currentPage, setCurrentPage,
+    searchKeyword, setSearchKeyword, currentSearchHitIndex,
+    setCurrentSearchHitIndex, expandedNoteRowId, setExpandedNoteRowId,
+    editingRowId, setEditingRowId, copyFromId, setCopyFromId, copyToId,
+    setCopyToId, copyState, setCopyState, selectedRowIds, setSelectedRowIds,
+    lastSelectedRowId, setLastSelectedRowId, selectedCopyState,
+    setSelectedCopyState, noteDraftById, setNoteDraftById, editDraftById,
+    setEditDraftById, lineMetaMessage, setLineMetaMessage,
+    localPronunciationMap, setLocalPronunciationMap, localVocabularyMetaMap,
+    setLocalVocabularyMetaMap,
+  } = editorState
   const deferredSearchKeyword = useDeferredValue(searchKeyword)
   const normalizedSearchKeyword = deferredSearchKeyword.trim().toLowerCase()
-  const [currentSearchHitIndex, setCurrentSearchHitIndex] = useState(0)
-  const [expandedNoteRowId, setExpandedNoteRowId] = useState<number | null>(
-    null,
-  )
-  const [editingRowId, setEditingRowId] = useState<number | null>(null)
-  const [copyFromId, setCopyFromId] = useState(initialDialogues[0]?.id || 1)
-  const [copyToId, setCopyToId] = useState(
-    initialDialogues[initialDialogues.length - 1]?.id || 1,
-  )
-  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>(
-    'idle',
-  )
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<number>>(
-    () => new Set(),
-  )
-  const [lastSelectedRowId, setLastSelectedRowId] = useState<number | null>(null)
-  const [selectedCopyState, setSelectedCopyState] = useState<
-    'idle' | 'copied' | 'error'
-  >('idle')
-  const [noteDraftById, setNoteDraftById] = useState<Record<number, string>>(
-    () =>
-      initialDialogues.reduce<Record<number, string>>((acc, row) => {
-        acc[row.id] = row.note || ''
-        return acc
-      }, {}),
-  )
-  const [editDraftById, setEditDraftById] = useState<
-    Record<number, { start: string; end: string; text: string }>
-  >({})
-  const [lineMetaMessage, setLineMetaMessage] = useState('')
   const [lineMetaPending, startLineMetaTransition] = useTransition()
-  const [localPronunciationMap, setLocalPronunciationMap] = useState(
-    initialPronunciationMap,
-  )
-  const [localVocabularyMetaMap, setLocalVocabularyMetaMap] = useState(
-    initialVocabularyMetaMap,
-  )
 
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
@@ -201,15 +90,7 @@ export default function MediaSubtitleEditor({
   const hasAppliedInitialFocusRef = useRef(false)
 
   const filteredRows = useMemo(
-    () =>
-      rows.filter(row => {
-        if (showFavoriteOnly && !row.favorite) return false
-        if (!normalizedSearchKeyword) return true
-        const haystacks = [row.text, row.note, String(row.id)]
-        return haystacks.some(item =>
-          item.toLowerCase().includes(normalizedSearchKeyword),
-        )
-      }),
+    () => filterSubtitleRows({ rows, favoriteOnly: showFavoriteOnly, keyword: normalizedSearchKeyword }),
     [rows, showFavoriteOnly, normalizedSearchKeyword],
   )
   const searchHitIds = useMemo(
@@ -282,13 +163,13 @@ export default function MediaSubtitleEditor({
 
   useEffect(() => {
     setCurrentPage(1)
-  }, [showFavoriteOnly, normalizedSearchKeyword, pageSize])
+  }, [showFavoriteOnly, normalizedSearchKeyword, pageSize, setCurrentPage])
 
   useEffect(() => {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages)
     }
-  }, [currentPage, totalPages])
+  }, [currentPage, totalPages, setCurrentPage])
 
   useEffect(() => {
     if (searchHitIds.length === 0) {
@@ -296,7 +177,7 @@ export default function MediaSubtitleEditor({
       return
     }
     setCurrentSearchHitIndex(prev => Math.min(prev, searchHitIds.length - 1))
-  }, [searchHitIds])
+  }, [searchHitIds, setCurrentSearchHitIndex])
 
   useEffect(() => {
     if (hasAppliedInitialFocusRef.current) return
@@ -343,6 +224,8 @@ export default function MediaSubtitleEditor({
     pageSize,
     rows,
     searchHitIds,
+    setCurrentPage,
+    setCurrentSearchHitIndex,
   ])
 
   useEffect(() => {
@@ -356,7 +239,13 @@ export default function MediaSubtitleEditor({
     }
     const target = rowRefs.current[currentSearchHitId]
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [currentSearchHitId, filteredRows, normalizedPage, pageSize])
+  }, [
+    currentSearchHitId,
+    filteredRows,
+    normalizedPage,
+    pageSize,
+    setCurrentPage,
+  ])
 
   const moveSearchHit = (direction: 1 | -1) => {
     if (searchHitIds.length === 0) return
@@ -401,7 +290,7 @@ export default function MediaSubtitleEditor({
     patch: Parameters<typeof updateMediaSubtitleLineMeta>[2],
   ) => {
     startLineMetaTransition(async () => {
-      const result = await updateMediaSubtitleLineMeta(legacyId, lineId, patch)
+      const result = await updateMediaSubtitleLineMeta(materialId, lineId, patch)
       if (!result.success) {
         setLineMetaMessage(result.message || '保存失败。')
         return
@@ -488,7 +377,7 @@ export default function MediaSubtitleEditor({
     }
 
     startLineMetaTransition(async () => {
-      const result = await deleteMediaSubtitleLine(legacyId, row.id)
+      const result = await deleteMediaSubtitleLine(materialId, row.id)
       if (!result.success) {
         setLineMetaMessage(result.message || '删除失败。')
         return
@@ -593,7 +482,7 @@ export default function MediaSubtitleEditor({
       setSelectedCopyState('error')
       window.setTimeout(() => setSelectedCopyState('idle'), 1800)
     }
-  }, [selectedText, writeClipboard])
+  }, [selectedText, setSelectedCopyState, writeClipboard])
 
   const handleCopySelectedRowsFromClipboardEvent = (
     event: ClipboardEvent<HTMLElement>,

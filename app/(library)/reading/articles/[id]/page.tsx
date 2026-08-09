@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
-import { getArticleByLegacyId } from '@/lib/repositories/materials'
-import ArticleReaderClient from './ArticleReaderClient'
+import { getArticleById } from '@/lib/repositories/materials'
+import ArticleReaderClient from '@/features/reading/ui/ArticleReaderClient'
 import ArticleQuestionsPanel from './ArticleQuestionsPanel'
+import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 
 export const revalidate = 0
 
@@ -13,13 +14,13 @@ export default async function ArticleDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const article = await getArticleByLegacyId(id)
+  const article = await getArticleById(id)
 
   if (!article) {
     notFound()
   }
 
-  if (article.sourceKind === 'EPUB') {
+  if (isEbookSourceKind(article.sourceKind)) {
     redirect(`/reading/ebooks/${encodeURIComponent(article.id)}`)
   }
 
@@ -29,13 +30,12 @@ export default async function ArticleDetailPage({
         <header className='mx-auto max-w-4xl border-b border-slate-200 pb-6 md:pb-8'>
           <div className='flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between'>
             <div className='min-w-0'>
-              <p className='editorial-kicker'>MIMIFLOW / READING</p>
               {article.hasAuthenticTitle ? (
-                <h1 className='mt-4 max-w-3xl text-3xl font-semibold leading-tight text-slate-950 md:text-4xl'>
+                <h1 className='max-w-3xl text-3xl font-semibold leading-tight text-slate-950 md:text-4xl'>
                   {article.shortTitle}
                 </h1>
               ) : null}
-              <p className={`${article.hasAuthenticTitle ? 'mt-4' : 'mt-5'} text-sm tracking-wide text-slate-500`}>
+              <p className={`${article.hasAuthenticTitle ? 'mt-4' : ''} text-sm tracking-wide text-slate-500`}>
                 {article.category ? article.category.name : '阅读材料'}
                 {article.questions.length > 0
                   ? ` · ${article.questions.length} 题`

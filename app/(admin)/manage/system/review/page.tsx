@@ -1,297 +1,200 @@
 // Review scheduling maintenance route.
 import Link from 'next/link'
-import type { ReactNode } from 'react'
 
 import { getFsrsAdminDashboard } from '@/modules/review/actions/memory'
 
 export const dynamic = 'force-dynamic'
 
 const ratingLabel = (rating: number) => {
-  if (rating === 1) return 'Again'
-  if (rating === 2) return 'Hard'
-  if (rating === 3) return 'Good'
-  if (rating === 4) return 'Easy'
+  if (rating === 1) return '忘记'
+  if (rating === 2) return '困难'
+  if (rating === 3) return '记住'
+  if (rating === 4) return '简单'
   return String(rating)
 }
 
 const dateTimeText = (value: Date | null | undefined) => {
   if (!value) return '未记录'
-  return new Intl.DateTimeFormat('ja-JP', {
+  return new Intl.DateTimeFormat('zh-CN', {
     timeZone: 'Asia/Tokyo',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: false,
   }).format(value)
 }
 
-function SectionTitle({
-  title,
-  desc,
-}: {
-  title: string
-  desc?: string
-}) {
-  return (
-    <div className='mb-5 flex flex-wrap items-end justify-between gap-3'>
-      <div>
-        <div className='flex items-center gap-2'>
-          <div className='h-5 w-1.5 rounded-full bg-slate-900' />
-          <h2 className='text-lg font-semibold tracking-tight text-slate-900 md:text-xl'>
-            {title}
-          </h2>
-        </div>
-        {desc ? (
-          <p className='mt-1 max-w-2xl text-sm text-slate-500 md:text-[15px]'>
-            {desc}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-function SurfaceCard({
-  children,
-  className = '',
-}: {
-  children: ReactNode
-  className?: string
-}) {
-  return (
-    <div
-      className={`rounded-[18px] border border-slate-200 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.06),0_4px_10px_rgba(15,23,42,0.04)] ${className}`}>
-      {children}
-    </div>
-  )
-}
-
-function MetricCard({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note?: string
-}) {
-  return (
-    <SurfaceCard className='p-4 md:p-5'>
-      <p className='text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-        {label}
-      </p>
-      <p className='mt-3 text-3xl font-semibold tracking-tight text-slate-900 md:text-4xl'>
-        {value}
-      </p>
-      {note ? <p className='mt-2 text-xs text-slate-500'>{note}</p> : null}
-    </SurfaceCard>
-  )
+function getScheduleStatus(data: Awaited<ReturnType<typeof getFsrsAdminDashboard>>) {
+  if (data.stats.eventCount30d === 0) {
+    return {
+      label: '等待复习数据',
+      description: '调度器已经就绪。最近 30 天没有复习记录，完成几次记忆复习后会自动生成趋势。',
+      tone: 'border-slate-300 bg-slate-50 text-slate-700',
+    }
+  }
+  if (data.stats.usingFallback) {
+    return {
+      label: '正在使用安全参数',
+      description: '自定义参数暂时不可用，系统已自动使用默认参数，复习功能仍可正常使用。',
+      tone: 'border-amber-200 bg-amber-50 text-amber-800',
+    }
+  }
+  if (data.stats.overdueRate7d >= 40) {
+    return {
+      label: '建议优先处理到期内容',
+      description: '最近 7 天的逾期比例偏高。先完成到期复习，系统会逐步恢复合适的节奏。',
+      tone: 'border-amber-200 bg-amber-50 text-amber-800',
+    }
+  }
+  if (data.stats.eventCount7d >= 10 && data.stats.successRate7d < 70) {
+    return {
+      label: '近期记忆压力较高',
+      description: '最近的记住比例较低。继续按计划复习即可，系统会自动缩短需要巩固内容的间隔。',
+      tone: 'border-amber-200 bg-amber-50 text-amber-800',
+    }
+  }
+  return {
+    label: '调度运行正常',
+    description: '近期复习节奏稳定，继续完成每天的到期内容即可。',
+    tone: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  }
 }
 
 export default async function ManageFsrsPage() {
   const data = await getFsrsAdminDashboard()
+  const status = getScheduleStatus(data)
+  const hasRecentData = data.stats.eventCount30d > 0
   const maxRatingCount = Math.max(1, ...data.ratingDist.map(item => item.count))
 
   return (
-    <main className='min-h-screen bg-white text-slate-900'>
-      <div className='mx-auto max-w-6xl px-4 py-5 md:px-6 md:py-8'>
-        <header className='mb-6 flex flex-col gap-4 rounded-[20px] bg-white px-5 py-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:px-6 md:py-6'>
-          <div className='flex flex-wrap items-center gap-3'>
-            <Link
-              href='/'
-              className='inline-flex items-center gap-1.5 text-sm font-semibold tracking-[0.24em] text-slate-500 uppercase transition hover:text-slate-900'
-              aria-label='返回首页'
-              title='返回首页'>
-              <span>MimiFlow</span>
-              <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                <path
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  strokeWidth={2}
-                  d='M15 19l-7-7 7-7'
-                />
-              </svg>
-            </Link>
-            <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <Link
-                href='/review/memory'
-                className='ui-btn ui-btn-sm h-10 px-4 text-sm'>
-                错题回顾
-              </Link>
-              <Link
-                href='/'
-                className='ui-btn ui-btn-sm h-10 px-4 text-sm'>
-                返回首页
-              </Link>
-            </div>
+    <main className='min-h-screen bg-slate-50 px-4 pb-12 text-slate-900 md:px-8'>
+      <div className='mx-auto max-w-5xl'>
+        <header className='flex flex-col gap-4 border-b border-slate-200 py-5 sm:flex-row sm:items-center sm:justify-between'>
+          <div>
+            <p className='text-sm font-semibold text-slate-900'>复习调度</p>
+            <p className='mt-1 text-xs text-slate-500'>查看系统是否正常，不需要手动调整参数。</p>
           </div>
-
-          <div className='grid gap-5 md:grid-cols-[1.3fr_0.7fr] md:items-end'>
-            <div>
-              <p className='text-xs font-semibold tracking-[0.28em] text-slate-500 uppercase'>
-                FSRS
-              </p>
-              <h1 className='mt-3 text-4xl font-semibold tracking-tight text-slate-900 md:text-6xl'>
-                调度诊断面板
-              </h1>
-              <p className='mt-4 max-w-2xl text-sm leading-7 text-slate-500 md:text-base'>
-                用来查看当前调度参数、最近拟合状态和复习分布。它更像一个后台体检页，
-                不是一个操作台，所以重点放在稳定性和异常信号上。
-              </p>
-            </div>
-            <div className='rounded-[18px] bg-slate-50 p-4 shadow-[inset_0_1px_1px_rgba(15,23,42,0.08)]'>
-              <p className='text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                当前状态
-              </p>
-              <p className='mt-2 text-sm leading-6 text-slate-600'>
-                {data.stats.usingFallback
-                  ? '当前引擎处于 fallback 模式，说明参数未成功拟合或被临时关闭。'
-                  : '当前引擎使用自定义参数，FSRS 正常接管调度。'}
-              </p>
-              <p className='mt-3 text-xs text-slate-500'>
-                事件数 7 天 / 30 天：{data.stats.eventCount7d} /{' '}
-                {data.stats.eventCount30d}
-              </p>
-            </div>
+          <div className='flex gap-2'>
+            <Link href='/manage/system' className='ui-btn ui-btn-sm'>返回系统</Link>
+            <Link href='/review/memory' className='ui-btn ui-btn-primary ui-btn-sm'>开始记忆复习</Link>
           </div>
         </header>
 
-        <section className='mb-6'>
-          <SectionTitle title='运行概览' desc='先判断调度器是否稳定，再看具体参数。' />
-          <div className='grid grid-cols-2 gap-3 md:grid-cols-5 md:gap-4'>
-            <MetricCard
-              label='引擎模式'
-              value={data.profile.lastEngineMode === 'custom' ? 'custom' : 'fallback'}
-              note='当前是否使用自定义参数'
-            />
-            <MetricCard
-              label='最近拟合'
-              value={dateTimeText(data.profile.lastFittedAt)}
-              note='最后一次成功拟合时间'
-            />
-            <MetricCard
-              label='最近回退'
-              value={dateTimeText(data.profile.lastFallbackAt)}
-              note='参数异常时的最近回退'
-            />
-            <MetricCard
-              label='7天成功率'
-              value={`${data.stats.successRate7d}%`}
-              note='最近 7 天内复习成功占比'
-            />
-            <MetricCard
-              label='7天逾期率'
-              value={`${data.stats.overdueRate7d}%`}
-              note='最近 7 天内逾期复习占比'
-            />
-          </div>
-        </section>
-
-        <section className='mb-6'>
-          <SectionTitle title='当前参数' desc='参数变化太快通常意味着拟合不稳定。' />
-          <div className='grid grid-cols-1 gap-4 md:grid-cols-3'>
-            <SurfaceCard className='p-4 md:p-5'>
-              <p className='text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                requestRetention
-              </p>
-              <p className='mt-3 text-3xl font-semibold tracking-tight text-slate-900'>
-                {data.profile.requestRetention.toFixed(4)}
-              </p>
-              <p className='mt-2 text-xs text-slate-500'>目标保留率</p>
-            </SurfaceCard>
-            <SurfaceCard className='p-4 md:p-5'>
-              <p className='text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                maximumInterval
-              </p>
-              <p className='mt-3 text-3xl font-semibold tracking-tight text-slate-900'>
-                {data.profile.maximumInterval}
-              </p>
-              <p className='mt-2 text-xs text-slate-500'>天</p>
-            </SurfaceCard>
-            <SurfaceCard className='p-4 md:p-5'>
-              <p className='text-xs font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                样本 / 版本
-              </p>
-              <p className='mt-3 text-3xl font-semibold tracking-tight text-slate-900'>
-                {data.profile.sampleSize} / v{data.profile.fitVersion}
-              </p>
-              <p className='mt-2 text-xs text-slate-500'>
-                {data.profile.lastFallbackReason || '最近未记录回退原因'}
-              </p>
-            </SurfaceCard>
-          </div>
-        </section>
-
-        <section className='mb-6 grid grid-cols-1 gap-4 md:grid-cols-2'>
-          <SurfaceCard className='p-4 md:p-5'>
-            <SectionTitle
-              title='近30天评分分布'
-              desc='观察 Again / Hard / Good / Easy 的比例是否偏离正常区间。'
-            />
-            <div className='space-y-3'>
-              {data.ratingDist.map(item => (
-                <div key={`rating-${item.rating}`}>
-                  <div className='flex items-center justify-between text-xs text-slate-600'>
-                    <span>{ratingLabel(item.rating)}</span>
-                    <span>{item.count}</span>
-                  </div>
-                  <div className='mt-1 h-2 rounded-full bg-slate-100'>
-                    <div
-                      className='h-full rounded-full bg-slate-900'
-                      style={{ width: `${Math.round((item.count / maxRatingCount) * 100)}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+        <section className='py-7'>
+          <div className={`rounded-xl border px-5 py-5 ${status.tone}`}>
+            <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+              <div className='max-w-2xl'>
+                <h1 className='text-xl font-semibold tracking-tight'>{status.label}</h1>
+                <p className='mt-2 text-sm leading-6 opacity-80'>{status.description}</p>
+              </div>
+              <span className='shrink-0 text-xs font-semibold'>最近检查：刚刚</span>
             </div>
-          </SurfaceCard>
+          </div>
+        </section>
 
-          <SurfaceCard className='p-4 md:p-5'>
-            <SectionTitle
-              title='近14天成功率趋势'
-              desc='如果这条线连续下滑，通常值得先看参数再看题目。'
-            />
-            <div className='space-y-3'>
-              {data.trend.length === 0 ? (
-                <p className='text-sm text-slate-500'>暂无数据</p>
-              ) : (
-                data.trend.map(item => (
-                  <div key={`trend-${item.dateKey}`}>
+        <section aria-label='近期复习概览' className='grid grid-cols-3 border-y border-slate-200 py-5'>
+          <div className='border-r border-slate-200 pr-4'>
+            <p className='text-[11px] font-semibold tracking-wide text-slate-500'>30 天复习</p>
+            <p className='mt-1 text-2xl font-semibold tabular-nums'>{data.stats.eventCount30d}</p>
+          </div>
+          <div className='border-r border-slate-200 px-4'>
+            <p className='text-[11px] font-semibold tracking-wide text-slate-500'>7 天记住</p>
+            <p className='mt-1 text-2xl font-semibold tabular-nums'>
+              {data.stats.eventCount7d ? `${data.stats.successRate7d}%` : '—'}
+            </p>
+          </div>
+          <div className='pl-4'>
+            <p className='text-[11px] font-semibold tracking-wide text-slate-500'>7 天逾期</p>
+            <p className='mt-1 text-2xl font-semibold tabular-nums'>
+              {data.stats.eventCount7d ? `${data.stats.overdueRate7d}%` : '—'}
+            </p>
+          </div>
+        </section>
+
+        {hasRecentData ? (
+          <section className='grid gap-8 border-b border-slate-200 py-8 md:grid-cols-2'>
+            <div>
+              <div className='mb-5 flex items-end justify-between gap-3'>
+                <div>
+                  <h2 className='text-base font-semibold'>最近 30 天的评分</h2>
+                  <p className='mt-1 text-xs text-slate-500'>了解哪些内容需要更多巩固。</p>
+                </div>
+                <span className='text-xs text-slate-400'>{data.stats.eventCount30d} 次</span>
+              </div>
+              <div className='space-y-4'>
+                {data.ratingDist.map(item => (
+                  <div key={item.rating}>
                     <div className='flex items-center justify-between text-xs text-slate-600'>
-                      <span>{item.dateKey}</span>
-                      <span>
-                        {item.successRate}% ({item.success}/{item.total})
-                      </span>
+                      <span>{ratingLabel(item.rating)}</span>
+                      <span className='tabular-nums'>{item.count}</span>
                     </div>
-                    <div className='mt-1 h-2 rounded-full bg-slate-100'>
-                      <div
-                        className='h-full rounded-full bg-slate-700'
-                        style={{ width: `${item.successRate}%` }}
-                      />
+                    <div className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200'>
+                      <div className='h-full rounded-full bg-slate-900' style={{ width: `${Math.round((item.count / maxRatingCount) * 100)}%` }} />
                     </div>
                   </div>
-                ))
-              )}
+                ))}
+              </div>
             </div>
-          </SurfaceCard>
-        </section>
 
-        <section>
-          <SectionTitle title='权重向量' desc='用来快速判断参数是否异常漂移。' />
-          <SurfaceCard className='p-4 md:p-5'>
-            <div className='grid grid-cols-2 gap-2 text-xs text-slate-700 md:grid-cols-3 lg:grid-cols-4'>
-              {data.profile.weights.map((value, idx) => (
-                <div key={`w-${idx}`} className='rounded-xl border border-slate-200 bg-slate-50 px-3 py-2'>
-                  <span className='text-slate-500'>w{idx}</span>
-                  <span className='ml-2 font-mono font-semibold'>{value.toFixed(4)}</span>
-                </div>
-              ))}
+            <div>
+              <h2 className='text-base font-semibold'>每日记住比例</h2>
+              <p className='mt-1 text-xs text-slate-500'>仅显示最近有复习记录的 14 天。</p>
+              <div className='mt-5 space-y-3'>
+                {data.trend.map(item => (
+                  <div key={item.dateKey} className='grid grid-cols-[5.5rem_minmax(0,1fr)_auto] items-center gap-3 text-xs'>
+                    <span className='text-slate-500'>{item.dateKey}</span>
+                    <div className='h-1.5 overflow-hidden rounded-full bg-slate-200'>
+                      <div className='h-full rounded-full bg-slate-700' style={{ width: `${item.successRate}%` }} />
+                    </div>
+                    <span className='w-16 text-right tabular-nums text-slate-600'>{item.successRate}% · {item.total}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </SurfaceCard>
-        </section>
+          </section>
+        ) : (
+          <section className='border-b border-slate-200 py-8'>
+            <h2 className='text-base font-semibold'>目前不需要处理</h2>
+            <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
+              系统会在每次记忆复习后记录结果。积累数据后，这里才会显示评分分布和变化趋势，避免用没有意义的 0% 造成误解。
+            </p>
+          </section>
+        )}
+
+        <details className='group border-b border-slate-200 py-5'>
+          <summary className='flex cursor-pointer list-none items-center justify-between gap-4 marker:content-none'>
+            <div>
+              <h2 className='text-sm font-semibold'>高级调度信息</h2>
+              <p className='mt-1 text-xs text-slate-500'>仅用于排查问题，日常无需查看或调整。</p>
+            </div>
+            <span aria-hidden className='text-sm text-slate-400 transition-transform group-open:rotate-180'>⌄</span>
+          </summary>
+          <div className='mt-5 grid gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2'>
+            <dl className='grid grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm'>
+              <dt className='text-slate-500'>当前模式</dt>
+              <dd className='font-semibold'>{data.stats.usingFallback ? '默认安全参数' : '自定义参数'}</dd>
+              <dt className='text-slate-500'>目标记住率</dt>
+              <dd>{Math.round(data.profile.requestRetention * 100)}%</dd>
+              <dt className='text-slate-500'>最长间隔</dt>
+              <dd>{data.profile.maximumInterval.toLocaleString('zh-CN')} 天</dd>
+              <dt className='text-slate-500'>拟合样本</dt>
+              <dd>{data.profile.sampleSize} 条</dd>
+              <dt className='text-slate-500'>最近拟合</dt>
+              <dd>{dateTimeText(data.profile.lastFittedAt)}</dd>
+              <dt className='text-slate-500'>最近回退</dt>
+              <dd>{dateTimeText(data.profile.lastFallbackAt)}</dd>
+            </dl>
+            <div>
+              <p className='text-xs font-semibold text-slate-500'>参数版本 v{data.profile.fitVersion}</p>
+              <p className='mt-2 text-xs leading-5 text-slate-500'>{data.profile.lastFallbackReason || '未记录异常原因。'}</p>
+              <p className='mt-4 break-words font-mono text-[11px] leading-5 text-slate-400'>
+                {data.profile.weights.map((value, index) => `w${index} ${value.toFixed(4)}`).join(' · ')}
+              </p>
+            </div>
+          </div>
+        </details>
       </div>
     </main>
   )

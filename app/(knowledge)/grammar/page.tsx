@@ -1,35 +1,14 @@
-import prisma from '@/lib/prisma'
 import PageHeader from '@/components/layout/PageHeader'
+import { listGrammarLibrary } from '@/features/grammar/server/repository'
 
 export const revalidate = 0
 
 export default async function GrammarPage() {
-  const grammars = await prisma.grammar.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 120,
-      include: {
-        tags: { include: { tag: true } },
-        clusters: { include: { cluster: true } },
-        constructions: {
-          orderBy: { sortOrder: 'asc' },
-          include: {
-            examples: {
-              orderBy: { createdAt: 'asc' },
-              take: 6,
-              select: {
-                id: true,
-                source: true,
-                sentenceText: true,
-              },
-            },
-          },
-        },
-      },
-    })
+  const grammars = await listGrammarLibrary()
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl space-y-4'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-4'>
         <PageHeader
           title='语法库'
           description='按接续、意思和例句浏览语法。'
@@ -37,19 +16,16 @@ export default async function GrammarPage() {
         />
 
         <section>
-          <div className='flex items-center justify-between gap-3'>
-            <h2 className='text-lg font-black text-slate-900'>语法展示</h2>
-          </div>
           {grammars.length === 0 ? (
-            <p className='mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500'>
+            <p className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500'>
               暂无语法内容。
             </p>
           ) : (
-            <div className='mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
+            <div className='grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
               {grammars.map(item => (
                 <article
                   key={item.id}
-                  className='border-t border-slate-200 py-4'>
+                  className='rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)]'>
                   <div className='flex flex-wrap items-start justify-between gap-2'>
                     <h3 className='line-clamp-1 text-[15px] font-black leading-snug text-slate-900'>
                       {item.name}

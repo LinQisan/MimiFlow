@@ -1,23 +1,11 @@
-import ListeningListClient from '@/app/(study)/listening/ListeningListClient'
-import prisma from '@/lib/prisma'
+import ListeningListClient from '@/features/listening/ui/ListeningListClient'
 import { listListeningMaterialsForShadowing } from '@/lib/repositories/materials'
+import { listCollectionsByTypes } from '@/features/listening/server/repository'
 
 export default async function ManageShadowingPage() {
   const [rows, collections] = await Promise.all([
     listListeningMaterialsForShadowing(),
-    prisma.collection.findMany({
-      where: {
-        collectionType: { in: ['LIBRARY_ROOT', 'BOOK', 'CHAPTER'] as const },
-      },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-      select: {
-        id: true,
-        title: true,
-        collectionType: true,
-        parentId: true,
-        sortOrder: true,
-      },
-    }),
+    listCollectionsByTypes(['LIBRARY_ROOT', 'BOOK', 'CHAPTER']),
   ])
 
   return (

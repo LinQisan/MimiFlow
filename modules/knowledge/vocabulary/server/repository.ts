@@ -1,11 +1,74 @@
-import { MaterialType, SourceType } from '@prisma/client'
+import { MaterialType, Prisma, SourceType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 import { parseAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+
+export const VOCABULARY_DETAIL_INCLUDE = {
+  wordbooks: {
+    orderBy: { createdAt: 'asc' },
+    include: { wordbook: { select: { id: true, title: true } } },
+  },
+  tags: { include: { tag: { select: { name: true } } } },
+  review: {
+    select: {
+      id: true,
+      due: true,
+      state: true,
+      stability: true,
+      difficulty: true,
+      elapsed_days: true,
+      scheduled_days: true,
+      reps: true,
+      lapses: true,
+      learning_steps: true,
+      last_review: true,
+    },
+  },
+} satisfies Prisma.VocabularyInclude
+
+export type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
+  include: typeof VOCABULARY_DETAIL_INCLUDE
+}>
+
+export function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
+  return prisma.vocabulary.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      word: true,
+      pronunciations: true,
+      sourceType: true,
+    },
+  })
+}
+
+export function listVocabularyDetails(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve([] as VocabularyDetailRow[])
+  return prisma.vocabulary.findMany({
+    where: { id: { in: ids } },
+    include: VOCABULARY_DETAIL_INCLUDE,
+  })
+}
+
+export function findVocabularyDetail(id: string) {
+  return prisma.vocabulary.findUnique({
+    where: { id },
+    include: VOCABULARY_DETAIL_INCLUDE,
+  })
+}
+
+export function listVocabularySentenceLinks(vocabularyIds: string[]) {
+  if (vocabularyIds.length === 0) return Promise.resolve([])
+  return prisma.vocabularySentenceLink.findMany({
+    where: { vocabularyId: { in: vocabularyIds } },
+    include: { sentence: true },
+    orderBy: { createdAt: 'asc' },
+  })
+}
 
 export const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
@@ -23,22 +86,15 @@ export type VocabularySentenceRecord = {
   posTags?: string[] | null
 }
 
-const resolveMaterialIdByLegacy = async (
+const resolveMaterialId = async (
   type: MaterialType,
-  maybeLegacyId: string,
+  id: string,
 ) => {
   const direct = await prisma.material.findUnique({
-    where: { id: maybeLegacyId },
+    where: { id },
     select: { id: true, type: true },
   })
   if (direct && direct.type === type) return direct.id
-
-  const prefixed = `${type === MaterialType.LISTENING ? 'lesson' : type === MaterialType.MEDIA_SUBTITLE ? 'media' : type === MaterialType.READING ? 'passage' : 'quiz'}:${maybeLegacyId}`
-  const legacy = await prisma.material.findUnique({
-    where: { id: prefixed },
-    select: { id: true, type: true },
-  })
-  if (legacy && legacy.type === type) return legacy.id
   return null
 }
 
@@ -237,7 +293,7 @@ export const resolveVocabularySourceMeta = async (
     }
     const parsedSource = parseAudioDialogueSourceId(sourceId)
     if (parsedSource) {
-      const materialId = await resolveMaterialIdByLegacy(
+      const materialId = await resolveMaterialId(
         MaterialType.LISTENING,
         parsedSource.materialId,
       )
@@ -250,7 +306,7 @@ export const resolveVocabularySourceMeta = async (
       if (material) {
         return {
           source: `听力：${material.title}`,
-          sourceUrl: `/listening/${toLegacyMaterialId(material.id)}`,
+          sourceUrl: `/listening/${material.id}`,
         }
       }
     }
@@ -272,7 +328,7 @@ export const resolveVocabularySourceMeta = async (
   }
 
   if (sourceType === 'ARTICLE_TEXT') {
-    const materialId = await resolveMaterialIdByLegacy(
+    const materialId = await resolveMaterialId(
       MaterialType.READING,
       sourceId,
     )
@@ -285,7 +341,7 @@ export const resolveVocabularySourceMeta = async (
     if (material) {
       return {
         source: `阅读：${material.title}`,
-        sourceUrl: `/reading/articles/${toLegacyMaterialId(material.id)}`,
+        sourceUrl: `/reading/articles/${material.id}`,
       }
     }
     return { source: '阅读', sourceUrl: '#' }
@@ -308,7 +364,7 @@ export const resolveVocabularySourceMeta = async (
     if (question?.material?.type === MaterialType.READING) {
       return {
         source: `阅读题目：${question.material.title}`,
-        sourceUrl: `/reading/articles/${toLegacyMaterialId(question.material.id)}`,
+        sourceUrl: `/reading/articles/${question.material.id}`,
       }
     }
     return { source: '题目', sourceUrl: '#' }

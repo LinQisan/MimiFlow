@@ -5,6 +5,7 @@ import {
   listListeningMaterialsForShadowing,
   listReadingMaterials,
 } from '@/lib/repositories/materials'
+import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 
 export default async function ManageHomePage() {
   const [listening, shadowing, reading] = await Promise.all([
@@ -17,7 +18,7 @@ export default async function ManageHomePage() {
   const missingSection = listening.filter(item => item.needsSection).length
   const unclassifiedShadowing = shadowing.filter(item => !item.isClassified).length
   const readingMissingQuestions = reading.filter(
-    item => item.sourceKind !== 'EPUB' && item.questionCount === 0,
+    item => !isEbookSourceKind(item.sourceKind) && item.questionCount === 0,
   ).length
   const duplicateGroups = Object.values(
     listening.reduce<Record<string, number>>((groups, item) => {
@@ -39,12 +40,10 @@ export default async function ManageHomePage() {
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl space-y-5'>
-        <header className='border-b border-slate-200 pb-8 md:pb-10'>
+        <header className='border-b border-slate-200 pb-6'>
           <div className='flex flex-wrap items-end justify-between gap-3'>
             <div>
-              <p className='editorial-kicker'>MIMIFLOW / MANAGE</p>
-              <h1 className='mt-4 text-4xl font-semibold tracking-tight text-slate-950 md:text-5xl'>异常与待办</h1>
-              <p className='mt-4 text-sm leading-7 text-slate-500'>这里只显示需要处理的内容；日常编辑请从顶部进入对应工作区。</p>
+              <h1 className='text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl'>异常与待办</h1>
             </div>
             <div className='min-w-28 border-l border-slate-300 pl-5 text-right'>
               <p className='font-sans text-4xl font-semibold text-slate-900'>{totalTodo}</p>

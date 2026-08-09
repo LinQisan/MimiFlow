@@ -8,7 +8,7 @@ import {
   deleteCollection,
   deleteCollectionMaterial,
   updateCollectionAttributes,
-} from '@/app/(library)/collections/action'
+} from '@/features/collections/actions'
 import CustomSelect from '@/components/ui/CustomSelect'
 import { useDialog } from '@/context/DialogContext'
 

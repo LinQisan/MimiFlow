@@ -202,7 +202,7 @@ export default async function ManageCollectionPage() {
 
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl space-y-6'>
+      <div className='mx-auto max-w-7xl space-y-6'>
         <header className='border-b border-slate-200 pb-6'>
           <p className='text-xs font-bold tracking-[0.16em] text-indigo-600 uppercase'>
             Structure

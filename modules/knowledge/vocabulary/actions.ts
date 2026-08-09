@@ -7,6 +7,7 @@ import {
 } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import {
   normalizeVocabularyHeadword,
@@ -16,7 +17,6 @@ import {
   sanitizePronunciation,
   sanitizePronunciations,
 } from '@/utils/text/pronunciation'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
 import {
   cleanupOrphanSentence,
   findExistingVocabularyCandidate,
@@ -287,10 +287,10 @@ export async function searchSentencesForWord(word: string) {
       sourceType?: SourceType
     }[] = []
     articles.forEach(a => {
-      const payload =
-        a.contentPayload && typeof a.contentPayload === 'object'
-          ? (a.contentPayload as Record<string, unknown>)
-          : {}
+      const payload = decodeMaterialPayloadRecord(
+        MaterialType.READING,
+        a.contentPayload,
+      )
       const articleText = String(payload.text || payload.transcript || '')
       const parts = articleText.match(/[^。！？.!\?\n]+[。！？.!\?\n]*/g) || [
         articleText,
@@ -301,7 +301,7 @@ export async function searchSentencesForWord(word: string) {
           results.push({
             text: t,
             source: `阅读：${a.title}`,
-            sourceUrl: `/reading/articles/${toLegacyMaterialId(a.id)}`,
+            sourceUrl: `/reading/articles/${a.id}`,
             sourceType: 'ARTICLE_TEXT',
           })
         }

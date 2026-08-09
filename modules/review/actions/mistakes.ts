@@ -8,7 +8,6 @@ import {
   softResetRetryAccuracy,
   submitRetryAnswerWithSchedule,
 } from '@/modules/review/server/mistake-repository'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
 
 const RETRY_HOURS = [24, 72, 168] as const
 
@@ -75,7 +74,7 @@ const mapRetrySource = (item: {
   if (item.question.readingSource) {
     return {
       sourceTitle: `阅读 · ${item.question.readingSource.title || '未命名文章'}`,
-      sourceUrl: `/reading/articles/${toLegacyMaterialId(item.question.readingSource.id)}`,
+      sourceUrl: `/reading/articles/${item.question.readingSource.id}`,
     }
   }
 

@@ -1,6 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useReducer,
+  useRef,
+  type SetStateAction,
+} from 'react'
 
 import type {
   ArticleFormState,
@@ -12,99 +18,154 @@ import type {
   UploadCollectionLite,
 } from '../types'
 
+type UploadCenterState = {
+  quizEntryMode: 'bulk' | 'single'
+  localCollections: UploadCollectionLite[]
+  isSubmitting: boolean
+  articleForm: ArticleFormState
+  articleQuestions: ArticleImportedQuestionDraft[]
+  articleQuickInput: string
+  articleParsedPreviewRows: ArticlePreviewRow[]
+  articleParsedDrafts: ArticleImportedQuestionDraft[]
+  quizForm: QuizFormState
+  quickInput: string
+  bulkQuickInput: string
+  bulkParsedQuestions: ParsedQuizDraft[]
+  bulkEditingIndex: number
+  sortSequence: number[]
+}
+
+type UploadCenterAction = {
+  [Key in keyof UploadCenterState]: {
+    key: Key
+    value: SetStateAction<UploadCenterState[Key]>
+  }
+}[keyof UploadCenterState]
+
+function uploadCenterReducer(state: UploadCenterState, action: UploadCenterAction) {
+  const current = state[action.key]
+  const next =
+    typeof action.value === 'function'
+      ? (action.value as (value: typeof current) => typeof current)(current)
+      : action.value
+  return { ...state, [action.key]: next }
+}
+
 export function useUploadCenterState(
   dbCollections: UploadCollectionLite[],
   initialTab: UploadCenterTab = 'audio',
 ) {
-  const [localCollections, setLocalCollections] = useState(dbCollections)
   const activeTab = initialTab
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [articleForm, setArticleForm] = useState<ArticleFormState>({
-    paperId: dbCollections[0]?.id || '',
-    title: '',
-    description: '',
-    content: '',
-    language: dbCollections[0]?.language || '',
-    examLevel: dbCollections[0]?.examLevel || '',
+  const [state, dispatch] = useReducer(uploadCenterReducer, {
+    quizEntryMode: 'bulk',
+    localCollections: dbCollections,
+    isSubmitting: false,
+    articleForm: {
+      paperId: dbCollections[0]?.id || '',
+      title: '',
+      description: '',
+      content: '',
+      language: dbCollections[0]?.language || '',
+      examLevel: dbCollections[0]?.examLevel || '',
+    },
+    articleQuestions: [],
+    articleQuickInput: '',
+    articleParsedPreviewRows: [],
+    articleParsedDrafts: [],
+    quizForm: {
+      collectionId: dbCollections[0]?.id || '',
+      questionType: 'PRONUNCIATION',
+      contextSentence: '',
+      targetWord: '',
+      prompt: '',
+      explanation: '',
+      language: dbCollections[0]?.language || '',
+      examLevel: dbCollections[0]?.examLevel || '',
+      options: [
+        { text: '', isCorrect: true },
+        { text: '', isCorrect: false },
+        { text: '', isCorrect: false },
+        { text: '', isCorrect: false },
+      ],
+    },
+    quickInput: '',
+    bulkQuickInput: '',
+    bulkParsedQuestions: [],
+    bulkEditingIndex: 0,
+    sortSequence: [],
   })
-  const [articleQuestions, setArticleQuestions] = useState<
-    ArticleImportedQuestionDraft[]
-  >([])
-  const [articleQuickInput, setArticleQuickInput] = useState('')
-  const [articleParsedPreviewRows, setArticleParsedPreviewRows] = useState<
-    ArticlePreviewRow[]
-  >([])
-  const [articleParsedDrafts, setArticleParsedDrafts] = useState<
-    ArticleImportedQuestionDraft[]
-  >([])
+  const setter = useCallback(
+    <Key extends keyof UploadCenterState>(key: Key) =>
+      (value: SetStateAction<UploadCenterState[Key]>) =>
+        dispatch({ key, value } as UploadCenterAction),
+    [],
+  )
   const articleTextareaRef = useRef<HTMLTextAreaElement>(null)
-  const [quizForm, setQuizForm] = useState<QuizFormState>({
-    collectionId: dbCollections[0]?.id || '',
-    questionType: 'PRONUNCIATION',
-    contextSentence: '',
-    targetWord: '',
-    prompt: '',
-    explanation: '',
-    language: dbCollections[0]?.language || '',
-    examLevel: dbCollections[0]?.examLevel || '',
-    options: [
-      { text: '', isCorrect: true },
-      { text: '', isCorrect: false },
-      { text: '', isCorrect: false },
-      { text: '', isCorrect: false },
-    ],
-  })
-  const [quickInput, setQuickInput] = useState('')
-  const [bulkQuickInput, setBulkQuickInput] = useState('')
-  const [bulkParsedQuestions, setBulkParsedQuestions] = useState<
-    ParsedQuizDraft[]
-  >([])
-  const [bulkEditingIndex, setBulkEditingIndex] = useState(0)
-  const [sortSequence, setSortSequence] = useState<number[]>([])
   const quizContextTextareaRef = useRef<HTMLTextAreaElement>(null)
   const bulkContextTextareaRef = useRef<HTMLTextAreaElement>(null)
+  const setters = useMemo(
+    () => ({
+      setQuizEntryMode: setter('quizEntryMode'),
+      setLocalCollections: setter('localCollections'),
+      setIsSubmitting: setter('isSubmitting'),
+      setArticleForm: setter('articleForm'),
+      setArticleQuestions: setter('articleQuestions'),
+      setArticleQuickInput: setter('articleQuickInput'),
+      setArticleParsedPreviewRows: setter('articleParsedPreviewRows'),
+      setArticleParsedDrafts: setter('articleParsedDrafts'),
+      setQuizForm: setter('quizForm'),
+      setQuickInput: setter('quickInput'),
+      setBulkQuickInput: setter('bulkQuickInput'),
+      setBulkParsedQuestions: setter('bulkParsedQuestions'),
+      setBulkEditingIndex: setter('bulkEditingIndex'),
+      setSortSequence: setter('sortSequence'),
+    }),
+    [setter],
+  )
 
   return {
-    localCollections,
-    setLocalCollections,
+    ...state,
+    ...setters,
     activeTab,
-    isSubmitting,
-    setIsSubmitting,
-    articleForm,
-    setArticleForm,
-    articleQuestions,
-    setArticleQuestions,
-    articleQuickInput,
-    setArticleQuickInput,
-    articleParsedPreviewRows,
-    setArticleParsedPreviewRows,
-    articleParsedDrafts,
-    setArticleParsedDrafts,
     articleTextareaRef,
-    quizForm,
-    setQuizForm,
-    quickInput,
-    setQuickInput,
-    bulkQuickInput,
-    setBulkQuickInput,
-    bulkParsedQuestions,
-    setBulkParsedQuestions,
-    bulkEditingIndex,
-    setBulkEditingIndex,
-    sortSequence,
-    setSortSequence,
     quizContextTextareaRef,
     bulkContextTextareaRef,
   }
 }
 
 export function useCollectionCreatorState(defaultLevelId: string) {
-  const [isCreating, setIsCreating] = useState(false)
-  const [newCatData, setNewCatData] = useState({
-    collectionType: defaultLevelId,
-    name: '',
-  })
-  const [isSavingCat, setIsSavingCat] = useState(false)
+  const [state, dispatch] = useReducer(
+    (
+      current: {
+        isCreating: boolean
+        newCatData: { collectionType: string; name: string }
+        isSavingCat: boolean
+      },
+      patch: Partial<typeof current>,
+    ) => ({ ...current, ...patch }),
+    {
+      isCreating: false,
+      newCatData: { collectionType: defaultLevelId, name: '' },
+      isSavingCat: false,
+    },
+  )
+  const setIsCreating = (value: SetStateAction<boolean>) =>
+    dispatch({
+      isCreating:
+        typeof value === 'function' ? value(state.isCreating) : value,
+    })
+  const setNewCatData = (
+    value: SetStateAction<{ collectionType: string; name: string }>,
+  ) =>
+    dispatch({
+      newCatData:
+        typeof value === 'function' ? value(state.newCatData) : value,
+    })
+  const setIsSavingCat = (value: SetStateAction<boolean>) =>
+    dispatch({
+      isSavingCat:
+        typeof value === 'function' ? value(state.isSavingCat) : value,
+    })
 
   const resetNameOnly = () =>
     setNewCatData(previous => ({
@@ -113,11 +174,11 @@ export function useCollectionCreatorState(defaultLevelId: string) {
     }))
 
   return {
-    isCreating,
+    isCreating: state.isCreating,
     setIsCreating,
-    newCatData,
+    newCatData: state.newCatData,
     setNewCatData,
-    isSavingCat,
+    isSavingCat: state.isSavingCat,
     setIsSavingCat,
     resetNameOnly,
   }

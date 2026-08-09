@@ -6,7 +6,7 @@ import {
   searchGlobalContent,
   type GlobalSearchResult,
   type GlobalSearchType,
-} from '@/app/actions/globalSearch'
+} from '@/features/search/actions'
 
 const SEARCH_TYPES: GlobalSearchType[] = [
   'vocabulary',

@@ -22,15 +22,15 @@ const typeLabels: Record<CollectionDetail['collectionType'], string> = {
 }
 
 function getManageHref(item: MaterialItem, collectionId: string) {
-  if (item.type === 'SPEAKING') return `/manage/shadowing/${item.legacyId}`
+  if (item.type === 'SPEAKING') return `/manage/shadowing/${item.materialId}`
   if (item.type === 'LISTENING') {
-    return `/manage/listening/${item.legacyId}#questions`
+    return `/manage/listening/${item.materialId}#questions`
   }
   if (item.type === 'READING') {
-    return `/manage/reading/${item.legacyId}`
+    return `/manage/reading/${item.materialId}`
   }
   if (item.type === 'VOCAB_GRAMMAR') {
-    return `/manage/questions/${item.legacyId}`
+    return `/manage/questions/${item.materialId}`
   }
   return `/manage/collections/${collectionId}`
 }

@@ -4,6 +4,9 @@ import {
   normalizeQuestionContext,
   normalizeQuestionOptions,
 } from '@/lib/repositories/materials'
+import { readString } from '@/lib/validation/schema'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
 
 export type RetryQueueRow = {
   id: string
@@ -54,17 +57,6 @@ type AttemptLite = {
   id: string
   isCorrect: boolean
   createdAt: Date
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === 'string' ? value : null
 }
 
 function calcRecentStreakDesc(attemptsDesc: AttemptLite[]) {
@@ -169,8 +161,11 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
   })
 
   return rows.map(row => {
-    const questionContent = asRecord(row.question.content)
-    const payload = asRecord(row.question.material.contentPayload)
+    const questionContent = decodeQuestionContent(row.question.content)
+    const payload = decodeMaterialPayloadRecord(
+      row.question.material.type,
+      row.question.material.contentPayload,
+    )
     return {
     id: row.id,
     questionId: row.questionId,
@@ -185,7 +180,7 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.prompt,
         row.question.context,
       ),
-      targetWord: asString(questionContent.targetWord),
+      targetWord: readString(questionContent.targetWord),
       options: normalizeQuestionOptions(row.question.options, row.question.answer),
       passageId:
         row.question.material.type === 'READING' ? row.question.material.id : null,
@@ -193,7 +188,7 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: asString(payload.text) || asString(payload.transcript) || '',
+              content: readString(payload.text) || readString(payload.transcript) || '',
             }
           : null,
       lessonId:
@@ -202,8 +197,11 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
-              dialogues: materialDialogueItems(row.question.material.contentPayload),
+              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              dialogues: materialDialogueItems(
+                row.question.material.type,
+                row.question.material.contentPayload,
+              ),
             }
           : null,
       stats: buildRetryStats(row.question.attempts),
@@ -273,8 +271,11 @@ export async function getRetryQuestionRowById(retryId: string) {
 
   if (!row) return null
 
-  const questionContent = asRecord(row.question.content)
-  const payload = asRecord(row.question.material.contentPayload)
+  const questionContent = decodeQuestionContent(row.question.content)
+  const payload = decodeMaterialPayloadRecord(
+    row.question.material.type,
+    row.question.material.contentPayload,
+  )
 
   return {
     id: row.id,
@@ -290,7 +291,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.prompt,
         row.question.context,
       ),
-      targetWord: asString(questionContent.targetWord),
+      targetWord: readString(questionContent.targetWord),
       options: normalizeQuestionOptions(row.question.options, row.question.answer),
       passageId:
         row.question.material.type === 'READING' ? row.question.material.id : null,
@@ -298,7 +299,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: asString(payload.text) || asString(payload.transcript) || '',
+              content: readString(payload.text) || readString(payload.transcript) || '',
             }
           : null,
       lessonId:
@@ -307,8 +308,11 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
-              dialogues: materialDialogueItems(row.question.material.contentPayload),
+              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              dialogues: materialDialogueItems(
+                row.question.material.type,
+                row.question.material.contentPayload,
+              ),
             }
           : null,
       stats: buildRetryStats(row.question.attempts),

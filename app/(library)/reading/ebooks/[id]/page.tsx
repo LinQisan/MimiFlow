@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import ArticleReaderClient from '@/app/(library)/reading/articles/[id]/ArticleReaderClient'
-import { getArticleByLegacyId } from '@/lib/repositories/materials'
+import ArticleReaderClient from '@/features/reading/ui/ArticleReaderClient'
+import { getArticleById } from '@/lib/repositories/materials'
 import PageHeader from '@/components/layout/PageHeader'
 import { prepareEbookChapters } from '@/lib/ebooks/chapter-display'
+import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 
 export const revalidate = 0
 
@@ -14,9 +15,9 @@ export default async function EbookDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const ebook = await getArticleByLegacyId(id)
+  const ebook = await getArticleById(id)
 
-  if (!ebook || ebook.sourceKind !== 'EPUB') {
+  if (!ebook || !isEbookSourceKind(ebook.sourceKind)) {
     notFound()
   }
   const chapters = prepareEbookChapters(ebook.chapters, ebook.title)
@@ -25,6 +26,7 @@ export default async function EbookDetailPage({
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-4'>
         <PageHeader
+          showTitle
           title={ebook.title}
           description={
             [ebook.author, `${chapters.length} 个章节`]

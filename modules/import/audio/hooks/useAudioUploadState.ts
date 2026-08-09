@@ -1,128 +1,166 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useReducer,
+  useRef,
+  type SetStateAction,
+} from 'react'
 import type { MaterialType } from '@prisma/client'
 
 import type { LastUploadResult, PickedFileMeta, UploadStatus } from '../types'
 
+type AudioUploadState = {
+  mode: 'existing' | 'new'
+  selectedPaperId: string
+  selectedLevelId: string
+  status: UploadStatus
+  lastUpload: LastUploadResult | null
+  title: string
+  audioFile: string
+  audioSourceType: 'manual' | 'existing' | 'upload'
+  existingAudioFiles: string[]
+  selectedAudioFolder: string
+  audioListLoading: boolean
+  audioUploadFileNames: string[]
+  paperName: string
+  materialDescription: string
+  materialTranscript: string
+  materialSource: string
+  materialLanguage: string
+  materialTags: string
+  materialDifficulty: string
+  materialChapterName: string
+  materialType: MaterialType
+  subtitleNoAudio: boolean
+  subtitleSourceType: 'MOVIE' | 'TV'
+  subtitleWorkTitle: string
+  subtitleSeason: string
+  subtitleEpisode: string
+  isDragging: boolean
+  isAudioDragging: boolean
+  pickedAssFiles: PickedFileMeta[]
+  selectedFileNames: string[]
+  assAudioOverrides: Record<string, string>
+  addQuestions: boolean
+  pastedAssSubtitle: string
+  subtitleCopyState: 'idle' | 'copied' | 'error'
+  selectedPaperIds: string[]
+}
+
+type AudioUploadAction = {
+  [Key in keyof AudioUploadState]: {
+    key: Key
+    value: SetStateAction<AudioUploadState[Key]>
+  }
+}[keyof AudioUploadState]
+
+function reducer(state: AudioUploadState, action: AudioUploadAction) {
+  const current = state[action.key]
+  const next =
+    typeof action.value === 'function'
+      ? (action.value as (value: typeof current) => typeof current)(current)
+      : action.value
+  return { ...state, [action.key]: next }
+}
+
 export function useAudioUploadState(hasPapers: boolean) {
-  const [mode, setMode] = useState<'existing' | 'new'>(
-    hasPapers ? 'existing' : 'new',
-  )
-  const [selectedPaperId, setSelectedPaperId] = useState('')
-  const [selectedLevelId, setSelectedLevelId] = useState('')
-
-  const [status, setStatus] = useState<UploadStatus>({
-    type: 'idle',
-    message: '',
+  const [state, dispatch] = useReducer(reducer, {
+    mode: hasPapers ? 'existing' : 'new',
+    selectedPaperId: '',
+    selectedLevelId: '',
+    status: { type: 'idle', message: '' },
+    lastUpload: null,
+    title: '',
+    audioFile: '',
+    audioSourceType: 'manual',
+    existingAudioFiles: [],
+    selectedAudioFolder: '',
+    audioListLoading: false,
+    audioUploadFileNames: [],
+    paperName: '',
+    materialDescription: '',
+    materialTranscript: '',
+    materialSource: '',
+    materialLanguage: '',
+    materialTags: '',
+    materialDifficulty: '',
+    materialChapterName: '',
+    materialType: 'LISTENING',
+    subtitleNoAudio: false,
+    subtitleSourceType: 'MOVIE',
+    subtitleWorkTitle: '',
+    subtitleSeason: '',
+    subtitleEpisode: '',
+    isDragging: false,
+    isAudioDragging: false,
+    pickedAssFiles: [],
+    selectedFileNames: [],
+    assAudioOverrides: {},
+    addQuestions: true,
+    pastedAssSubtitle: '',
+    subtitleCopyState: 'idle',
+    selectedPaperIds: [],
   })
-  const [lastUpload, setLastUpload] = useState<LastUploadResult | null>(null)
-
-  const [title, setTitle] = useState('')
-  const [audioFile, setAudioFile] = useState('')
-  const [audioSourceType, setAudioSourceType] = useState<
-    'manual' | 'existing' | 'upload'
-  >('manual')
-  const [existingAudioFiles, setExistingAudioFiles] = useState<string[]>([])
-  const [selectedAudioFolder, setSelectedAudioFolder] = useState('')
-  const [audioListLoading, setAudioListLoading] = useState(false)
-  const [audioUploadFileNames, setAudioUploadFileNames] = useState<string[]>([])
-  const [paperName, setPaperName] = useState('')
-  const [materialDescription, setMaterialDescription] = useState('')
-  const [materialTranscript, setMaterialTranscript] = useState('')
-  const [materialSource, setMaterialSource] = useState('')
-  const [materialLanguage, setMaterialLanguage] = useState('')
-  const [materialTags, setMaterialTags] = useState('')
-  const [materialDifficulty, setMaterialDifficulty] = useState('')
-  const [materialChapterName, setMaterialChapterName] = useState('')
-  const [materialType, setMaterialType] = useState<MaterialType>('LISTENING')
-  const [subtitleNoAudio, setSubtitleNoAudio] = useState(false)
-  const [subtitleSourceType, setSubtitleSourceType] = useState<'MOVIE' | 'TV'>(
-    'MOVIE',
+  const setter = useCallback(
+    <Key extends keyof AudioUploadState>(key: Key) =>
+      (value: SetStateAction<AudioUploadState[Key]>) =>
+        dispatch({ key, value } as AudioUploadAction),
+    [],
   )
-  const [subtitleWorkTitle, setSubtitleWorkTitle] = useState('')
-  const [subtitleSeason, setSubtitleSeason] = useState('')
-  const [subtitleEpisode, setSubtitleEpisode] = useState('')
-
-  const [isDragging, setIsDragging] = useState(false)
-  const [isAudioDragging, setIsAudioDragging] = useState(false)
-  const [pickedAssFiles, setPickedAssFiles] = useState<PickedFileMeta[]>([])
-  const [selectedFileNames, setSelectedFileNames] = useState<string[]>([])
-  const [assAudioOverrides, setAssAudioOverrides] = useState<
-    Record<string, string>
-  >({})
-  const [addQuestions, setAddQuestions] = useState(true)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const audioInputRef = useRef<HTMLInputElement>(null)
 
+  // A setter created inline on every render changes effect dependencies and can
+  // repeatedly reload the entire audio catalogue. Keep the complete setter map
+  // stable for the lifetime of this hook.
+  const setters = useMemo(
+    () => ({
+      setMode: setter('mode'),
+      setSelectedPaperId: setter('selectedPaperId'),
+      setSelectedLevelId: setter('selectedLevelId'),
+      setStatus: setter('status'),
+      setLastUpload: setter('lastUpload'),
+      setTitle: setter('title'),
+      setAudioFile: setter('audioFile'),
+      setAudioSourceType: setter('audioSourceType'),
+      setExistingAudioFiles: setter('existingAudioFiles'),
+      setSelectedAudioFolder: setter('selectedAudioFolder'),
+      setAudioListLoading: setter('audioListLoading'),
+      setAudioUploadFileNames: setter('audioUploadFileNames'),
+      setPaperName: setter('paperName'),
+      setMaterialDescription: setter('materialDescription'),
+      setMaterialTranscript: setter('materialTranscript'),
+      setMaterialSource: setter('materialSource'),
+      setMaterialLanguage: setter('materialLanguage'),
+      setMaterialTags: setter('materialTags'),
+      setMaterialDifficulty: setter('materialDifficulty'),
+      setMaterialChapterName: setter('materialChapterName'),
+      setMaterialType: setter('materialType'),
+      setSubtitleNoAudio: setter('subtitleNoAudio'),
+      setSubtitleSourceType: setter('subtitleSourceType'),
+      setSubtitleWorkTitle: setter('subtitleWorkTitle'),
+      setSubtitleSeason: setter('subtitleSeason'),
+      setSubtitleEpisode: setter('subtitleEpisode'),
+      setIsDragging: setter('isDragging'),
+      setIsAudioDragging: setter('isAudioDragging'),
+      setPickedAssFiles: setter('pickedAssFiles'),
+      setSelectedFileNames: setter('selectedFileNames'),
+      setAssAudioOverrides: setter('assAudioOverrides'),
+      setAddQuestions: setter('addQuestions'),
+      setPastedAssSubtitle: setter('pastedAssSubtitle'),
+      setSubtitleCopyState: setter('subtitleCopyState'),
+      setSelectedPaperIds: setter('selectedPaperIds'),
+    }),
+    [setter],
+  )
+
   return {
-    mode,
-    setMode,
-    selectedPaperId,
-    setSelectedPaperId,
-    selectedLevelId,
-    setSelectedLevelId,
-    status,
-    setStatus,
-    lastUpload,
-    setLastUpload,
-    title,
-    setTitle,
-    audioFile,
-    setAudioFile,
-    audioSourceType,
-    setAudioSourceType,
-    existingAudioFiles,
-    setExistingAudioFiles,
-    selectedAudioFolder,
-    setSelectedAudioFolder,
-    audioListLoading,
-    setAudioListLoading,
-    audioUploadFileNames,
-    setAudioUploadFileNames,
-    paperName,
-    setPaperName,
-    materialDescription,
-    setMaterialDescription,
-    materialTranscript,
-    setMaterialTranscript,
-    materialSource,
-    setMaterialSource,
-    materialLanguage,
-    setMaterialLanguage,
-    materialTags,
-    setMaterialTags,
-    materialDifficulty,
-    setMaterialDifficulty,
-    materialChapterName,
-    setMaterialChapterName,
-    materialType,
-    setMaterialType,
-    subtitleNoAudio,
-    setSubtitleNoAudio,
-    subtitleSourceType,
-    setSubtitleSourceType,
-    subtitleWorkTitle,
-    setSubtitleWorkTitle,
-    subtitleSeason,
-    setSubtitleSeason,
-    subtitleEpisode,
-    setSubtitleEpisode,
-    isDragging,
-    setIsDragging,
-    isAudioDragging,
-    setIsAudioDragging,
-    pickedAssFiles,
-    setPickedAssFiles,
-    selectedFileNames,
-    setSelectedFileNames,
-    assAudioOverrides,
-    setAssAudioOverrides,
-    addQuestions,
-    setAddQuestions,
+    ...state,
+    ...setters,
     fileInputRef,
     audioInputRef,
   }
 }
-

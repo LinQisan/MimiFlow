@@ -1,16 +1,12 @@
 // Subtitle library route.
 import Link from 'next/link'
-import { MaterialType } from '@prisma/client'
-
-import prisma from '@/lib/prisma'
-import { toLegacyMaterialId } from '@/lib/repositories/materials'
-import { asBoolean, asRecord, asString } from '@/utils/validation/unknown'
+import { listMediaSubtitleMaterials } from '@/features/subtitles/server/repository'
+import { subtitlePayloadSchema } from '@/features/subtitles/domain/schema'
 
 export const revalidate = 60
 
 type MediaItem = {
   id: string
-  legacyId: string
   title: string
   sourceType: 'MOVIE' | 'TV'
   workTitle: string
@@ -50,38 +46,17 @@ function formatShortDate(value: Date) {
 }
 
 export default async function MediaSubtitlesPage() {
-  const rows = await prisma.material.findMany({
-    where: {
-      type: MaterialType.MEDIA_SUBTITLE,
-    },
-    orderBy: [{ createdAt: 'desc' }],
-    take: 300,
-    select: {
-      id: true,
-      title: true,
-      type: true,
-      createdAt: true,
-      contentPayload: true,
-      collectionMaterials: {
-        take: 1,
-        select: {
-          collection: { select: { id: true, title: true } },
-        },
-      },
-    },
-  })
+  const rows = await listMediaSubtitleMaterials()
 
   const items = rows
     .map(row => {
-      const payload = asRecord(row.contentPayload)
-      const sourceType = asString(payload.subtitleSourceType)
-      const workTitle = asString(payload.subtitleWorkTitle)
-      const subtitleNoAudio = asBoolean(payload.subtitleNoAudio)
-      const season = asString(payload.subtitleSeason)
-      const episode = asString(payload.subtitleEpisode)
-      const dialogues = Array.isArray(payload.dialogues)
-        ? payload.dialogues.length
-        : 0
+      const payload = subtitlePayloadSchema.parse(row.contentPayload)
+      const sourceType = payload.subtitleSourceType
+      const workTitle = payload.subtitleWorkTitle
+      const subtitleNoAudio = payload.subtitleNoAudio
+      const season = payload.subtitleSeason
+      const episode = payload.subtitleEpisode
+      const dialogues = payload.dialogues.length
       const isMedia =
         sourceType === 'MOVIE' ||
         sourceType === 'TV' ||
@@ -89,10 +64,8 @@ export default async function MediaSubtitlesPage() {
         Boolean(workTitle)
       if (!isMedia) return null
 
-      const legacyId = toLegacyMaterialId(row.id)
       return {
         id: row.id,
-        legacyId,
         title: row.title,
         sourceType: sourceType === 'TV' ? 'TV' : 'MOVIE',
         workTitle,
@@ -102,7 +75,7 @@ export default async function MediaSubtitlesPage() {
         dialogues,
         createdAt: row.createdAt,
         collectionTitle: row.collectionMaterials[0]?.collection.title || '未归属集合',
-        href: `/subtitles/${legacyId}`,
+        href: `/subtitles/${row.id}`,
       } satisfies MediaItem
     })
     .filter(Boolean) as MediaItem[]
@@ -214,15 +187,10 @@ export default async function MediaSubtitlesPage() {
     0,
   )
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl'>
-        <header className='border-b border-slate-200 pb-5'>
-          <p className='editorial-kicker'>MIMIFLOW / SUBTITLES</p>
-          <h1 className='mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-5xl'>影视字幕库</h1>
-          <p className='mt-4 max-w-2xl text-sm leading-7 text-slate-600'>
-            按作品、季和集浏览字幕。
-          </p>
-          <p className='mt-6 border-t border-slate-200 pt-4 text-xs tracking-wide text-slate-500'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl'>
+        <header className='border-b border-slate-200 py-4'>
+          <p className='text-xs tracking-wide text-slate-500'>
             {tvGroups.length} 部电视剧 · {tvEpisodeCount} 集 · {movieGroups.length} 部电影 · {totalDialogues} 行字幕
           </p>
         </header>

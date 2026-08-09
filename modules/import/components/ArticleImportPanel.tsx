@@ -49,7 +49,7 @@ export default function ArticleImportPanel({
   return (
     <form
       onSubmit={handleArticleSubmit}
-      className='animate-in space-y-8 border border-gray-100 bg-white p-5 fade-in slide-in-from-bottom-4 duration-500 md:p-8'>
+      className='animate-in space-y-8 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] fade-in slide-in-from-bottom-4 duration-500 md:p-8'>
       <div className='space-y-1'>
         <h2 className='text-xl font-black text-gray-900 md:text-2xl'>
           导入阅读文章

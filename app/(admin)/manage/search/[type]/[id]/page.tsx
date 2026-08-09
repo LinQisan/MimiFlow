@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation'
 
-import { buildSearchDetailHref } from '@/app/actions/globalSearchShared'
+import { buildSearchDetailHref } from '@/features/search/domain'
 
 export default async function LegacySearchResultPage({
   params,

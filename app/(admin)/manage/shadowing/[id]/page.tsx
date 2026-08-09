@@ -1,9 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import DeleteAudioMaterialButton from '@/app/(admin)/manage/listening/DeleteAudioMaterialButton'
-import LessonSiblingNav from '@/app/(library)/collections/lesson/[lessonId]/LessonSiblingNav'
-import ListeningTitleForm from '@/app/(study)/listening/manage/ListeningTitleForm'
+import DeleteAudioMaterialButton from '@/features/listening/ui/DeleteAudioMaterialButton'
+import LessonSiblingNav from '@/features/collections/ui/LessonSiblingNav'
+import ListeningTitleForm from '@/features/listening/ui/ListeningTitleForm'
 import { getSpeakingEditData } from '@/lib/repositories/collection/manage'
 
 export default async function ManageShadowingEditPage({

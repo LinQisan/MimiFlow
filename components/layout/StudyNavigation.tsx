@@ -26,8 +26,8 @@ export default function StudyNavigation() {
   if (pathname.startsWith('/manage') || isFocusRoute(pathname)) return null
 
   return (
-    <header className='editorial-nav z-40 border-b border-slate-300 bg-[#f6f3ec]/95 backdrop-blur md:sticky md:top-0'>
-      <div className='mx-auto flex min-h-16 max-w-6xl flex-wrap items-center gap-3 px-4 py-2 md:min-h-[4.5rem] md:flex-nowrap md:gap-5 md:px-6'>
+    <header className='editorial-nav z-40 border-b border-slate-300 bg-[#f6f5f1]/95 backdrop-blur md:sticky md:top-0'>
+      <div className='mx-auto flex min-h-16 max-w-7xl flex-wrap items-center gap-3 px-4 py-2 md:min-h-[4.5rem] md:flex-nowrap md:gap-5 md:px-8'>
         <Link
           href='/'
           className='editorial-brand shrink-0 text-sm font-semibold tracking-[0.22em] text-slate-950'>

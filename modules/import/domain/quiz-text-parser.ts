@@ -252,7 +252,14 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
       reset()
       return
     }
-    if (seenOption && isLooseNumberedPrompt(line)) {
+    const optionLine = parseOptionLine(line)
+    const continuesCurrentOptionSequence =
+      optionLine !== null && optionLine.index === lastOptionIndex + 1
+    if (
+      seenOption &&
+      isLooseNumberedPrompt(line) &&
+      !continuesCurrentOptionSequence
+    ) {
       if (!flushIfReady()) reset()
       promptLines.push(stripLooseQuestionNumber(line))
       return
@@ -268,7 +275,6 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
         return
       }
     }
-    const optionLine = parseOptionLine(line)
     if (optionLine) {
       seenOption = true
       lastOptionIndex = optionLine.index
