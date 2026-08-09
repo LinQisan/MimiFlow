@@ -311,7 +311,7 @@ export default function UploadCenterUI({
         targetWord: '',
         prompt: '',
         explanation: '',
-        options: prev.options.map((o, i) => ({ text: '', isCorrect: i === 0 })),
+        options: prev.options.map((_, i) => ({ text: '', isCorrect: i === 0 })),
       }))
     }
     setIsSubmitting(false)
@@ -521,7 +521,7 @@ export default function UploadCenterUI({
         targetWord: '',
         prompt: '',
         explanation: '',
-        options: prev.options.map((o, idx) => ({
+        options: prev.options.map((_, idx) => ({
           text: '',
           isCorrect: idx === 0,
         })),
@@ -1034,11 +1034,11 @@ export default function UploadCenterUI({
                 </label>
                 <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
                   {[
-                    { value: 'PRONUNCIATION', label: '读音题' },
-                    { value: 'SYNONYM_REPLACEMENT', label: '近义词替换题' },
-                    { value: 'WORD_DISTINCTION', label: '单词辨析题' },
-                    { value: 'GRAMMAR', label: '语法题' },
-                    { value: 'SORTING', label: '排序题' },
+                    { value: 'PRONUNCIATION', label: '漢字読み' },
+                    { value: 'SYNONYM_REPLACEMENT', label: '言い換え類義' },
+                    { value: 'WORD_DISTINCTION', label: '用法' },
+                    { value: 'GRAMMAR', label: '文脈・文法選択' },
+                    { value: 'SORTING', label: '文の組み立て' },
                   ].map(type => (
                     <button
                       key={type.value}

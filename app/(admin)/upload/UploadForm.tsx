@@ -133,6 +133,7 @@ export default function UploadForm({
   const [subtitleCopyState, setSubtitleCopyState] = useState<
     'idle' | 'copied' | 'error'
   >('idle')
+  const [selectedPaperIds, setSelectedPaperIds] = useState<string[]>([])
 
   const isBatchAss = selectedFileNames.length > 1
   const pastedSubtitleText = useMemo(
@@ -152,6 +153,9 @@ export default function UploadForm({
     if (byType) return byType
     return paper.lessons[0] || null
   }
+
+  const normalizeListeningAudioPath = (value: string) =>
+    value.replace(/\.[a-z0-9]+$/i, '.mp3')
 
   useEffect(() => {
     if (!selectedLevelId && levels.length > 0) {
@@ -191,7 +195,11 @@ export default function UploadForm({
       const latest = findLatestLessonByMaterialType(targetPaper, resolvedType)
       if (targetPaper && targetPaper.lessons.length > 0) {
         setTitle(autoIncrementString(latest?.title || ''))
-        setAudioFile(autoIncrementString(latest?.audioFile || ''))
+        setAudioFile(
+          normalizeListeningAudioPath(
+            autoIncrementString(latest?.audioFile || ''),
+          ),
+        )
       } else {
         setTitle('')
         setAudioFile('/audios/')
@@ -386,7 +394,11 @@ export default function UploadForm({
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
-    if (!isMediaSubtitleVariant && mode === 'existing' && !selectedPaperId) {
+    if (
+      !isMediaSubtitleVariant &&
+      mode === 'existing' &&
+      selectedPaperIds.length === 0
+    ) {
       setStatus({ type: 'error', message: '请选择要添加内容的集合。' })
       return
     }
@@ -468,9 +480,13 @@ export default function UploadForm({
     })
 
     if (result.success) {
+      const uploadedLessonIds =
+        (result as { lessonIds?: string[] }).lessonIds || []
+      const uploadedMaterialType = (result as { materialType?: MaterialType })
+        .materialType
       setLastUpload({
-        lessonIds: (result as { lessonIds?: string[] }).lessonIds || [],
-        materialType: (result as { materialType?: MaterialType }).materialType,
+        lessonIds: uploadedLessonIds,
+        materialType: uploadedMaterialType,
       })
       setPickedAssFiles([])
       setSelectedFileNames([])
@@ -483,7 +499,11 @@ export default function UploadForm({
         setPaperName('')
       }
 
-      router.refresh()
+      if (uploadedMaterialType === 'LISTENING' && uploadedLessonIds.length === 1) {
+        router.push(`/manage/listening/${uploadedLessonIds[0]}#questions`)
+      } else {
+        router.refresh()
+      }
     } else {
       setLastUpload(null)
     }
@@ -548,8 +568,7 @@ export default function UploadForm({
   const handleAudioPick = () => audioInputRef.current?.click()
 
   const isSupportedAudioFile = (file: File) =>
-    /(\.mp3|\.m4a|\.wav|\.ogg|\.aac|\.flac|\.webm)$/i.test(file.name) ||
-    file.type.startsWith('audio/')
+    file.name.toLowerCase().endsWith('.mp3')
 
   const handleAudioDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -573,7 +592,7 @@ export default function UploadForm({
 
     const droppedList = Array.from(files).filter(isSupportedAudioFile)
     if (droppedList.length === 0) {
-      void dialog.alert('仅支持音频文件（mp3/m4a/wav/ogg/aac/flac/webm）。')
+      void dialog.alert('听力录音仅支持 MP3 文件。')
       return
     }
 
@@ -585,7 +604,6 @@ export default function UploadForm({
     () =>
       toCollectionBrowserOptions(
         papers.filter(paper =>
-          paper.materialType === materialType &&
           isCollectionTypeAllowedForMaterial(
             materialType,
             String(paper.collectionType || 'PAPER'),
@@ -609,6 +627,20 @@ export default function UploadForm({
         '未选择集合'
       : paperName || '新建集合'
 
+  const addSelectedPaper = (paperId: string) => {
+    if (!paperId) return
+    setSelectedPaperIds(current =>
+      current.includes(paperId) ? current : [...current, paperId],
+    )
+    if (!selectedPaperId) setSelectedPaperId(paperId)
+  }
+
+  const removeSelectedPaper = (paperId: string) => {
+    const next = selectedPaperIds.filter(id => id !== paperId)
+    setSelectedPaperIds(next)
+    if (selectedPaperId === paperId) setSelectedPaperId(next[0] || '')
+  }
+
   return (
     <form
       onSubmit={handleSubmit}
@@ -619,7 +651,11 @@ export default function UploadForm({
         value={isMediaSubtitleVariant ? 'media' : mode}
       />
       <input type='hidden' name='audioSourceType' value={audioSourceType} />
-      <input type='hidden' name='addQuestions' value={addQuestions ? 'yes' : 'no'} />
+      <input
+        type='hidden'
+        name='addQuestions'
+        value={materialType === 'LISTENING' ? 'yes' : addQuestions ? 'yes' : 'no'}
+      />
       <input
         type='hidden'
         name='materialType'
@@ -687,15 +723,61 @@ export default function UploadForm({
         </div>
 
         {mode === 'existing' ? (
-          <div>
+          <div className='space-y-3'>
             <input type='hidden' name='paperId' value={selectedPaperId} />
+            {selectedPaperIds.map(paperId => (
+              <input
+                key={paperId}
+                type='hidden'
+                name='collectionIds'
+                value={paperId}
+              />
+            ))}
             <CollectionBrowserSelect
-              options={paperOptions}
-              value={selectedPaperId}
-              onChange={setSelectedPaperId}
-              placeholder='请选择要追加内容的集合'
+              options={paperOptions.filter(
+                option => !selectedPaperIds.includes(option.value),
+              )}
+              value=''
+              onChange={addSelectedPaper}
+              placeholder={
+                selectedPaperIds.length > 0
+                  ? '继续添加其他集合'
+                  : '请选择要追加内容的集合'
+              }
               recentKey='manage.upload.paper.recent'
             />
+            <p className='text-xs font-medium text-slate-500'>
+              当前仅显示正式试卷。普通集合和收藏夹不用于承载听力源材料。
+            </p>
+            {selectedPaperIds.length > 0 && (
+              <div>
+                <p className='mb-2 text-xs font-semibold text-slate-500'>
+                  已选择 {selectedPaperIds.length} 个集合；第一个作为主要归属。
+                </p>
+                <div className='flex flex-wrap gap-2'>
+                  {selectedPaperIds.map((paperId, index) => {
+                    const option = paperOptions.find(
+                      item => item.value === paperId,
+                    )
+                    return (
+                      <span
+                        key={paperId}
+                        className='inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800'>
+                        {index === 0 ? '主要 · ' : ''}
+                        {option?.searchText || option?.label || '未知集合'}
+                        <button
+                          type='button'
+                          onClick={() => removeSelectedPaper(paperId)}
+                          aria-label={`移除 ${option?.label || '集合'}`}
+                          className='text-blue-500 transition hover:text-red-600'>
+                          ×
+                        </button>
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className='flex flex-col gap-4 md:gap-5'>
@@ -1036,7 +1118,7 @@ export default function UploadForm({
                 ref={audioInputRef}
                 type='file'
                 name='audioUploadFiles'
-                accept='audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac,.webm'
+                accept='.mp3,audio/mpeg'
                 multiple={isBatchAss}
                 onChange={e => {
                   const list = e.target.files ? Array.from(e.target.files) : []
@@ -1046,9 +1128,7 @@ export default function UploadForm({
                   }
 
                   if (!list.every(isSupportedAudioFile)) {
-                    void dialog.alert(
-                      '仅支持音频文件（mp3/m4a/wav/ogg/aac/flac/webm）。',
-                    )
+                    void dialog.alert('听力录音仅支持 MP3 文件。')
                     e.currentTarget.value = ''
                     setAudioUploadFileNames([])
                     return
@@ -1073,8 +1153,8 @@ export default function UploadForm({
                     : isAudioDragging
                       ? '松开即可上传录音'
                       : isBatchAss
-                        ? '点击选择或拖拽多个录音文件（将按同名优先配对）'
-                        : '点击选择或拖拽录音文件（mp3/m4a/wav/ogg/aac/flac/webm）'}
+                        ? '点击选择或拖拽多个 MP3（将按同名优先配对）'
+                        : '点击选择或拖拽 MP3 录音文件'}
                 </span>
               </div>
 
@@ -1335,24 +1415,13 @@ export default function UploadForm({
       )}
 
       {!isMediaSubtitleVariant && (
-        <div className='flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3.5 md:px-5'>
-          <p className='text-sm font-semibold text-gray-800'>
-            导入完成后继续添加题目
+        <div className='rounded-xl border border-blue-200 bg-blue-50 px-4 py-3.5 md:px-5'>
+          <p className='text-sm font-bold text-blue-900'>
+            听力材料必须配套题目
           </p>
-          <button
-            type='button'
-            aria-label='导入后添加听力题目'
-            aria-pressed={addQuestions}
-            onClick={() => setAddQuestions(prev => !prev)}
-            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200 ${
-              addQuestions ? 'bg-blue-500' : 'bg-gray-300'
-            }`}>
-            <span
-              className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-200 ${
-                addQuestions ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
+          <p className='mt-1 text-xs font-semibold text-blue-700'>
+            单条导入后会直接进入题目编辑；批量导入后需逐条完成题目。
+          </p>
         </div>
       )}
 
@@ -1387,10 +1456,9 @@ export default function UploadForm({
             lastUpload &&
             lastUpload.lessonIds.length > 0 &&
             (isMediaSubtitleVariant ||
-              (addQuestions &&
-                (!lastUpload.materialType ||
-                  lastUpload.materialType === 'LISTENING' ||
-                  lastUpload.materialType === 'SPEAKING'))) && (
+              !lastUpload.materialType ||
+              lastUpload.materialType === 'LISTENING' ||
+              lastUpload.materialType === 'SPEAKING') && (
             <div className='mt-2 flex flex-wrap gap-2'>
               {lastUpload.lessonIds.map((id, i) => (
                 <a
@@ -1398,16 +1466,22 @@ export default function UploadForm({
                   href={
                     isMediaSubtitleVariant
                       ? `/subtitles/${id}`
-                      : `/manage/collections/lesson/${id}`
+                      : lastUpload.materialType === 'SPEAKING'
+                        ? `/manage/shadowing/${id}`
+                        : `/manage/listening/${id}#questions`
                   }
                   className='inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors'>
                   {isMediaSubtitleVariant
                     ? lastUpload.lessonIds.length > 1
                       ? `查看字幕 ${i + 1}`
                       : '查看字幕详情'
-                    : lastUpload.lessonIds.length > 1
-                      ? `编辑题目 ${i + 1}`
-                      : '前往添加题目'}
+                    : lastUpload.materialType === 'SPEAKING'
+                      ? lastUpload.lessonIds.length > 1
+                        ? `编辑跟读 ${i + 1}`
+                        : '编辑跟读材料'
+                      : lastUpload.lessonIds.length > 1
+                        ? `编辑题目 ${i + 1}`
+                        : '前往添加题目'}
                   <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
                     <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M13 7l5 5m0 0l-5 5m5-5H6' />
                   </svg>

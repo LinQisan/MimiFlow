@@ -4,10 +4,9 @@ import { MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { toLegacyMaterialId } from '@/lib/repositories/materials'
+import { asBoolean, asRecord, asString } from '@/utils/validation/unknown'
 
 export const revalidate = 60
-
-type JsonRecord = Record<string, unknown>
 
 type MediaItem = {
   id: string
@@ -22,21 +21,6 @@ type MediaItem = {
   createdAt: Date
   collectionTitle: string
   href: string
-}
-
-function asRecord(value: unknown): JsonRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonRecord
-  }
-  return {}
-}
-
-function asString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function asBoolean(value: unknown) {
-  return value === true
 }
 
 function asNumber(value: string) {
@@ -233,11 +217,12 @@ export default async function MediaSubtitlesPage() {
     <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-6 md:py-8'>
       <div className='mx-auto max-w-6xl'>
         <header className='border-b border-slate-200 pb-5'>
-          <h1 className='text-3xl font-black tracking-tight text-slate-950'>影视字幕库</h1>
-          <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-600'>
+          <p className='editorial-kicker'>MIMIFLOW / SUBTITLES</p>
+          <h1 className='mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-5xl'>影视字幕库</h1>
+          <p className='mt-4 max-w-2xl text-sm leading-7 text-slate-600'>
             按作品、季和集浏览字幕。
           </p>
-          <p className='mt-4 text-sm text-slate-500'>
+          <p className='mt-6 border-t border-slate-200 pt-4 text-xs tracking-wide text-slate-500'>
             {tvGroups.length} 部电视剧 · {tvEpisodeCount} 集 · {movieGroups.length} 部电影 · {totalDialogues} 行字幕
           </p>
         </header>
@@ -318,12 +303,12 @@ export default async function MediaSubtitlesPage() {
                                     {season.items.length} 集
                                   </span>
                                 </div>
-                                <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 md:grid-cols-2 xl:grid-cols-3'>
+                                <div className='min-w-0 divide-y divide-slate-200 border-y border-slate-200'>
                                   {season.items.map(item => (
                                     <Link
                                       key={item.id}
                                       href={item.href}
-                                      className='block min-w-0 rounded-lg border border-slate-200 bg-white p-3 transition hover:border-teal-300 hover:bg-teal-50/40'>
+                                      className='block min-w-0 px-3 py-3 transition hover:bg-teal-50/40'>
                                       <div className='flex items-start justify-between gap-3'>
                                         <div className='min-w-0'>
                                           <p className='truncate text-sm font-black text-slate-950'>
@@ -374,11 +359,11 @@ export default async function MediaSubtitlesPage() {
                     目前还没有电影字幕。
                   </div>
                 ) : (
-                  <div className='grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 p-4 md:grid-cols-2 xl:grid-cols-3'>
+                  <div className='min-w-0 divide-y divide-slate-200 border-y border-slate-200 p-4'>
                     {movieGroups.map(group => (
                       <div
                         key={`movie-group-${group.key}`}
-                        className='rounded-lg border border-slate-200 bg-white p-3'>
+                        className='py-4'>
                         <div className='flex items-start justify-between gap-3'>
                           <div className='min-w-0'>
                             <h3 className='truncate text-base font-black text-slate-950'>
@@ -398,7 +383,7 @@ export default async function MediaSubtitlesPage() {
                             <Link
                               key={item.id}
                               href={item.href}
-                              className='block rounded-md border border-slate-200 bg-slate-50 px-3 py-2 transition hover:border-amber-300 hover:bg-amber-50/50'>
+                              className='block border-t border-slate-200 px-1 py-2 transition hover:bg-amber-50/50'>
                               <p className='truncate text-sm font-bold text-slate-900'>
                                 {item.title}
                               </p>

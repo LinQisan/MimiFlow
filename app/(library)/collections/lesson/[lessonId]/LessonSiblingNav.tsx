@@ -19,7 +19,7 @@ type SiblingLesson = {
 export default function LessonSiblingNav({
   lessons,
   currentLessonId,
-  hrefBase = '/manage/collections/lesson',
+  hrefBase = '/manage/listening',
 }: {
   lessons: SiblingLesson[]
   currentLessonId: string
@@ -44,7 +44,7 @@ export default function LessonSiblingNav({
           <svg className='w-4 h-4 text-gray-400 transition-transform duration-300 group-open:-rotate-180' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
             <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M19 9l-7 7-7-7' />
           </svg>
-          同组听力列表
+          同组音频列表
         </span>
         <span className='rounded-md border border-gray-100 bg-gray-50 px-2 py-0.5 text-[11px] font-bold text-gray-500'>
           {lessons.length} 项 · 拖拽排序

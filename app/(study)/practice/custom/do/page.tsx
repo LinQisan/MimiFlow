@@ -125,6 +125,8 @@ export default async function CustomPaperDoingPage({
       })}
       paperLanguage={examData.paperLanguage}
       mode='random'
+      exitHref='/practice/custom'
+      exitLabel='返回自定义设置'
       pronunciationMap={examData.pronunciationMap}
       vocabularyMetaMap={examData.vocabularyMetaMap}
     />

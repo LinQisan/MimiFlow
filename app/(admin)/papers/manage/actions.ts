@@ -3,6 +3,10 @@
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { Prisma } from '@prisma/client'
+import {
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+} from '@/utils/questions/optionLabels'
 
 type UpdatePaperQuestionPayload = {
   questionId: string
@@ -11,6 +15,8 @@ type UpdatePaperQuestionPayload = {
   explanation?: string
   listeningSectionTitle?: string
   listeningSectionNumber?: string
+  optionLabelFormat?: string
+  customOptionLabels?: string | string[]
   options: Array<{
     id: string
     text: string
@@ -90,6 +96,23 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
 
   const currentContent = asRecord(current.content)
   const nextContext = contextText || promptText || null
+  const currentListeningSectionTitle = String(
+    currentContent.listeningSectionTitle || currentContent.sectionTitle || '听力',
+  ).trim()
+  const optionLabelFormat = normalizeOptionLabelFormat(
+    payload.optionLabelFormat,
+    current.material.type === 'LISTENING' ? 'numeric' : 'upper-alpha',
+  )
+  const customOptionLabels = parseCustomOptionLabels(payload.customOptionLabels)
+  if (
+    optionLabelFormat === 'custom' &&
+    customOptionLabels.length < normalizedOptions.length
+  ) {
+    return {
+      success: false,
+      message: `自定义序号至少需要 ${normalizedOptions.length} 个，请用 | 分隔。`,
+    }
+  }
 
   const data: Prisma.QuestionUpdateInput = {
     prompt: promptText || null,
@@ -101,6 +124,8 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
         prompt: promptText || null,
         contextSentence: nextContext,
         explanation: explanationText || null,
+        optionLabelFormat,
+        customOptionLabels,
         ...(current.material.type === 'LISTENING'
           ? {
               listeningSectionNumber: listeningSectionNumber
@@ -109,8 +134,8 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
               sectionNumber: listeningSectionNumber
                 ? listeningSectionNumber
                 : null,
-              listeningSectionTitle: '听力',
-              sectionTitle: '听力',
+              listeningSectionTitle: currentListeningSectionTitle,
+              sectionTitle: currentListeningSectionTitle,
             }
           : {}),
       },

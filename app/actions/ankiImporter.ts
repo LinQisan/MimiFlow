@@ -1,12 +1,13 @@
 'use server'
 
 import { SourceType } from '@prisma/client'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
+import { resolvePathInsideRoot } from '@/utils/files/path'
 
 type ParsedRow = {
   rowNo: number
@@ -38,6 +39,15 @@ type PreviewRow = {
 const MAX_PREVIEW_ROWS = 24
 const MAX_IMPORT_ROWS = 5000
 const AUDIO_ROOT = path.join(process.cwd(), 'public', 'audios')
+const AUDIO_EXTENSIONS = new Set([
+  '.mp3',
+  '.m4a',
+  '.wav',
+  '.ogg',
+  '.aac',
+  '.flac',
+  '.webm',
+])
 
 const WORD_HEADERS = new Set(['word', '单词', '詞', '単語'])
 const PRON_HEADERS = new Set([
@@ -297,9 +307,22 @@ const normalizeAudioLookupKey = (name: string) =>
 
 const safeFileName = (name: string) =>
   name
+    .normalize('NFKC')
+    .trim()
     .replace(/[\s]+/g, '-')
-    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .replace(/[^\p{L}\p{N}._-]/gu, '')
     .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 120)
+
+async function audioFileExists(filePath: string) {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
+}
 
 const normalizeFolderSegments = (value: string) =>
   value
@@ -462,12 +485,20 @@ async function uploadAudioFiles(files: File[], folderInput: string) {
   const folder = folderInput
     .replace(/\\/g, '/')
     .split('/')
-    .map(x => x.trim())
-    .filter(Boolean)
+    .map(segment =>
+      segment
+        .normalize('NFKC')
+        .trim()
+        .replace(/[<>:"|?*\u0000-\u001F]/g, ''),
+    )
+    .filter(segment => segment && segment !== '.' && segment !== '..')
     .join('/')
 
   const resolvedFolder = folder || 'imports/anki'
-  const targetDir = path.join(AUDIO_ROOT, resolvedFolder)
+  const targetDir = resolvePathInsideRoot(AUDIO_ROOT, resolvedFolder)
+  if (!targetDir) {
+    throw new Error('音频目录无效。')
+  }
   await mkdir(targetDir, { recursive: true })
 
   const map = new Map<string, string>()
@@ -475,10 +506,15 @@ async function uploadAudioFiles(files: File[], folderInput: string) {
   for (const file of files) {
     if (!file || file.size === 0) continue
     const ext = path.extname(file.name).toLowerCase()
-    if (!ext) continue
+    if (!AUDIO_EXTENSIONS.has(ext)) continue
 
     const safe = safeFileName(path.basename(file.name, ext)) || 'audio'
-    const finalName = `${Date.now()}-${safe}${ext}`
+    let finalName = `${safe}${ext}`
+    let suffix = 2
+    while (await audioFileExists(path.join(targetDir, finalName))) {
+      finalName = `${safe}-${suffix}${ext}`
+      suffix += 1
+    }
     const abs = path.join(targetDir, finalName)
     await writeFile(abs, Buffer.from(await file.arrayBuffer()))
 

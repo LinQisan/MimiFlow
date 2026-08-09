@@ -3,6 +3,10 @@ import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { toLegacyMaterialId } from '../materials'
 import { getMaterialDisplayTitle } from '../materials/material-title'
+import {
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+} from '@/utils/questions/optionLabels'
 
 type JsonRecord = Record<string, unknown>
 
@@ -111,7 +115,20 @@ export async function getCollectionManageDetail(collectionId: string) {
     select: {
       id: true,
       title: true,
+      description: true,
+      collectionType: true,
+      parent: { select: { id: true, title: true } },
+      children: {
+        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
+        select: {
+          id: true,
+          title: true,
+          collectionType: true,
+          _count: { select: { materials: true, children: true } },
+        },
+      },
       createdAt: true,
+      _count: { select: { children: true } },
       materials: {
         orderBy: { sortOrder: 'asc' },
         select: {
@@ -152,6 +169,11 @@ export async function getCollectionManageDetail(collectionId: string) {
   return {
     id: collection.id,
     title: collection.title,
+    description: collection.description,
+    collectionType: collection.collectionType,
+    parent: collection.parent,
+    children: collection.children,
+    childCount: collection._count.children,
     createdAt: collection.createdAt,
     audio: items.filter(
       item =>
@@ -243,6 +265,13 @@ export async function getQuizEditData(maybeId: string) {
           content.listeningSectionTitle,
           content.sectionTitle,
         ),
+        optionLabelFormat: normalizeOptionLabelFormat(
+          content.optionLabelFormat,
+          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+        ),
+        customOptionLabels: parseCustomOptionLabels(
+          content.customOptionLabels,
+        ).join('|'),
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),
@@ -263,7 +292,7 @@ export async function getListeningEditData(maybeId: string) {
         take: 1,
         select: {
           collectionId: true,
-          collection: { select: { title: true } },
+          collection: { select: { title: true, collectionType: true } },
         },
       },
       questions: {
@@ -304,6 +333,8 @@ export async function getListeningEditData(maybeId: string) {
       _count: { questions: item.material._count.questions },
     }))
 
+  const titleSectionNumber =
+    material.title.match(/(?:問題|问题|P)\s*0*(\d+)/i)?.[1] || ''
   const dialogues = asArray<JsonRecord>(payload.dialogues).map((item, index) => ({
     id: Number(item.id) || index + 1,
     text: asString(item.text),
@@ -314,6 +345,7 @@ export async function getListeningEditData(maybeId: string) {
   return {
     id: toLegacyMaterialId(material.id),
     materialId: material.id,
+    materialType: material.type,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
@@ -321,6 +353,13 @@ export async function getListeningEditData(maybeId: string) {
       toLegacyMaterialId(material.id),
     ),
     audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
+    listeningSectionNumber: asPositiveIntegerString(
+      payload.listeningSectionNumber,
+      payload.sectionNumber,
+      payload.partNumber,
+      payload.jlptPartNumber,
+      titleSectionNumber,
+    ),
     subtitleMeta: {
       noAudio: asBoolean(payload.subtitleNoAudio),
       sourceType:
@@ -331,6 +370,8 @@ export async function getListeningEditData(maybeId: string) {
     },
     collectionId,
     collectionTitle: material.collectionMaterials[0]?.collection.title || '未分组',
+    collectionType:
+      material.collectionMaterials[0]?.collection.collectionType || null,
     siblings,
     dialogues,
     questions: material.questions.map(question => {
@@ -349,6 +390,13 @@ export async function getListeningEditData(maybeId: string) {
           content.listeningSectionTitle,
           content.sectionTitle,
         ),
+        optionLabelFormat: normalizeOptionLabelFormat(
+          content.optionLabelFormat,
+          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+        ),
+        customOptionLabels: parseCustomOptionLabels(
+          content.customOptionLabels,
+        ).join('|'),
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),
@@ -380,7 +428,7 @@ export async function getSpeakingEditData(maybeId: string) {
         orderBy: { sortOrder: 'asc' },
         select: {
           collectionId: true,
-          collection: { select: { title: true } },
+          collection: { select: { title: true, collectionType: true } },
         },
       },
       questions: {
@@ -432,6 +480,7 @@ export async function getSpeakingEditData(maybeId: string) {
   return {
     id: toLegacyMaterialId(material.id),
     materialId: material.id,
+    materialType: material.type,
     title: getMaterialDisplayTitle(
       material.type,
       material.title,
@@ -441,6 +490,8 @@ export async function getSpeakingEditData(maybeId: string) {
     audioFile: asString(payload.audioFile) || asString(payload.audioUrl),
     collectionId,
     collectionTitle: material.collectionMaterials[0]?.collection.title || '未分组',
+    collectionType:
+      material.collectionMaterials[0]?.collection.collectionType || null,
     siblings,
     dialogues,
     questions: material.questions.map(question => {
@@ -452,6 +503,17 @@ export async function getSpeakingEditData(maybeId: string) {
         targetWord: asString(content.targetWord) || null,
         prompt: question.prompt || asString(content.prompt) || null,
         explanation: asString(content.explanation) || question.analysis || null,
+        listeningSectionNumber: asPositiveIntegerString(
+          content.listeningSectionNumber,
+          content.sectionNumber,
+        ),
+        optionLabelFormat: normalizeOptionLabelFormat(
+          content.optionLabelFormat,
+          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+        ),
+        customOptionLabels: parseCustomOptionLabels(
+          content.customOptionLabels,
+        ).join('|'),
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),

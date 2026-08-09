@@ -10,6 +10,15 @@ import {
   toQuestionRecordPayload,
   toSafeQuestionType,
 } from '@/modules/practice/domain/question-record'
+import {
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+} from '@/utils/questions/optionLabels'
+
+const asJsonRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
 
 type QuestionOptionInput = {
   text?: string | null
@@ -409,6 +418,8 @@ type EditableQuizQuestionInput = {
   targetWord?: string | null
   explanation?: string | null
   listeningSectionNumber?: string | null
+  optionLabelFormat?: string | null
+  customOptionLabels?: string | string[] | null
   options?: EditableQuizOptionInput[]
 }
 
@@ -477,12 +488,31 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         }
 
         const normalizedOptions = normalizeOptions(question.options)
-        const baseContent = toQuestionRecordPayload(
-          promptText || null,
-          normalizedContext,
-          targetWord,
-          explanation,
+        const optionLabelFormat = normalizeOptionLabelFormat(
+          question.optionLabelFormat,
+          questionType === QuestionType.LISTENING ? 'numeric' : 'upper-alpha',
         )
+        const customOptionLabels = parseCustomOptionLabels(
+          question.customOptionLabels,
+        )
+        if (
+          optionLabelFormat === 'custom' &&
+          customOptionLabels.length < normalizedOptions.length
+        ) {
+          throw new Error(
+            `第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`,
+          )
+        }
+        const baseContent = {
+          ...toQuestionRecordPayload(
+            promptText || null,
+            normalizedContext,
+            targetWord,
+            explanation,
+          ),
+          optionLabelFormat,
+          customOptionLabels,
+        }
         const nextQuestionData = {
           questionType,
           content:
@@ -546,6 +576,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
 
 type UpdateLessonQuestionsPayload = {
   lessonId: string
+  listeningSectionNumber?: string | null
   questions: EditableQuizQuestionInput[]
 }
 
@@ -563,8 +594,34 @@ export async function updateLessonQuestions(
     if (!materialId) {
       return { success: false, message: '听力材料不存在。' }
     }
+    if (!Array.isArray(payload.questions) || payload.questions.length === 0) {
+      return { success: false, message: '听力材料至少需要一道题目。' }
+    }
+
+    const listeningSectionNumberText = String(
+      payload.listeningSectionNumber ||
+        payload.questions.find(question => question.listeningSectionNumber)
+          ?.listeningSectionNumber ||
+        '',
+    ).trim()
+    if (!listeningSectionNumberText) {
+      return { success: false, message: '请设置材料所属問題。' }
+    }
+    let listeningSectionNumber: number | null = null
+    if (listeningSectionNumberText) {
+      const parsedNumber = Number(listeningSectionNumberText)
+      if (!Number.isFinite(parsedNumber) || parsedNumber < 1) {
+        return { success: false, message: '所属問題请填写大于 0 的数字。' }
+      }
+      listeningSectionNumber = Math.floor(parsedNumber)
+    }
 
     await prisma.$transaction(async tx => {
+      const currentMaterial = await tx.material.findUnique({
+        where: { id: materialId },
+        select: { contentPayload: true },
+      })
+      if (!currentMaterial) throw new Error('听力材料不存在。')
       const existingQuestions = await tx.question.findMany({
         where: { materialId },
         select: { id: true },
@@ -584,25 +641,32 @@ export async function updateLessonQuestions(
         const normalizedContext = contextText || promptText || null
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
-        const listeningSectionNumberText = String(
-          question.listeningSectionNumber || '',
-        ).trim()
-        let listeningSectionNumber: number | null = null
-        if (listeningSectionNumberText) {
-          const parsedNumber = Number(listeningSectionNumberText)
-          if (!Number.isFinite(parsedNumber) || parsedNumber < 1) {
-            throw new Error('听力所属部分请填写大于 0 的数字。')
-          }
-          listeningSectionNumber = Math.floor(parsedNumber)
-        }
-
         const normalizedOptions = normalizeOptions(question.options)
-        const baseContent = toQuestionRecordPayload(
-          promptText || null,
-          normalizedContext,
-          targetWord,
-          explanation,
+        const optionLabelFormat = normalizeOptionLabelFormat(
+          question.optionLabelFormat,
+          questionType === QuestionType.LISTENING ? 'numeric' : 'upper-alpha',
         )
+        const customOptionLabels = parseCustomOptionLabels(
+          question.customOptionLabels,
+        )
+        if (
+          optionLabelFormat === 'custom' &&
+          customOptionLabels.length < normalizedOptions.length
+        ) {
+          throw new Error(
+            `第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`,
+          )
+        }
+        const baseContent = {
+          ...toQuestionRecordPayload(
+            promptText || null,
+            normalizedContext,
+            targetWord,
+            explanation,
+          ),
+          optionLabelFormat,
+          customOptionLabels,
+        }
         const nextQuestionData = {
           questionType,
           content:
@@ -651,10 +715,23 @@ export async function updateLessonQuestions(
           id: { notIn: keepQuestionIds },
         },
       })
+      await tx.material.update({
+        where: { id: materialId },
+        data: {
+          contentPayload: {
+            ...asJsonRecord(currentMaterial.contentPayload),
+            questionEntryRequired: false,
+            listeningSectionNumber,
+            sectionNumber: listeningSectionNumber,
+          },
+        },
+      })
     })
 
     revalidatePath('/')
     revalidatePath('/manage/import')
+    revalidatePath('/manage/listening')
+    revalidatePath(`/manage/listening/${payload.lessonId.trim()}`)
     revalidatePath('/practice')
 
     return { success: true }

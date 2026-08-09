@@ -345,7 +345,10 @@ export async function searchGlobalContent(
       title: item.text,
       snippet: '',
       href: buildSearchDetailHref(`sentence-${item.id}`, 'sentence', q),
-      targetHref: item.sourceUrl || '/search',
+      targetHref:
+        item.sourceUrl && item.sourceUrl !== '#'
+          ? item.sourceUrl
+          : `/vocabulary?q=${encodeURIComponent(q)}`,
       meta: item.source || '句子来源',
       keyword: q,
     }),
@@ -366,7 +369,7 @@ export async function searchGlobalContent(
       title: item.title?.trim() || '',
       snippet: displaySnippet,
       href: buildSearchDetailHref(`passage-${item.id}`, 'passage', q),
-      targetHref: '/practice',
+      targetHref: `/reading/articles/${toLegacyMaterialId(item.id)}`,
       meta: formatPassageMeta({
         collectionTitle: item.collectionMaterials[0]?.collection.title,
       }),
@@ -405,7 +408,10 @@ export async function searchGlobalContent(
       title: shortText(item.text, 48),
       snippet: shortText(item.text, 100),
       href: buildSearchDetailHref(`dialogue-legacy:${item.sourceId}`, 'dialogue', q),
-      targetHref: item.sourceUrl || '/listening',
+      targetHref:
+        item.sourceUrl && item.sourceUrl !== '#'
+          ? item.sourceUrl
+          : '/listening',
       meta: item.source,
       keyword: q,
     }),

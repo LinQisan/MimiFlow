@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { replaceMediaSubtitleSearchIndex } from '@/lib/media-subtitles/search-index'
+import { asFiniteNumber, asRecord } from '@/utils/validation/unknown'
 
 type DialogueInputRow = {
   start?: number
@@ -15,18 +16,6 @@ type DialogueInputRow = {
   note?: string
   favorite?: boolean
   stableId?: string
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
-}
-
-function toNumber(value: unknown, fallback = 0) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : fallback
 }
 
 function normalizeDialogueRows(input: unknown) {
@@ -46,8 +35,8 @@ function normalizeDialogueRows(input: unknown) {
       const text = String(item?.text || '').trim()
       if (!text) return null
 
-      const start = Math.max(0, toNumber(item?.start, 0))
-      const endRaw = toNumber(item?.end, start + 0.5)
+      const start = Math.max(0, asFiniteNumber(item?.start, 0))
+      const endRaw = asFiniteNumber(item?.end, start + 0.5)
       const end = endRaw > start ? endRaw : start + 0.5
 
       return {

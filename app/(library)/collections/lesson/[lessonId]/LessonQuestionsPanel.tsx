@@ -13,6 +13,14 @@ import {
 import { updateLessonQuestions } from '@/modules/content/actions/materials'
 import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
+import CustomSelect from '@/components/ui/CustomSelect'
+import {
+  formatOptionLabel,
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+  type OptionLabelFormat,
+} from '@/utils/questions/optionLabels'
+import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 
 // ─── Types ───
 
@@ -30,6 +38,8 @@ type EditableQuestion = {
   prompt?: string | null
   explanation?: string | null
   listeningSectionNumber?: string | null
+  optionLabelFormat: OptionLabelFormat
+  customOptionLabels: string
   options: EditableOption[]
 }
 
@@ -39,7 +49,8 @@ type EditableQuestionField =
   | 'targetWord'
   | 'prompt'
   | 'explanation'
-  | 'listeningSectionNumber'
+  | 'optionLabelFormat'
+  | 'customOptionLabels'
 
 // ─── Helpers ───
 
@@ -50,21 +61,21 @@ const CIRCLED_NUM_TO_INDEX: Record<string, number> = {
 const getTypeConfig = (type: string) => {
   switch (type) {
     case 'LISTENING':
-      return { label: '听力题', color: 'bg-cyan-50 text-cyan-700 border-cyan-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-cyan-50 text-cyan-700 border-cyan-100' }
     case 'PRONUNCIATION':
-      return { label: '读音题', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-emerald-50 text-emerald-700 border-emerald-100' }
     case 'SYNONYM_REPLACEMENT':
-      return { label: '近义词题', color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100' }
     case 'FILL_BLANK':
-      return { label: '填空题', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-indigo-50 text-indigo-700 border-indigo-100' }
     case 'GRAMMAR':
-      return { label: '语法题', color: 'bg-sky-50 text-sky-700 border-sky-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-sky-50 text-sky-700 border-sky-100' }
     case 'WORD_DISTINCTION':
-      return { label: '单词辨析', color: 'bg-teal-50 text-teal-700 border-teal-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-teal-50 text-teal-700 border-teal-100' }
     case 'SORTING':
-      return { label: '排序题', color: 'bg-orange-50 text-orange-700 border-orange-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-orange-50 text-orange-700 border-orange-100' }
     case 'READING_COMPREHENSION':
-      return { label: '阅读理解', color: 'bg-purple-50 text-purple-700 border-purple-100' }
+      return { label: getQuestionTypeLabel(type), color: 'bg-purple-50 text-purple-700 border-purple-100' }
     default:
       return { label: '普通题', color: 'bg-gray-50 text-gray-700 border-gray-100' }
   }
@@ -274,13 +285,22 @@ const parseMultiQuizText = (input: string): ParsedDraft[] => {
 export default function LessonQuestionsPanel({
   lessonId,
   initialQuestions,
+  defaultListeningSectionNumber = '',
 }: {
   lessonId: string
   initialQuestions: EditableQuestion[]
+  defaultListeningSectionNumber?: string
 }) {
   const dialog = useDialog()
   const [isSaving, setIsSaving] = useState(false)
+  const [isDirty, setIsDirty] = useState(false)
   const [questions, setQuestions] = useState<EditableQuestion[]>(initialQuestions)
+  const [listeningSectionNumber, setListeningSectionNumber] = useState(
+    defaultListeningSectionNumber ||
+      initialQuestions.find(question => question.listeningSectionNumber)
+        ?.listeningSectionNumber ||
+      '',
+  )
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null)
   const [showBulkImport, setShowBulkImport] = useState(false)
   const [bulkText, setBulkText] = useState('')
@@ -300,10 +320,10 @@ export default function LessonQuestionsPanel({
 
   // ─── Add single question ───
   const createDefaultOptions = () => [
-    { id: `opt_${Date.now()}_1`, text: '选项 A', isCorrect: true },
-    { id: `opt_${Date.now()}_2`, text: '选项 B', isCorrect: false },
-    { id: `opt_${Date.now()}_3`, text: '选项 C', isCorrect: false },
-    { id: `opt_${Date.now()}_4`, text: '选项 D', isCorrect: false },
+    { id: `opt_${Date.now()}_1`, text: '选项 1', isCorrect: true },
+    { id: `opt_${Date.now()}_2`, text: '选项 2', isCorrect: false },
+    { id: `opt_${Date.now()}_3`, text: '选项 3', isCorrect: false },
+    { id: `opt_${Date.now()}_4`, text: '选项 4', isCorrect: false },
   ]
 
   const handleAddNewQuestion = () => {
@@ -314,14 +334,18 @@ export default function LessonQuestionsPanel({
       targetWord: '',
       prompt: '',
       explanation: '',
-      listeningSectionNumber: '',
+      listeningSectionNumber,
+      optionLabelFormat: 'numeric',
+      customOptionLabels: '',
       options: createDefaultOptions(),
     }
     setQuestions([...questions, newQ])
     setEditingQuestionId(newQ.id)
+    setIsDirty(true)
   }
 
   const handleToggleAudioOnly = (questionId: string, enabled: boolean) => {
+    setIsDirty(true)
     setAudioOnlyFlags(prev => ({ ...prev, [questionId]: enabled }))
     if (enabled) {
       // Clear all option text when enabling audio-only
@@ -356,7 +380,9 @@ export default function LessonQuestionsPanel({
       targetWord: draft.targetWord || '',
       prompt: draft.prompt,
       explanation: draft.explanation,
-      listeningSectionNumber: '',
+      listeningSectionNumber,
+      optionLabelFormat: 'numeric',
+      customOptionLabels: '',
       options: draft.options.map((opt, j) => ({
         id: `bulkopt_${Date.now()}_${i}_${j}`,
         text: opt.text,
@@ -364,6 +390,7 @@ export default function LessonQuestionsPanel({
       })),
     }))
     setQuestions(prev => [...prev, ...newQuestions])
+    setIsDirty(true)
     setBulkText('')
     setBulkParsed([])
     setShowBulkImport(false)
@@ -373,6 +400,7 @@ export default function LessonQuestionsPanel({
   // ─── Update / reorder / remove ───
   const handleUpdateQuestion = (id: string, field: EditableQuestionField, value: string) => {
     setQuestions(questions.map(q => (q.id === id ? { ...q, [field]: value } : q)))
+    setIsDirty(true)
   }
 
   const handleUpdateOption = (qId: string, optIndex: number, field: 'text' | 'isCorrect', value: string | boolean) => {
@@ -388,6 +416,7 @@ export default function LessonQuestionsPanel({
         return { ...q, options: newOptions }
       }),
     )
+    setIsDirty(true)
   }
 
   const handleReorderQuestions = async (orderedIds: string[]) => {
@@ -395,6 +424,7 @@ export default function LessonQuestionsPanel({
       .map(id => questions.find(q => q.id === id))
       .filter((item): item is EditableQuestion => Boolean(item))
     setQuestions(reordered)
+    setIsDirty(true)
     await updateSortOrder('Question', orderedIds)
     return { success: true }
   }
@@ -407,6 +437,7 @@ export default function LessonQuestionsPanel({
     })
     if (!confirmed) return
     setQuestions(prev => prev.filter(item => item.id !== questionId))
+    setIsDirty(true)
     if (editingQuestionId === questionId) setEditingQuestionId(null)
   }
 
@@ -416,6 +447,7 @@ export default function LessonQuestionsPanel({
     try {
       const payload = {
         lessonId,
+        listeningSectionNumber,
         questions: questions.map(q => ({
           id: q.id,
           questionType: q.questionType,
@@ -423,7 +455,8 @@ export default function LessonQuestionsPanel({
           targetWord: q.targetWord || '',
           prompt: q.prompt || '',
           explanation: q.explanation || '',
-          listeningSectionNumber: q.listeningSectionNumber || '',
+          optionLabelFormat: q.optionLabelFormat || 'numeric',
+          customOptionLabels: q.customOptionLabels || '',
           options: (q.options || []).map(opt => ({
             id: opt.id,
             text: opt.text || '',
@@ -438,6 +471,7 @@ export default function LessonQuestionsPanel({
         return
       }
       dialog.toast('题目已保存', { tone: 'success' })
+      setIsDirty(false)
     } finally {
       setIsSaving(false)
     }
@@ -445,25 +479,54 @@ export default function LessonQuestionsPanel({
 
   // ─── Render ───
   return (
-    <section className='mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm'>
+    <section className='mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm'>
       {/* Header */}
-      <div className='flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 bg-gray-50/50 p-4 md:p-5'>
+      <div className='sticky top-14 z-20 flex flex-wrap items-center justify-between gap-3 rounded-t-2xl border-b border-gray-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5'>
         <div className='flex items-center gap-3'>
           <h2 className='text-lg font-black text-gray-800'>听力题目</h2>
           <span className='rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700'>
             {questions.length} 题
           </span>
+          {isDirty && (
+            <span className='rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700'>
+              有未保存更改
+            </span>
+          )}
         </div>
-        <div className='flex items-center gap-2'>
+        <div className='flex flex-wrap items-center justify-end gap-2'>
+          <label className='flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600'>
+            <span>所属問題</span>
+            <input
+              type='number'
+              min='1'
+              step='1'
+              value={listeningSectionNumber}
+              onChange={event => {
+                setListeningSectionNumber(event.target.value)
+                setQuestions(current =>
+                  current.map(question => ({
+                    ...question,
+                    listeningSectionNumber: event.target.value,
+                  })),
+                )
+                setIsDirty(true)
+              }}
+              aria-label='材料所属問題'
+              className='h-7 w-14 rounded-lg border border-slate-200 bg-white px-2 text-center text-sm font-black text-slate-900 outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100'
+              placeholder='1'
+            />
+          </label>
           <button
+            type='button'
             onClick={() => setShowBulkImport(!showBulkImport)}
-            className='text-xs px-4 py-2 bg-violet-50 text-violet-700 font-bold rounded-lg hover:bg-violet-100 transition-colors shadow-sm border border-violet-100'>
+            className='ui-btn ui-btn-sm border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'>
             批量导入
           </button>
 
           <button
+            type='button'
             onClick={handleAddNewQuestion}
-            className='text-xs px-4 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-gray-800 transition-colors shadow-sm flex items-center gap-1.5'>
+            className='ui-btn ui-btn-sm flex items-center gap-1.5'>
             <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M12 4v16m8-8H4' />
             </svg>
@@ -471,9 +534,10 @@ export default function LessonQuestionsPanel({
           </button>
 
           <button
+            type='button'
             onClick={handleSave}
             disabled={isSaving}
-            className='text-xs px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-sm disabled:opacity-50'>
+            className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-50'>
             {isSaving ? '保存中...' : '保存题目'}
           </button>
         </div>
@@ -589,29 +653,6 @@ export default function LessonQuestionsPanel({
                           </div>
                         )}
 
-                        {q.questionType === 'LISTENING' && (
-                          <div>
-                            <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1 block'>
-                              第几部分
-                            </label>
-                            <input
-                              type='number'
-                              min='1'
-                              step='1'
-                              value={q.listeningSectionNumber || ''}
-                              onChange={e =>
-                                handleUpdateQuestion(
-                                  q.id,
-                                  'listeningSectionNumber',
-                                  e.target.value,
-                                )
-                              }
-                              className='w-full p-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-cyan-400 shadow-sm md:max-w-xs'
-                              placeholder='例如：1'
-                            />
-                          </div>
-                        )}
-
                         <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                           {(q.questionType === 'PRONUNCIATION' ||
                             q.questionType === 'SYNONYM_REPLACEMENT' ||
@@ -671,6 +712,42 @@ export default function LessonQuestionsPanel({
                               </button>
                             )}
                           </div>
+                          <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr]'>
+                            <CustomSelect
+                              value={q.optionLabelFormat || 'numeric'}
+                              onChange={e =>
+                                handleUpdateQuestion(
+                                  q.id,
+                                  'optionLabelFormat',
+                                  e.target.value,
+                                )
+                              }
+                              className='h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold'>
+                              <option value='numeric'>1、2、3、4（日语默认）</option>
+                              <option value='upper-alpha'>A、B、C、D</option>
+                              <option value='circled-number'>①、②、③、④</option>
+                              <option value='katakana'>ア、イ、ウ、エ</option>
+                              <option value='custom'>自定义</option>
+                            </CustomSelect>
+                            {q.optionLabelFormat === 'custom' ? (
+                              <input
+                                value={q.customOptionLabels || ''}
+                                onChange={e =>
+                                  handleUpdateQuestion(
+                                    q.id,
+                                    'customOptionLabels',
+                                    e.target.value,
+                                  )
+                                }
+                                placeholder='例如：Ⅰ|Ⅱ|Ⅲ|Ⅳ'
+                                className='h-10 rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold'
+                              />
+                            ) : (
+                              <p className='self-center text-xs text-gray-400'>
+                                序号只影响显示，不改变答案数据。
+                              </p>
+                            )}
+                          </div>
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-2.5'>
                             {q.options?.map((opt, i) => (
                               <div
@@ -683,7 +760,14 @@ export default function LessonQuestionsPanel({
                                   className='w-4 h-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer'
                                 />
                                 <span className='text-sm font-black text-gray-300'>
-                                  {String.fromCharCode(65 + i)}
+                                  {formatOptionLabel(
+                                    i,
+                                    normalizeOptionLabelFormat(
+                                      q.optionLabelFormat,
+                                      'numeric',
+                                    ),
+                                    parseCustomOptionLabels(q.customOptionLabels),
+                                  )}
                                 </span>
                                 {!isAudioOnly(q.id) && (
                                   <input
@@ -777,7 +861,16 @@ export default function LessonQuestionsPanel({
                               key={opt.id}
                               className={`text-xs p-2.5 rounded-lg border flex justify-between items-center ${opt.isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-bold shadow-sm' : 'bg-gray-50 border-gray-100 text-gray-600 font-medium'}`}>
                               <span>
-                                <span className='opacity-50 mr-1'>{String.fromCharCode(65 + i)}.</span>{' '}
+                                <span className='opacity-50 mr-1'>
+                                  {formatOptionLabel(
+                                    i,
+                                    normalizeOptionLabelFormat(
+                                      q.optionLabelFormat,
+                                      'numeric',
+                                    ),
+                                    parseCustomOptionLabels(q.customOptionLabels),
+                                  )}.
+                                </span>{' '}
                                 {isAudioOnly(q.id) ? '' : opt.text}
                               </span>
                               {opt.isCorrect && <span className='text-emerald-500 font-black'>✅</span>}

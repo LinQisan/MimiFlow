@@ -2,6 +2,8 @@
 
 import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
+import { isPathInsideRoot, resolvePathInsideRoot } from '@/utils/files/path'
+import { asRecord, asString } from '@/utils/validation/unknown'
 import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
@@ -17,7 +19,6 @@ const AUDIO_EXTENSIONS = new Set([
 ])
 
 const PUBLIC_AUDIO_DIR = path.join(process.cwd(), 'public', 'audios')
-const PUBLIC_UPLOAD_DIR = path.join(PUBLIC_AUDIO_DIR, 'uploads')
 
 type AudioRecord = {
   path: string
@@ -26,29 +27,35 @@ type AudioRecord = {
   size: number
   updatedAt: string
   linkedLessons: number
+  linkedListeningMaterials: number
+  linkedSpeakingMaterials: number
+}
+
+type AudioFolderRecord = {
+  path: string
+  name: string
+  depth: number
+  directCount: number
+  descendantCount: number
+  size: number
 }
 
 type RefUpdateResult = {
   lessonRefUpdated: number
+  listeningRefUpdated: number
+  speakingRefUpdated: number
   subtitleRefUpdated: number
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>
-  }
-  return {}
-}
-
-function asString(value: unknown): string {
-  return typeof value === 'string' ? value : ''
 }
 
 function toSafeFilename(name: string) {
   return name
+    .normalize('NFKC')
+    .trim()
     .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .replace(/[^\p{L}\p{N}._-]/gu, '')
     .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 120)
 }
 
 function normalizeFolderInput(rawFolder: string) {
@@ -57,11 +64,25 @@ function normalizeFolderInput(rawFolder: string) {
     .split('/')
     .map(segment =>
       segment
+        .normalize('NFKC')
         .trim()
-        .replace(/[<>:"|?*\u0000-\u001F]/g, ''),
+        .replace(/[<>:"|?*\u0000-\u001F]/g, '')
+        .slice(0, 100),
     )
     .filter(segment => segment && segment !== '.' && segment !== '..')
+    .slice(0, 12)
   return normalized.join('/')
+}
+
+function getDefaultUploadFolder() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date())
+  const year = parts.find(part => part.type === 'year')?.value || 'unknown'
+  const month = parts.find(part => part.type === 'month')?.value || '00'
+  return `uploads/${year}-${month}`
 }
 
 async function pathExists(targetPath: string) {
@@ -76,13 +97,13 @@ async function pathExists(targetPath: string) {
 function ensureAudioPath(audioPath: string) {
   if (!audioPath.startsWith('/audios/')) return null
   const rel = audioPath.replace(/^\/audios\//, '')
-  const absPath = path.join(PUBLIC_AUDIO_DIR, rel)
+  if (!rel) return null
   const normalizedRoot = path.resolve(PUBLIC_AUDIO_DIR)
-  const normalizedTarget = path.resolve(absPath)
-  if (!normalizedTarget.startsWith(normalizedRoot)) return null
+  const normalizedTarget = resolvePathInsideRoot(PUBLIC_AUDIO_DIR, rel)
+  if (!normalizedTarget || normalizedTarget === normalizedRoot) return null
   return {
     rel,
-    absPath,
+    absPath: normalizedTarget,
     normalizedRoot,
     normalizedTarget,
   }
@@ -99,31 +120,38 @@ async function replaceAudioReference(
   nextPath: string,
 ): Promise<RefUpdateResult> {
   if (oldPath === nextPath) {
-    return { lessonRefUpdated: 0, subtitleRefUpdated: 0 }
+    return {
+      lessonRefUpdated: 0,
+      listeningRefUpdated: 0,
+      speakingRefUpdated: 0,
+      subtitleRefUpdated: 0,
+    }
   }
 
-  const listeningMaterials = await prisma.material.findMany({
-    where: { type: MaterialType.LISTENING },
-    select: { id: true, contentPayload: true },
+  const audioMaterials = await prisma.material.findMany({
+    where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
+    select: { id: true, type: true, contentPayload: true },
   })
 
-  const updates = listeningMaterials.flatMap(material => {
+  const matchedMaterials = audioMaterials.filter(material => {
     const payload = asRecord(material.contentPayload)
     const audioFile = asString(payload.audioFile) || asString(payload.audioUrl)
-    if (audioFile !== oldPath) return []
+    return audioFile === oldPath
+  })
 
-    return [
-      prisma.material.update({
-        where: { id: material.id },
-        data: {
-          contentPayload: {
-            ...payload,
-            audioFile: nextPath,
-            audioUrl: nextPath,
-          },
+  const updates = matchedMaterials.map(material => {
+    const payload = asRecord(material.contentPayload)
+
+    return prisma.material.update({
+      where: { id: material.id },
+      data: {
+        contentPayload: {
+          ...payload,
+          audioFile: nextPath,
+          audioUrl: nextPath,
         },
-      }),
-    ]
+      },
+    })
   })
 
   if (updates.length > 0) {
@@ -132,6 +160,12 @@ async function replaceAudioReference(
 
   return {
     lessonRefUpdated: updates.length,
+    listeningRefUpdated: matchedMaterials.filter(
+      material => material.type === MaterialType.LISTENING,
+    ).length,
+    speakingRefUpdated: matchedMaterials.filter(
+      material => material.type === MaterialType.SPEAKING,
+    ).length,
     subtitleRefUpdated: 0,
   }
 }
@@ -164,32 +198,59 @@ async function walkAudioFiles(
   return results
 }
 
+async function walkAudioFolders(dir: string, baseDir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true })
+  const folders: string[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const fullPath = path.join(dir, entry.name)
+    const rel = path.relative(baseDir, fullPath).split(path.sep).join('/')
+    folders.push(rel)
+    folders.push(...(await walkAudioFolders(fullPath, baseDir)))
+  }
+
+  return folders
+}
+
 export async function listAudioFilesAdmin(
   params?: {
     page?: number
     pageSize?: number
     keyword?: string
     folder?: string
+    usage?: 'all' | 'listening' | 'speaking' | 'unlinked'
   },
 ) {
   try {
+    await mkdir(PUBLIC_AUDIO_DIR, { recursive: true })
     const safePageSize = Math.min(120, Math.max(10, Math.floor(params?.pageSize || 40)))
     const rawPage = Math.max(1, Math.floor(params?.page || 1))
     const keyword = (params?.keyword || '').trim().toLowerCase()
     const selectedFolder = (params?.folder || '').trim()
+    const selectedUsage = params?.usage || 'all'
 
-    const files = await walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR)
+    const [files, directoryPaths] = await Promise.all([
+      walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR),
+      walkAudioFolders(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR),
+    ])
     const uniquePaths = Array.from(new Set(files.map(item => item.webPath)))
+    const uniquePathSet = new Set(uniquePaths)
 
-    const lessons = await prisma.material.findMany({
-      where: { type: MaterialType.LISTENING },
-      select: { contentPayload: true },
+    const audioMaterials = await prisma.material.findMany({
+      where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
+      select: { type: true, contentPayload: true },
     })
-    const usageMap = new Map<string, number>()
-    for (const lesson of lessons) {
-      const payload = asRecord(lesson.contentPayload)
+    const listeningUsageMap = new Map<string, number>()
+    const speakingUsageMap = new Map<string, number>()
+    for (const material of audioMaterials) {
+      const payload = asRecord(material.contentPayload)
       const audioPath = asString(payload.audioFile) || asString(payload.audioUrl)
-      if (!audioPath || !uniquePaths.includes(audioPath)) continue
+      if (!audioPath || !uniquePathSet.has(audioPath)) continue
+      const usageMap =
+        material.type === MaterialType.LISTENING
+          ? listeningUsageMap
+          : speakingUsageMap
       usageMap.set(audioPath, (usageMap.get(audioPath) || 0) + 1)
     }
 
@@ -207,18 +268,56 @@ export async function listAudioFilesAdmin(
           name,
           size: meta.size,
           updatedAt: meta.mtime.toISOString(),
-          linkedLessons: usageMap.get(file.webPath) || 0,
+          linkedLessons:
+            (listeningUsageMap.get(file.webPath) || 0) +
+            (speakingUsageMap.get(file.webPath) || 0),
+          linkedListeningMaterials: listeningUsageMap.get(file.webPath) || 0,
+          linkedSpeakingMaterials: speakingUsageMap.get(file.webPath) || 0,
         } as AudioRecord
       }),
     )
 
-    const sorted = rows.sort((a, b) => a.path.localeCompare(b.path))
-    const folders = Array.from(new Set(sorted.map(item => item.folder))).sort((a, b) =>
-      a.localeCompare(b),
+    const sorted = rows.sort((a, b) => {
+      if (selectedFolder) {
+        return a.name.localeCompare(b.name, 'ja', { numeric: true })
+      }
+      return b.updatedAt.localeCompare(a.updatedAt)
+    })
+    const folders = Array.from(new Set(directoryPaths)).sort((a, b) =>
+      a.localeCompare(b, 'ja', { numeric: true }),
     )
+    const folderSummaries: AudioFolderRecord[] = folders.map(folderPath => {
+      const descendants = sorted.filter(
+        item => item.folder === folderPath || item.folder.startsWith(`${folderPath}/`),
+      )
+      return {
+        path: folderPath,
+        name: folderPath.split('/').pop() || folderPath,
+        depth: folderPath.split('/').length - 1,
+        directCount: descendants.filter(item => item.folder === folderPath).length,
+        descendantCount: descendants.length,
+        size: descendants.reduce((sum, item) => sum + item.size, 0),
+      }
+    })
+    const summary = {
+      totalFiles: sorted.length,
+      totalSize: sorted.reduce((sum, item) => sum + item.size, 0),
+      linkedFiles: sorted.filter(item => item.linkedLessons > 0).length,
+      unlinkedFiles: sorted.filter(item => item.linkedLessons === 0).length,
+      folderCount: folders.length,
+    }
     const filtered = sorted.filter(item => {
-      const folderOk = !selectedFolder || item.folder === selectedFolder
+      const folderOk =
+        !selectedFolder ||
+        item.folder === selectedFolder ||
+        item.folder.startsWith(`${selectedFolder}/`)
       if (!folderOk) return false
+      const usageOk =
+        selectedUsage === 'all' ||
+        (selectedUsage === 'listening' && item.linkedListeningMaterials > 0) ||
+        (selectedUsage === 'speaking' && item.linkedSpeakingMaterials > 0) ||
+        (selectedUsage === 'unlinked' && item.linkedLessons === 0)
+      if (!usageOk) return false
       if (!keyword) return true
       const text = `${item.name} ${item.path} ${item.folder}`.toLowerCase()
       return text.includes(keyword)
@@ -233,6 +332,8 @@ export async function listAudioFilesAdmin(
       success: true,
       items: paged,
       folders,
+      folderSummaries,
+      summary,
       total,
       page,
       pageSize: safePageSize,
@@ -244,6 +345,14 @@ export async function listAudioFilesAdmin(
       success: false,
       items: [] as AudioRecord[],
       folders: [] as string[],
+      folderSummaries: [] as AudioFolderRecord[],
+      summary: {
+        totalFiles: 0,
+        totalSize: 0,
+        linkedFiles: 0,
+        unlinkedFiles: 0,
+        folderCount: 0,
+      },
       total: 0,
       page: 1,
       pageSize: 40,
@@ -264,16 +373,32 @@ export async function uploadAudioFileAdmin(formData: FormData) {
       return { success: false, message: '仅支持 mp3/m4a/wav/ogg/aac/flac/webm。' }
     }
 
-    await mkdir(PUBLIC_UPLOAD_DIR, { recursive: true })
+    const requestedFolder = asString(formData.get('folder'))
+    const folder = normalizeFolderInput(requestedFolder) || getDefaultUploadFolder()
+    const uploadDir = resolvePathInsideRoot(PUBLIC_AUDIO_DIR, folder)
+    if (!uploadDir) {
+      return { success: false, message: '上传目录无效。' }
+    }
+    await mkdir(uploadDir, { recursive: true })
     const safeBase = toSafeFilename(path.basename(file.name, ext)) || 'audio'
-    const fileName = `${Date.now()}-${safeBase}${ext}`
-    const absPath = path.join(PUBLIC_UPLOAD_DIR, fileName)
+    let fileName = `${safeBase}${ext}`
+    let suffix = 2
+    while (await pathExists(path.join(uploadDir, fileName))) {
+      fileName = `${safeBase}-${suffix}${ext}`
+      suffix += 1
+    }
+    const absPath = path.join(uploadDir, fileName)
     const bytes = Buffer.from(await file.arrayBuffer())
     await writeFile(absPath, bytes)
 
     revalidatePath('/manage/system/audio')
     revalidatePath('/manage/import')
-    return { success: true, message: '录音已上传。', path: `/audios/uploads/${fileName}` }
+    return {
+      success: true,
+      message: `录音已上传至 ${folder}。`,
+      path: joinAudioWebPath(folder, fileName),
+      folder,
+    }
   } catch (error) {
     console.error('上传录音失败:', error)
     return { success: false, message: '上传失败，请重试。' }
@@ -287,17 +412,26 @@ export async function deleteAudioFileAdmin(audioPath: string) {
       return { success: false, message: '非法路径。' }
     }
 
-    const lessons = await prisma.material.findMany({
-      where: { type: MaterialType.LISTENING },
-      select: { contentPayload: true },
+    const audioMaterials = await prisma.material.findMany({
+      where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
+      select: { type: true, contentPayload: true },
     })
-    const linkedCount = lessons.reduce((count, lesson) => {
-      const payload = asRecord(lesson.contentPayload)
+    const linkedMaterials = audioMaterials.filter(material => {
+      const payload = asRecord(material.contentPayload)
       const currentPath = asString(payload.audioFile) || asString(payload.audioUrl)
-      return count + (currentPath === audioPath ? 1 : 0)
-    }, 0)
-    if (linkedCount > 0) {
-      return { success: false, message: `该录音仍被 ${linkedCount} 个听力语料使用，无法删除。` }
+      return currentPath === audioPath
+    })
+    if (linkedMaterials.length > 0) {
+      const listeningCount = linkedMaterials.filter(
+        material => material.type === MaterialType.LISTENING,
+      ).length
+      const speakingCount = linkedMaterials.filter(
+        material => material.type === MaterialType.SPEAKING,
+      ).length
+      return {
+        success: false,
+        message: `该录音仍被听力材料 ${listeningCount} 条、跟读材料 ${speakingCount} 条使用，无法删除。`,
+      }
     }
 
     await unlink(target.normalizedTarget)
@@ -322,7 +456,7 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
     const targetRel = targetFolder ? `${targetFolder}/${fileName}` : fileName
     const targetAbsPath = path.join(PUBLIC_AUDIO_DIR, targetRel)
     const normalizedTarget = path.resolve(targetAbsPath)
-    if (!normalizedTarget.startsWith(oldTarget.normalizedRoot)) {
+    if (!isPathInsideRoot(oldTarget.normalizedRoot, normalizedTarget)) {
       return { success: false, message: '非法目标路径。' }
     }
 
@@ -348,6 +482,8 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
       message: `文件已移动至 ${targetFolder || '根目录'}。`,
       path: nextWebPath,
       lessonRefUpdated: refUpdated.lessonRefUpdated,
+      listeningRefUpdated: refUpdated.listeningRefUpdated,
+      speakingRefUpdated: refUpdated.speakingRefUpdated,
       subtitleRefUpdated: refUpdated.subtitleRefUpdated,
     }
   } catch (error) {
@@ -364,7 +500,7 @@ export async function createAudioFolderAdmin(rawFolder: string) {
     }
     const targetAbsPath = path.resolve(path.join(PUBLIC_AUDIO_DIR, folder))
     const root = path.resolve(PUBLIC_AUDIO_DIR)
-    if (!targetAbsPath.startsWith(root)) {
+    if (!isPathInsideRoot(root, targetAbsPath)) {
       return { success: false, message: '非法路径。' }
     }
     await mkdir(targetAbsPath, { recursive: true })
@@ -401,7 +537,7 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
     const nextAbsPath = path.resolve(
       path.join(PUBLIC_AUDIO_DIR, nextPath.replace(/^\/audios\//, '')),
     )
-    if (!nextAbsPath.startsWith(target.normalizedRoot)) {
+    if (!isPathInsideRoot(target.normalizedRoot, nextAbsPath)) {
       return { success: false, message: '非法路径。' }
     }
     if (await pathExists(nextAbsPath)) {
@@ -419,6 +555,8 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
       message: `文件已重命名为 ${nextName}。`,
       path: nextPath,
       lessonRefUpdated: refUpdated.lessonRefUpdated,
+      listeningRefUpdated: refUpdated.listeningRefUpdated,
+      speakingRefUpdated: refUpdated.speakingRefUpdated,
       subtitleRefUpdated: refUpdated.subtitleRefUpdated,
     }
   } catch (error) {
@@ -435,6 +573,8 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
   const succeeded: string[] = []
   const failed: { path: string; message: string }[] = []
   let lessonRefUpdated = 0
+  let listeningRefUpdated = 0
+  let speakingRefUpdated = 0
   let subtitleRefUpdated = 0
 
   for (const itemPath of Array.from(new Set(paths))) {
@@ -442,6 +582,8 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
     if (res.success) {
       succeeded.push(itemPath)
       lessonRefUpdated += res.lessonRefUpdated || 0
+      listeningRefUpdated += res.listeningRefUpdated || 0
+      speakingRefUpdated += res.speakingRefUpdated || 0
       subtitleRefUpdated += res.subtitleRefUpdated || 0
     } else {
       failed.push({ path: itemPath, message: res.message })
@@ -454,6 +596,8 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
     succeeded,
     failed,
     lessonRefUpdated,
+    listeningRefUpdated,
+    speakingRefUpdated,
     subtitleRefUpdated,
   }
 }

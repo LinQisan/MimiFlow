@@ -48,7 +48,7 @@ function ReadingQuestion({
     .sort((a, b) => (a.order || 0) - (b.order || 0))
 
   return (
-    <div className='mx-auto w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] lg:items-start'>
+    <div className='mx-auto flex w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] lg:items-start'>
       <section className='custom-scrollbar relative w-full overflow-y-auto rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8 lg:max-h-[78vh]'>
         <article
           data-source-type='ARTICLE_TEXT'
@@ -70,13 +70,8 @@ function ReadingQuestion({
         />
       </section>
 
-      <aside className='custom-scrollbar w-full overflow-y-auto rounded-[20px] bg-slate-50 p-4 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-5 lg:sticky lg:top-24 lg:max-h-[78vh]'>
+      <aside className='custom-scrollbar w-full overflow-y-auto lg:sticky lg:top-24 lg:max-h-[78vh]'>
         <div className='mx-auto w-full max-w-xl'>
-          <div className='mb-3 border-b border-slate-200 pb-2'>
-            <p className='text-xs font-bold tracking-[0.18em] text-slate-500'>
-              作答面板
-            </p>
-          </div>
           <StandardQuestion
             question={question}
             currentAnswer={currentAnswer}
@@ -284,6 +279,8 @@ function ListeningQuestion({
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
         isJapanesePaper={isJapanesePaper}
+        optionLabelFormat={question.optionLabelFormat}
+        customOptionLabels={question.customOptionLabels}
         annotation={annotation}
       />
 

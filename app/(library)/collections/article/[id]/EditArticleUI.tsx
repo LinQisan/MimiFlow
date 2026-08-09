@@ -13,6 +13,7 @@ import {
 import { updateArticleWithQuestions } from '@/modules/content/actions/materials'
 import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
+import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 
 const splitIntoSentences = (text: string) => {
   if (!text) return []
@@ -233,7 +234,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
           <button
             onClick={handleCreateBlankQuestion}
             className='text-xs font-bold text-indigo-300 hover:text-indigo-100 whitespace-nowrap active:scale-95 transition-all'>
-            + 设为填空题
+            + 设为文章穴埋め
           </button>
         </div>
       )}
@@ -278,7 +279,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
             />
           </div>
           <p className='absolute -bottom-5.5 left-3 z-20 text-xs font-bold text-indigo-500'>
-            可在正文中划词，快速生成填空题。
+            可在正文中划词，快速生成文章穴埋め题。
           </p>
         </div>
 
@@ -315,7 +316,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
                     <button
                       onClick={() => handleAddNewQuestion('FILL_BLANK')}
                       className='w-full text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg text-xs font-bold text-gray-700 flex items-center gap-2'>
-                      填空题
+                      文章穴埋め
                     </button>
                   </div>
                 </>
@@ -416,9 +417,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
                               </span>
                               <span
                                 className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${q.questionType === 'FILL_BLANK' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-purple-50 border-purple-100 text-purple-700'}`}>
-                                {q.questionType === 'FILL_BLANK'
-                                  ? '填空题'
-                                  : '阅读题'}
+                                {getQuestionTypeLabel(q.questionType)}
                               </span>
                             </div>
                             <div className='flex gap-2.5 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity'>

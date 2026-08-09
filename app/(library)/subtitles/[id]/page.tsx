@@ -8,30 +8,15 @@ import prisma from '@/lib/prisma'
 import MediaSubtitleEditor from './MediaSubtitleEditor'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildAudioDialogueSourceIdCandidates } from '@/utils/audioDialogue/sourceId'
+import {
+  asBoolean,
+  asFiniteNumber,
+  asRecord,
+  asString,
+  type UnknownRecord,
+} from '@/utils/validation/unknown'
 
-type JsonRecord = Record<string, unknown>
-
-function asRecord(value: unknown): JsonRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonRecord
-  }
-  return {}
-}
-
-function asString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function asNumber(value: unknown, fallback = 0) {
-  const num = Number(value)
-  return Number.isFinite(num) ? num : fallback
-}
-
-function asBoolean(value: unknown) {
-  return value === true
-}
-
-function formatSubtitleMeta(payload: JsonRecord) {
+function formatSubtitleMeta(payload: UnknownRecord) {
   const sourceType = asString(payload.subtitleSourceType) === 'TV' ? 'TV' : 'MOVIE'
   const workTitle = asString(payload.subtitleWorkTitle)
   const season = asString(payload.subtitleSeason)
@@ -58,7 +43,7 @@ function formatSubtitleMeta(payload: JsonRecord) {
   }
 }
 
-function buildMetadataDescription(title: string, payload: JsonRecord) {
+function buildMetadataDescription(title: string, payload: UnknownRecord) {
   const meta = formatSubtitleMeta(payload)
   const subject = meta.label || `影视字幕《${title}》`
   const audioLabel = meta.subtitleNoAudio ? '仅字幕' : '含音频'
@@ -145,12 +130,13 @@ export default async function MediaSubtitleDetailPage({
     ? payload.dialogues.map((item, index) => {
         const rec = asRecord(item)
         return {
-          id: asNumber(rec.id, index + 1),
+          id: asFiniteNumber(rec.id, index + 1),
           stableId:
-            asString(rec.stableId) || `legacy-${asNumber(rec.id, index + 1)}`,
+            asString(rec.stableId) ||
+            `legacy-${asFiniteNumber(rec.id, index + 1)}`,
           text: asString(rec.text),
-          start: asNumber(rec.start),
-          end: asNumber(rec.end),
+          start: asFiniteNumber(rec.start),
+          end: asFiniteNumber(rec.end),
           note: asString(rec.note),
           favorite: asBoolean(rec.favorite),
         }

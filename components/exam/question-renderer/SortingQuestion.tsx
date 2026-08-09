@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { annotateExamText } from './annotate'
 import type {
   ExamAnnotationSettings,

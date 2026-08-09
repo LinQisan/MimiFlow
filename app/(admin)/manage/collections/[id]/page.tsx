@@ -1,8 +1,94 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
-import { deleteCollection, deleteCollectionMaterial } from '@/app/(library)/collections/action'
 import { getCollectionManageDetail } from '@/lib/repositories/collection/manage'
+import {
+  DeleteCollectionButton,
+  DeleteMaterialButton,
+} from '../CollectionEditor'
+
+type CollectionDetail = NonNullable<
+  Awaited<ReturnType<typeof getCollectionManageDetail>>
+>
+type MaterialItem = CollectionDetail['audio'][number]
+
+const typeLabels: Record<CollectionDetail['collectionType'], string> = {
+  LIBRARY_ROOT: '系统根分类',
+  BOOK: '教材 / 合集',
+  CHAPTER: '章节',
+  PAPER: '正式试卷',
+  CUSTOM_GROUP: '自定义分组',
+  FAVORITES: '收藏夹',
+}
+
+function getManageHref(item: MaterialItem, collectionId: string) {
+  if (item.type === 'SPEAKING') return `/manage/shadowing/${item.legacyId}`
+  if (item.type === 'LISTENING') {
+    return `/manage/listening/${item.legacyId}#questions`
+  }
+  if (item.type === 'READING') {
+    return `/manage/reading/${item.legacyId}`
+  }
+  if (item.type === 'VOCAB_GRAMMAR') {
+    return `/manage/questions/${item.legacyId}`
+  }
+  return `/manage/collections/${collectionId}`
+}
+
+function MaterialSection({
+  title,
+  emptyText,
+  items,
+  collectionId,
+}: {
+  title: string
+  emptyText: string
+  items: MaterialItem[]
+  collectionId: string
+}) {
+  return (
+    <section className='space-y-3'>
+      <div className='flex items-center justify-between border-b border-slate-200 pb-2'>
+        <h2 className='text-base font-bold text-slate-950'>{title}</h2>
+        <span className='text-xs font-semibold text-slate-500'>{items.length} 条</span>
+      </div>
+      {items.length === 0 ? (
+        <p className='py-3 text-sm text-slate-500'>{emptyText}</p>
+      ) : (
+        <div className='divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white'>
+          {items.map(item => (
+            <article
+              key={item.id}
+              className='flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between'>
+              <div className='min-w-0'>
+                <p className='truncate font-semibold text-slate-900'>{item.title}</p>
+                <p className='mt-1 text-xs text-slate-500'>
+                  {item.type === 'SPEAKING'
+                    ? '跟读材料'
+                    : item.type === 'LISTENING'
+                      ? '听力材料'
+                      : item.type === 'READING'
+                        ? '阅读材料'
+                        : '题库材料'}{' '}
+                  · {item.questionCount} 题
+                  {item.audioFile ? ` · ${item.audioFile}` : ''}
+                </p>
+              </div>
+              <div className='flex shrink-0 gap-2'>
+                <Link
+                  href={getManageHref(item, collectionId)}
+                  className='ui-btn ui-btn-sm ui-btn-primary'>
+                  编辑内容
+                </Link>
+                <DeleteMaterialButton id={item.id} title={item.title} />
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
 
 export default async function ManageCollectionDetailPage({
   params,
@@ -13,136 +99,106 @@ export default async function ManageCollectionDetailPage({
   const collection = await getCollectionManageDetail(id)
   if (!collection) return notFound()
 
+  const totalMaterials =
+    collection.audio.length + collection.reading.length + collection.quizzes.length
+  const canDelete =
+    collection.collectionType !== 'LIBRARY_ROOT' &&
+    collection.childCount === 0 &&
+    totalMaterials === 0
+
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
-      <div className='mx-auto max-w-6xl space-y-4 md:space-y-6'>
-        <section className='border-b border-gray-200 pb-4 md:pb-6'>
-          <Link href='/manage/collections' className='text-xs font-semibold text-indigo-600 hover:text-indigo-700'>
-            返回内容分类
+      <div className='mx-auto max-w-5xl space-y-6'>
+        <header className='border-b border-slate-200 pb-6'>
+          <Link
+            href='/manage/collections'
+            className='text-xs font-semibold text-indigo-600 hover:text-indigo-700'>
+            ← 返回内容结构
           </Link>
-          <h1 className='mt-2 text-2xl font-bold text-gray-900 md:text-3xl'>{collection.title}</h1>
-          <div className='mt-3 flex gap-2'>
-            <form
-              action={async () => {
-                'use server'
-                await deleteCollection(collection.id)
-              }}>
-              <button
-                type='submit'
-                className='rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100'>
-                删除分类
-              </button>
-            </form>
+          <div className='mt-3 flex flex-col gap-3 md:flex-row md:items-start md:justify-between'>
+            <div>
+              <div className='flex flex-wrap items-center gap-2'>
+                <h1 className='text-2xl font-black text-slate-950 md:text-3xl'>
+                  {collection.title}
+                </h1>
+                <span className='rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600'>
+                  {typeLabels[collection.collectionType]}
+                </span>
+              </div>
+              <p className='mt-2 text-sm text-slate-500'>
+                {collection.parent ? `上级：${collection.parent.title} · ` : ''}
+                {totalMaterials} 条直接材料 · {collection.childCount} 个下级
+              </p>
+              {collection.description && (
+                <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-600'>
+                  {collection.description}
+                </p>
+              )}
+            </div>
+            <DeleteCollectionButton
+              id={collection.id}
+              title={collection.title}
+              canDelete={canDelete}
+            />
           </div>
-        </section>
+        </header>
 
-        <section className='space-y-4'>
-          <h2 className='text-lg font-semibold text-gray-900'>音频材料</h2>
-          {collection.audio.length === 0 ? (
-            <p className='text-sm text-gray-500'>暂无音频材料</p>
-          ) : (
-            <div className='space-y-2'>
-              {collection.audio.map(item => (
-                <article key={item.id} className='rounded-xl border border-gray-200 bg-white p-4'>
-                  <p className='font-semibold text-gray-900'>{item.title}</p>
-                  <p className='mt-1 text-xs text-gray-500'>
-                    {item.type === 'SPEAKING' ? '跟读' : '听力'} · 题目 {item.questionCount} · 音频 {item.audioFile || '未配置'}
+        {collection.collectionType === 'PAPER' && (
+          <section className='flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50 p-4 md:flex-row md:items-center md:justify-between'>
+            <p className='text-sm text-slate-700'>
+              这是正式试卷。为避免分区与题目脱节，请在试卷管理页统一编辑。
+            </p>
+            <Link
+              href={`/manage/practice/${collection.id}`}
+              className='ui-btn ui-btn-sm shrink-0'>
+              打开试卷管理
+            </Link>
+          </section>
+        )}
+
+        {collection.children.length > 0 && (
+          <section className='space-y-3'>
+            <div className='flex items-center justify-between border-b border-slate-200 pb-2'>
+              <h2 className='text-base font-bold text-slate-950'>下级结构</h2>
+              <span className='text-xs font-semibold text-slate-500'>
+                {collection.children.length} 个
+              </span>
+            </div>
+            <div className='grid gap-2 md:grid-cols-2'>
+              {collection.children.map(child => (
+                <Link
+                  key={child.id}
+                  href={`/manage/collections/${child.id}`}
+                  className='rounded-xl border border-slate-200 bg-white p-4 transition hover:border-indigo-200 hover:bg-indigo-50/40'>
+                  <p className='font-semibold text-slate-900'>{child.title}</p>
+                  <p className='mt-1 text-xs text-slate-500'>
+                    {typeLabels[child.collectionType]} · {child._count.materials}{' '}
+                    条直接材料 · {child._count.children} 个下级
                   </p>
-                  <div className='mt-3 flex gap-2'>
-                    <Link
-                      href={
-                        item.type === 'SPEAKING'
-                          ? `/manage/listening/${item.legacyId}`
-                          : `/manage/collections/lesson/${item.legacyId}`
-                      }
-                      className='rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100'>
-                      管理
-                    </Link>
-                    <form
-                      action={async () => {
-                        'use server'
-                        await deleteCollectionMaterial(item.id)
-                      }}>
-                      <button
-                        type='submit'
-                        className='rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100'>
-                        删除
-                      </button>
-                    </form>
-                  </div>
-                </article>
+                </Link>
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        )}
 
-        <section className='space-y-4'>
-          <h2 className='text-lg font-semibold text-gray-900'>阅读材料</h2>
-          {collection.reading.length === 0 ? (
-            <p className='text-sm text-gray-500'>暂无阅读材料</p>
-          ) : (
-            <div className='space-y-2'>
-              {collection.reading.map(item => (
-                <article key={item.id} className='rounded-xl border border-gray-200 bg-white p-4'>
-                  <p className='font-semibold text-gray-900'>{item.title}</p>
-                  <p className='mt-1 text-xs text-gray-500'>题目 {item.questionCount}</p>
-                  <div className='mt-3 flex gap-2'>
-                    <Link
-                      href={`/manage/collections/article/${item.legacyId}`}
-                      className='rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100'>
-                      管理
-                    </Link>
-                    <form
-                      action={async () => {
-                        'use server'
-                        await deleteCollectionMaterial(item.id)
-                      }}>
-                      <button
-                        type='submit'
-                        className='rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100'>
-                        删除
-                      </button>
-                    </form>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className='space-y-4'>
-          <h2 className='text-lg font-semibold text-gray-900'>题库材料</h2>
-          {collection.quizzes.length === 0 ? (
-            <p className='text-sm text-gray-500'>暂无题库材料</p>
-          ) : (
-            <div className='space-y-2'>
-              {collection.quizzes.map(item => (
-                <article key={item.id} className='rounded-xl border border-gray-200 bg-white p-4'>
-                  <p className='font-semibold text-gray-900'>{item.title}</p>
-                  <p className='mt-1 text-xs text-gray-500'>题目 {item.questionCount}</p>
-                  <div className='mt-3 flex gap-2'>
-                    <Link
-                      href={`/manage/collections/quiz/${item.legacyId}`}
-                      className='rounded-md border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100'>
-                      管理
-                    </Link>
-                    <form
-                      action={async () => {
-                        'use server'
-                        await deleteCollectionMaterial(item.id)
-                      }}>
-                      <button
-                        type='submit'
-                        className='rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 hover:bg-red-100'>
-                        删除
-                      </button>
-                    </form>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+        <MaterialSection
+          title='音频材料'
+          emptyText='暂无听力或跟读材料'
+          items={collection.audio}
+          collectionId={collection.id}
+        />
+        <MaterialSection
+          title='阅读材料'
+          emptyText='暂无阅读材料'
+          items={collection.reading}
+          collectionId={collection.id}
+        />
+        <MaterialSection
+          title='题库材料'
+          emptyText='暂无题库材料'
+          items={collection.quizzes}
+          collectionId={collection.id}
+        />
       </div>
     </main>
   )

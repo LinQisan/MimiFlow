@@ -92,18 +92,21 @@ function MaterialCard({
   item: ShadowingRow
   totalSeconds: number
 }) {
-  const chapterLabel = (item.chapterName || '').trim() || '未设置章节'
+  const chapterLabel = (item.chapterName || '').trim()
+  const showChapter = chapterLabel && chapterLabel !== item.title.trim()
   return (
     <Link
       href={`/listening/${item.id}`}
-      className='group block w-[16rem] shrink-0 rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-400 sm:w-auto'>
-      <p className='text-xs font-semibold text-slate-500'>{chapterLabel}</p>
-      <h3 className='mt-1 line-clamp-2 text-base font-semibold leading-snug tracking-tight text-slate-900'>
+      className='group block w-[16rem] shrink-0 border-b border-slate-200 bg-transparent px-1 py-4 transition hover:bg-slate-50 sm:w-auto sm:border-r sm:px-4 sm:last:border-r-0'>
+      <h3 className='line-clamp-2 text-base font-semibold leading-snug tracking-tight text-slate-900'>
+        {showChapter ? (
+          <span className='text-slate-500'>{chapterLabel} · </span>
+        ) : null}
         {item.title}
       </h3>
       {totalSeconds > 0 && (
         <p className='mt-3 text-xs font-semibold text-slate-500'>
-          累计收听 {formatPlaytimeCompact(totalSeconds)}
+          已听 {formatPlaytimeCompact(totalSeconds)}
         </p>
       )}
     </Link>
@@ -120,21 +123,29 @@ function ChapterScrollItem({
   playtimeByMaterialId: Record<string, number>
 }) {
   return (
-    <section className='border-t border-slate-200 pt-4 first:border-t-0 first:pt-0'>
-      <div className='mb-2 flex items-center justify-between gap-2'>
+    <details className='group/chapter border-y border-slate-200'>
+      <summary className='flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:content-none'>
         <h3 className='line-clamp-1 text-sm font-semibold tracking-tight text-slate-900'>
           {chapterTitle}
         </h3>
-        <span className='text-xs font-semibold text-slate-500'>
+        <span className='flex shrink-0 items-center gap-2 text-xs font-semibold text-slate-500'>
           {rows.length} 条
+          <span
+            aria-hidden
+            className='transition-transform group-open/chapter:rotate-180'>
+            ⌄
+          </span>
         </span>
-      </div>
-      <div className='divide-y divide-slate-100 border-y border-slate-100'>
-        {rows.map(item => (
+      </summary>
+      <div className='max-h-[min(28rem,70vh)] overflow-y-auto border-t border-slate-100 px-3'>
+        {rows.map((item, index) => (
           <Link
             key={item.id}
             href={`/listening/${item.id}`}
-            className='group grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 text-sm hover:bg-slate-50'>
+            className='group grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 py-3 text-sm last:border-b-0 hover:bg-slate-50'>
+            <span className='text-xs font-semibold tabular-nums text-slate-400'>
+              {String(index + 1).padStart(2, '0')}
+            </span>
             <span className='line-clamp-1 font-medium text-slate-700 group-hover:text-slate-900'>
               {item.title}
             </span>
@@ -144,7 +155,7 @@ function ChapterScrollItem({
           </Link>
         ))}
       </div>
-    </section>
+    </details>
   )
 }
 
@@ -190,14 +201,12 @@ function isBookOrChapterCollection(
 
 function MaterialSection({
   title,
-  subtitle,
   rows,
   collections,
   playtimeByMaterialId,
   emptyText,
 }: {
   title: string
-  subtitle: string
   rows: ShadowingRow[]
   collections: Array<{
     id: string
@@ -216,15 +225,17 @@ function MaterialSection({
 
   return (
     <section className='space-y-4 border-t border-slate-200 pt-5'>
-      <header className='flex flex-wrap items-end justify-between gap-2'>
+      <header className='flex items-end justify-between gap-3'>
         <div>
           <h2 className='text-xl font-semibold tracking-tight text-slate-900'>
             {title}
           </h2>
-          <p className='mt-1 text-sm text-slate-500'>{subtitle}</p>
+          <p className='mt-1 text-xs text-slate-500'>
+            先展开教材，再选择章节；长章节可在列表内滚动。
+          </p>
         </div>
-        <span className='text-sm font-semibold text-slate-500'>
-          {rows.length} 条
+        <span className='shrink-0 text-xs font-semibold text-slate-500'>
+          共 {rows.length} 条
         </span>
       </header>
 
@@ -261,7 +272,7 @@ function MaterialSection({
                     </span>
                   </summary>
 
-                  <div className='space-y-4 border-t border-slate-100 px-1 py-4 md:px-3'>
+                  <div className='grid gap-2 border-t border-slate-100 bg-slate-50/60 px-1 py-3 md:grid-cols-2 md:px-3'>
                     {visibleChapters.map(chapter => (
                       <ChapterScrollItem
                         key={chapter.id}
@@ -327,17 +338,17 @@ function ListeningPaperSection({
 
   return (
     <section className='space-y-4 border-t border-slate-200 pt-5'>
-      <header className='flex flex-wrap items-end justify-between gap-2'>
+      <header className='flex items-end justify-between gap-3'>
         <div>
           <h2 className='text-xl font-semibold tracking-tight text-slate-900'>
             试卷听力
           </h2>
-          <p className='mt-1 text-sm text-slate-500'>
-            按试卷浏览听力材料。
+          <p className='mt-1 text-xs text-slate-500'>
+            先展开试卷，再按問題浏览材料。
           </p>
         </div>
-        <span className='text-sm font-semibold text-slate-500'>
-          {rows.length} 条
+        <span className='shrink-0 text-xs font-semibold text-slate-500'>
+          共 {rows.length} 条
         </span>
       </header>
 
@@ -347,10 +358,22 @@ function ListeningPaperSection({
         </div>
       ) : (
         <div className='divide-y divide-slate-200 border-y border-slate-200'>
-          {groups.map(group => (
-            <details
-              key={group.key}
-              className='group w-full'>
+          {groups.map(group => {
+            const sectionGroups = group.items.reduce<
+              Array<{ key: string; title: string; items: ShadowingRow[] }>
+            >((acc, item) => {
+              const sectionNumber = item.listeningSectionNumber
+              const key = sectionNumber ? `section:${sectionNumber}` : 'section:other'
+              const title = sectionNumber ? `問題${sectionNumber}` : '其他材料'
+              const current = acc.find(section => section.key === key)
+              if (current) current.items.push(item)
+              else acc.push({ key, title, items: [item] })
+              return acc
+            }, [])
+            sectionGroups.sort((a, b) => compareNaturalText(a.title, b.title))
+
+            return (
+            <details key={group.key} className='group w-full'>
               <summary className='flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-1 py-3 marker:content-none md:px-3'>
                 <h3 className='min-w-0 text-base font-semibold leading-snug tracking-tight text-slate-900'>
                   {group.paperTitle}
@@ -361,26 +384,48 @@ function ListeningPaperSection({
                 </span>
               </summary>
 
-              <div className='divide-y divide-slate-100 border-t border-slate-100 px-1 md:px-3'>
-                {group.items.map(item => (
-                  <Link
-                    key={item.id}
-                    href={`/listening/${item.id}`}
-                    className='group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 py-3 text-sm hover:bg-slate-50'>
-                    <span className='text-xs font-semibold text-slate-500'>
-                      {(item.chapterName || '').trim() || '未设置章节'}
-                    </span>
-                    <span className='line-clamp-1 font-medium text-slate-700 group-hover:text-slate-900'>
-                      {item.title}
-                    </span>
-                    <PlaytimeLabel
-                      seconds={playtimeByMaterialId[item.materialId] || 0}
-                    />
-                  </Link>
+              <div className='grid gap-2 border-t border-slate-100 bg-slate-50/60 px-1 py-3 md:grid-cols-2 md:px-3'>
+                {sectionGroups.map(section => (
+                  <details
+                    key={section.key}
+                    className='group/section rounded-lg border border-slate-200 bg-white'>
+                    <summary className='flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:content-none'>
+                      <span className='text-sm font-semibold text-slate-900'>
+                        {section.title}
+                      </span>
+                      <span className='flex items-center gap-2 text-xs font-semibold text-slate-500'>
+                        {section.items.length} 条
+                        <span
+                          aria-hidden
+                          className='transition-transform group-open/section:rotate-180'>
+                          ⌄
+                        </span>
+                      </span>
+                    </summary>
+                    <div className='max-h-[min(28rem,70vh)] overflow-y-auto border-t border-slate-100 px-3'>
+                      {section.items.map((item, index) => (
+                        <Link
+                          key={item.id}
+                          href={`/listening/${item.id}`}
+                          className='group/item grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 py-3 text-sm last:border-b-0 hover:bg-slate-50'>
+                          <span className='text-xs font-semibold tabular-nums text-slate-400'>
+                            {String(index + 1).padStart(2, '0')}
+                          </span>
+                          <span className='line-clamp-1 font-medium text-slate-700 group-hover/item:text-slate-900'>
+                            {item.title}
+                          </span>
+                          <PlaytimeLabel
+                            seconds={playtimeByMaterialId[item.materialId] || 0}
+                          />
+                        </Link>
+                      ))}
+                    </div>
+                  </details>
                 ))}
               </div>
             </details>
-          ))}
+            )
+          })}
         </div>
       )}
     </section>
@@ -423,7 +468,11 @@ export default async function ShadowingListPage() {
   ])
   const totalSpeakingSeconds = studySummary._sum.seconds || 0
 
-  let stats: Array<{ materialId: string; totalSeconds: number }> = []
+  let stats: Array<{
+    materialId: string
+    totalSeconds: number
+    lastPlayedAt: Date | null
+  }> = []
   try {
     stats = await prisma.materialPlaytimeStat.findMany({
       where: {
@@ -435,6 +484,7 @@ export default async function ShadowingListPage() {
       select: {
         materialId: true,
         totalSeconds: true,
+        lastPlayedAt: true,
       },
     })
   } catch {
@@ -447,12 +497,21 @@ export default async function ShadowingListPage() {
     },
     {},
   )
+  const lastPlayedAtByMaterialId = stats.reduce<Record<string, number>>(
+    (acc, item) => {
+      acc[item.materialId] = item.lastPlayedAt?.getTime() || 0
+      return acc
+    },
+    {},
+  )
   const continueRows = [...speakingRows, ...listeningRows]
     .filter(item => (playtimeByMaterialId[item.materialId] || 0) > 0)
     .sort(
       (a, b) =>
+        (lastPlayedAtByMaterialId[b.materialId] || 0) -
+          (lastPlayedAtByMaterialId[a.materialId] || 0) ||
         (playtimeByMaterialId[b.materialId] || 0) -
-        (playtimeByMaterialId[a.materialId] || 0),
+          (playtimeByMaterialId[a.materialId] || 0),
     )
     .slice(0, 4)
   const sectionCollections = collections
@@ -470,10 +529,10 @@ export default async function ShadowingListPage() {
       <div className='mx-auto max-w-6xl'>
         <PageHeader
           title='听力与跟读'
-          description='继续最近材料，或按书籍和试卷浏览。'
+          description='从最近内容继续，或浏览跟读教材和 JLPT 试卷。'
           meta={<>
-            <span>累计 {formatTotalSpeakingTime(totalSpeakingSeconds)}</span>
-            <span>学习 {studyDays} 天</span>
+            <span>跟读 {formatTotalSpeakingTime(totalSpeakingSeconds)}</span>
+            <span>{studyDays} 天</span>
           </>}
         />
 
@@ -482,7 +541,7 @@ export default async function ShadowingListPage() {
             <section>
               <div className='mb-3 flex items-end justify-between gap-3'>
                 <div>
-                  <h2 className='text-xl font-black text-slate-900'>继续收听</h2>
+                  <h2 className='text-xl font-black text-slate-900'>最近收听</h2>
                 </div>
               </div>
               <div className='flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible lg:grid-cols-4'>
@@ -498,7 +557,6 @@ export default async function ShadowingListPage() {
           ) : null}
           <MaterialSection
             title='跟读材料'
-            subtitle='按书籍和章节浏览'
             rows={speakingRows}
             collections={sectionCollections}
             playtimeByMaterialId={playtimeByMaterialId}

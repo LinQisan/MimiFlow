@@ -16,8 +16,193 @@ import {
   parseAudioDialogueSourceId,
 } from '../utils/audioDialogue/sourceId.ts'
 import { createTrustedMarkupSlots } from '../components/exam/question-renderer/trustedMarkup.ts'
+import {
+  formatJlptListeningFilename,
+  formatJlptListeningTitle,
+  parseJlptListeningIdentity,
+} from '../utils/listening/jlptIdentity.ts'
+import {
+  formatOptionLabel,
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+} from '../utils/questions/optionLabels.ts'
+import { getQuestionTypeLabel } from '../utils/questions/typeLabels.ts'
+import { isReadingTitleDerivedFromContent } from '../lib/repositories/materials/material-title.ts'
+import {
+  prepareEbookChapters,
+  removeRepeatedEbookHeadings,
+} from '../lib/ebooks/chapter-display.ts'
+import {
+  isPathInsideRoot,
+  resolvePathInsideRoot,
+} from '../utils/files/path.ts'
+import {
+  asBoolean,
+  asFiniteNumber,
+  asRecord,
+  asString,
+} from '../utils/validation/unknown.ts'
+import {
+  getMaterialCollectionTypeError,
+  isCollectionTypeAllowedForMaterial,
+} from '../modules/import/collection-policy.ts'
 
 const ROOT = process.cwd()
+
+test('untrusted values are normalized at data boundaries', () => {
+  assert.deepEqual(asRecord({ title: 'ok' }), { title: 'ok' })
+  assert.deepEqual(asRecord(['not', 'a', 'record']), {})
+  assert.equal(asString(12), '')
+  assert.equal(asBoolean('true'), false)
+  assert.equal(asFiniteNumber('12.5'), 12.5)
+  assert.equal(asFiniteNumber('invalid', 3), 3)
+})
+
+test('filesystem paths cannot escape the configured audio root', () => {
+  const root = path.join(ROOT, 'public', 'audios')
+  assert.equal(isPathInsideRoot(root, path.join(root, 'uploads', 'a.mp3')), true)
+  assert.equal(isPathInsideRoot(root, path.join(ROOT, 'public', 'audios-copy')), false)
+  assert.equal(resolvePathInsideRoot(root, '..', 'private.mp3'), null)
+})
+
+test('audio library keeps uploads organized and folders hierarchical', async () => {
+  const action = await readFile(
+    path.join(ROOT, 'app/(admin)/audio/manage/action.ts'),
+    'utf8',
+  )
+  const page = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/system/audio/page.tsx'),
+    'utf8',
+  )
+
+  assert.match(action, /return `uploads\/\$\{year\}-\$\{month\}`/)
+  assert.match(action, /item\.folder\.startsWith\(`\$\{selectedFolder\}\//)
+  assert.match(action, /walkAudioFolders/)
+  assert.match(action, /replace\(\/\[\^\\p\{L\}\\p\{N\}/)
+  assert.match(page, /folderSummaries\.map/)
+  assert.match(page, /上传到目录/)
+  assert.match(page, /待整理/)
+})
+
+test('material and collection compatibility is governed by one policy', () => {
+  assert.equal(isCollectionTypeAllowedForMaterial('LISTENING', 'PAPER'), true)
+  assert.equal(isCollectionTypeAllowedForMaterial('LISTENING', 'COURSE'), false)
+  assert.equal(isCollectionTypeAllowedForMaterial('SPEAKING', 'PAPER'), false)
+  assert.match(
+    getMaterialCollectionTypeError('LISTENING', 'COURSE'),
+    /听力材料目前只能加入正式试卷/,
+  )
+})
+
+test('paper reading excerpts are not presented as real article titles', () => {
+  assert.equal(
+    isReadingTitleDerivedFromContent(
+      '宅配クリーニング「ピース」ご利用案内',
+      '宅配クリーニング「ピース」ご利用案内\n\nインターネットで注文して…',
+    ),
+    true,
+  )
+  assert.equal(
+    isReadingTitleDerivedFromContent(
+      '日本の働き方を考える',
+      '近年、日本では働き方についての議論が続いている。',
+    ),
+    false,
+  )
+})
+
+test('ebook navigation removes disposable pages and repairs repeated labels', () => {
+  const chapters = prepareEbookChapters(
+    [
+      { id: 'cover', title: 'Cover', text: 'Cover', href: 'cover.xhtml' },
+      { id: 'title', title: '本の名前', text: '本の名前', href: 'title.xhtml' },
+      {
+        id: 'one',
+        title: '本の名前',
+        text: '本の名前\n\n第一章\n\n長い本文がここから始まる。'.repeat(12),
+        href: 'one.xhtml',
+      },
+      {
+        id: 'two',
+        title: '第二章',
+        text: '第二章\n\n次の本文。',
+        href: 'two.xhtml',
+      },
+      {
+        id: 'three',
+        title: '本の名前',
+        text: '本の名前\n\n「碧さん、脱線！」\n\n本文。'.repeat(12),
+        href: 'three.xhtml',
+      },
+    ],
+    '本の名前',
+  )
+  assert.deepEqual(chapters.map(chapter => chapter.title), [
+    '第一章',
+    '第二章',
+    '章节 03',
+  ])
+  assert.deepEqual(
+    removeRepeatedEbookHeadings(
+      ['本の名前', '第一章', '本文'],
+      '本の名前',
+      '第一章',
+    ),
+    ['本文'],
+  )
+})
+
+test('JLPT listening filenames preserve exam, section, and question identity', () => {
+  const legacy = parseJlptListeningIdentity('202507N1-02-06.mp3')
+  assert.deepEqual(legacy, {
+    level: 'N1',
+    session: '2025-07',
+    sectionNumber: 2,
+    questionNumber: 6,
+    sectionLabel: 'ポイント理解',
+  })
+  assert.equal(formatJlptListeningTitle(legacy), '問題2-06｜ポイント理解')
+  assert.equal(
+    formatJlptListeningFilename(legacy),
+    '2025-07-N1-P02-Q06.mp3',
+  )
+  assert.equal(
+    parseJlptListeningIdentity('問題1-03')?.sectionLabel,
+    '課題理解',
+  )
+  assert.equal(parseJlptListeningIdentity('Shadowing-Unit01-03.mp3'), null)
+})
+
+test('Japanese option labels default to numeric and support custom sequences', () => {
+  assert.deepEqual(
+    [0, 1, 2, 3].map(index => formatOptionLabel(index, 'numeric')),
+    ['1', '2', '3', '4'],
+  )
+  assert.deepEqual(
+    [0, 1, 2, 3].map(index => formatOptionLabel(index, 'katakana')),
+    ['ア', 'イ', 'ウ', 'エ'],
+  )
+  const custom = parseCustomOptionLabels('Ⅰ|Ⅱ|Ⅲ|Ⅳ')
+  assert.equal(formatOptionLabel(2, 'custom', custom), 'Ⅲ')
+  assert.equal(normalizeOptionLabelFormat('unknown', 'numeric'), 'numeric')
+})
+
+test('stored question types use data-aware JLPT display names', () => {
+  assert.equal(getQuestionTypeLabel('LISTENING'), '聴解')
+  assert.equal(getQuestionTypeLabel('PRONUNCIATION'), '漢字読み')
+  assert.equal(getQuestionTypeLabel('SYNONYM_REPLACEMENT'), '言い換え類義')
+  assert.equal(getQuestionTypeLabel('WORD_DISTINCTION'), '用法')
+  assert.equal(
+    getQuestionTypeLabel('GRAMMAR'),
+    '文脈規定／文法形式の判断',
+  )
+  assert.equal(getQuestionTypeLabel('FILL_BLANK'), '文章の文法')
+  assert.equal(
+    getQuestionTypeLabel('SORTING'),
+    '文の文法2（文の組み立て）',
+  )
+  assert.equal(getQuestionTypeLabel('READING_COMPREHENSION'), '内容理解')
+})
 
 test('answer correctness is derived from stored options', () => {
   const options = [
@@ -196,17 +381,98 @@ test('management routes use one prefix and obsolete page routes are gone', async
   }
 })
 
-test('search results use the canonical management detail route', async () => {
+test('route surfaces use the shared editorial visual language', async () => {
+  const rootLayout = await readFile(path.join(ROOT, 'app/layout.tsx'), 'utf8')
+  const globalStyles = await readFile(path.join(ROOT, 'app/globals.css'), 'utf8')
+  const studyNavigation = await readFile(
+    path.join(ROOT, 'components/layout/StudyNavigation.tsx'),
+    'utf8',
+  )
+  const manageShell = await readFile(
+    path.join(ROOT, 'components/layout/ManageShell.tsx'),
+    'utf8',
+  )
+
+  assert.match(rootLayout, /className='flat-ui editorial-ui'/)
+  assert.match(globalStyles, /\.flat-ui main/)
+  assert.match(globalStyles, /--font-editorial-display/)
+  assert.match(globalStyles, /--editorial-paper: #f6f7f8/)
+  assert.match(globalStyles, /body\.editorial-ui main h1/)
+  assert.match(globalStyles, /--modern-radius-lg: 1rem/)
+  assert.match(globalStyles, /border-radius: var\(--modern-radius-lg\) !important/)
+  assert.match(globalStyles, /border-radius: var\(--modern-radius-sm\)/)
+  assert.match(studyNavigation, /editorial-nav/)
+  assert.match(manageShell, /editorial-nav/)
+  assert.equal(studyNavigation.includes('border-b-2'), false)
+  assert.equal(manageShell.includes('border-b-2'), false)
+})
+
+test('body copy uses language-aware sans-serif font stacks', async () => {
+  const globalStyles = await readFile(path.join(ROOT, 'app/globals.css'), 'utf8')
+  const managePage = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/page.tsx'),
+    'utf8',
+  )
+  const reviewPage = await readFile(
+    path.join(ROOT, 'app/(study)/review/page.tsx'),
+    'utf8',
+  )
+  const articleReader = await readFile(
+    path.join(
+      ROOT,
+      'app/(library)/reading/articles/[id]/ArticleReaderClient.tsx',
+    ),
+    'utf8',
+  )
+
+  assert.match(globalStyles, /'PingFang SC'/)
+  assert.match(globalStyles, /'Hiragino Kaku Gothic ProN'/)
+  assert.doesNotMatch(
+    `${globalStyles}\n${managePage}\n${reviewPage}`,
+    /font-serif|Songti|STSong|Mincho|Noto Serif|Source Serif|Times New Roman/,
+  )
+  assert.match(articleReader, /className='font-reading-body-ja /)
+  assert.doesNotMatch(articleReader, /className='font-reading-ja /)
+})
+
+test('listening import accepts MP3 uploads and supports multiple collections', async () => {
+  const uploadForm = await readFile(
+    path.join(ROOT, 'app/(admin)/upload/UploadForm.tsx'),
+    'utf8',
+  )
+  const uploadAction = await readFile(
+    path.join(ROOT, 'app/(admin)/upload/action.ts'),
+    'utf8',
+  )
+
+  assert.match(uploadForm, /accept='\.mp3,audio\/mpeg'/)
+  assert.match(uploadForm, /normalizeListeningAudioPath/)
+  assert.match(uploadForm, /name='collectionIds'/)
+  assert.match(uploadForm, /继续添加其他集合/)
+  assert.match(uploadForm, /当前仅显示正式试卷/)
+  assert.equal(uploadForm.includes("paper.materialType === materialType"), false)
+  assert.match(
+    uploadForm,
+    /isCollectionTypeAllowedForMaterial\(\s*materialType/,
+  )
+  assert.match(uploadAction, /getAll\('collectionIds'\)/)
+  assert.match(
+    uploadAction,
+    /getMaterialCollectionTypeError\(/,
+  )
+  assert.match(uploadAction, /mp3Only && ext !== '\.mp3'/)
+  assert.match(uploadAction, /collectionIds\.map\(targetCollectionId/)
+})
+
+test('search results use domain editors instead of the hidden JSON tool', async () => {
   const searchHrefBuilder = await readFile(
     path.join(ROOT, 'app/actions/globalSearchShared.ts'),
     'utf8',
   )
 
-  assert.match(
-    searchHrefBuilder,
-    /`\/manage\/search\/\$\{encodeURIComponent\(type\)\}\/\$\{encodeURIComponent\(resultId\)\}`/,
-  )
-  assert.equal(searchHrefBuilder.includes('/manage/search?'), false)
+  assert.match(searchHrefBuilder, /`\/manage\/reading\/\$\{encodeURIComponent\(id\)\}`/)
+  assert.match(searchHrefBuilder, /`\/manage\/questions\/\$\{encodeURIComponent\(id\)\}`/)
+  assert.equal(searchHrefBuilder.includes('/manage/search/'), false)
 })
 
 test('responsive and component-boundary regressions remain guarded', async () => {
@@ -216,7 +482,7 @@ test('responsive and component-boundary regressions remain guarded', async () =>
   )
   assert.match(
     subtitlePage,
-    /grid min-w-0 grid-cols-\[minmax\(0,1fr\)\]/,
+    /min-w-0 divide-y divide-slate-200/,
   )
 
   const boundaries = [
@@ -242,6 +508,8 @@ test('practice player keeps one compact action bar', async () => {
 
   assert.equal(copyActions?.length, 1)
   assert.match(player, /role='progressbar'/)
+  assert.match(player, /session\.isSubmitted && persistState !== 'saving'/)
+  assert.match(player, /\{exitLabel\}/)
   assert.match(player, /grid-cols-\[minmax\(0,0\.8fr\)_minmax\(0,1fr\)_minmax\(0,1fr\)\]/)
   assert.equal(player.includes("className='flex flex-col gap-3 md:flex-row"), false)
 })
@@ -301,7 +569,7 @@ test('project dropdowns use the custom listbox instead of native select menus', 
     'utf8',
   )
   const migratedFiles = [
-    'app/(admin)/manage/collections/page.tsx',
+    'app/(admin)/manage/collections/CollectionEditor.tsx',
     'app/(admin)/manage/import/AnkiImportPanel.tsx',
     'app/(admin)/manage/vocabulary/page.tsx',
     'app/(admin)/upload/UploadCenterUI.tsx',
@@ -392,6 +660,14 @@ test('listening detail avoids idle animation work and uses scoped vocabulary sou
     path.join(ROOT, 'components/AudioPlayer/ListeningSentenceRow.tsx'),
     'utf8',
   )
+  const listeningLanding = await readFile(
+    path.join(ROOT, 'app/(study)/listening/page.tsx'),
+    'utf8',
+  )
+  const playerHeader = await readFile(
+    path.join(ROOT, 'components/AudioPlayer/ListeningPlayerHeader.tsx'),
+    'utf8',
+  )
 
   assert.match(controller, /if \(audio\.paused\)/)
   assert.match(controller, /animationFrameId = null/)
@@ -401,6 +677,17 @@ test('listening detail avoids idle animation work and uses scoped vocabulary sou
   assert.equal(player.includes('onClick={closeSelection}'), false)
   assert.match(sentenceRow, /data-context-sentence='true'/)
   assert.equal(sentenceRow.includes("isActive && currentState === 'idle'"), false)
+  assert.match(listeningLanding, /lastPlayedAt: true/)
+  assert.match(listeningLanding, /最近收听/)
+  assert.match(listeningLanding, /group\/chapter/)
+  assert.match(listeningLanding, /group\/section/)
+  assert.match(listeningLanding, /max-h-\[min\(28rem,70vh\)\]/)
+  assert.match(listeningLanding, /先展开试卷，再按問題浏览材料/)
+  assert.equal(
+    listeningLanding.includes('grid-cols-[auto_minmax(0,1fr)_auto]'),
+    false,
+  )
+  assert.equal(playerHeader.includes("· 累计{' '}"), false)
 })
 
 test('vocabulary language groups use pronunciation and source evidence', async () => {

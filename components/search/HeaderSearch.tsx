@@ -246,7 +246,7 @@ export default function HeaderSearch() {
             {results.map(item => (
               <Link
                 key={`header-search-${item.id}`}
-                href={item.href}
+                href={item.targetHref || item.href}
                 onClick={() => setOpen(false)}
                 className='block rounded-lg border border-transparent px-3 py-2.5 transition-colors hover:border-gray-200 hover:bg-gray-50 dark:hover:border-slate-700 dark:hover:bg-slate-800'>
                 <div className='flex items-center gap-2'>

@@ -2,13 +2,22 @@
 'use server'
 
 import { CollectionType, MaterialType, Prisma } from '@prisma/client'
-import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
+import {
+  formatJlptListeningTitle,
+  parseJlptListeningIdentity,
+} from '@/utils/listening/jlptIdentity'
 import { revalidatePath } from 'next/cache'
+import { resolvePathInsideRoot } from '@/utils/files/path'
 
 import prisma from '@/lib/prisma'
 import { replaceMediaSubtitleSearchIndex } from '@/lib/media-subtitles/search-index'
+import {
+  getMaterialCollectionTypeError,
+  isCollectionTypeAllowedForMaterial,
+} from '@/modules/import/collection-policy'
 
 function assTimeToSeconds(timeStr: string): number {
   const [h, m, s] = timeStr.split(':')
@@ -210,13 +219,46 @@ const AUDIO_EXTENSIONS = new Set([
 ])
 
 const PUBLIC_AUDIO_DIR = path.join(process.cwd(), 'public', 'audios')
-const PUBLIC_UPLOAD_DIR = path.join(PUBLIC_AUDIO_DIR, 'uploads')
 
 function toSafeFilename(name: string) {
   return name
+    .normalize('NFKC')
+    .trim()
     .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9._-]/g, '')
+    .replace(/[^\p{L}\p{N}._-]/gu, '')
     .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 120)
+}
+
+function normalizeAudioFolderPath(folder: string) {
+  return folder
+    .replace(/\\/g, '/')
+    .split('/')
+    .map(segment => toSafeFolderName(segment).slice(0, 100))
+    .filter(segment => segment && segment !== '.' && segment !== '..')
+    .slice(0, 12)
+    .join('/')
+}
+
+function getDefaultAudioUploadFolder() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(new Date())
+  const year = parts.find(part => part.type === 'year')?.value || 'unknown'
+  const month = parts.find(part => part.type === 'month')?.value || '00'
+  return `uploads/${year}-${month}`
+}
+
+async function fileExists(filePath: string) {
+  try {
+    await stat(filePath)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function toSafeFolderName(name: string) {
@@ -363,19 +405,6 @@ function parseRequestedMaterialType(
   return null
 }
 
-function isCollectionTypeAllowedForMaterial(
-  materialType: MaterialType,
-  collectionType: CollectionType,
-) {
-  if (materialType === MaterialType.SPEAKING) {
-    return collectionType !== CollectionType.PAPER
-  }
-  if (materialType === MaterialType.MEDIA_SUBTITLE) {
-    return collectionType !== CollectionType.PAPER
-  }
-  return true
-}
-
 function normalizeCollectionTypeForMaterial(
   materialType: MaterialType,
   rawCollectionType: string,
@@ -399,22 +428,6 @@ function normalizeCollectionTypeForMaterial(
   }
 
   return requested
-}
-
-function getMaterialCollectionTypeError(
-  materialType: MaterialType,
-  collectionType: CollectionType,
-) {
-  if (materialType === MaterialType.SPEAKING && collectionType === CollectionType.PAPER) {
-    return '跟读材料不能加入正式试卷集合，请选择普通集合或收藏夹。'
-  }
-  if (
-    materialType === MaterialType.MEDIA_SUBTITLE &&
-    collectionType === CollectionType.PAPER
-  ) {
-    return '影视字幕不能加入正式试卷集合，请选择普通集合或收藏夹。'
-  }
-  return ''
 }
 
 async function inferCollectionMaterialType(collectionId: string) {
@@ -464,7 +477,10 @@ async function inferCollectionMaterialType(collectionId: string) {
   return MaterialType.LISTENING
 }
 
-async function ensureTargetCategory(formData: FormData, materialType: MaterialType) {
+async function ensureTargetCollections(
+  formData: FormData,
+  materialType: MaterialType,
+) {
   const uploadMode = formData.get('uploadMode') as string
   const paperId = (formData.get('paperId') as string)?.trim()
 
@@ -487,24 +503,42 @@ async function ensureTargetCategory(formData: FormData, materialType: MaterialTy
       },
       select: { id: true },
     })
-    return created.id
+    return { primaryCollectionId: created.id, collectionIds: [created.id] }
   }
 
-  if (!paperId) {
+  const collectionIds = Array.from(
+    new Set(
+      formData
+        .getAll('collectionIds')
+        .filter((item): item is string => typeof item === 'string')
+        .map(item => item.trim())
+        .filter(Boolean),
+    ),
+  )
+  if (collectionIds.length === 0 && paperId) collectionIds.push(paperId)
+
+  if (collectionIds.length === 0) {
     throw new Error('集合信息缺失，请重新选择集合。')
   }
 
-  const existing = await prisma.collection.findUnique({
-    where: { id: paperId },
+  const existingCollections = await prisma.collection.findMany({
+    where: { id: { in: collectionIds } },
     select: { id: true, collectionType: true },
   })
-  if (!existing) throw new Error('选中的集合不存在，请刷新页面重试。')
-  const typeError = getMaterialCollectionTypeError(
-    materialType,
-    existing.collectionType,
-  )
-  if (typeError) throw new Error(typeError)
-  return paperId
+  if (existingCollections.length !== collectionIds.length) {
+    throw new Error('部分集合不存在，请刷新页面后重新选择。')
+  }
+  for (const collection of existingCollections) {
+    const typeError = getMaterialCollectionTypeError(
+      materialType,
+      collection.collectionType,
+    )
+    if (typeError) throw new Error(typeError)
+  }
+  return {
+    primaryCollectionId: collectionIds[0],
+    collectionIds,
+  }
 }
 
 async function getCollectionAudioFolderName(collectionId: string | null) {
@@ -555,32 +589,42 @@ export async function listPublicAudioFiles() {
   }
 }
 
-async function saveUploadedAudio(file: File, folderName = '') {
+async function saveUploadedAudio(
+  file: File,
+  folderName = '',
+  mp3Only = false,
+) {
   if (!file || file.size === 0) {
     throw new Error('未检测到录音文件，请重新选择。')
   }
 
   const ext = path.extname(file.name).toLowerCase()
+  if (mp3Only && ext !== '.mp3') {
+    throw new Error('听力录音仅支持 MP3 文件。')
+  }
   if (!AUDIO_EXTENSIONS.has(ext)) {
     throw new Error('录音格式不支持，请上传 mp3/m4a/wav/ogg/aac/flac/webm。')
   }
 
-  const safeFolderName = toSafeFolderName(folderName)
-  const targetDir = safeFolderName
-    ? path.join(PUBLIC_AUDIO_DIR, safeFolderName)
-    : PUBLIC_UPLOAD_DIR
+  const safeFolderName =
+    normalizeAudioFolderPath(folderName) || getDefaultAudioUploadFolder()
+  const targetDir = resolvePathInsideRoot(PUBLIC_AUDIO_DIR, safeFolderName)
+  if (!targetDir) throw new Error('录音保存目录无效。')
   await mkdir(targetDir, { recursive: true })
 
   const base = path.basename(file.name, ext)
   const safeBase = toSafeFilename(base) || 'audio'
-  const finalName = `${Date.now()}-${safeBase}${ext}`
+  let finalName = `${safeBase}${ext}`
+  let suffix = 2
+  while (await fileExists(path.join(targetDir, finalName))) {
+    finalName = `${safeBase}-${suffix}${ext}`
+    suffix += 1
+  }
   const finalPath = path.join(targetDir, finalName)
   const bytes = Buffer.from(await file.arrayBuffer())
   await writeFile(finalPath, bytes)
 
-  return safeFolderName
-    ? `/audios/${safeFolderName}/${finalName}`
-    : `/audios/uploads/${finalName}`
+  return `/audios/${safeFolderName}/${finalName}`
 }
 
 export async function uploadAssAndSaveData(formData: FormData) {
@@ -590,12 +634,14 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const requestedMaterialType = isMediaUploadMode
       ? MaterialType.MEDIA_SUBTITLE
       : parseRequestedMaterialType(formData.get('materialType'))
-    const collectionId = isMediaUploadMode
-      ? null
-      : await ensureTargetCategory(
+    const targetCollections = isMediaUploadMode
+      ? { primaryCollectionId: null, collectionIds: [] as string[] }
+      : await ensureTargetCollections(
           formData,
           requestedMaterialType || MaterialType.LISTENING,
         )
+    const collectionId = targetCollections.primaryCollectionId
+    const collectionIds = targetCollections.collectionIds
     const subtitleNoAudio = isMediaUploadMode
     const rawSubtitleSourceType = (
       (formData.get('subtitleSourceType') as string) || ''
@@ -671,10 +717,18 @@ export async function uploadAssAndSaveData(formData: FormData) {
         if (!singleAudio || singleAudio.size === 0) {
           throw new Error('请选择需要保存的录音文件。')
         }
-        baseAudioFile = await saveUploadedAudio(singleAudio, audioFolderName)
+        baseAudioFile = await saveUploadedAudio(
+          singleAudio,
+          audioFolderName,
+          matchedMaterialType === MaterialType.LISTENING,
+        )
       } else {
         for (const file of uniqueAudioUploadFiles) {
-          const savedPath = await saveUploadedAudio(file, audioFolderName)
+          const savedPath = await saveUploadedAudio(
+            file,
+            audioFolderName,
+            matchedMaterialType === MaterialType.LISTENING,
+          )
           const stem = normalizeStem(getBaseNameWithoutExt(file.name))
           const bucket = uploadedAudioByStem.get(stem) || []
           bucket.push(savedPath)
@@ -716,8 +770,15 @@ export async function uploadAssAndSaveData(formData: FormData) {
       .filter(Boolean)
     let overrideApplied = 0
     let overrideInvalid = 0
+    const sequencePlans = new Map(
+      await Promise.all(
+        collectionIds.map(
+          async id => [id, await buildMaterialSequencePlan(id)] as const,
+        ),
+      ),
+    )
     const sequencePlan = collectionId
-      ? await buildMaterialSequencePlan(collectionId)
+      ? sequencePlans.get(collectionId) || { startSortOrder: 0 }
       : { startSortOrder: 0 }
     const uploadedAudioQueueByStem = cloneStemMap(uploadedAudioByStem)
     const siteAudioQueueByStem = cloneStemMap(siteAudioByStem)
@@ -734,7 +795,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
       const processedSubs = applySmartPadding(rawSubs, 0.1, 0.3, 0.05)
       const fileBase = getBaseNameWithoutExt(file.name)
-      const finalTitle = isBatch ? (title ? `${title} · ${fileBase}` : fileBase) : title || fileBase
+      const draftTitle = isBatch ? (title ? `${title} · ${fileBase}` : fileBase) : title || fileBase
       const stem = normalizeStem(fileBase)
       let finalAudioFile = ''
       const overrideKey = `${file.name}::${file.size}`
@@ -789,6 +850,16 @@ export async function uploadAssAndSaveData(formData: FormData) {
         }
       }
 
+      const jlptIdentity =
+        matchedMaterialType === MaterialType.LISTENING
+          ? parseJlptListeningIdentity(fileBase) ||
+            parseJlptListeningIdentity(finalAudioFile) ||
+            parseJlptListeningIdentity(draftTitle)
+          : null
+      const finalTitle = jlptIdentity
+        ? formatJlptListeningTitle(jlptIdentity)
+        : draftTitle
+
       if (!finalAudioFile) {
         if (subtitleNoAudio) {
           finalAudioFile = ''
@@ -818,6 +889,18 @@ export async function uploadAssAndSaveData(formData: FormData) {
       if (materialLanguage) contentPayload.language = materialLanguage
       if (materialDifficulty) contentPayload.difficulty = materialDifficulty
       if (materialTags.length > 0) contentPayload.tags = materialTags
+      if (matchedMaterialType === MaterialType.LISTENING) {
+        contentPayload.questionEntryRequired = true
+      }
+      if (jlptIdentity) {
+        contentPayload.listeningSectionNumber = jlptIdentity.sectionNumber
+        contentPayload.sectionNumber = jlptIdentity.sectionNumber
+        contentPayload.listeningSectionTitle = jlptIdentity.sectionLabel
+        contentPayload.sectionTitle = jlptIdentity.sectionLabel
+        contentPayload.questionNumber = jlptIdentity.questionNumber
+        contentPayload.jlptLevel = jlptIdentity.level
+        contentPayload.jlptSession = jlptIdentity.session
+      }
 
       const metadata: Record<string, unknown> = {}
       if (collectionId) {
@@ -865,12 +948,14 @@ export async function uploadAssAndSaveData(formData: FormData) {
               Object.keys(metadata).length > 0
                 ? (metadata as Prisma.InputJsonValue)
                 : undefined,
-            collectionMaterials: collectionId
+            collectionMaterials: collectionIds.length > 0
               ? {
-                  create: {
-                    collectionId,
-                    sortOrder: nextSortOrder,
-                  },
+                  create: collectionIds.map(targetCollectionId => ({
+                    collectionId: targetCollectionId,
+                    sortOrder:
+                      (sequencePlans.get(targetCollectionId)?.startSortOrder || 0) +
+                      createdCount,
+                  })),
                 }
               : undefined,
           },
@@ -916,6 +1001,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
         : `成功导入 ${createdMaterials[0].name}（MaterialType=${matchedMaterialType}）。`,
       lessonIds: createdMaterials.map(item => item.id.split(':').slice(1).join(':')),
       materialType: matchedMaterialType,
+      questionEntryRequired: matchedMaterialType === MaterialType.LISTENING,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '未知错误'
@@ -1034,6 +1120,7 @@ export async function createShadowingFromTimedAudio(formData: FormData) {
     revalidatePath('/manage/import')
     revalidatePath('/listening')
     revalidatePath('/manage/listening')
+    revalidatePath('/manage/shadowing')
     revalidatePath('/manage/collections')
 
     return {

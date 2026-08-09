@@ -32,18 +32,21 @@ export default function ListeningTitleForm({ id, title }: Props) {
   }, [state.success, pending, router])
 
   return (
-    <form action={formAction} className='mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]'>
+    <form action={formAction} className='grid grid-cols-1 content-start gap-2 md:grid-cols-[1fr_auto]'>
       <input type='hidden' name='id' value={id} />
+      <label className='text-xs font-bold text-slate-600 md:col-span-2'>
+        材料标题
+      </label>
       <input
         name='title'
         defaultValue={title}
-        placeholder='输入听力标题'
-        className='h-10 border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
+        placeholder='输入材料标题'
+        className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100'
       />
       <button
         type='submit'
         disabled={pending}
-        className='h-10 border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60'>
+        className='ui-btn ui-btn-sm h-10 border-blue-200 bg-blue-50 px-4 text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60'>
         {pending ? '保存中...' : '保存标题'}
       </button>
       {state.message ? (

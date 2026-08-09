@@ -1,6 +1,7 @@
 import type { MaterialType } from '@prisma/client'
 
 import type { PickedFileMeta } from './types'
+export { isCollectionTypeAllowedForMaterial } from '../collection-policy'
 
 export const autoIncrementString = (str: string) => {
   if (!str) return ''
@@ -28,20 +29,11 @@ export const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
 }
 
 export const MATERIAL_TYPE_LABEL: Record<MaterialType, string> = {
-  LISTENING: '听力题 / 听力语料',
+  LISTENING: '聴解 / 听力语料',
   MEDIA_SUBTITLE: '影视字幕',
-  READING: '阅读材料',
-  VOCAB_GRAMMAR: '选择题 / 语法题',
+  READING: '読解 / 阅读材料',
+  VOCAB_GRAMMAR: '文字・語彙・文法',
   SPEAKING: '跟读材料',
-}
-
-export const isCollectionTypeAllowedForMaterial = (
-  materialType: MaterialType,
-  collectionType: string,
-) => {
-  if (materialType === 'SPEAKING') return collectionType !== 'PAPER'
-  if (materialType === 'MEDIA_SUBTITLE') return collectionType !== 'PAPER'
-  return true
 }
 
 export const getDefaultCollectionTypeForMaterial = (materialType: MaterialType) => {
@@ -112,4 +104,3 @@ export function extractAssDialoguePlainText(input: string) {
 
   return output.join('\n')
 }
-

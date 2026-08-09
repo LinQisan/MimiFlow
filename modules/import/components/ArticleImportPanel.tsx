@@ -55,7 +55,7 @@ export default function ArticleImportPanel({
           导入阅读文章
         </h2>
         <p className='text-sm text-gray-500'>
-          先录入文章正文，再按需补充阅读题并保存。
+          先录入文章正文，再按需补充内容理解题并保存。
         </p>
       </div>
 
@@ -122,7 +122,7 @@ export default function ArticleImportPanel({
               type='button'
               onClick={handleMakeBlank}
               className='inline-flex items-center justify-center border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-600 transition-[background-color,border-color,color,transform] hover:bg-blue-100 active:scale-95'>
-              划词生成填空题
+              划词生成文章穴埋め
             </button>
           </div>
           <textarea
@@ -142,7 +142,7 @@ export default function ArticleImportPanel({
       <section className='space-y-5 border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
         <div>
           <h3 className='text-base font-black text-blue-900 md:text-lg'>
-            阅读题（可选）
+            読解题目（可选）
           </h3>
           <p className='mt-1 text-xs text-blue-700'>
             可通过划词自动生成，也可粘贴 1.2.3.4 格式快速导入。
@@ -166,7 +166,7 @@ export default function ArticleImportPanel({
                   第 {qIndex + 1} 题：
                   {q.questionType === 'FILL_BLANK' ? (
                     <span className='ml-2 rounded bg-blue-50 px-2 py-0.5 text-xs font-normal text-blue-600'>
-                      填空题
+                      文章穴埋め
                     </span>
                   ) : null}
                   <div className='mt-2 text-gray-700 font-medium leading-relaxed bg-gray-50 p-2 border border-gray-100'>
@@ -255,7 +255,7 @@ export default function ArticleImportPanel({
 
         <div className='border border-blue-100 bg-white p-4'>
           <label className='text-sm font-black text-blue-900 mb-2 block'>
-            快速添加阅读题
+            快速添加内容理解题
           </label>
           <textarea
             value={articleQuickInput}

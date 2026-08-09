@@ -51,15 +51,24 @@ export type RetryQueueItem = {
 }
 
 const mapRetrySource = (item: {
+  questionId: string
   question: {
-    quiz: { id: string; title: string | null } | null
+    quiz: {
+      id: string
+      title: string | null
+      paperId: string | null
+      paperTitle: string | null
+    } | null
     readingSource: { id: string; title: string | null } | null
   }
 }) => {
   if (item.question.quiz) {
+    const paperId = item.question.quiz.paperId
     return {
-      sourceTitle: `题库 · ${item.question.quiz.title || '未命名题库'}`,
-      sourceUrl: `/practice/${item.question.quiz.id}`,
+      sourceTitle: `试卷 · ${item.question.quiz.paperTitle || item.question.quiz.title || '未命名试卷'}`,
+      sourceUrl: paperId
+        ? `/practice/${encodeURIComponent(paperId)}/do?qid=${encodeURIComponent(item.questionId)}`
+        : '/practice',
     }
   }
 

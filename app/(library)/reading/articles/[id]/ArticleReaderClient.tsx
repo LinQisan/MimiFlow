@@ -11,6 +11,7 @@ import {
   buildSurfaceAliasMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { removeRepeatedEbookHeadings } from '@/lib/ebooks/chapter-display'
 
 type ReaderChapter = {
   id: string
@@ -31,12 +32,16 @@ export default function ArticleReaderClient({
   chapters,
   initialVocabularyMetaMap,
   initialProgressPercent = 0,
+  mode = 'article',
+  documentTitle = '',
 }: {
   articleId: string
   content: string
   chapters: ReaderChapter[]
   initialVocabularyMetaMap: Record<string, VocabularyMeta>
   initialProgressPercent?: number
+  mode?: 'article' | 'ebook'
+  documentTitle?: string
 }) {
   const initialChapterIndex =
     chapters.length > 1
@@ -56,6 +61,7 @@ export default function ArticleReaderClient({
   const readerRef = useRef<HTMLElement | null>(null)
   const saveTimerRef = useRef<number | null>(null)
   const restoredRef = useRef(false)
+  const chapterProgressInitializedRef = useRef(false)
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] = useState(
     initialVocabularyMetaMap,
   )
@@ -117,14 +123,21 @@ export default function ArticleReaderClient({
 
   useEffect(() => {
     if (readerChapters.length <= 1) return
+    if (!chapterProgressInitializedRef.current) {
+      chapterProgressInitializedRef.current = true
+      return
+    }
     const nextProgress = ((activeChapterIndex + 1) / readerChapters.length) * 100
     setReadingProgress(nextProgress)
     void saveReadingProgress({
       articleId,
       progressPercent: nextProgress,
-      lastPosition: `第 ${activeChapterIndex + 1}/${readerChapters.length} 页`,
+      lastPosition:
+        mode === 'ebook'
+          ? `第 ${activeChapterIndex + 1}/${readerChapters.length} 章`
+          : `第 ${activeChapterIndex + 1}/${readerChapters.length} 页`,
     })
-  }, [activeChapterIndex, articleId, readerChapters.length])
+  }, [activeChapterIndex, articleId, mode, readerChapters.length])
 
   const basePronMap = useMemo(
     () =>
@@ -139,10 +152,15 @@ export default function ArticleReaderClient({
     [localVocabularyMetaMap],
   )
 
-  const paragraphs = useMemo(
-    () => splitParagraphs(activeChapter?.text || ''),
-    [activeChapter],
-  )
+  const paragraphs = useMemo(() => {
+    const items = splitParagraphs(activeChapter?.text || '')
+    if (mode !== 'ebook') return items
+    return removeRepeatedEbookHeadings(
+      items,
+      documentTitle,
+      activeChapter?.title || '',
+    )
+  }, [activeChapter, documentTitle, mode])
 
   const activeChapterMetaMap = useMemo(() => {
     const aliasMap = buildSurfaceAliasMapForText(
@@ -161,7 +179,7 @@ export default function ArticleReaderClient({
   const renderParagraph = (paragraph: string, index: number) => {
     if (!rubyEnabled) {
       return (
-        <p key={index} className='text-base leading-8 text-slate-800 md:text-lg'>
+        <p key={index} className='text-[1.05rem] leading-[2.05] text-slate-800 md:text-[1.15rem] md:leading-[2.15]'>
           {paragraph}
         </p>
       )
@@ -172,7 +190,7 @@ export default function ArticleReaderClient({
     return (
       <p
         key={index}
-        className='text-base leading-9 text-slate-800 md:text-lg [&_rt]:text-[0.62em] [&_ruby]:mx-0.5'
+        className='text-[1.05rem] leading-[2.15] text-slate-800 md:text-[1.15rem] md:leading-[2.25] [&_rt]:text-[0.6em] [&_ruby]:mx-0.5'
         dangerouslySetInnerHTML={{
           __html: annotateJapaneseText(paragraph, pronMap, {
             rubyClassName: 'text-slate-900',
@@ -185,26 +203,29 @@ export default function ArticleReaderClient({
 
   return (
     <section className='relative'>
-      <div className='sticky top-0 z-30 -mx-2 mb-5 border-y border-slate-200 bg-slate-50/95 px-2 py-2 backdrop-blur md:mx-0 md:rounded-lg md:border md:bg-white/95 md:px-3'>
-        <div className='flex flex-wrap items-center gap-2 md:gap-3'>
-          <span className='shrink-0 text-sm font-bold tabular-nums text-slate-700'>
-            阅读 {Math.round(readingProgress)}%
+      <div className='sticky top-3 z-30 mx-auto mb-10 max-w-4xl rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 shadow-sm backdrop-blur md:mb-14 md:px-5'>
+        <div className='flex flex-wrap items-center gap-x-5 gap-y-3'>
+          <span className='shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] tabular-nums text-slate-500'>
+            阅读进度
           </span>
-          <div className='order-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200 md:order-none md:flex-1'>
+          <div className='h-px min-w-24 flex-1 overflow-hidden bg-slate-300'>
             <div
-              className='h-full rounded-full bg-slate-900 transition-[width] duration-200'
+              className='h-full bg-slate-900 transition-[width] duration-200'
               style={{ width: `${readingProgress}%` }}
             />
           </div>
-          <div className='ml-auto flex shrink-0 gap-1.5'>
+          <span className='w-9 text-right text-xs tabular-nums text-slate-500'>
+            {Math.round(readingProgress)}%
+          </span>
+          <div className='flex w-full shrink-0 items-center justify-end divide-x divide-slate-300 sm:w-auto'>
           <button
             type='button'
             onClick={() => setSelectionEnabled(value => !value)}
             aria-pressed={selectionEnabled}
-            className={`h-8 rounded-lg border px-2.5 text-xs font-bold transition ${
+            className={`h-7 border-0 px-3 text-xs font-medium transition ${
               selectionEnabled
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
+                : 'text-slate-400 hover:text-slate-700'
             }`}>
             划词
           </button>
@@ -212,10 +233,10 @@ export default function ArticleReaderClient({
             type='button'
             onClick={() => setRubyEnabled(value => !value)}
             aria-pressed={rubyEnabled}
-            className={`h-8 rounded-lg border px-2.5 text-xs font-bold transition ${
+            className={`h-7 border-0 px-3 text-xs font-medium transition ${
               rubyEnabled
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
+                : 'text-slate-400 hover:text-slate-700'
             }`}>
             注音
           </button>
@@ -223,10 +244,10 @@ export default function ArticleReaderClient({
             type='button'
             onClick={() => setNoteEnabled(value => !value)}
             aria-pressed={noteEnabled}
-            className={`h-8 rounded-lg border px-2.5 text-xs font-bold transition ${
+            className={`h-7 border-0 px-3 text-xs font-medium transition ${
               noteEnabled
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
+                : 'text-slate-400 hover:text-slate-700'
             }`}>
             注释
           </button>
@@ -235,22 +256,22 @@ export default function ArticleReaderClient({
       </div>
 
       <div
-        className={`grid gap-5 ${
+        className={`mx-auto grid max-w-5xl gap-8 ${
           readerChapters.length > 1
-            ? 'lg:grid-cols-[15rem_minmax(0,1fr)]'
+            ? 'lg:grid-cols-[13rem_minmax(0,44rem)] lg:justify-center'
             : ''
         }`}>
         {readerChapters.length > 1 ? (
-          <aside className='max-h-[32rem] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-2'>
+          <aside className='max-h-[32rem] overflow-y-auto border-y border-slate-200 py-2'>
             {readerChapters.map((chapter, index) => (
               <button
                 key={`${chapter.id}-${index}`}
                 type='button'
                 onClick={() => setActiveChapterIndex(index)}
-                className={`block w-full rounded-xl px-3 py-2 text-left text-sm font-bold transition ${
+                className={`block w-full border-b border-slate-100 px-2 py-3 text-left text-sm font-medium transition ${
                   index === activeChapterIndex
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-600 hover:bg-white hover:text-slate-900'
+                    ? 'text-slate-950 underline underline-offset-4'
+                    : 'text-slate-500 hover:text-slate-900'
                 }`}>
                 <span className='block truncate'>{chapter.title}</span>
               </button>
@@ -264,7 +285,7 @@ export default function ArticleReaderClient({
           data-source-id={articleId}
           data-context-block
           className={`min-w-0 space-y-5 ${
-            readerChapters.length > 1 ? '' : 'mx-auto w-full max-w-3xl'
+            readerChapters.length > 1 ? '' : 'mx-auto w-full max-w-[44rem]'
           }`}>
           {readerChapters.length > 1 ? (
             <div className='flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between'>
@@ -279,9 +300,10 @@ export default function ArticleReaderClient({
                   }
                   disabled={activeChapterIndex === 0}
                   className='h-9 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'>
-                  上一页
+                  {mode === 'ebook' ? '上一章' : '上一页'}
                 </button>
                 <span className='text-xs font-bold text-slate-400'>
+                  {mode === 'ebook' ? '章节 ' : ''}
                   {activeChapterIndex + 1}/{readerChapters.length}
                 </span>
                 <button
@@ -293,13 +315,13 @@ export default function ArticleReaderClient({
                   }
                   disabled={activeChapterIndex >= readerChapters.length - 1}
                   className='h-9 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40'>
-                  下一页
+                  {mode === 'ebook' ? '下一章' : '下一页'}
                 </button>
               </div>
             </div>
           ) : null}
 
-          <div className='space-y-6 px-1 py-1 md:px-3'>
+          <div className='font-reading-body-ja space-y-8 px-1 py-1 md:px-2'>
             {paragraphs.length > 0 ? (
               paragraphs.map(renderParagraph)
             ) : (
@@ -308,13 +330,13 @@ export default function ArticleReaderClient({
           </div>
 
           {noteEnabled && Object.keys(activeChapterMetaMap).length > 0 ? (
-            <div className='mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4'>
-              <h3 className='text-sm font-black text-slate-900'>本篇注释</h3>
-              <div className='mt-3 grid gap-2 md:grid-cols-2'>
+            <div className='mt-12 border-y border-slate-200 py-6'>
+              <h3 className='text-sm font-semibold text-slate-900'>本篇注释</h3>
+              <div className='mt-4 divide-y divide-slate-200'>
                 {Object.entries(activeChapterMetaMap).map(([word, meta]) => (
                   <div
                     key={word}
-                    className='rounded-xl border border-slate-200 bg-white px-3 py-2'>
+                    className='grid gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)]'>
                     <p className='text-sm font-black text-slate-900'>{word}</p>
                     <p className='mt-1 text-xs text-slate-500'>
                       {[meta.pronunciations[0], meta.meanings[0]]

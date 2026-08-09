@@ -11,11 +11,19 @@ export default async function MemoryReviewPage() {
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-6 md:py-8'>
       <div className='mx-auto max-w-3xl'>
-        <div className='mb-4 flex items-center justify-between gap-3'>
-          <Link href='/review' className='text-sm font-semibold text-slate-600'>
+        <div className='mb-5 flex items-start justify-between gap-3'>
+          <div>
+            <Link href='/review' className='text-sm font-semibold text-slate-600 hover:text-slate-900'>
             返回复习中心
-          </Link>
-          <span className='text-sm text-slate-500'>到期 {items.length} 条</span>
+            </Link>
+            <h1 className='mt-3 text-3xl font-black tracking-tight text-slate-900'>
+              记忆复习
+            </h1>
+            <p className='mt-1 text-sm text-slate-500'>
+              先回忆，再显示答案并根据熟练程度评分。
+            </p>
+          </div>
+          <span className='ui-tag shrink-0'>到期 {items.length} 条</span>
         </div>
         <MemoryReviewClient initialItems={items} />
       </div>

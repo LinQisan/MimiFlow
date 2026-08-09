@@ -1,12 +1,16 @@
 'use client'
 
-import React from 'react'
 import { annotateExamText } from './annotate'
 import type {
   ExamAnnotationSettings,
   ExamQuestionOption,
   OnSelectOption,
 } from './types'
+import {
+  formatOptionLabel,
+  normalizeOptionLabelFormat,
+  type OptionLabelFormat,
+} from '@/utils/questions/optionLabels'
 
 type OptionsListProps = {
   options?: ExamQuestionOption[]
@@ -16,10 +20,10 @@ type OptionsListProps = {
   isSubmitted?: boolean
   isInteractionLocked?: boolean
   isJapanesePaper?: boolean
+  optionLabelFormat?: OptionLabelFormat | null
+  customOptionLabels?: string[]
   annotation: ExamAnnotationSettings
 }
-
-const optionLabel = (index: number) => String.fromCharCode(65 + index)
 
 const isAudioOnlyOptions = (options: ExamQuestionOption[]) =>
   options.length > 0 && options.every(option => !(option.text || '').trim())
@@ -32,6 +36,8 @@ export function OptionsList({
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
+  optionLabelFormat,
+  customOptionLabels = [],
   annotation,
 }: OptionsListProps) {
   if (options.length === 0) {
@@ -40,10 +46,15 @@ export function OptionsList({
 
   const audioOnly = isAudioOnlyOptions(options)
   const correctOptionId = options.find(option => option.isCorrect)?.id
+  const resolvedLabelFormat = normalizeOptionLabelFormat(
+    optionLabelFormat,
+    isJapanesePaper ? 'numeric' : 'upper-alpha',
+  )
 
   return (
     <div className='mt-6 grid gap-3'>
       {options.map((option, index) => {
+        const label = formatOptionLabel(index, resolvedLabelFormat, customOptionLabels)
         const isSelected = currentAnswer === option.id
         const isCorrect = correctOptionId === option.id
         const isWrongSelected = isSubmitted && isSelected && !isCorrect
@@ -72,13 +83,13 @@ export function OptionsList({
                     ? 'text-slate-900'
                     : 'text-slate-400 group-hover:text-slate-600'
               }`}>
-              {optionLabel(index)}.
+              {label}.
             </span>
             {audioOnly ? (
               <span
                 className={`cursor-text select-text leading-relaxed ${
                   isJapanesePaper ? 'exam-japanese-text' : ''
-                }`}>{`选项 ${optionLabel(index)}`}</span>
+                }`}>{`选项 ${label}`}</span>
             ) : (
               <span
                 className={`cursor-text select-text leading-relaxed ${

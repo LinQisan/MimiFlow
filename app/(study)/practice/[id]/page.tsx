@@ -2,28 +2,7 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { findPaperDetailById } from '@/lib/repositories/exam'
-
-function getQuizType(TypeParam: string | null) {
-  if (TypeParam === 'PRONUNCIATION') {
-    return '读音题'
-  }
-  if (TypeParam === 'FILL_BLANK') {
-    return '语法题'
-  }
-  if (TypeParam === 'SYNONYM_REPLACEMENT') {
-    return '同义词替换'
-  }
-  if (TypeParam === 'SORTING') {
-    return '排序题'
-  }
-  if (TypeParam === 'WORD_DISTINCTION') {
-    return '词汇辨析'
-  }
-  if (TypeParam === 'GRAMMAR') {
-    return '语法题'
-  }
-  return TypeParam
-}
+import { getQuestionTypeDisplay } from '@/utils/questions/typeLabels'
 
 export default async function PaperPage({
   params,
@@ -92,6 +71,40 @@ export default async function PaperPage({
     return a.title.localeCompare(b.title, 'zh-CN')
   })
 
+  const quizTypeSections = Array.from(
+    paper.quizzes
+      .flatMap(quiz =>
+        quiz.questions.map((question, index) => ({
+          ...question,
+          quizTitle: quiz.title,
+          questionNumber: index + 1,
+        })),
+      )
+      .reduce<
+        Map<
+          string,
+          {
+            questionType: string
+            questions: Array<{
+              id: string
+              questionType: string
+              quizTitle: string
+              questionNumber: number
+              prompt: string | null
+              contextSentence: string | null
+            }>
+          }
+        >
+      >((acc, question) => {
+        const key = question.questionType
+        const section = acc.get(key) || { questionType: key, questions: [] }
+        section.questions.push(question)
+        acc.set(key, section)
+        return acc
+      }, new Map())
+      .values(),
+  )
+
   // 3. 渲染页面内容
   return (
     <div className='mx-auto max-w-5xl p-4 md:p-6'>
@@ -137,7 +150,7 @@ export default async function PaperPage({
       </header>
 
       {/* 文字·词汇·语法 */}
-      {paper.quizzes.length > 0 && (
+      {quizTypeSections.length > 0 && (
         <section className='mt-8'>
           <div className='flex items-center gap-2 mb-6'>
             <div className='h-6 w-1.5 rounded-full bg-slate-900'></div>
@@ -146,37 +159,48 @@ export default async function PaperPage({
             </h2>
           </div>
 
-          <div className='space-y-6'>
-            {paper.quizzes.map(quiz => {
-              const questionCount = quiz.questions.length
+          <div className='space-y-5'>
+            {quizTypeSections.map((section, sectionIndex) => {
+              const questionCount = section.questions.length
+              const typeDisplay = getQuestionTypeDisplay(section.questionType)
 
               return (
                 <div
-                  key={quiz.id}
+                  key={section.questionType}
                   className='rounded-[18px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
                   <div className='mb-5 flex items-center justify-between gap-3 border-b border-slate-100 pb-3'>
                     <div>
+                      <p className='mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
+                        题型 {sectionIndex + 1}
+                      </p>
                       <h3 className='text-lg font-bold tracking-tight text-slate-900'>
-                        {quiz.title}
+                        {typeDisplay.label}
                       </h3>
-                      <span className='ui-tag mt-2 inline-flex'>
-                        共 {questionCount} 题
-                      </span>
+                      <div className='mt-2 flex flex-wrap items-center gap-2'>
+                        <span className='ui-tag inline-flex'>
+                          {questionCount} 道题
+                        </span>
+                        <span className='text-xs font-medium text-slate-500'>
+                          {typeDisplay.description}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
                   <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'>
-                    {quiz.questions.map((question, index) => (
+                    {section.questions.map(question => (
                       <Link
                         href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
                         key={question.id}
                         className='group flex flex-col rounded-xl bg-slate-50 p-3 shadow-[inset_0_1px_1px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
                         <span className='mb-1 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-600'>
-                          第 {index + 1} 题
+                          第 {question.questionNumber} 题
                         </span>
 
                         <span className='text-sm font-semibold text-slate-700 transition-colors group-hover:text-slate-900'>
-                          {getQuizType(question.questionType)}
+                          {question.prompt ||
+                            question.contextSentence ||
+                            '进入练习'}
                         </span>
                       </Link>
                     ))}
@@ -273,6 +297,14 @@ export default async function PaperPage({
             {paper.passages.map(passage => {
               const questions = passage.questions || []
               const questionCount = questions.length
+              const readingTypeLabels = Array.from(
+                new Set(
+                  questions.map(
+                    question =>
+                      getQuestionTypeDisplay(question.questionType).label,
+                  ),
+                ),
+              )
 
               return (
                 <div
@@ -280,7 +312,14 @@ export default async function PaperPage({
                   className='rounded-[18px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
                   <div className='mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4'>
                     <div className='flex-1'>
-                      <h3 className='mb-2 text-lg font-bold tracking-tight text-slate-900'>
+                      <div className='mb-2 flex flex-wrap gap-2'>
+                        {readingTypeLabels.map(label => (
+                          <span key={label} className='ui-tag inline-flex'>
+                            {label}
+                          </span>
+                        ))}
+                      </div>
+                      <h3 className='mb-2 line-clamp-1 text-lg font-bold tracking-tight text-slate-900'>
                         {passage.title}
                       </h3>
                       <p className='line-clamp-2 text-sm leading-relaxed text-slate-500'>
@@ -310,9 +349,9 @@ export default async function PaperPage({
                 </div>
               )
             })}
-            </div>
-          </section>
-        )}
+          </div>
+        </section>
+      )}
     </div>
   )
 }

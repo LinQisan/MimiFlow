@@ -41,7 +41,6 @@ test('removed product routes are not referenced by source code', async () => {
     '/search/result',
     '/manage/upload',
     '/manage/papers',
-    '/manage/shadowing',
     '/manage/audio',
     '/manage/fsrs',
     '/grammar/edit',
@@ -75,6 +74,9 @@ test('review routes and feature modules exist', async () => {
     'app/(library)/subtitles/[id]/page.tsx',
     'app/(admin)/manage/import/page.tsx',
     'app/(admin)/manage/grammar/page.tsx',
+    'app/(admin)/manage/listening/page.tsx',
+    'app/(admin)/manage/shadowing/page.tsx',
+    'app/(admin)/manage/reading/page.tsx',
     'app/(admin)/manage/system/page.tsx',
     'components/layout/StudyNavigation.tsx',
     'components/layout/ManageShell.tsx',
@@ -111,6 +113,35 @@ test('review routes and feature modules exist', async () => {
   for (const file of required) {
     assert.equal((await stat(path.join(ROOT, file))).isFile(), true)
   }
+})
+
+test('review workflows preserve submitted state and keep clear exits', async () => {
+  const questionReview = await readFile(
+    path.join(ROOT, 'app/(study)/review/[id]/ReviewQuestionClient.tsx'),
+    'utf8',
+  )
+  const memoryReview = await readFile(
+    path.join(ROOT, 'app/(study)/review/memory/MemoryReviewClient.tsx'),
+    'utf8',
+  )
+  const mistakeActions = await readFile(
+    path.join(ROOT, 'modules/review/actions/mistakes.ts'),
+    'utf8',
+  )
+  const questionRenderer = await readFile(
+    path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
+    'utf8',
+  )
+
+  assert.match(questionReview, /if \(item\.retryId === currentItem\.retryId\) return/)
+  assert.match(questionReview, /href='\/review'/)
+  assert.match(questionReview, /href=\{item\.sourceUrl\}/)
+  assert.match(questionReview, /disabled=\{!selectedOptionId \|\| isPending\}/)
+  assert.equal(questionReview.includes('优化后正确率'), false)
+  assert.equal(questionReview.includes('满足条件后可轻度清理'), false)
+  assert.equal(questionRenderer.includes('作答面板'), false)
+  assert.match(memoryReview, />\s*\u8fd4\u56de\u590d\u4e60\u4e2d\u5fc3\s*</)
+  assert.match(mistakeActions, /\/do\?qid=/)
 })
 
 test('large feature entry points delegate distinct responsibilities', async () => {
@@ -166,7 +197,8 @@ test('content import keeps one task visible at a time', async () => {
   assert.match(uploadCenter, /题目录入方式/)
   assert.match(uploadForm, /补充来源、难度与检索信息/)
   assert.match(uploadForm, /const resolvedType: MaterialType = 'LISTENING'/)
-  assert.match(uploadForm, /paper\.materialType === materialType/)
+  assert.equal(uploadForm.includes('paper.materialType === materialType'), false)
+  assert.match(uploadForm, /name='collectionIds'/)
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
 })
 
@@ -191,15 +223,47 @@ test('management pages keep classification, exams, and audio responsibilities se
     path.join(ROOT, 'lib/repositories/collection/manage.ts'),
     'utf8',
   )
+  const listeningEditor = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/listening/[id]/page.tsx'),
+    'utf8',
+  )
+  const listeningQuestionEditor = await readFile(
+    path.join(
+      ROOT,
+      'app/(library)/collections/lesson/[lessonId]/LessonQuestionsPanel.tsx',
+    ),
+    'utf8',
+  )
+  const paperQuestionEditor = await readFile(
+    path.join(
+      ROOT,
+      'app/(admin)/papers/manage/[id]/PaperQuestionEditor.tsx',
+    ),
+    'utf8',
+  )
 
-  assert.match(collectionPage, /编辑分类信息/)
-  assert.match(collectionPage, /个子分类/)
+  assert.match(collectionPage, /调整名称、位置与顺序/)
+  assert.match(collectionPage, /个下级/)
+  assert.match(collectionPage, /前往试卷管理/)
+  assert.match(collectionPage, /item\.collectionType === 'PAPER'/)
   assert.match(examRepository, /collectionType: CollectionType\.PAPER/)
   assert.equal(practicePage.includes('FavoriteCollectionCreateForm'), false)
   assert.equal(practicePage.includes('全部类型'), false)
-  assert.match(listeningPage, /音频材料/)
+  assert.match(listeningPage, /听力材料/)
+  assert.match(listeningPage, /跟读材料/)
   assert.match(listeningPage, /管理书籍与章节/)
+  assert.match(listeningPage, /添加题目/)
+  assert.match(listeningPage, /`\/manage\/listening\/\$\{item\.id\}#questions`/)
+  assert.match(listeningPage, /`\/manage\/shadowing\/\$\{item\.id\}`/)
   assert.equal(listeningPage.includes('groupedByChapterRows'), false)
+  assert.match(listeningEditor, /getListeningEditData/)
+  assert.equal(listeningEditor.includes('getSpeakingEditData'), false)
+  assert.match(listeningEditor, /LessonQuestionsPanel/)
+  assert.match(listeningQuestionEditor, /aria-label='材料所属問題'/)
+  assert.equal(listeningQuestionEditor.includes('所属問題（1、2、3…）'), false)
+  assert.match(paperQuestionEditor, /getQuestionTypeDisplay/)
+  assert.match(paperQuestionEditor, /搜索题干、语境、解析或材料名/)
+  assert.match(paperQuestionEditor, /保存题目/)
   assert.match(collectionRepository, /item\.type === MaterialType\.SPEAKING/)
 })
 
@@ -210,5 +274,9 @@ test('schema keeps one vocabulary organization model and a typed question', asyn
   assert.equal(schema.includes('model GameSessionLog'), false)
   assert.equal(schema.includes('model OutputPractice'), false)
   assert.match(schema, /questionType\s+QuestionType/)
+  assert.match(
+    schema,
+    /templateType\s+QuestionTemplate\s+@default\(CHOICE_QUIZ\)\s+@map\("template_type"\)/,
+  )
   assert.match(schema, /model LearnerProfile/)
 })

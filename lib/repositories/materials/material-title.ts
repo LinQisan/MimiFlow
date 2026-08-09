@@ -57,3 +57,15 @@ export function getReadingCardTitle(title: string): string {
   if (sentenceEnd >= 10) return opening.slice(0, sentenceEnd + 1)
   return `${opening.slice(0, 32).trim()}…`
 }
+
+const normalizeComparableText = (value: string) =>
+  value.normalize('NFKC').replace(/\s+/g, '').trim()
+
+export function isReadingTitleDerivedFromContent(
+  title: string,
+  content: string,
+): boolean {
+  const normalizedTitle = normalizeComparableText(title).replace(/[…]+$/, '')
+  const normalizedContent = normalizeComparableText(content)
+  return normalizedTitle.length >= 8 && normalizedContent.startsWith(normalizedTitle)
+}

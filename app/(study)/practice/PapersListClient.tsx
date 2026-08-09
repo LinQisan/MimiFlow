@@ -138,14 +138,16 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
   }
 
   return (
-    <div className='min-h-screen bg-slate-50 pb-12 font-sans text-slate-900'>
+    <div className='min-h-screen bg-white pb-12 font-sans text-slate-900'>
       <div>
         <div className='mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-7'>
           <div className='flex items-center justify-between gap-4'>
             <div className='min-w-0'>
-              <h1 className='text-3xl font-black tracking-tight text-slate-950'>
+              <p className='editorial-kicker'>MIMIFLOW / PRACTICE</p>
+              <h1 className='mt-3 text-3xl font-semibold tracking-tight text-slate-950 md:text-5xl'>
                 试卷库
               </h1>
+              <p className='mt-3 text-sm leading-7 text-slate-500'>按语言与等级浏览试卷，继续练习或创建自定义题组。</p>
             </div>
             <div className='flex shrink-0 flex-wrap gap-2'>
               <Link href='/practice/custom' className='ui-btn'>
@@ -154,7 +156,7 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
             </div>
           </div>
 
-          <div className='mt-4 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-slate-200 pt-3 text-xs text-slate-500 md:text-sm'>
+          <div className='mt-7 flex flex-wrap gap-x-6 gap-y-2 border-t border-slate-200 pt-4 text-xs tracking-wide text-slate-500'>
             <span>{totalPaperCount} 套试卷</span>
             <span>{totalQuestionCount} 题</span>
             <span>{totalAttemptCount} 次练习</span>
@@ -278,11 +280,11 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                             {group.papers.length} 套
                           </span>
                         </div>
-                        <div className='grid grid-cols-1 gap-2.5 lg:grid-cols-2'>
+                        <div className='divide-y divide-slate-200 border-y border-slate-200'>
                                 {group.papers.map(paper => (
                                   <article
                                     key={paper.id}
-                                    className='rounded-lg border border-slate-200 bg-white p-4 transition hover:border-slate-400'>
+                                    className='bg-white px-1 py-4 transition hover:bg-slate-50 md:px-4'>
                                     <div className='flex items-start justify-between gap-3'>
                                       <div className='min-w-0'>
                                         <h3 className='line-clamp-2 text-base font-black leading-6 text-slate-950 md:text-lg'>

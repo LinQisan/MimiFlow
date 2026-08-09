@@ -35,20 +35,20 @@ export default async function ReadingCenterPage({
             <Link
               href='/reading?tab=articles'
               aria-current={activeTab === 'articles' ? 'page' : undefined}
-              className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              className={`border-b-2 px-4 py-2 text-sm font-bold transition ${
                 activeTab === 'articles'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'border-slate-900 text-slate-950'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
               }`}>
               文章 {articles.length}
             </Link>
             <Link
               href='/reading?tab=ebooks'
               aria-current={activeTab === 'ebooks' ? 'page' : undefined}
-              className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              className={`border-b-2 px-4 py-2 text-sm font-bold transition ${
                 activeTab === 'ebooks'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  ? 'border-slate-900 text-slate-950'
+                  : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-900'
               }`}>
               电子书 {ebooks.length}
             </Link>
@@ -91,18 +91,20 @@ export default async function ReadingCenterPage({
                               ? 'EPUB'
                               : item.paper?.name || '文章'}
                           </p>
-                          <h2 className='mt-2 line-clamp-2 text-base font-black leading-6 text-slate-900 group-hover:text-slate-600'>
-                            {item.shortTitle}
-                          </h2>
+                          {item.hasAuthenticTitle ? (
+                            <h2 className='mt-2 line-clamp-2 text-base font-semibold leading-6 text-slate-900 group-hover:text-slate-600'>
+                              {item.shortTitle}
+                            </h2>
+                          ) : null}
                         </div>
-                        <span className='shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                        <span className='shrink-0 border-l border-slate-300 pl-3 text-[11px] font-medium tracking-wide text-slate-600'>
                           {item.sourceKind === 'EPUB'
-                            ? `${Math.max(1, item.chapterCount)} 页`
+                            ? `${Math.max(1, item.chapterCount)} 个章节`
                             : `${item.questionCount} 题`}
                         </span>
                       </div>
 
-                      <p className='mt-3 line-clamp-2 text-sm leading-6 text-slate-600'>
+                      <p className={`${item.hasAuthenticTitle ? 'mt-3' : 'mt-4'} line-clamp-2 text-sm leading-7 text-slate-600`}>
                         {summarize(
                           item.description,
                           item.author || item.content || '暂无摘要',

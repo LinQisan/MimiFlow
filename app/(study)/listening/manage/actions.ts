@@ -77,6 +77,8 @@ export async function updateSpeakingMeta(formData: FormData) {
 
     revalidatePath('/manage/listening')
     revalidatePath(`/manage/listening/${legacyId}`)
+    revalidatePath('/manage/shadowing')
+    revalidatePath(`/manage/shadowing/${legacyId}`)
     revalidatePath(`/listening/${legacyId}`)
 
     return { success: true, message: '标题与章节名已更新。' }
@@ -87,16 +89,45 @@ export async function updateSpeakingMeta(formData: FormData) {
 }
 
 export async function updateSpeakingTitle(formData: FormData) {
-  return updateSpeakingMeta(formData)
+  try {
+    const maybeId = String(formData.get('id') || '').trim()
+    const title = String(formData.get('title') || '').trim()
+    if (!maybeId) return { success: false, message: '材料 ID 缺失。' }
+    if (!title) return { success: false, message: '标题不能为空。' }
+
+    const materialId = await resolveLessonMaterialId(maybeId)
+    if (!materialId) return { success: false, message: '材料不存在。' }
+
+    await prisma.material.update({ where: { id: materialId }, data: { title } })
+    const legacyId = toLegacyMaterialId(materialId)
+    revalidatePath('/manage/shadowing')
+    revalidatePath(`/manage/shadowing/${legacyId}`)
+    revalidatePath(`/listening/${legacyId}`)
+    return { success: true, message: '标题已更新。' }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '更新失败'
+    return { success: false, message }
+  }
 }
 
-export async function deleteSpeakingMaterial(formData: FormData) {
+export async function deleteAudioMaterial(formData: FormData) {
   try {
     const maybeId = String(formData.get('id') || '').trim()
     if (!maybeId) return { success: false, message: '材料 ID 缺失。' }
 
     const materialId = await resolveLessonMaterialId(maybeId)
     if (!materialId) return { success: false, message: '材料不存在。' }
+
+    const material = await prisma.material.findUnique({
+      where: { id: materialId },
+      select: {
+        type: true,
+        collectionMaterials: {
+          select: { collectionId: true },
+        },
+      },
+    })
+    if (!material) return { success: false, message: '材料不存在。' }
 
     await prisma.material.delete({
       where: { id: materialId },
@@ -105,10 +136,24 @@ export async function deleteSpeakingMaterial(formData: FormData) {
     const legacyId = toLegacyMaterialId(materialId)
     revalidatePath('/manage/listening')
     revalidatePath(`/manage/listening/${legacyId}`)
+    revalidatePath('/manage/shadowing')
+    revalidatePath(`/manage/shadowing/${legacyId}`)
     revalidatePath(`/listening/${legacyId}`)
     revalidatePath('/listening')
+    revalidatePath('/manage/practice')
+    revalidatePath('/practice')
+    revalidatePath('/manage/collections')
+    revalidatePath('/manage/system/audio')
+    material.collectionMaterials.forEach(item => {
+      revalidatePath(`/manage/practice/${item.collectionId}`)
+      revalidatePath(`/practice/${item.collectionId}`)
+      revalidatePath(`/manage/collections/${item.collectionId}`)
+    })
 
-    return { success: true, message: '材料已删除。' }
+    return {
+      success: true,
+      message: `${material.type === MaterialType.LISTENING ? '听力' : '跟读'}材料已删除，音频文件已保留。`,
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
     return { success: false, message }

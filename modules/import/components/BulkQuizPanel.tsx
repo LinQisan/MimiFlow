@@ -127,13 +127,13 @@ export default function BulkQuizPanel({
                     )
                   }
                   className='h-10 border border-blue-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-400'>
-                  <option value='PRONUNCIATION'>读音题</option>
+                  <option value='PRONUNCIATION'>漢字読み</option>
                   <option value='SYNONYM_REPLACEMENT'>
-                    近义词替换题
+                    言い換え類義
                   </option>
-                  <option value='WORD_DISTINCTION'>单词辨析题</option>
-                  <option value='GRAMMAR'>语法题</option>
-                  <option value='SORTING'>排序题</option>
+                  <option value='WORD_DISTINCTION'>用法</option>
+                  <option value='GRAMMAR'>文脈・文法選択</option>
+                  <option value='SORTING'>文の組み立て</option>
                 </CustomSelect>
                 <input
                   value={bulkParsedQuestions[bulkEditingIndex].prompt}

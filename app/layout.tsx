@@ -17,7 +17,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang='zh' data-lang='zh' suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body className='flat-ui editorial-ui' suppressHydrationWarning>
         <I18nProvider>
           <DialogProvider>
             <StudyNavigation />

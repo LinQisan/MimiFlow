@@ -146,8 +146,14 @@ export const buildSearchDetailHref = (
   type: string,
   q: string,
 ) => {
-  void q
-  return `/manage/search/${encodeURIComponent(type)}/${encodeURIComponent(resultId)}`
+  const id = resultId.replace(/^(vocab|sentence|passage|quiz|question)-/, '')
+  if (type === 'passage') return `/manage/reading/${encodeURIComponent(id)}`
+  if (type === 'quiz') return `/manage/questions/${encodeURIComponent(id)}`
+  if (type === 'vocabulary' || type === 'sentence') {
+    return `/manage/vocabulary?q=${encodeURIComponent(q)}`
+  }
+  if (type === 'dialogue') return `/manage/shadowing?q=${encodeURIComponent(q)}`
+  return '/manage/practice'
 }
 
 export const extractMaterialSearchText = (contentPayload: unknown) => {

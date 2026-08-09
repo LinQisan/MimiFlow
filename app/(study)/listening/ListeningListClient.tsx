@@ -1,21 +1,15 @@
 'use client'
 
 import Link from 'next/link'
-import { useActionState, useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-
-import { useDialog } from '@/context/DialogContext'
+import { useActionState, useMemo, useState } from 'react'
 import {
   batchAssignShadowingMaterials,
   createShadowingBook,
   createShadowingChapter,
 } from './actions'
-import {
-  deleteSpeakingMaterial,
-  updateSpeakingMeta,
-} from '@/app/(study)/listening/manage/actions'
 import ListeningQuickClassifyForm from './ListeningQuickClassifyForm'
 import CustomSelect from '@/components/ui/CustomSelect'
+import DeleteAudioMaterialButton from '@/app/(admin)/manage/listening/DeleteAudioMaterialButton'
 
 type ShadowingRow = {
   id: string
@@ -33,6 +27,12 @@ type ShadowingRow = {
   tagsText: string
   dialogueCount: number
   questionCount: number
+  listeningSectionNumber: number | null
+  needsQuestion: boolean
+  needsSection: boolean
+  collectionId: string | null
+  collectionType: CollectionNode['collectionType'] | null
+  isExamMaterial: boolean
   rootId: string | null
   bookId: string | null
   chapterId: string | null
@@ -59,126 +59,40 @@ type Props = {
   rows: ShadowingRow[]
   collections: CollectionNode[]
   mode?: 'learn' | 'manage'
+  workspace?: 'mixed' | 'listening' | 'shadowing'
 }
 
 const initialState = { success: false, message: '' }
-const inlineEditInitialState = { success: false, message: '' }
 const collator = new Intl.Collator('zh-CN', {
   numeric: true,
   sensitivity: 'base',
 })
 
-function InlineMetaEditor({
-  id,
-  title,
-  chapterName,
-  audioFile,
-}: {
-  id: string
-  title: string
-  chapterName: string
-  audioFile: string
-}) {
-  const router = useRouter()
-  const dialog = useDialog()
-  const [removeState, setRemoveState] = useState('')
-  const [isDeleting, startDeleteTransition] = useTransition()
-  const [state, formAction, pending] = useActionState(
-    async (_prev: typeof inlineEditInitialState, formData: FormData) =>
-      updateSpeakingMeta(formData),
-    inlineEditInitialState,
-  )
-
-  return (
-    <form
-      action={formAction}
-      className='mt-3 space-y-2 border-t border-slate-100 pt-3'>
-      <input type='hidden' name='id' value={id} />
-      <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
-        <input
-          name='chapterName'
-          defaultValue={chapterName}
-          placeholder='章节名（显示徽章）'
-          className='h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-        />
-        <input
-          name='title'
-          defaultValue={title}
-          placeholder='标题'
-          className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-        />
-      </div>
-      <input
-        name='audioFile'
-        defaultValue={audioFile}
-        placeholder='音频路径（如 /audios/xxx.mp3）'
-        className='h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-      />
-      <div className='flex items-center justify-between gap-2'>
-        <p
-          className={`text-[11px] font-semibold ${
-            state.success ? 'text-slate-700' : 'text-rose-600'
-          }`}>
-          {state.message || removeState || '可直接编辑并保存章节名、标题、音频路径'}
-        </p>
-        <div className='flex items-center gap-2'>
-          <button
-            type='submit'
-            disabled={pending || isDeleting}
-            className='ui-btn ui-btn-sm ui-btn-primary h-8 px-3 disabled:cursor-not-allowed disabled:opacity-60'>
-            {pending ? '保存中...' : '保存'}
-          </button>
-          <button
-            type='button'
-            disabled={pending || isDeleting}
-            onClick={() => {
-              void dialog
-                .confirm('确认删除该跟读材料？此操作不可恢复。', {
-                  title: '删除跟读材料',
-                  confirmText: '删除',
-                  danger: true,
-                })
-                .then(ok => {
-                  if (!ok) return
-                  startDeleteTransition(() => {
-                    const formData = new FormData()
-                    formData.set('id', id)
-                    void deleteSpeakingMaterial(formData).then(res => {
-                      if (res.success) {
-                        setRemoveState('删除成功，正在刷新列表...')
-                        router.refresh()
-                        return
-                      }
-                      setRemoveState(res.message || '删除失败')
-                    })
-                  })
-                })
-            }}
-            className='h-8 border border-rose-200 bg-rose-50 px-3 text-xs font-bold text-rose-700 transition-colors hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60'>
-            {isDeleting ? '删除中...' : '删除'}
-          </button>
-        </div>
-      </div>
-    </form>
-  )
-}
-
 export default function ListeningListClient({
   rows,
   collections,
   mode = 'learn',
+  workspace = 'mixed',
 }: Props) {
   const isManageMode = mode === 'manage'
   const isEditMode = isManageMode
+  const isListeningWorkspace = isManageMode && workspace === 'listening'
+  const isShadowingWorkspace = isManageMode && workspace === 'shadowing'
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<
-    'all' | 'classified' | 'unclassified'
+    | 'all'
+    | 'ready'
+    | 'needsQuestion'
+    | 'needsSection'
+    | 'classified'
+    | 'unclassified'
   >('all')
   const [materialTypeFilter, setMaterialTypeFilter] = useState<
     'all' | 'SPEAKING' | 'LISTENING'
   >('all')
   const [bookFilter, setBookFilter] = useState<string>('all')
   const [chapterFilter, setChapterFilter] = useState<string>('all')
+  const [paperFilter, setPaperFilter] = useState<string>('all')
   const [openAssignMaterialId, setOpenAssignMaterialId] = useState<
     string | null
   >(null)
@@ -201,6 +115,7 @@ export default function ListeningListClient({
       batchAssignShadowingMaterials(formData),
     initialState,
   )
+
 
   const roots = useMemo(
     () =>
@@ -230,6 +145,18 @@ export default function ListeningListClient({
     () =>
       collections
         .filter(item => item.collectionType === 'CHAPTER')
+        .sort(
+          (a, b) =>
+            a.sortOrder - b.sortOrder ||
+            a.title.localeCompare(b.title, 'zh-CN'),
+        ),
+    [collections],
+  )
+
+  const papers = useMemo(
+    () =>
+      collections
+        .filter(item => item.collectionType === 'PAPER')
         .sort(
           (a, b) =>
             a.sortOrder - b.sortOrder ||
@@ -278,6 +205,8 @@ export default function ListeningListClient({
 
   const filteredRows = useMemo(() => {
     return rows.filter(row => {
+      if (isListeningWorkspace && row.materialType !== 'LISTENING') return false
+      if (isShadowingWorkspace && row.materialType !== 'SPEAKING') return false
       const keyword = search.trim().toLowerCase()
       if (keyword) {
         const haystack =
@@ -285,25 +214,55 @@ export default function ListeningListClient({
         if (!haystack.includes(keyword)) return false
       }
 
-      if (statusFilter === 'classified' && !row.isClassified) return false
+      if (
+        statusFilter === 'ready' &&
+        (!row.isClassified || row.needsQuestion || row.needsSection)
+      ) return false
       if (statusFilter === 'unclassified' && row.isClassified) return false
-      if (materialTypeFilter !== 'all' && row.materialType !== materialTypeFilter)
+      if (statusFilter === 'classified' && !row.isClassified) return false
+      if (statusFilter === 'needsQuestion' && !row.needsQuestion) return false
+      if (statusFilter === 'needsSection' && !row.needsSection) return false
+      if (
+        workspace === 'mixed' &&
+        materialTypeFilter !== 'all' &&
+        row.materialType !== materialTypeFilter
+      )
         return false
 
-      if (bookFilter !== 'all' && row.bookId !== bookFilter) return false
-      if (chapterFilter !== 'all' && row.chapterId !== chapterFilter)
+      if (isShadowingWorkspace && bookFilter !== 'all' && row.bookId !== bookFilter)
+        return false
+      if (
+        isShadowingWorkspace &&
+        chapterFilter !== 'all' &&
+        row.chapterId !== chapterFilter
+      )
+        return false
+      if (isListeningWorkspace && paperFilter !== 'all' && row.collectionId !== paperFilter)
         return false
 
       return true
     })
-  }, [rows, search, statusFilter, materialTypeFilter, bookFilter, chapterFilter])
+  }, [
+    rows,
+    search,
+    statusFilter,
+    materialTypeFilter,
+    bookFilter,
+    chapterFilter,
+    paperFilter,
+    workspace,
+    isListeningWorkspace,
+    isShadowingWorkspace,
+  ])
 
   const chapterSortedRows = useMemo(() => {
     return [...filteredRows].sort((a, b) => {
-      const chapterA = (a.chapterName || '').trim() || '未设置章节'
-      const chapterB = (b.chapterName || '').trim() || '未设置章节'
-      const byChapter = collator.compare(chapterA, chapterB)
-      if (byChapter !== 0) return byChapter
+      const byPath = collator.compare(a.pathLabel, b.pathLabel)
+      if (byPath !== 0) return byPath
+      const bySection =
+        (a.listeningSectionNumber || Number.MAX_SAFE_INTEGER) -
+        (b.listeningSectionNumber || Number.MAX_SAFE_INTEGER)
+      if (bySection !== 0) return bySection
       const byTitle = collator.compare(a.title, b.title)
       if (byTitle !== 0) return byTitle
       return collator.compare(a.id, b.id)
@@ -328,7 +287,7 @@ export default function ListeningListClient({
   const selectedIds = useMemo(
     () =>
       filteredRows
-        .filter(item => selectedMap[item.materialId])
+        .filter(item => selectedMap[item.materialId] && !item.isExamMaterial)
         .map(item => item.materialId),
     [filteredRows, selectedMap],
   )
@@ -339,7 +298,9 @@ export default function ListeningListClient({
 
   const selectAllOnPage = (checked: boolean) => {
     const next: Record<string, boolean> = { ...selectedMap }
-    const targetRows = isManageMode ? visibleManageRows : filteredRows
+    const targetRows = (isManageMode ? visibleManageRows : filteredRows).filter(
+      item => !item.isExamMaterial,
+    )
     targetRows.forEach(item => {
       next[item.materialId] = checked
     })
@@ -348,6 +309,9 @@ export default function ListeningListClient({
 
   const unclassifiedCount = rows.filter(item => !item.isClassified).length
   const listeningCount = rows.filter(item => item.materialType === 'LISTENING').length
+  const speakingCount = rows.filter(item => item.materialType === 'SPEAKING').length
+  const needsQuestionCount = rows.filter(item => item.needsQuestion).length
+  const needsSectionCount = rows.filter(item => item.needsSection).length
 
   return (
     <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
@@ -356,28 +320,27 @@ export default function ListeningListClient({
           <div className='mb-4 flex flex-wrap items-end justify-between gap-3'>
             <div>
               <h1 className='text-2xl font-black text-slate-900'>
-                {isManageMode ? '音频材料' : '跟读材料'}
+                {isListeningWorkspace
+                  ? '听力材料'
+                  : isShadowingWorkspace
+                    ? '跟读材料'
+                    : '跟读材料'}
               </h1>
               <p className='mt-1 text-sm text-slate-500'>
-                {isManageMode
-                  ? '筛选、归类听力与跟读材料；内容修改进入详情页完成。'
-                  : '以开始跟读为主，在编辑模式下可高效完成“书 / 章节”归类。'}
+                {isListeningWorkspace
+                  ? '检查所属试卷、問題与题目完整性。'
+                  : isShadowingWorkspace
+                    ? '按教材和章节维护跟读音频、字幕与归类。'
+                    : '以开始跟读为主，在编辑模式下完成教材与章节归类。'}
               </p>
             </div>
             <div className='flex flex-wrap items-center gap-2'>
-              {isManageMode ? (
-                <>
-                  <Link
-                    href='/manage/import?type=listening'
-                    className='ui-btn h-10 px-4 text-sm font-bold'>
-                    导入听力
-                  </Link>
-                  <Link
-                    href='/manage/import?type=speaking'
-                    className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
-                    导入跟读
-                  </Link>
-                </>
+              {isListeningWorkspace ? (
+                <Link
+                  href='/manage/import?type=listening'
+                  className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
+                  导入听力
+                </Link>
               ) : (
                 <Link
                   href='/manage/import?type=speaking'
@@ -388,12 +351,13 @@ export default function ListeningListClient({
             </div>
           </div>
 
-          <div
-            className={`grid grid-cols-1 gap-2 ${
-              isManageMode
-                ? 'md:grid-cols-[minmax(260px,1.4fr)_1fr_1fr_auto]'
+          <div className={`grid grid-cols-1 gap-2 ${
+            isListeningWorkspace
+              ? 'md:grid-cols-[minmax(260px,1.4fr)_1fr_1fr_auto]'
+              : isShadowingWorkspace
+                ? 'md:grid-cols-[minmax(220px,1.3fr)_0.8fr_1fr_1fr_auto]'
                 : 'md:grid-cols-[1.2fr_repeat(5,minmax(0,1fr))]'
-            }`}>
+          }`}>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
@@ -404,27 +368,41 @@ export default function ListeningListClient({
               value={statusFilter}
               onChange={e =>
                 setStatusFilter(
-                  e.target.value as 'all' | 'classified' | 'unclassified',
+                  e.target.value as
+                    | 'all'
+                    | 'ready'
+                    | 'needsQuestion'
+                    | 'needsSection'
+                    | 'classified'
+                    | 'unclassified',
                 )
               }
               className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
               <option value='all'>全部状态</option>
-              <option value='unclassified'>未归类</option>
-              <option value='classified'>已归类</option>
+              {isListeningWorkspace ? (
+                <>
+                  <option value='needsQuestion'>缺少题目</option>
+                  <option value='needsSection'>未设置所属問題</option>
+                  <option value='ready'>题目完整</option>
+                </>
+              ) : (
+                <>
+                  <option value='unclassified'>未归类</option>
+                  <option value='classified'>已归类</option>
+                </>
+              )}
             </CustomSelect>
-            <CustomSelect
-              value={materialTypeFilter}
-              onChange={e =>
-                setMaterialTypeFilter(
-                  e.target.value as 'all' | 'SPEAKING' | 'LISTENING',
-                )
-              }
-              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
-              <option value='all'>全部类型</option>
-              <option value='SPEAKING'>跟读材料</option>
-              <option value='LISTENING'>听力材料</option>
-            </CustomSelect>
-            {!isManageMode ? (
+            {isListeningWorkspace ? (
+              <CustomSelect
+                value={paperFilter}
+                onChange={e => setPaperFilter(e.target.value)}
+                className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none'>
+                <option value='all'>全部试卷</option>
+                {papers.map(item => (
+                  <option key={item.id} value={item.id}>{item.title}</option>
+                ))}
+              </CustomSelect>
+            ) : isShadowingWorkspace ? (
               <>
                 <CustomSelect
                   value={bookFilter}
@@ -452,7 +430,20 @@ export default function ListeningListClient({
                   ))}
                 </CustomSelect>
               </>
-            ) : null}
+            ) : (
+              <CustomSelect
+                value={materialTypeFilter}
+                onChange={e =>
+                  setMaterialTypeFilter(
+                    e.target.value as 'all' | 'SPEAKING' | 'LISTENING',
+                  )
+                }
+                className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none'>
+                <option value='all'>全部类型</option>
+                <option value='SPEAKING'>跟读材料</option>
+                <option value='LISTENING'>听力材料</option>
+              </CustomSelect>
+            )}
             <button
               type='button'
               onClick={() => {
@@ -461,6 +452,7 @@ export default function ListeningListClient({
                 setMaterialTypeFilter('all')
                 setBookFilter('all')
                 setChapterFilter('all')
+                setPaperFilter('all')
               }}
               className='ui-btn ui-btn-sm h-10 px-3 text-sm font-semibold'>
               重置筛选
@@ -468,46 +460,14 @@ export default function ListeningListClient({
           </div>
 
           <p className='mt-2 text-xs font-semibold text-slate-500'>
-            共 {rows.length} 条 · 听力 {listeningCount} 条 · 未归类 {unclassifiedCount} 条 · 当前显示{' '}
-            {filteredRows.length} 条
+            {isListeningWorkspace
+              ? `共 ${listeningCount} 条 · 缺题 ${needsQuestionCount} 条 · 缺所属問題 ${needsSectionCount} 条`
+              : `共 ${speakingCount} 条 · 未归类 ${unclassifiedCount} 条`}
+            {' '}· 当前显示 {filteredRows.length} 条
           </p>
-          {isManageMode ? (
-            <details className='group mt-3 border-t border-slate-200 pt-3'>
-              <summary className='cursor-pointer text-xs font-semibold text-slate-600'>
-                按书籍与章节筛选
-              </summary>
-              <div className='mt-3 grid gap-2 md:grid-cols-2'>
-                <CustomSelect
-                  value={bookFilter}
-                  onChange={e => {
-                    setBookFilter(e.target.value)
-                    setChapterFilter('all')
-                  }}
-                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none'>
-                  <option value='all'>全部书籍</option>
-                  {books.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </CustomSelect>
-                <CustomSelect
-                  value={chapterFilter}
-                  onChange={e => setChapterFilter(e.target.value)}
-                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none'>
-                  <option value='all'>全部章节</option>
-                  {filteredChapterOptions.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </CustomSelect>
-              </div>
-            </details>
-          ) : null}
         </div>
 
-        {isEditMode ? (
+        {isShadowingWorkspace ? (
           <details className='group mb-4 rounded-[18px] bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
             <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
               管理书籍与章节
@@ -582,7 +542,7 @@ export default function ListeningListClient({
           </details>
         ) : null}
 
-        {isEditMode && selectedIds.length > 0 ? (
+        {isShadowingWorkspace && selectedIds.length > 0 ? (
           <form
             action={batchAction}
             className='mb-4 grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1.4fr_auto_auto]'>
@@ -635,18 +595,22 @@ export default function ListeningListClient({
         ) : isManageMode ? (
           <section>
             <div className='mb-3 flex items-center gap-2'>
-              <input
-                type='checkbox'
-                checked={
-                  visibleManageRows.length > 0 &&
-                  visibleManageRows.every(item => selectedMap[item.materialId])
-                }
-                onChange={e => selectAllOnPage(e.target.checked)}
-                className='h-4 w-4'
-              />
-              <span className='text-xs font-semibold text-slate-600'>
-                全选当前页（按章节名排序）
-              </span>
+              {isShadowingWorkspace && (
+                <>
+                  <input
+                    type='checkbox'
+                    checked={
+                      visibleManageRows.length > 0 &&
+                      visibleManageRows.every(item => selectedMap[item.materialId])
+                    }
+                    onChange={e => selectAllOnPage(e.target.checked)}
+                    className='h-4 w-4'
+                  />
+                  <span className='text-xs font-semibold text-slate-600'>
+                    全选当前页
+                  </span>
+                </>
+              )}
               <div className='ml-auto flex items-center gap-2'>
                 <span className='text-xs text-slate-500'>
                   第 {normalizedManagePage}/{manageTotalPages} 页
@@ -672,37 +636,70 @@ export default function ListeningListClient({
 
             {chapterSortedRows.length === 0 ? (
               <div className='border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500'>
-                当前筛选条件下暂无跟读材料。
+                当前筛选条件下暂无材料。
               </div>
             ) : (
               <div className='space-y-2'>
                 {visibleManageRows.map(item => {
-                  const statusText = item.isClassified ? '已归类' : '未归类'
-                  const statusStyle = item.isClassified
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                    : 'bg-amber-50 text-amber-700 border-amber-100'
+                  const statusText = item.needsQuestion
+                    ? '缺少题目'
+                    : item.needsSection
+                      ? '未设置所属問題'
+                      : isListeningWorkspace
+                        ? item.isExamMaterial
+                          ? '已关联试卷'
+                          : '未关联试卷'
+                        : item.isClassified
+                          ? '已归类'
+                          : '未归类'
+                  const statusStyle = item.needsQuestion || item.needsSection
+                    ? 'bg-rose-50 text-rose-700 border-rose-100'
+                    : item.isClassified
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                      : 'bg-amber-50 text-amber-700 border-amber-100'
+                  const sectionLabel = item.isExamMaterial
+                    ? item.listeningSectionNumber
+                      ? `問題${item.listeningSectionNumber}`
+                      : '未设置所属問題'
+                    : (item.chapterName || '').trim() || '未设置章节'
+                  const examManageHref = item.collectionId
+                    ? item.listeningSectionNumber
+                      ? `/manage/practice/${item.collectionId}?section=${encodeURIComponent(`LISTENING:listening-part-${item.listeningSectionNumber}`)}`
+                      : `/manage/practice/${item.collectionId}`
+                    : '/manage/practice'
 
                   return (
                     <article
                       key={item.id}
-                      className='rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:p-4'>
+                      className={`rounded-xl bg-white p-3 shadow-sm md:p-4 ${
+                        item.needsQuestion
+                          ? 'border border-rose-200 ring-1 ring-rose-50'
+                          : 'border border-slate-200'
+                      }`}>
                       <div className='grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center'>
-                        <input
-                          type='checkbox'
-                          aria-label={`选择 ${item.title}`}
-                          checked={Boolean(selectedMap[item.materialId])}
-                          onChange={e =>
-                            toggleSelect(item.materialId, e.target.checked)
-                          }
-                          className='h-4 w-4 shrink-0'
-                        />
+                        {isListeningWorkspace || item.isExamMaterial ? (
+                          <span
+                            aria-hidden='true'
+                            className='h-4 w-4 shrink-0 rounded-full bg-indigo-100'
+                          />
+                        ) : (
+                          <input
+                            type='checkbox'
+                            aria-label={`选择 ${item.title}`}
+                            checked={Boolean(selectedMap[item.materialId])}
+                            onChange={e =>
+                              toggleSelect(item.materialId, e.target.checked)
+                            }
+                            className='h-4 w-4 shrink-0'
+                          />
+                        )}
                         <div className='min-w-0'>
                           <div className='flex flex-wrap items-center gap-2'>
                             <h3 className='text-sm font-bold text-slate-900 md:text-base'>
                               {item.title}
                             </h3>
                             <span className='rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
-                              {(item.chapterName || '').trim() || '未设置章节'}
+                              {sectionLabel}
                             </span>
                             <span className='rounded border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
                               {item.materialType === 'LISTENING' ? '听力' : '跟读'}
@@ -712,38 +709,67 @@ export default function ListeningListClient({
                             </span>
                           </div>
                           <p className='mt-1 truncate text-xs text-slate-500'>
-                            {item.pathLabel} · 句子 {item.dialogueCount} · {item.audioFile || '音频未设置'}
+                            {item.pathLabel} · 字幕 {item.dialogueCount} 句 · 题目 {item.questionCount} 道 · {item.audioFile || '音频未设置'}
                           </p>
                         </div>
-                        <div className='flex flex-wrap items-center gap-3 text-xs'>
-                          <button
-                            type='button'
-                            onClick={() =>
-                              setOpenAssignMaterialId(prev =>
-                                prev === item.materialId ? null : item.materialId,
-                              )
-                            }
-                            className='font-semibold text-slate-600 hover:text-slate-900'>
-                            {item.isClassified ? '重新归类' : '立即归类'}
-                          </button>
-                          <Link
-                            href={
-                              item.materialType === 'SPEAKING'
-                                ? `/manage/listening/${item.id}`
-                                : `/manage/collections/lesson/${item.id}`
-                            }
-                            className='font-semibold text-slate-700 hover:text-slate-900'>
-                            编辑
-                          </Link>
+                        <div className='flex flex-wrap items-center justify-start gap-2 md:justify-end'>
+                          {item.materialType === 'LISTENING' ? (
+                            <>
+                              <Link
+                                href={`/manage/listening/${item.id}#questions`}
+                                className={`ui-btn ui-btn-sm ${
+                                  item.needsQuestion ? 'ui-btn-primary' : ''
+                                }`}>
+                                {item.needsQuestion ? '添加题目' : '管理题目'}
+                              </Link>
+                              {item.isExamMaterial ? (
+                                <Link href={examManageHref} className='ui-btn ui-btn-sm'>
+                                  整卷管理
+                                </Link>
+                              ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type='button'
+                                onClick={() =>
+                                  setOpenAssignMaterialId(prev =>
+                                    prev === item.materialId
+                                      ? null
+                                      : item.materialId,
+                                  )
+                                }
+                                className='ui-btn ui-btn-sm'>
+                                {item.isClassified ? '重新归类' : '立即归类'}
+                              </button>
+                              <Link
+                                href={`/manage/shadowing/${item.id}`}
+                                className='ui-btn ui-btn-sm ui-btn-primary'>
+                                编辑材料
+                              </Link>
+                            </>
+                          )}
                           <Link
                             href={`/listening/${item.id}`}
-                            className='font-semibold text-slate-500 hover:text-slate-900'>
+                            className='ui-btn ui-btn-sm'>
                             试听
                           </Link>
+                          <DeleteAudioMaterialButton
+                            id={item.id}
+                            title={item.title}
+                            materialType={
+                              item.materialType === 'LISTENING'
+                                ? 'LISTENING'
+                                : 'SPEAKING'
+                            }
+                            questionCount={item.questionCount}
+                            collectionLabel={item.pathLabel}
+                            isExamMaterial={item.isExamMaterial}
+                          />
                         </div>
                       </div>
 
-                      {openAssignMaterialId === item.materialId ? (
+                      {isShadowingWorkspace && openAssignMaterialId === item.materialId ? (
                         <div className='mt-3 border-t border-slate-100 pt-3'>
                           <ListeningQuickClassifyForm
                             legacyId={item.id}
@@ -900,24 +926,15 @@ export default function ListeningListClient({
                           <Link
                             href={
                               isManageMode && item.materialType === 'SPEAKING'
-                                ? `/manage/listening/${item.id}`
+                                ? `/manage/shadowing/${item.id}`
                                 : `/listening/${item.id}`
                             }
                             className='ui-btn ui-btn-primary h-10 w-full px-4 text-sm font-bold'>
                             {isManageMode && item.materialType === 'SPEAKING'
-                              ? '继续编辑听力材料'
+                              ? '编辑跟读材料'
                               : '开始跟读'}
                           </Link>
                       </div>
-
-                      {isManageMode ? (
-                        <InlineMetaEditor
-                          id={item.id}
-                          title={item.title}
-                          chapterName={item.chapterName}
-                          audioFile={item.audioFile}
-                        />
-                      ) : null}
 
                       {isEditMode &&
                       openAssignMaterialId === item.materialId ? (

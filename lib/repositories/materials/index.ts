@@ -3,9 +3,11 @@ import { MaterialType } from '@prisma/client'
 import {
   getMaterialDisplayTitle,
   getReadingCardTitle,
+  isReadingTitleDerivedFromContent,
 } from './material-title'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
+import { prepareEbookChapters } from '@/lib/ebooks/chapter-display'
 
 type JsonRecord = Record<string, unknown>
 
@@ -171,6 +173,7 @@ export async function getArticleByLegacyId(legacyId: string) {
             select: {
               id: true,
               title: true,
+              collectionType: true,
             },
           },
         },
@@ -199,6 +202,16 @@ export async function getArticleByLegacyId(legacyId: string) {
   const category = material.collectionMaterials[0]?.collection
   const legacyMaterialId = toLegacyMaterialId(material.id)
   const materialText = asString(payload.text) || asString(payload.transcript) || ''
+  const displayTitle = getMaterialDisplayTitle(
+    material.type,
+    material.title,
+    material.contentPayload,
+    legacyId,
+  )
+  const hasAuthenticTitle = !(
+    category?.collectionType === 'PAPER' &&
+    isReadingTitleDerivedFromContent(displayTitle, materialText)
+  )
   const vocabularyMetaMap = await buildVocabularyMetaMapForText(
     materialText,
     [legacyMaterialId, material.id],
@@ -207,27 +220,18 @@ export async function getArticleByLegacyId(legacyId: string) {
   return {
     id: legacyId,
     materialId: material.id,
-    title: getMaterialDisplayTitle(
-      material.type,
-      material.title,
-      material.contentPayload,
-      legacyId,
-    ),
-    shortTitle: getReadingCardTitle(
-      getMaterialDisplayTitle(
-        material.type,
-        material.title,
-        material.contentPayload,
-        legacyId,
-      ),
-    ),
+    title: displayTitle,
+    shortTitle: getReadingCardTitle(displayTitle),
+    hasAuthenticTitle,
     content: materialText,
     sourceKind: asString(payload.sourceKind),
     author: asString(payload.author),
     description: asString(payload.description),
     chapters: asChapterArray(payload.chapters),
     vocabularyMetaMap,
-    category: category ? { name: category.title } : null,
+    category: category
+      ? { name: category.title, collectionType: category.collectionType }
+      : null,
     progress: material.studyProgresses[0]
       ? {
           percent: material.studyProgresses[0].progressPercent,
@@ -268,6 +272,7 @@ export async function listReadingMaterials() {
             select: {
               id: true,
               title: true,
+              collectionType: true,
             },
           },
         },
@@ -288,27 +293,31 @@ export async function listReadingMaterials() {
   return rows.map(material => {
     const payload = asRecord(material.contentPayload)
     const category = material.collectionMaterials[0]?.collection
+    const content = asString(payload.text) || asString(payload.transcript) || ''
+    const displayTitle = getMaterialDisplayTitle(
+      material.type,
+      material.title,
+      material.contentPayload,
+      toLegacyMaterialId(material.id),
+    )
+    const hasAuthenticTitle = !(
+      category?.collectionType === 'PAPER' &&
+      isReadingTitleDerivedFromContent(displayTitle, content)
+    )
+    const chapters = asChapterArray(payload.chapters)
     return {
       id: toLegacyMaterialId(material.id),
-      title: getMaterialDisplayTitle(
-        material.type,
-        material.title,
-        material.contentPayload,
-        toLegacyMaterialId(material.id),
-      ),
-      shortTitle: getReadingCardTitle(
-        getMaterialDisplayTitle(
-          material.type,
-          material.title,
-          material.contentPayload,
-          toLegacyMaterialId(material.id),
-        ),
-      ),
+      title: displayTitle,
+      shortTitle: getReadingCardTitle(displayTitle),
+      hasAuthenticTitle,
       description: asString(payload.description),
-      content: asString(payload.text) || asString(payload.transcript) || '',
+      content,
       sourceKind: asString(payload.sourceKind),
       author: asString(payload.author),
-      chapterCount: asChapterArray(payload.chapters).length,
+      chapterCount:
+        asString(payload.sourceKind) === 'EPUB'
+          ? prepareEbookChapters(chapters, displayTitle).length
+          : chapters.length,
       progress: material.studyProgresses[0]
         ? {
             percent: material.studyProgresses[0].progressPercent,
@@ -624,8 +633,9 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
           },
         },
       },
-      _count: {
-        select: { questions: true },
+      questions: {
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { content: true },
       },
     },
   })
@@ -653,6 +663,34 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
           : null
     const chapterCollection =
       collection?.collectionType === 'CHAPTER' ? collection : null
+    const paperCollection =
+      collection?.collectionType === 'PAPER' ? collection : null
+
+    const listeningSectionNumbers = material.questions
+      .map(question => {
+        const content = asRecord(question.content)
+        const raw =
+          content.listeningSectionNumber ??
+          content.sectionNumber ??
+          content.partNumber ??
+          content.jlptPartNumber
+        const parsed = Number(raw)
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+      })
+      .filter((value): value is number => value !== null)
+    const rawMaterialSectionNumber =
+      payload.listeningSectionNumber ??
+      payload.sectionNumber ??
+      payload.partNumber ??
+      payload.jlptPartNumber
+    const parsedMaterialSectionNumber = Number(rawMaterialSectionNumber)
+    const materialSectionNumber =
+      Number.isInteger(parsedMaterialSectionNumber) && parsedMaterialSectionNumber > 0
+        ? parsedMaterialSectionNumber
+        : null
+    const listeningSectionNumber =
+      listeningSectionNumbers[0] || materialSectionNumber || null
+    const isExamMaterial = Boolean(paperCollection)
 
     const hierarchyPath = [
       rootCollection?.title,
@@ -680,7 +718,17 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
       tags,
       tagsText: tags.join(', '),
       dialogueCount: materialDialogueItems(material.contentPayload).length,
-      questionCount: material._count.questions,
+      questionCount: material.questions.length,
+      listeningSectionNumber,
+      needsQuestion:
+        material.type === MaterialType.LISTENING && material.questions.length === 0,
+      needsSection:
+        material.type === MaterialType.LISTENING &&
+        material.questions.length > 0 &&
+        listeningSectionNumbers.length !== material.questions.length,
+      collectionId: collection?.id || null,
+      collectionType: collection?.collectionType || null,
+      isExamMaterial,
       rootId: rootCollection?.id || null,
       bookId: bookCollection?.id || null,
       chapterId: chapterCollection?.id || null,
@@ -689,7 +737,7 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
         hierarchyPath.length > 0
           ? hierarchyPath.join(' / ')
           : collection?.title || '未归类',
-      isClassified: Boolean(chapterCollection?.id),
+      isClassified: Boolean(paperCollection?.id || chapterCollection?.id),
       collection: collection
         ? {
             id: collection.id,

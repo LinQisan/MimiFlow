@@ -1,6 +1,10 @@
 import { Prisma, PrismaClient } from '@prisma/client'
-
-type JsonRecord = Record<string, unknown>
+import {
+  asFiniteNumber,
+  asRecord,
+  asString,
+  type UnknownRecord,
+} from '@/utils/validation/unknown'
 
 type MediaSubtitleMaterialSnapshot = {
   id: string
@@ -9,22 +13,6 @@ type MediaSubtitleMaterialSnapshot = {
 }
 
 type MediaSubtitleSearchIndexClient = PrismaClient | Prisma.TransactionClient
-
-function asRecord(value: unknown): JsonRecord {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as JsonRecord
-  }
-  return {}
-}
-
-function asString(value: unknown) {
-  return typeof value === 'string' ? value : ''
-}
-
-function asNumber(value: unknown, fallback = 0) {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : fallback
-}
 
 export function normalizeMediaSubtitleSearchText(value: string) {
   return value
@@ -41,7 +29,7 @@ export function buildMediaSubtitleSearchIndexRows(
 ) {
   const payload = asRecord(material.contentPayload)
   const rawDialogues = Array.isArray(payload.dialogues)
-    ? (payload.dialogues as JsonRecord[])
+    ? (payload.dialogues as UnknownRecord[])
     : []
   const materialTitle = material.title.trim()
   const workTitle = asString(payload.subtitleWorkTitle).trim()
@@ -59,7 +47,10 @@ export function buildMediaSubtitleSearchIndexRows(
       if (!text || !stableId) return null
 
       const note = asString(dialogue.note).trim()
-      const sequenceId = Math.max(1, asNumber(dialogue.id, index + 1))
+      const sequenceId = Math.max(
+        1,
+        asFiniteNumber(dialogue.id, index + 1),
+      )
       const searchText = normalizeMediaSubtitleSearchText(
         [
           text,
@@ -84,8 +75,8 @@ export function buildMediaSubtitleSearchIndexRows(
         normalizedText: normalizeMediaSubtitleSearchText(text),
         searchText,
         note: note || null,
-        start: Number(asNumber(dialogue.start, 0).toFixed(2)),
-        end: Number(asNumber(dialogue.end, 0).toFixed(2)),
+        start: Number(asFiniteNumber(dialogue.start, 0).toFixed(2)),
+        end: Number(asFiniteNumber(dialogue.end, 0).toFixed(2)),
         materialTitle,
         workTitle: workTitle || null,
         season: season || null,

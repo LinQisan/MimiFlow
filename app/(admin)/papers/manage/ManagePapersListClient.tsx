@@ -66,15 +66,15 @@ export default function ManagePapersListClient({
 
   return (
     <div className='min-h-screen bg-slate-50 pb-12 font-sans text-slate-900'>
-      <section className='border-b border-slate-200 bg-white'>
-        <div className='mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 md:px-6 md:py-6'>
+      <section className='px-4 pt-6 md:px-6 md:pt-8'>
+        <div className='mx-auto flex max-w-7xl flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6'>
           <div className='flex flex-wrap items-center gap-2'>
             <div>
               <h1 className='text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
                 试卷管理
               </h1>
               <p className='mt-1 text-sm text-slate-500'>
-                只维护正式试卷的分区、材料和题目。
+                管理正式试卷的结构、题型、材料与作答数据。
               </p>
             </div>
             <div className='ml-auto flex flex-wrap items-center gap-2'>
@@ -101,13 +101,16 @@ export default function ManagePapersListClient({
               清除搜索
             </button>
           </div>
-          <p className='text-xs font-semibold text-slate-500'>
-            {visiblePaperCount} / {totalPaperCount} 套 · {totalQuestionCount} 题 · {totalListeningSections} 个听力部分 · {totalAttempts} 次作答
-          </p>
+          <div className='grid grid-cols-2 gap-2 md:grid-cols-4'>
+            <SummaryTile label='正式试卷' value={`${visiblePaperCount} / ${totalPaperCount}`} />
+            <SummaryTile label='题目总数' value={String(totalQuestionCount)} />
+            <SummaryTile label='聴解部分' value={String(totalListeningSections)} />
+            <SummaryTile label='累计作答' value={String(totalAttempts)} />
+          </div>
         </div>
       </section>
 
-      <main className='mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6'>
+      <main className='mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-6'>
         {filteredLevels.length === 0 ? (
           <section className='border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500'>
             没有匹配的试卷。
@@ -117,9 +120,8 @@ export default function ManagePapersListClient({
             <section key={level.id} className='scroll-mt-32'>
               <div className='mb-3 flex items-center justify-between gap-3'>
                 <div>
-                  <h2 className='text-base font-black tracking-tight text-slate-900'>
-                    {level.title}
-                  </h2>
+                  <p className='text-xs font-black tracking-[0.16em] text-slate-400 uppercase'>Official papers</p>
+                  <h2 className='mt-1 text-lg font-black tracking-tight text-slate-900'>{level.title}</h2>
                   <p className='text-xs font-medium text-slate-500'>
                     {level.papers.length} 套内容
                   </p>
@@ -137,7 +139,7 @@ export default function ManagePapersListClient({
                   return (
                     <article
                       key={paper.id}
-                      className='rounded-xl border border-slate-200 bg-white shadow-sm'>
+                      className='overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md'>
                       <div className='grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]'>
                         <div className='min-w-0'>
                           <div className='flex flex-wrap items-start justify-between gap-3'>
@@ -171,17 +173,17 @@ export default function ManagePapersListClient({
 
                           <div className='mt-4 grid grid-cols-3 gap-2'>
                             <StructureTile
-                              label='文字语法'
+                              label='文字・語彙・文法'
                               primary={`${paper.quizQuestionCount} 题`}
                               secondary={`${paper.quizCount} 模块`}
                             />
                             <StructureTile
-                              label='听力'
+                              label='聴解'
                               primary={`${paper.listeningSectionCount} 部分`}
                               secondary={`${paper.lessonQuestionCount} 题 / ${paper.lessonCount} 音频`}
                             />
                             <StructureTile
-                              label='阅读'
+                              label='読解'
                               primary={`${paper.passageCount} 篇`}
                               secondary={`${paper.questionCount -
                                 paper.quizQuestionCount -
@@ -190,9 +192,9 @@ export default function ManagePapersListClient({
                           </div>
 
                           {paper.manageSections.length > 0 && (
-                            <div className='mt-4 border border-slate-200 bg-white p-3'>
+                            <div className='mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
                               <div className='mb-2 text-xs font-black text-slate-700'>
-                                进入各部分修改
+                                按部分编辑
                               </div>
                               <div className='flex flex-wrap gap-2'>
                                 {paper.manageSections.map(section => (
@@ -213,7 +215,7 @@ export default function ManagePapersListClient({
                           )}
                         </div>
 
-                        <aside className='border border-slate-200 bg-slate-50 p-3'>
+                        <aside className='rounded-xl border border-slate-200 bg-slate-50 p-3'>
                           <div className='grid grid-cols-2 gap-2 text-xs'>
                             <Info label='正确率' value={accuracy} />
                             <Info label='作答' value={`${paper.attemptCount} 次`} />
@@ -222,7 +224,7 @@ export default function ManagePapersListClient({
                             <Link
                               href={`/manage/practice/${encodeURIComponent(paper.id)}`}
                               className='ui-btn ui-btn-primary h-9 justify-center text-sm'>
-                              编辑结构
+                              编辑试卷
                             </Link>
                             <Link
                               href={`/practice/${encodeURIComponent(paper.id)}`}
@@ -288,12 +290,21 @@ function StructureTile({
   secondary: string
 }) {
   return (
-    <div className='min-w-0 border border-slate-200 bg-slate-50 p-2.5 md:p-3'>
+    <div className='min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5 md:p-3'>
       <div className='text-xs font-bold text-slate-500'>{label}</div>
       <div className='mt-1 text-sm font-black text-slate-900'>{primary}</div>
       <div className='mt-0.5 text-xs font-medium text-slate-500'>
         {secondary}
       </div>
+    </div>
+  )
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className='rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5'>
+      <p className='text-[11px] font-bold text-slate-500'>{label}</p>
+      <p className='mt-0.5 text-xl font-black text-slate-950'>{value}</p>
     </div>
   )
 }

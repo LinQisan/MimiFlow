@@ -91,7 +91,7 @@ export default async function GrammarPage() {
                   ) : null}
 
                   {item.constructions.length > 0 ? (
-                    <div className='mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm'>
+                    <div className='mt-3 border-l-2 border-slate-200 pl-3 text-sm'>
                       <p className='mb-1.5 text-[11px] font-bold tracking-wide text-slate-500'>
                         接续与意思
                       </p>
@@ -99,7 +99,7 @@ export default async function GrammarPage() {
                         {item.constructions.slice(0, 3).map((construction, index) => (
                           <div
                             key={construction.id}
-                            className='rounded-xl border border-slate-200 bg-white px-2.5 py-2'>
+                            className='border-t border-slate-200 py-2 first:border-t-0'>
                             <div className='flex items-start gap-2'>
                               <span className='mt-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-200 px-1 text-[10px] font-bold text-slate-700'>
                                 {index + 1}
@@ -123,7 +123,7 @@ export default async function GrammarPage() {
                                 {construction.examples.slice(0, 2).map(example => (
                                   <div
                                     key={example.id}
-                                    className='rounded-lg border border-slate-200 bg-slate-50 px-2 py-1'>
+                                    className='border-l border-slate-200 py-1 pl-2'>
                                     <p className='line-clamp-2 text-xs text-slate-800'>
                                       {example.sentenceText}
                                     </p>

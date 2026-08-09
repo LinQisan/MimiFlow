@@ -28,6 +28,23 @@ async function isCollectionMoveValid(
 
 export async function deleteCollection(collectionId: string) {
   try {
+    const collection = await prisma.collection.findUnique({
+      where: { id: collectionId },
+      select: {
+        collectionType: true,
+        _count: { select: { materials: true, children: true } },
+      },
+    })
+    if (!collection) return { success: false, message: '分类不存在' }
+    if (collection.collectionType === CollectionType.LIBRARY_ROOT) {
+      return { success: false, message: '系统根分类不能删除' }
+    }
+    if (collection._count.children > 0) {
+      return { success: false, message: '请先移动或删除子分类' }
+    }
+    if (collection._count.materials > 0) {
+      return { success: false, message: '请先移动或删除分类中的材料' }
+    }
     await prisma.collection.delete({
       where: { id: collectionId },
     })
@@ -74,6 +91,7 @@ export async function updateCollectionMaterialTitle(
     })
     revalidatePath('/manage/collections')
     revalidatePath(`/manage/collections/lesson/${maybeId}`)
+    revalidatePath(`/manage/listening/${maybeId}`)
     revalidatePath(`/manage/collections/article/${maybeId}`)
     revalidatePath(`/manage/collections/quiz/${maybeId}`)
     return { success: true, message: '标题已更新' }
@@ -120,7 +138,45 @@ export async function updateCollectionAttributes(formData: FormData) {
     if (!collectionId) return { success: false, message: 'collectionId 缺失。' }
     if (!title) return { success: false, message: '名称不能为空。' }
 
+    const current = await prisma.collection.findUnique({
+      where: { id: collectionId },
+      select: { collectionType: true },
+    })
+    if (!current) return { success: false, message: '分类不存在。' }
+
     const nextParentId = parentIdRaw || null
+    const nextParent = nextParentId
+      ? await prisma.collection.findUnique({
+          where: { id: nextParentId },
+          select: { collectionType: true },
+        })
+      : null
+    if (nextParentId && !nextParent) {
+      return { success: false, message: '目标父级不存在。' }
+    }
+
+    const requiredParentType =
+      current.collectionType === CollectionType.BOOK
+        ? CollectionType.LIBRARY_ROOT
+        : current.collectionType === CollectionType.CHAPTER
+          ? CollectionType.BOOK
+          : null
+    if (requiredParentType && nextParent?.collectionType !== requiredParentType) {
+      return {
+        success: false,
+        message:
+          current.collectionType === CollectionType.BOOK
+            ? '教材必须归属于系统根分类。'
+            : '章节必须归属于教材。',
+      }
+    }
+    if (
+      (current.collectionType === CollectionType.LIBRARY_ROOT ||
+        current.collectionType === CollectionType.PAPER) &&
+      nextParentId
+    ) {
+      return { success: false, message: '该类型只能位于顶层。' }
+    }
     const parsedSortOrder = Number.parseInt(sortOrderRaw || '0', 10)
     const sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0
     const validMove = await isCollectionMoveValid(collectionId, nextParentId)

@@ -4,6 +4,10 @@ import { getMaterialDisplayTitle } from '../materials/material-title'
 import { reorderExamOptionsForSession } from './exam-option-order'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { normalizeQuestionDisplayText } from '@/modules/practice/domain/question-text'
+import {
+  normalizeOptionLabelFormat,
+  parseCustomOptionLabels,
+} from '@/utils/questions/optionLabels'
 
 export type ExamHubPaperSummary = {
   id: string
@@ -153,6 +157,23 @@ function resolveListeningSection({
   metadata: Record<string, unknown>
   chapterName?: string | null
 }) {
+  const explicitTitle = firstString(
+    payload.listeningSectionTitle,
+    payload.sectionTitle,
+    payload.partTitle,
+    payload.jlptPartTitle,
+    metadata.listeningSectionTitle,
+    metadata.sectionTitle,
+    metadata.partTitle,
+    metadata.jlptPartTitle,
+    content.listeningSectionTitle,
+    content.sectionTitle,
+    content.partTitle,
+    content.jlptPartTitle,
+  )
+  const titleFromChapter = chapterName
+    ?.match(/(?:問題|问题)\s*\d+(?:\s*[-_－]\s*\d+)?\s*[｜|]\s*(.+)$/i)?.[1]
+    ?.trim()
   const explicitPart = toPositiveInteger(
     content.listeningSectionNumber ??
       content.sectionNumber ??
@@ -160,12 +181,20 @@ function resolveListeningSection({
       content.jlptPartNumber ??
       content.listeningSectionOrder ??
       content.sectionOrder ??
-      content.partOrder,
+      content.partOrder ??
+      payload.listeningSectionNumber ??
+      payload.sectionNumber ??
+      payload.partNumber ??
+      payload.jlptPartNumber ??
+      metadata.listeningSectionNumber ??
+      metadata.sectionNumber ??
+      metadata.partNumber ??
+      metadata.jlptPartNumber,
   )
   if (explicitPart) {
     return {
       key: `listening-part-${explicitPart}`,
-      title: '听力',
+      title: explicitTitle || titleFromChapter || '听力',
       partNumber: explicitPart,
     }
   }
@@ -199,6 +228,20 @@ function resolveListeningSection({
   )
 
   if (!title) return LISTENING_SECTION_FALLBACK
+  const canonicalTitle = title.match(
+    /(?:問題|问题)\s*(\d+)(?:\s*[-_－]\s*\d+)?\s*[｜|]\s*(.+)$/i,
+  )
+  if (canonicalTitle) {
+    const sectionNumber = toPositiveInteger(canonicalTitle[1])
+    const sectionTitle = canonicalTitle[2]?.trim()
+    if (sectionNumber && sectionTitle) {
+      return {
+        key: `listening-part-${sectionNumber}`,
+        title: sectionTitle,
+        partNumber: sectionNumber,
+      }
+    }
+  }
   const titlePart = toPositiveInteger(title)
   if (titlePart && /部分|part|問題|问题|大题/i.test(title)) {
     return {
@@ -262,6 +305,10 @@ function buildQuestionView(
     contextSentence: normalizeQuestionDisplayText(row.context),
     targetWord: asString(content.targetWord),
     options: orderedOptions,
+    optionLabelFormat: asString(content.optionLabelFormat)
+      ? normalizeOptionLabelFormat(content.optionLabelFormat)
+      : null,
+    customOptionLabels: parseCustomOptionLabels(content.customOptionLabels),
   }
 
   if (material.type === MaterialType.READING) {
@@ -455,7 +502,9 @@ export async function findLevelsWithPapersAndCounts(): Promise<
                 {
                   key: section.key,
                   label: section.partNumber
-                    ? `听力部分 ${section.partNumber}`
+                    ? section.title && section.title !== '听力'
+                      ? `問題${section.partNumber}｜${section.title}`
+                      : `問題${section.partNumber}`
                     : section.title,
                   sectionNumber: section.partNumber,
                   questionCount: 0,
@@ -479,7 +528,7 @@ export async function findLevelsWithPapersAndCounts(): Promise<
           ? [
               {
                 key: 'VOCAB_GRAMMAR',
-                label: '选择部分',
+                label: '文字・語彙・文法',
                 detail: `${quizQuestionCount} 题 / ${quizMaterials.length} 模块`,
                 materialType: MaterialType.VOCAB_GRAMMAR,
                 questionCount: quizQuestionCount,
@@ -501,7 +550,7 @@ export async function findLevelsWithPapersAndCounts(): Promise<
           ? [
               {
                 key: 'READING',
-                label: '阅读部分',
+                label: '読解',
                 detail: `${readingQuestionCount} 题 / ${readingMaterials.length} 篇`,
                 materialType: MaterialType.READING,
                 questionCount: readingQuestionCount,
@@ -639,6 +688,8 @@ export async function findPaperDetailById(id: string) {
           return {
             id: question.id,
             questionType: question.questionType,
+            prompt: normalizeQuestionDisplayText(question.prompt),
+            contextSentence: normalizeQuestionDisplayText(question.context),
             order: toQuestionOrder(content, question.sortOrder || index + 1),
           }
         }),
@@ -667,13 +718,13 @@ export async function findPaperDetailById(id: string) {
             content,
             payload,
             metadata,
-            chapterName: material.chapterName,
+            chapterName: material.chapterName || material.title,
           })
           return {
             id: question.id,
             questionType: question.questionType,
-            prompt: question.prompt,
-            contextSentence: question.context,
+            prompt: normalizeQuestionDisplayText(question.prompt),
+            contextSentence: normalizeQuestionDisplayText(question.context),
             sectionKey: section.key,
             sectionTitle: section.title,
             sectionNumber: section.partNumber,
@@ -700,6 +751,7 @@ export async function findPaperDetailById(id: string) {
         content: asString(payload.text) || asString(payload.transcript) || '',
         questions: material.questions.map(question => ({
           id: question.id,
+          questionType: question.questionType,
         })),
       }
     })
@@ -755,6 +807,17 @@ export async function getManagePaperEditData(paperId: string) {
 
   const materials = collection.materials.map(relation => {
     const material = relation.material
+    const payload = asRecord(material.contentPayload)
+    const metadata = asRecord(material.metadata)
+    const materialListeningSection =
+      material.type === MaterialType.LISTENING
+        ? resolveListeningSection({
+            content: {},
+            payload,
+            metadata,
+            chapterName: material.chapterName,
+          })
+        : null
     return {
       id: material.id,
       materialType: material.type,
@@ -766,11 +829,14 @@ export async function getManagePaperEditData(paperId: string) {
       ),
       sortOrder: relation.sortOrder,
       questionCount: material.questions.length,
+      listeningSectionTitle: materialListeningSection?.title || '',
+      listeningSectionKey: materialListeningSection?.key || '',
+      listeningSectionNumber: materialListeningSection?.partNumber
+        ? String(materialListeningSection.partNumber)
+        : '',
       questions: material.questions.map((row, index) => {
         const content = asRecord(row.content)
         const answerIds = new Set(toAnswerIds(row.answer))
-        const payload = asRecord(material.contentPayload)
-        const metadata = asRecord(material.metadata)
         const listeningSection =
           material.type === MaterialType.LISTENING
             ? resolveListeningSection({
@@ -802,6 +868,15 @@ export async function getManagePaperEditData(paperId: string) {
           listeningSectionNumber: listeningSection?.partNumber
             ? String(listeningSection.partNumber)
             : '',
+          optionLabelFormat: normalizeOptionLabelFormat(
+            content.optionLabelFormat,
+            collection.language === 'ja' || material.type === MaterialType.LISTENING
+              ? 'numeric'
+              : 'upper-alpha',
+          ),
+          customOptionLabels: parseCustomOptionLabels(
+            content.customOptionLabels,
+          ).join('|'),
           sortOrder: toQuestionOrder(content, row.sortOrder || index + 1),
           options,
         }

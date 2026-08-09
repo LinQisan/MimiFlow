@@ -14,6 +14,7 @@ import {
 import { updateQuizWithQuestions } from '@/modules/content/actions/materials'
 import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
+import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 
 type EditableOption = {
   id: string
@@ -50,47 +51,47 @@ const getTypeConfig = (type: string) => {
   switch (type) {
     case 'PRONUNCIATION':
       return {
-        label: '读音题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-emerald-50 text-emerald-700 border-emerald-100',
       }
     case 'SYNONYM_REPLACEMENT':
       return {
-        label: '近义词题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100',
       }
     case 'FILL_BLANK':
       return {
-        label: '语法题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-sky-50 text-sky-700 border-sky-100',
       }
     case 'GRAMMAR':
       return {
-        label: '语法题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-sky-50 text-sky-700 border-sky-100',
       }
     case 'WORD_DISTINCTION':
       return {
-        label: '单词辨析',
+        label: getQuestionTypeLabel(type),
         color: 'bg-teal-50 text-teal-700 border-teal-100',
       }
     case 'SORTING':
       return {
-        label: '排序题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-orange-50 text-orange-700 border-orange-100',
       }
     case 'READING_COMPREHENSION':
       return {
-        label: '阅读理解',
+        label: getQuestionTypeLabel(type),
         color: 'bg-purple-50 text-purple-700 border-purple-100',
       }
     case 'LISTENING':
       return {
-        label: '听力题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-cyan-50 text-cyan-700 border-cyan-100',
       }
     default:
       return {
-        label: '普通题',
+        label: getQuestionTypeLabel(type),
         color: 'bg-gray-50 text-gray-700 border-gray-100',
       }
   }
@@ -350,32 +351,32 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                   <button
                     onClick={() => handleAddNewQuestion('PRONUNCIATION')}
                     className='w-full text-left px-3 py-2.5 hover:bg-emerald-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    读音题
+                    {getQuestionTypeLabel('PRONUNCIATION')}
                   </button>
                   <button
                     onClick={() => handleAddNewQuestion('SYNONYM_REPLACEMENT')}
                     className='w-full text-left px-3 py-2.5 hover:bg-fuchsia-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    近义词题
+                    {getQuestionTypeLabel('SYNONYM_REPLACEMENT')}
                   </button>
                   <button
                     onClick={() => handleAddNewQuestion('WORD_DISTINCTION')}
                     className='w-full text-left px-3 py-2.5 hover:bg-teal-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    单词辨析题
+                    {getQuestionTypeLabel('WORD_DISTINCTION')}
                   </button>
                   <button
                     onClick={() => handleAddNewQuestion('GRAMMAR')}
                     className='w-full text-left px-3 py-2.5 hover:bg-sky-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    语法题
+                    {getQuestionTypeLabel('GRAMMAR')}
                   </button>
                   <button
                     onClick={() => handleAddNewQuestion('SORTING')}
                     className='w-full text-left px-3 py-2.5 hover:bg-orange-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    排序题
+                    {getQuestionTypeLabel('SORTING')}
                   </button>
                   <button
                     onClick={() => handleAddNewQuestion('LISTENING')}
                     className='w-full text-left px-3 py-2.5 hover:bg-cyan-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
-                    听力题
+                    {getQuestionTypeLabel('LISTENING')}
                   </button>
                 </div>
               </>

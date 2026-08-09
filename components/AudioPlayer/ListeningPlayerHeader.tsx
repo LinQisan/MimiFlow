@@ -78,8 +78,7 @@ export default function ListeningPlayerHeader({
               {title}
             </h1>
             <p className='truncate text-[11px] text-slate-500'>
-              {groupName} · {dialogueCount} 句 · 累计{' '}
-              {formatDurationCompact(totalPlaySeconds)}
+              {groupName} · {dialogueCount} 句
             </p>
           </div>
 

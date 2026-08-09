@@ -40,7 +40,12 @@ export type RetryQueueRow = {
       recentStreak: number
       resetEligible: boolean
     }
-    quiz: { id: string; title: string | null } | null
+    quiz: {
+      id: string
+      title: string | null
+      paperId: string | null
+      paperTitle: string | null
+    } | null
     readingSource: { id: string; title: string | null } | null
   }
 }
@@ -134,7 +139,20 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
           answer: true,
           content: true,
           material: {
-            select: { id: true, title: true, type: true, contentPayload: true },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              contentPayload: true,
+              collectionMaterials: {
+                where: { collection: { collectionType: 'PAPER' } },
+                orderBy: { sortOrder: 'asc' },
+                take: 1,
+                select: {
+                  collection: { select: { id: true, title: true } },
+                },
+              },
+            },
           },
           attempts: {
             orderBy: { createdAt: 'desc' },
@@ -191,7 +209,15 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
       stats: buildRetryStats(row.question.attempts),
       quiz:
         row.question.material.type === 'VOCAB_GRAMMAR'
-          ? { id: row.question.material.id, title: row.question.material.title }
+          ? {
+              id: row.question.material.id,
+              title: row.question.material.title,
+              paperId:
+                row.question.material.collectionMaterials[0]?.collection.id || null,
+              paperTitle:
+                row.question.material.collectionMaterials[0]?.collection.title ||
+                null,
+            }
           : null,
       readingSource:
         row.question.material.type === 'READING'
@@ -216,7 +242,20 @@ export async function getRetryQuestionRowById(retryId: string) {
           answer: true,
           content: true,
           material: {
-            select: { id: true, title: true, type: true, contentPayload: true },
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              contentPayload: true,
+              collectionMaterials: {
+                where: { collection: { collectionType: 'PAPER' } },
+                orderBy: { sortOrder: 'asc' },
+                take: 1,
+                select: {
+                  collection: { select: { id: true, title: true } },
+                },
+              },
+            },
           },
           attempts: {
             orderBy: { createdAt: 'desc' },
@@ -275,7 +314,15 @@ export async function getRetryQuestionRowById(retryId: string) {
       stats: buildRetryStats(row.question.attempts),
       quiz:
         row.question.material.type === 'VOCAB_GRAMMAR'
-          ? { id: row.question.material.id, title: row.question.material.title }
+          ? {
+              id: row.question.material.id,
+              title: row.question.material.title,
+              paperId:
+                row.question.material.collectionMaterials[0]?.collection.id || null,
+              paperTitle:
+                row.question.material.collectionMaterials[0]?.collection.title ||
+                null,
+            }
           : null,
       readingSource:
         row.question.material.type === 'READING'
