@@ -13,6 +13,7 @@ export type UploadStatus = {
 export type LastUploadResult = {
   lessonIds: string[]
   materialType?: MaterialType
+  listeningSectionNumber?: number | null
 }
 
 export type AudioMatchPreviewRow = PickedFileMeta & {

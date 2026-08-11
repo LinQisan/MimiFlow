@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import type { CollectionType, MaterialType } from '@prisma/client'
 import CollectionBrowserSelect, {
@@ -27,6 +27,7 @@ import type {
   DropdownOption,
 } from '@/modules/import/audio/types'
 import { useUploadFormMutations } from '@/features/import/hooks/useUploadMutations'
+import LessonQuestionsPanel from '@/features/collections/ui/LessonQuestionsPanel'
 
 
 type Props = {
@@ -59,6 +60,7 @@ export default function UploadForm({
 }: Props) {
   const dialog = useDialog()
   const router = useRouter()
+  const inlineQuestionEditorRef = useRef<HTMLDivElement | null>(null)
   const { listPublicAudioFiles, uploadAssAndSaveData } = useUploadFormMutations()
 
   const {
@@ -144,6 +146,22 @@ export default function UploadForm({
   const pastedSubtitleLineCount = pastedSubtitleText
     ? pastedSubtitleText.split('\n').filter(Boolean).length
     : 0
+  const inlineListeningLessonId =
+    lastUpload?.materialType === 'LISTENING' &&
+    lastUpload.lessonIds.length === 1
+      ? lastUpload.lessonIds[0]
+      : null
+
+  useEffect(() => {
+    if (!inlineListeningLessonId) return
+    const frame = window.requestAnimationFrame(() => {
+      inlineQuestionEditorRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [inlineListeningLessonId])
 
   const findLatestLessonByMaterialType = (
     paper: Props['papers'][number] | undefined,
@@ -473,6 +491,7 @@ export default function UploadForm({
     }
 
     setStatus({ type: 'loading', message: '正在解析并写入...' })
+    setLastUpload(null)
     const formData = new FormData(event.currentTarget)
     const result = await uploadAssAndSaveData(formData)
 
@@ -489,6 +508,9 @@ export default function UploadForm({
       setLastUpload({
         lessonIds: uploadedLessonIds,
         materialType: uploadedMaterialType,
+        listeningSectionNumber: (
+          result as { listeningSectionNumber?: number | null }
+        ).listeningSectionNumber,
       })
       setPickedAssFiles([])
       setSelectedFileNames([])
@@ -501,9 +523,10 @@ export default function UploadForm({
         setPaperName('')
       }
 
-      if (uploadedMaterialType === 'LISTENING' && uploadedLessonIds.length === 1) {
-        router.push(`/manage/listening/${uploadedLessonIds[0]}#questions`)
-      } else {
+      if (
+        uploadedMaterialType !== 'LISTENING' ||
+        uploadedLessonIds.length !== 1
+      ) {
         router.refresh()
       }
     } else {
@@ -644,20 +667,21 @@ export default function UploadForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className='animate-in fade-in mx-auto flex w-full max-w-5xl flex-col gap-4'>
-      <input
-        type='hidden'
-        name='uploadMode'
-        value={isMediaSubtitleVariant ? 'media' : mode}
-      />
-      <input type='hidden' name='audioSourceType' value={audioSourceType} />
-      <input
-        type='hidden'
-        name='addQuestions'
-        value={materialType === 'LISTENING' ? 'yes' : addQuestions ? 'yes' : 'no'}
-      />
+    <>
+      <form
+        onSubmit={handleSubmit}
+        className='animate-in fade-in mx-auto flex w-full max-w-5xl flex-col gap-4'>
+        <input
+          type='hidden'
+          name='uploadMode'
+          value={isMediaSubtitleVariant ? 'media' : mode}
+        />
+        <input type='hidden' name='audioSourceType' value={audioSourceType} />
+        <input
+          type='hidden'
+          name='addQuestions'
+          value={materialType === 'LISTENING' ? 'yes' : addQuestions ? 'yes' : 'no'}
+        />
       <input
         type='hidden'
         name='materialType'
@@ -1418,7 +1442,11 @@ export default function UploadForm({
               lastUpload.materialType === 'LISTENING' ||
               lastUpload.materialType === 'SPEAKING') && (
             <div className='mt-2 flex flex-wrap gap-2'>
-              {lastUpload.lessonIds.map((id, i) => (
+              {inlineListeningLessonId ? (
+                <span className='inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700'>
+                  材料已创建，请在下方直接添加题目
+                </span>
+              ) : lastUpload.lessonIds.map((id, i) => (
                 <a
                   key={id}
                   href={
@@ -1449,6 +1477,34 @@ export default function UploadForm({
           )}
         </div>
       )}
-    </form>
+      </form>
+      {inlineListeningLessonId ? (
+        <div
+          ref={inlineQuestionEditorRef}
+          className='mx-auto mt-6 w-full max-w-5xl scroll-mt-20 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3 md:p-5'>
+          <div className='mb-3 flex flex-wrap items-center justify-between gap-2 px-1'>
+            <div>
+              <p className='text-sm font-black text-emerald-900'>继续添加题目</p>
+              <p className='mt-1 text-xs font-semibold text-emerald-700'>
+                无需离开上传页；保存题目后可继续上传下一条材料。
+              </p>
+            </div>
+            <a
+              href={`/manage/listening/${inlineListeningLessonId}`}
+              className='rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50'>
+              查看材料详情
+            </a>
+          </div>
+          <LessonQuestionsPanel
+            key={inlineListeningLessonId}
+            lessonId={inlineListeningLessonId}
+            initialQuestions={[]}
+            defaultListeningSectionNumber={String(
+              lastUpload?.listeningSectionNumber || '',
+            )}
+          />
+        </div>
+      ) : null}
+    </>
   )
 }

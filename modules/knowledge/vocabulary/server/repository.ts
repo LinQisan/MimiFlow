@@ -6,7 +6,7 @@ import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanon
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 import { parseAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 
-export const VOCABULARY_DETAIL_INCLUDE = {
+const VOCABULARY_DETAIL_INCLUDE = {
   wordbooks: {
     orderBy: { createdAt: 'asc' },
     include: { wordbook: { select: { id: true, title: true } } },
@@ -166,7 +166,7 @@ export const findExistingVocabularyCandidate = async (normalizedWord: string) =>
   return bestCandidate
 }
 
-export const normalizeSentenceKey = (text: string) =>
+const normalizeSentenceKey = (text: string) =>
   text
     .normalize('NFKC')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')

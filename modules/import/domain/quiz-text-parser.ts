@@ -12,7 +12,7 @@ const CIRCLED_NUMBER_INDEX: Record<string, number> = {
   '⑨': 8,
 }
 
-export const detectQuestionType = (
+const detectQuestionType = (
   prompt: string,
   options: string[] = [],
 ): ParsedQuizDraft['questionType'] => {

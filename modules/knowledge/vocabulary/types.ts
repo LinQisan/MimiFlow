@@ -8,7 +8,7 @@ export type SentenceItem = {
   posTags?: string[]
 }
 
-export type AudioData = {
+type AudioData = {
   audioFile: string
   start: number
   end: number

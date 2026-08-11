@@ -102,65 +102,6 @@ async function getListeningDialoguesByIds(targetIds: number[]) {
   return snapshots
 }
 
-async function getListeningDialogueContextByIds(targetIds: number[]) {
-  const normalizedIds = Array.from(
-    new Set(targetIds.map(id => Number(id)).filter(Number.isFinite)),
-  )
-  if (normalizedIds.length === 0) return []
-
-  const materials = await prisma.material.findMany({
-    where: { type: MaterialType.LISTENING },
-    select: {
-      id: true,
-      title: true,
-      contentPayload: true,
-    },
-  })
-
-  const idSet = new Set(normalizedIds)
-  const snapshots: Array<
-    DialogueSnapshot & {
-      lesson: DialogueSnapshot['lesson'] & {
-        dialogues: Array<{
-          id: number
-          text: string
-          start: number
-          end: number
-        }>
-      }
-    }
-  > = []
-
-  for (const material of materials) {
-    const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
-    const rawDialogues = Array.isArray(payload.dialogues)
-      ? (payload.dialogues as Record<string, unknown>[])
-      : []
-    const dialogues = rawDialogues.map((row, index) => ({
-      id: readFiniteNumber(row.id, index + 1),
-      text: readString(row.text),
-      start: readFiniteNumber(row.start),
-      end: readFiniteNumber(row.end),
-    }))
-    const audioFile = readString(payload.audioFile) || readString(payload.audioUrl)
-
-    for (const row of dialogues) {
-      if (!idSet.has(row.id)) continue
-      snapshots.push({
-        ...row,
-        lesson: {
-          id: material.id,
-          title: material.title,
-          audioFile,
-          dialogues,
-        },
-      })
-    }
-  }
-
-  return snapshots
-}
-
 const parseWeights = (raw: string): number[] | null => {
   try {
     const parsed = JSON.parse(raw)
@@ -430,58 +371,6 @@ const getEngineWithAutoFit = async () => {
   }
 }
 
-export async function getDueSentences() {
-  const now = new Date()
-
-  try {
-    const reviews = await prisma.sentenceReview.findMany({
-      where: { due: { lte: now } },
-      orderBy: { due: 'asc' },
-    })
-
-    if (reviews.length === 0) return []
-
-    const dialogueIds = reviews
-      .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
-      .map(r => Number(r.sourceId))
-
-    const dialoguesWithContext = await getListeningDialogueContextByIds(dialogueIds)
-
-    return reviews.map(review => {
-      if (review.sourceType === 'AUDIO_DIALOGUE') {
-        const currentDialogue = dialoguesWithContext.find(
-          d => d.id === Number(review.sourceId),
-        )
-
-        if (!currentDialogue) return review
-
-        const allDialogues = currentDialogue.lesson.dialogues
-        const currentIndex = allDialogues.findIndex(d => d.id === currentDialogue.id)
-
-        const prevDialogue = currentIndex > 0 ? allDialogues[currentIndex - 1] : null
-        const nextDialogue =
-          currentIndex < allDialogues.length - 1 ? allDialogues[currentIndex + 1] : null
-
-        return {
-          ...review,
-          dialogue: currentDialogue,
-          context: {
-            prev: prevDialogue?.text || null,
-            next: nextDialogue?.text || null,
-            playStart: prevDialogue ? prevDialogue.start : currentDialogue.start,
-            playEnd: nextDialogue ? nextDialogue.end : currentDialogue.end,
-          },
-        }
-      }
-
-      return review
-    })
-  } catch (error) {
-    console.error('获取复习句子失败:', error)
-    return []
-  }
-}
-
 export async function rateSentenceFluency(reviewId: string, rating: Rating) {
   try {
     const record = await prisma.sentenceReview.findUnique({
@@ -713,89 +602,7 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
   }
 }
 
-export async function removeSentenceFromReview(reviewId: string) {
-  try {
-    await prisma.sentenceReview.delete({ where: { id: reviewId } })
-
-    revalidatePath('/review')
-    revalidatePath('/review/memory')
-    revalidatePath('/')
-
-    return { success: true }
-  } catch {
-    return { success: false, message: '移除失败' }
-  }
-}
-
-export async function getAllReviewSentences() {
-  const reviews = await prisma.sentenceReview.findMany({
-    orderBy: { id: 'desc' },
-  })
-
-  const dialogueIds = reviews
-    .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
-    .map(r => Number(r.sourceId))
-
-  if (dialogueIds.length === 0) return reviews
-
-  const dialogues = await getListeningDialoguesByIds(dialogueIds)
-
-  return reviews.map(review => {
-    if (review.sourceType === 'AUDIO_DIALOGUE') {
-      const matchingDialogue = dialogues.find(d => d.id === Number(review.sourceId))
-      return {
-        ...review,
-        dialogue: matchingDialogue,
-      }
-    }
-    return review
-  })
-}
-
-export async function getReviewSentencesPage(page = 1, pageSize = 30) {
-  const safePageSize = Math.min(100, Math.max(10, Math.floor(pageSize)))
-  const rawPage = Math.max(1, Math.floor(page))
-  const total = await prisma.sentenceReview.count()
-  const totalPages = Math.max(1, Math.ceil(total / safePageSize))
-  const normalizedPage = Math.min(rawPage, totalPages)
-  const skip = (normalizedPage - 1) * safePageSize
-
-  const reviews = await prisma.sentenceReview.findMany({
-    orderBy: { id: 'desc' },
-    skip,
-    take: safePageSize,
-  })
-
-  const dialogueIds = reviews
-    .filter(r => r.sourceType === 'AUDIO_DIALOGUE')
-    .map(r => Number(r.sourceId))
-
-  const dialogues =
-    dialogueIds.length === 0
-      ? []
-      : await getListeningDialoguesByIds(dialogueIds)
-
-  const items = reviews.map(review => {
-    if (review.sourceType === 'AUDIO_DIALOGUE') {
-      const matchingDialogue = dialogues.find(d => d.id === Number(review.sourceId))
-      return {
-        ...review,
-        dialogue: matchingDialogue,
-      }
-    }
-    return review
-  })
-
-  return {
-    items,
-    total,
-    page: normalizedPage,
-    pageSize: safePageSize,
-    totalPages,
-  }
-}
-
-export async function getFsrsProfileSnapshot() {
+async function getFsrsProfileSnapshot() {
   const profile = await ensureFsrsProfile()
   const parsedWeights = parseWeights(profile.weights) || [...default_w]
   return {

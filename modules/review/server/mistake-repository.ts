@@ -8,51 +8,6 @@ import { readString } from '@/lib/validation/schema'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
 
-export type RetryQueueRow = {
-  id: string
-  questionId: string
-  stage: number
-  dueAt: Date
-  wrongCount: number
-  question: {
-    sortOrder: number
-    questionType: string
-    prompt: string | null
-    contextSentence: string
-    targetWord: string | null
-    options: { id: string; text: string; isCorrect: boolean }[]
-    passageId: string | null
-    passage: { id: string; content: string } | null
-    lessonId: string | null
-    lesson: {
-      id: string
-      audioFile: string | null
-      dialogues: {
-        id: number
-        text: string
-        start: number
-        end: number
-        sequenceId?: number
-      }[]
-    } | null
-    stats: {
-      attemptTotal: number
-      correctTotal: number
-      accuracy: number
-      optimizedAccuracy: number
-      recentStreak: number
-      resetEligible: boolean
-    }
-    quiz: {
-      id: string
-      title: string | null
-      paperId: string | null
-      paperTitle: string | null
-    } | null
-    readingSource: { id: string; title: string | null } | null
-  }
-}
-
 type AttemptLite = {
   id: string
   isCorrect: boolean

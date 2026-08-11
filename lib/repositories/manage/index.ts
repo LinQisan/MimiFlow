@@ -34,50 +34,6 @@ function toCollectionTypeLabel(type: CollectionType) {
   return '收藏夹'
 }
 
-export async function getManageIndexData() {
-  const [
-    collectionCount,
-    listeningCount,
-    readingCount,
-    quizMaterialCount,
-    questionCount,
-    vocabCount,
-    recentCollections,
-  ] = await Promise.all([
-    prisma.collection.count({
-      where: { collectionType: CollectionType.PAPER },
-    }),
-    prisma.material.count({ where: { type: MaterialType.LISTENING } }),
-    prisma.material.count({ where: { type: MaterialType.READING } }),
-    prisma.material.count({ where: { type: MaterialType.VOCAB_GRAMMAR } }),
-    prisma.question.count(),
-    prisma.vocabulary.count(),
-    prisma.collection.findMany({
-      where: { collectionType: CollectionType.PAPER },
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      select: {
-        id: true,
-        title: true,
-        collectionType: true,
-        _count: {
-          select: { materials: true },
-        },
-      },
-    }),
-  ])
-
-  return {
-    collectionCount,
-    listeningCount,
-    readingCount,
-    quizMaterialCount,
-    questionCount,
-    vocabCount,
-    recentCollections,
-  }
-}
-
 export async function getUploadPageSeedData({
   includeLessons = true,
   materialType,

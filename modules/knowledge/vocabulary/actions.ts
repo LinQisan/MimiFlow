@@ -425,47 +425,6 @@ export async function clearVocabularySentenceMeaning(
   }
 }
 
-export async function updateVocabularySentence(
-  id: string,
-  oldSentenceText: string,
-  nextSentence: { text: string; source: string; sourceUrl: string },
-) {
-  try {
-    const vocab = await prisma.vocabulary.findUnique({ where: { id } })
-    if (!vocab) return { success: false, message: '单词不存在' }
-
-    const nextText = nextSentence.text.trim()
-    if (!nextText) return { success: false, message: '句子不能为空' }
-
-    const source = nextSentence.source.trim() || '未知来源'
-    const sourceUrl = nextSentence.sourceUrl.trim() || '#'
-    const oldText = oldSentenceText.trim()
-    const link = await findSentenceLinkByText(id, oldText)
-    if (!link) return { success: false, message: '未找到该句子' }
-    const duplicated = await findSentenceLinkByText(id, nextText)
-    if (duplicated && duplicated.id !== link.id) {
-      return { success: false, message: '已存在相同句子' }
-    }
-
-    await upsertVocabularySentenceLink(id, {
-      text: nextText,
-      source,
-      sourceUrl,
-      sourceType: link.sentence.sourceType || undefined,
-      sourceId: link.sentence.sourceId || undefined,
-      meaningIndex: link.meaningIndex,
-      posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
-    })
-    await prisma.vocabularySentenceLink.delete({ where: { id: link.id } })
-    await cleanupOrphanSentence(link.sentenceId)
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '句子更新失败' }
-  }
-}
-
 export async function updateVocabularySentencePosTags(
   id: string,
   sentenceText: string,

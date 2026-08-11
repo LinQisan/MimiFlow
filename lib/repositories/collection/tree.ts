@@ -61,7 +61,7 @@ export function buildCollectionTree<T extends CollectionTreeLike>(
   return roots
 }
 
-export function flattenCollectionTree<T extends CollectionTreeLike>(
+function flattenCollectionTree<T extends CollectionTreeLike>(
   nodes: CollectionTreeNode<T>[],
   depth = 0,
   pathSegments: string[] = [],

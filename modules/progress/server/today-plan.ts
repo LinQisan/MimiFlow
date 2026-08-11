@@ -1,7 +1,7 @@
 import { getTopMaterialSnapshots } from '@/lib/repositories/materials'
 import { getReviewOverview } from '@/modules/review/server/queries'
 
-export type TodayTaskItem = {
+type TodayTaskItem = {
   id: 'memory' | 'listening' | 'reading' | 'retry'
   title: string
   targetCount: number

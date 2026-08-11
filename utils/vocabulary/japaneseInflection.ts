@@ -1,6 +1,3 @@
-import { buildVocabularyCanonicalKeys } from './vocabularyCanonical'
-import type { VocabularyMeta } from './vocabularyMeta'
-
 const JAPANESE_REGEX = /[\u3040-\u30ff\u4e00-\u9fff]/
 
 const unique = (list: string[]) =>
@@ -14,157 +11,6 @@ const normalizeWord = (raw: string) =>
     .replace(/[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+$/, '')
 
 const isJapaneseWord = (value: string) => JAPANESE_REGEX.test(value)
-
-const pushGodanFromTaStem = (stem: string, out: Set<string>) => {
-  if (!stem) return
-  out.add(`${stem}る`)
-  if (stem.endsWith('っ')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}う`)
-    out.add(`${base}つ`)
-    out.add(`${base}る`)
-    return
-  }
-  if (stem.endsWith('い')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}く`)
-    out.add(`${base}ぐ`)
-    return
-  }
-  if (stem.endsWith('し')) {
-    out.add(`${stem.slice(0, -1)}す`)
-    return
-  }
-  if (stem.endsWith('ん')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}む`)
-    out.add(`${base}ぶ`)
-    out.add(`${base}ぬ`)
-  }
-}
-
-const pushGodanFromTeStem = (stem: string, out: Set<string>) => {
-  if (!stem) return
-  out.add(`${stem}る`)
-  if (stem.endsWith('っ')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}う`)
-    out.add(`${base}つ`)
-    out.add(`${base}る`)
-    return
-  }
-  if (stem.endsWith('い')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}く`)
-    out.add(`${base}ぐ`)
-    return
-  }
-  if (stem.endsWith('し')) {
-    out.add(`${stem.slice(0, -1)}す`)
-    return
-  }
-  if (stem.endsWith('ん')) {
-    const base = stem.slice(0, -1)
-    out.add(`${base}む`)
-    out.add(`${base}ぶ`)
-    out.add(`${base}ぬ`)
-  }
-}
-
-const I_TO_U: Record<string, string> = {
-  い: 'う',
-  き: 'く',
-  ぎ: 'ぐ',
-  し: 'す',
-  ち: 'つ',
-  に: 'ぬ',
-  び: 'ぶ',
-  み: 'む',
-  り: 'る',
-}
-
-const A_TO_U: Record<string, string> = {
-  わ: 'う',
-  か: 'く',
-  が: 'ぐ',
-  さ: 'す',
-  た: 'つ',
-  な: 'ぬ',
-  ば: 'ぶ',
-  ま: 'む',
-  ら: 'る',
-}
-
-const deinflectJapaneseWord = (rawWord: string) => {
-  const word = normalizeWord(rawWord)
-  const out = new Set<string>()
-  if (!word || !isJapaneseWord(word)) return [word].filter(Boolean)
-  out.add(word)
-
-  const appendMasuStem = (stem: string) => {
-    if (!stem) return
-    out.add(`${stem}る`)
-    const last = stem.slice(-1)
-    const mapped = I_TO_U[last]
-    if (mapped) out.add(`${stem.slice(0, -1)}${mapped}`)
-    if (stem.endsWith('し')) out.add(`${stem.slice(0, -1)}する`)
-    if (stem === 'し') out.add('する')
-    if (stem === 'き') out.add('くる')
-  }
-
-  const appendNaiStem = (stem: string) => {
-    if (!stem) return
-    out.add(`${stem}る`)
-    const last = stem.slice(-1)
-    const mapped = A_TO_U[last]
-    if (mapped) out.add(`${stem.slice(0, -1)}${mapped}`)
-    if (stem.endsWith('し')) out.add(`${stem.slice(0, -1)}する`)
-    if (stem === 'し') out.add('する')
-    if (stem === 'こ') out.add('くる')
-  }
-
-  const masuSuffixes = ['ませんでした', 'ました', 'ません', 'ます']
-  for (const suffix of masuSuffixes) {
-    if (!word.endsWith(suffix) || word.length <= suffix.length) continue
-    appendMasuStem(word.slice(0, -suffix.length))
-  }
-
-  const naiSuffixes = ['なかった', 'ない']
-  for (const suffix of naiSuffixes) {
-    if (!word.endsWith(suffix) || word.length <= suffix.length) continue
-    appendNaiStem(word.slice(0, -suffix.length))
-  }
-
-  if (word.endsWith('たり') && word.length > 2) {
-    pushGodanFromTaStem(word.slice(0, -2), out)
-  }
-  if (word.endsWith('だり') && word.length > 2) {
-    pushGodanFromTaStem(word.slice(0, -2), out)
-  }
-  if (word.endsWith('た') && word.length > 1) {
-    pushGodanFromTaStem(word.slice(0, -1), out)
-  }
-  if (word.endsWith('だ') && word.length > 1) {
-    pushGodanFromTaStem(word.slice(0, -1), out)
-  }
-  if (word.endsWith('て') && word.length > 1) {
-    pushGodanFromTeStem(word.slice(0, -1), out)
-  }
-  if (word.endsWith('で') && word.length > 1) {
-    pushGodanFromTeStem(word.slice(0, -1), out)
-  }
-
-  const suruPattern =
-    /^(.*)し(ませんでした|ました|ません|ます|なかった|ない|たり|た|て)$/
-  const suruMatch = word.match(suruPattern)
-  if (suruMatch && suruMatch[1] !== undefined) {
-    out.add(`${suruMatch[1]}する`)
-  }
-  if (word === 'した' || word === 'して' || word === 'しない') out.add('する')
-  if (word === 'きた' || word === 'きて' || word === 'こない') out.add('くる')
-
-  return unique(Array.from(out))
-}
 
 const GODAN_ROWS: Record<
   string,
@@ -223,7 +69,7 @@ const buildGodanForms = (word: string) => {
   ]
 }
 
-export const buildJapaneseSurfaceForms = (rawHeadword: string) => {
+const buildJapaneseSurfaceForms = (rawHeadword: string) => {
   const word = normalizeWord(rawHeadword)
   if (!word || !isJapaneseWord(word)) return [word].filter(Boolean)
 
@@ -319,50 +165,4 @@ export const buildPronunciationMapForText = (
     out[surface] = pronunciation
   })
   return out
-}
-
-export const resolveVocabularyMetaForSelection = (
-  rawSelection: string,
-  vocabularyMetaMap: Record<string, VocabularyMeta>,
-) => {
-  const selection = normalizeWord(rawSelection)
-  if (!selection) return null
-
-  const exact = vocabularyMetaMap[selection]
-  if (exact) return { word: selection, meta: exact, matchedBy: 'exact' as const }
-
-  const candidates = deinflectJapaneseWord(selection)
-  for (const candidate of candidates) {
-    const hit = vocabularyMetaMap[candidate]
-    if (hit) {
-      return { word: candidate, meta: hit, matchedBy: 'deinflect' as const }
-    }
-  }
-
-  const targetKeys = new Set(
-    unique(
-      candidates.flatMap(item => buildVocabularyCanonicalKeys(item)),
-    ),
-  )
-  if (targetKeys.size === 0) return null
-
-  let bestWord = ''
-  let bestMeta: VocabularyMeta | null = null
-  let bestScore = 0
-
-  Object.entries(vocabularyMetaMap).forEach(([word, meta]) => {
-    const keys = buildVocabularyCanonicalKeys(word)
-    const overlap = keys.filter(key => targetKeys.has(key)).length
-    if (overlap === 0) return
-    const bonus = candidates.includes(word) ? 20 : 0
-    const score = overlap * 10 + bonus - Math.abs(word.length - selection.length)
-    if (score > bestScore) {
-      bestScore = score
-      bestWord = word
-      bestMeta = meta
-    }
-  })
-
-  if (!bestMeta) return null
-  return { word: bestWord, meta: bestMeta, matchedBy: 'canonical' as const }
 }

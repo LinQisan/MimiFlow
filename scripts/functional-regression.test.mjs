@@ -65,8 +65,18 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '../utils/questions/editorOptions.ts'
+import { reorderExamOptionsForSession } from '../lib/repositories/exam/exam-option-order.ts'
 
 const ROOT = process.cwd()
+
+test('audio-only listening options keep their authored order', () => {
+  const options = [
+    { id: 'first', text: '', isCorrect: false },
+    { id: 'second', text: '　', isCorrect: true },
+    { id: 'third', text: '', isCorrect: false },
+  ]
+  assert.deepEqual(reorderExamOptionsForSession(options, 'LISTENING'), options)
+})
 
 test('question editors keep at least two options and preserve one correct answer', () => {
   const options = [
@@ -309,19 +319,20 @@ test('ebook navigation removes disposable pages and repairs repeated labels', ()
 })
 
 test('JLPT listening filenames preserve exam, section, and question identity', () => {
-  const legacy = parseJlptListeningIdentity('202507N1-02-06.mp3')
-  assert.deepEqual(legacy, {
+  const identity = parseJlptListeningIdentity('2025-07-N1-P02-Q06.mp3')
+  assert.deepEqual(identity, {
     level: 'N1',
     session: '2025-07',
     sectionNumber: 2,
     questionNumber: 6,
     sectionLabel: 'ポイント理解',
   })
-  assert.equal(formatJlptListeningTitle(legacy), '問題2-06｜ポイント理解')
+  assert.equal(formatJlptListeningTitle(identity), '問題2-06｜ポイント理解')
   assert.equal(
-    formatJlptListeningFilename(legacy),
+    formatJlptListeningFilename(identity),
     '2025-07-N1-P02-Q06.mp3',
   )
+  assert.equal(parseJlptListeningIdentity('202507N1-02-06.mp3'), null)
   assert.equal(
     parseJlptListeningIdentity('問題1-03')?.sectionLabel,
     '課題理解',
@@ -764,7 +775,6 @@ test('project dropdowns use the custom listbox instead of native select menus', 
     'features/import/ui/UploadCenterUI.tsx',
     'features/import/ui/UploadForm.tsx',
     'features/listening/ui/ListeningListClient.tsx',
-    'features/listening/ui/ListeningMetaForm.tsx',
     'features/listening/ui/ListeningQuickClassifyForm.tsx',
     'features/practice/ui/PaperAttributeForm.tsx',
     'features/practice/ui/PaperMaterialTypeBatchForm.tsx',
@@ -873,7 +883,12 @@ test('listening detail avoids idle animation work and uses scoped vocabulary sou
   assert.equal(detailPage.includes('listListeningMaterialsForShadowing'), false)
   assert.match(player, /useTextSelection\(\)/)
   assert.equal(player.includes('onClick={closeSelection}'), false)
+  assert.equal(player.includes('scrollIntoView'), false)
+  assert.match(player, /targetRect\.bottom > safeBottom/)
+  assert.match(player, /lg:grid-cols-\[minmax\(0,1fr\)_20rem\]/)
   assert.match(sentenceRow, /data-context-sentence='true'/)
+  assert.match(sentenceRow, /activeVocabulary/)
+  assert.match(sentenceRow, /lg:hidden/)
   assert.equal(sentenceRow.includes("isActive && currentState === 'idle'"), false)
   assert.match(listeningRepository, /lastPlayedAt: true/)
   assert.equal(listeningLanding.includes('最近收听'), false)
@@ -922,7 +937,7 @@ test('vocabulary language groups use pronunciation and source evidence', async (
   assert.match(vocabularyRepository, /sourceType: true/)
 })
 
-test('selection popover supports pointer, touch, keyboard and dialog semantics', async () => {
+test('selection popover supports pointer, keyboard and dialog semantics', async () => {
   const hook = await readFile(
     path.join(ROOT, 'hooks/useTextSelection.ts'),
     'utf8',
@@ -934,8 +949,8 @@ test('selection popover supports pointer, touch, keyboard and dialog semantics',
 
   assert.match(hook, /selectionchange/)
   assert.match(hook, /pointerup/)
-  assert.match(hook, /touchend/)
-  assert.match(hook, /pointerActiveRef\.current \|\| touchActiveRef\.current/)
+  assert.match(hook, /event\.pointerType === 'touch'/)
+  assert.equal(hook.includes('touchend'), false)
   assert.match(hook, /getSelectionFingerprint\(\) === previousSelection/)
   assert.match(hook, /lastKeyboardSelectionAtRef\.current > 500/)
   assert.match(hook, /scheduleSelectionCommit\(240\)/)

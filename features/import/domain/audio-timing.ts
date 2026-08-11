@@ -40,16 +40,3 @@ export const clampViewStart = (
   duration: number,
   windowSeconds: number,
 ) => Math.max(0, Math.min(Math.max(0, duration - windowSeconds), value))
-
-export function normalizeTimingRange(
-  start: number,
-  end: number,
-  duration: number,
-) {
-  const safeStart = clampTime(start, duration)
-  const safeEnd = clampTime(end, duration)
-  return {
-    start: Math.min(safeStart, Math.max(0, safeEnd - 0.05)),
-    end: Math.max(safeEnd, Math.min(duration, safeStart + 0.05)),
-  }
-}

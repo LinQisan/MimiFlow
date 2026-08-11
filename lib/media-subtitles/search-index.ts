@@ -24,7 +24,7 @@ export function normalizeMediaSubtitleSearchText(value: string) {
     .toLowerCase()
 }
 
-export function buildMediaSubtitleSearchIndexRows(
+function buildMediaSubtitleSearchIndexRows(
   material: MediaSubtitleMaterialSnapshot,
 ) {
   const payload = decodeMaterialPayload('MEDIA_SUBTITLE', material.contentPayload)

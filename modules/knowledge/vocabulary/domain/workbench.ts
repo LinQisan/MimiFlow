@@ -27,7 +27,7 @@ export const splitListInput = (value: string) =>
     ),
   )
 
-export const escapeRegExp = (value: string) =>
+const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 export const firstSentencePosTag = (tags?: string[]) => {
@@ -119,13 +119,13 @@ export const detectInflectedSurface = (word: string, sentenceText: string) => {
   return ''
 }
 
-export const dateToMs = (value?: Date | string | null) => {
+const dateToMs = (value?: Date | string | null) => {
   if (!value) return Number.NaN
   const timestamp = new Date(value).getTime()
   return Number.isFinite(timestamp) ? timestamp : Number.NaN
 }
 
-export const seededShuffle = <T>(list: T[], seed: number) => {
+const seededShuffle = <T>(list: T[], seed: number) => {
   const result = [...list]
   let state = Math.max(1, seed % 2147483647)
   const next = () => {

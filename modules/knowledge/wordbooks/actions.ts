@@ -3,7 +3,6 @@
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
-import { parseJsonStringList } from '@/utils/text/jsonList'
 
 const isWordbookMoveValid = async (
   wordbookId: string,
@@ -157,37 +156,6 @@ export async function deleteWordbook(wordbookId: string) {
   }
 }
 
-export async function addVocabularyToWordbook(
-  vocabularyId: string,
-  wordbookId: string,
-) {
-  try {
-    const trimmedWordbookId = wordbookId.trim()
-    if (!trimmedWordbookId) {
-      return { success: false, message: '单词书无效' }
-    }
-    await prisma.wordbookVocabulary.upsert({
-      where: {
-        wordbookId_vocabularyId: {
-          wordbookId: trimmedWordbookId,
-          vocabularyId,
-        },
-      },
-      update: {},
-      create: {
-        wordbookId: trimmedWordbookId,
-        vocabularyId,
-      },
-    })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '加入单词书失败' }
-  }
-}
-
 export async function removeVocabularyFromWordbook(
   vocabularyId: string,
   wordbookId: string,
@@ -230,64 +198,6 @@ export async function listWordbooksTree() {
     parentId: item.parentId,
     vocabularyCount: item._count.entries,
   }))
-}
-
-export async function listVocabularyByWordbook(
-  wordbookId: string,
-  page = 1,
-  pageSize = 48,
-) {
-  const normalizedPage = Math.max(1, Math.floor(page || 1))
-  const normalizedPageSize = Math.max(
-    1,
-    Math.min(100, Math.floor(pageSize || 48)),
-  )
-
-  const [totalCount, rows] = await Promise.all([
-    prisma.wordbookVocabulary.count({
-      where: { wordbookId },
-    }),
-    prisma.wordbookVocabulary.findMany({
-      where: { wordbookId },
-      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
-      skip: (normalizedPage - 1) * normalizedPageSize,
-      take: normalizedPageSize,
-      include: {
-        vocabulary: {
-          include: {
-            review: {
-              select: {
-                id: true,
-                due: true,
-                state: true,
-                stability: true,
-                difficulty: true,
-                elapsed_days: true,
-                scheduled_days: true,
-                reps: true,
-                lapses: true,
-                learning_steps: true,
-                last_review: true,
-              },
-            },
-            tags: {
-              include: {
-                tag: { select: { name: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-  ])
-
-  const totalPages = Math.max(1, Math.ceil(totalCount / normalizedPageSize))
-  return {
-    totalCount,
-    totalPages,
-    currentPage: Math.min(normalizedPage, totalPages),
-    items: rows.map(item => item.vocabulary),
-  }
 }
 
 export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
@@ -355,44 +265,6 @@ export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
   })
 
   return { success: true, updatedCount: updated.count }
-}
-
-export async function searchVocabularyCandidates(
-  keyword: string,
-  wordbookId?: string,
-  limit = 20,
-) {
-  const trimmed = keyword.trim()
-  if (!trimmed) return []
-  const maxLimit = Math.max(1, Math.min(50, Math.floor(limit || 20)))
-  const rows = await prisma.vocabulary.findMany({
-    where: {
-      word: { contains: trimmed, mode: 'insensitive' },
-      ...(wordbookId
-        ? {
-            wordbooks: {
-              none: {
-                wordbookId,
-              },
-            },
-          }
-        : {}),
-    },
-    orderBy: { createdAt: 'desc' },
-    take: maxLimit,
-    select: {
-      id: true,
-      word: true,
-      pronunciations: true,
-      partsOfSpeech: true,
-    },
-  })
-  return rows.map(item => ({
-    id: item.id,
-    word: item.word,
-    pronunciations: parseJsonStringList(item.pronunciations),
-    partsOfSpeech: parseJsonStringList(item.partsOfSpeech),
-  }))
 }
 
 export async function addVocabulariesToWordbook(

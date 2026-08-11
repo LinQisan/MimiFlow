@@ -28,14 +28,6 @@ export const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
   return `${trimmed}${baseName}.mp3`
 }
 
-export const MATERIAL_TYPE_LABEL: Record<MaterialType, string> = {
-  LISTENING: '聴解 / 听力语料',
-  MEDIA_SUBTITLE: '影视字幕',
-  READING: '読解 / 阅读材料',
-  VOCAB_GRAMMAR: '文字・語彙・文法',
-  SPEAKING: '跟读材料',
-}
-
 export const getDefaultCollectionTypeForMaterial = (materialType: MaterialType) => {
   if (materialType === 'SPEAKING' || materialType === 'MEDIA_SUBTITLE') {
     return 'CUSTOM_GROUP'

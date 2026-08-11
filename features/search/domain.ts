@@ -1,37 +1,6 @@
-import { MaterialType, Prisma } from '@prisma/client'
-import {
-  readInteger,
-  readString,
-} from '@/lib/validation/schema'
+import { MaterialType } from '@prisma/client'
+import { readString } from '@/lib/validation/schema'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
-
-export type JsonRecord = Record<string, unknown>
-
-export const asStringOrNull = (value: unknown) => {
-  if (value === null || value === undefined) return null
-  return typeof value === 'string' ? value : String(value)
-}
-
-export const asNumberOrDefault = (value: unknown, fallback = 0) => {
-  return readInteger(value, fallback)
-}
-
-export const toJsonValue = (
-  value: unknown,
-  fallback: Prisma.InputJsonValue,
-): Prisma.InputJsonValue =>
-  value === undefined ? fallback : (value as Prisma.InputJsonValue)
-
-export const toNullableJsonValue = (
-  value: unknown,
-):
-  | Prisma.InputJsonValue
-  | Prisma.NullableJsonNullValueInput
-  | undefined => {
-  if (value === undefined) return undefined
-  if (value === null) return Prisma.JsonNull
-  return value as Prisma.InputJsonValue
-}
 
 export const shortText = (text: string, max = 96) => {
   const value = (text || '').trim()
@@ -50,14 +19,6 @@ export const tokenizeKeyword = (keyword: string) =>
     .split(' ')
     .map(item => item.trim())
     .filter(Boolean)
-
-export const getMatchScore = (
-  keyword: string,
-  fields: Array<string | null | undefined>,
-) => {
-  const tokens = tokenizeKeyword(keyword).map(item => item.toLowerCase())
-  return getMatchScoreForTokens(tokens, fields)
-}
 
 const normalizeSearchFields = (fields: Array<string | null | undefined>) =>
   fields

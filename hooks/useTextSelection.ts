@@ -27,9 +27,7 @@ export interface SelectionState {
 export function useTextSelection() {
   const selectedRangeRef = useRef<Range | null>(null)
   const pointerActiveRef = useRef(false)
-  const touchActiveRef = useRef(false)
   const pointerStartSelectionRef = useRef('')
-  const touchStartSelectionRef = useRef('')
   const lastPointerUpAtRef = useRef(0)
   const lastKeyboardSelectionAtRef = useRef(0)
   const [selection, setSelection] = useState<SelectionState>({
@@ -227,24 +225,9 @@ export function useTextSelection() {
       pointerActiveRef.current = false
     }
 
-    const handleTouchStart = (event: TouchEvent) => {
-      if (isInsidePopover(event.target)) return
-      touchActiveRef.current = true
-      touchStartSelectionRef.current = getSelectionFingerprint()
-      hideSelection()
-    }
-
-    const handleTouchEnd = (event: TouchEvent) => {
-      if (isInsidePopover(event.target)) return
-      touchActiveRef.current = false
-      // Pointer Events 可用时 pointerup 已负责提交；这里仅保留旧浏览器回退。
-      if (Date.now() - lastPointerUpAtRef.current < 300) return
-      scheduleSelectionCommit(220, touchStartSelectionRef.current)
-    }
-
     const handleSelectionChange = () => {
       // 拖动或长按期间只让浏览器更新原生选区，等手势结束后再打开。
-      if (pointerActiveRef.current || touchActiveRef.current) return
+      if (pointerActiveRef.current) return
       // pointerup 会用手势开始时的选区做去重，避免同一次操作提交两次。
       if (Date.now() - lastPointerUpAtRef.current < 300) return
       // 只接受明确的键盘扩展选区，忽略脚本、焦点切换等附带的 selectionchange。
@@ -268,7 +251,7 @@ export function useTextSelection() {
     }
 
     const handleWindowScroll = () => {
-      if (pointerActiveRef.current || touchActiveRef.current) {
+      if (pointerActiveRef.current) {
         updateSelectionPosition()
         return
       }
@@ -278,8 +261,6 @@ export function useTextSelection() {
     document.addEventListener('pointerdown', handlePointerDown)
     document.addEventListener('pointerup', handlePointerUp)
     document.addEventListener('pointercancel', handlePointerCancel)
-    document.addEventListener('touchstart', handleTouchStart, { passive: true })
-    document.addEventListener('touchend', handleTouchEnd, { passive: true })
     document.addEventListener('selectionchange', handleSelectionChange)
     document.addEventListener('keydown', handleKeyDown)
     window.addEventListener('scroll', handleWindowScroll, { passive: true })
@@ -291,8 +272,6 @@ export function useTextSelection() {
       document.removeEventListener('pointerdown', handlePointerDown)
       document.removeEventListener('pointerup', handlePointerUp)
       document.removeEventListener('pointercancel', handlePointerCancel)
-      document.removeEventListener('touchstart', handleTouchStart)
-      document.removeEventListener('touchend', handleTouchEnd)
       document.removeEventListener('selectionchange', handleSelectionChange)
       document.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('scroll', handleWindowScroll)

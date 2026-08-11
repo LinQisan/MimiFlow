@@ -1,4 +1,4 @@
-export const JLPT_LISTENING_SECTION_LABELS: Record<number, string> = {
+const JLPT_LISTENING_SECTION_LABELS: Record<number, string> = {
   1: '課題理解',
   2: 'ポイント理解',
   3: '概要理解',
@@ -38,23 +38,6 @@ export function parseJlptListeningIdentity(
     return {
       level: `N${canonical[3]}`.toUpperCase(),
       session: `${canonical[1]}-${canonical[2].padStart(2, '0')}`,
-      sectionNumber,
-      questionNumber,
-      sectionLabel:
-        JLPT_LISTENING_SECTION_LABELS[sectionNumber] || `問題${sectionNumber}`,
-    }
-  }
-
-  const legacy = normalized.match(
-    /(?:^|[^0-9])(20\d{2})((?:0?[1-9])|1[0-2])N([1-5])-(\d{1,2})-(\d{1,2})(?:$|[^0-9])/i,
-  )
-  if (legacy) {
-    const sectionNumber = toPositiveInteger(legacy[4])
-    const questionNumber = toPositiveInteger(legacy[5])
-    if (!sectionNumber || !questionNumber) return null
-    return {
-      level: `N${legacy[3]}`.toUpperCase(),
-      session: `${legacy[1]}-${legacy[2].padStart(2, '0')}`,
       sectionNumber,
       questionNumber,
       sectionLabel:

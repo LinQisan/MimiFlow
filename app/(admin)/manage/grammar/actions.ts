@@ -99,27 +99,6 @@ const normalizeConstructions = (
   return parseConstructions(constructionsInput || '')
 }
 
-export async function searchGrammarSentenceCandidates(keyword: string) {
-  const q = keyword.trim()
-  if (!q) return []
-
-  const rows = await prisma.vocabularySentence.findMany({
-    where: {
-      OR: [{ text: { contains: q } }, { source: { contains: q } }],
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 20,
-    select: {
-      id: true,
-      text: true,
-      translation: true,
-      source: true,
-    },
-  })
-
-  return rows
-}
-
 export async function createGrammar(payload: CreateGrammarPayload) {
   const name = (payload.name || '').trim()
   const constructionsInput = (payload.constructionsInput || '').trim()

@@ -673,10 +673,6 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const files = (
       formData.getAll('assFiles').filter(item => item instanceof File) as File[]
     ).filter(file => file.size > 0 && file.name.toLowerCase().endsWith('.ass'))
-    const legacyFile = formData.get('assFile')
-    if (legacyFile instanceof File && legacyFile.size > 0) {
-      files.push(legacyFile)
-    }
 
     const uniqueFiles = Array.from(
       new Map(files.map(file => [`${file.name}_${file.size}`, file])).values(),
@@ -736,7 +732,11 @@ export async function uploadAssAndSaveData(formData: FormData) {
       siteAudioFiles.filter(item => item.startsWith(folderPrefix)),
     )
 
-    const createdMaterials: { name: string; id: string }[] = []
+    const createdMaterials: {
+      name: string
+      id: string
+      listeningSectionNumber: number | null
+    }[] = []
     const matchedFromUpload: string[] = []
     const matchedFromSite: string[] = []
     const fallbackPaths: string[] = []
@@ -949,7 +949,11 @@ export async function uploadAssAndSaveData(formData: FormData) {
           })
         }
       })
-      createdMaterials.push({ name: file.name, id: materialId })
+      createdMaterials.push({
+        name: file.name,
+        id: materialId,
+        listeningSectionNumber: jlptIdentity?.sectionNumber || null,
+      })
       createdCount += 1
     }
 
@@ -979,9 +983,13 @@ export async function uploadAssAndSaveData(formData: FormData) {
       message: isBatch
         ? `批量导入完成：${createdMaterials.length} 个字幕文件已写入（MaterialType=${matchedMaterialType}）。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
         : `成功导入 ${createdMaterials[0].name}（MaterialType=${matchedMaterialType}）。`,
-      lessonIds: createdMaterials.map(item => item.id.split(':').slice(1).join(':')),
+      lessonIds: createdMaterials.map(item => item.id),
       materialType: matchedMaterialType,
       questionEntryRequired: matchedMaterialType === MaterialType.LISTENING,
+      listeningSectionNumber:
+        createdMaterials.length === 1
+          ? createdMaterials[0].listeningSectionNumber
+          : null,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '未知错误'

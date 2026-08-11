@@ -1,4 +1,4 @@
-export const DOMAIN_ERROR_CODES = [
+const DOMAIN_ERROR_CODES = [
   'VALIDATION_ERROR',
   'NOT_FOUND',
   'CONFLICT',
@@ -28,7 +28,7 @@ export class DomainError extends Error {
   }
 }
 
-export function isDomainError(error: unknown): error is DomainError {
+function isDomainError(error: unknown): error is DomainError {
   return error instanceof DomainError
 }
 

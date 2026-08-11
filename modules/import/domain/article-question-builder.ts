@@ -4,7 +4,7 @@ import type {
   ArticlePreviewRow,
 } from '../types'
 
-export const isSentenceBoundaryAt = (text: string, index: number) => {
+const isSentenceBoundaryAt = (text: string, index: number) => {
   const ch = text[index]
   if (!ch) return false
   if (
@@ -291,4 +291,3 @@ export const buildArticleQuestionsFromQuickInput = (
 
   return { drafts, previewRows }
 }
-

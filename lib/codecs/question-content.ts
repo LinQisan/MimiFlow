@@ -13,7 +13,7 @@ const canonicalQuestionKeys = [
   'questionType',
 ] as const
 
-export const questionContentSchema = z
+const questionContentSchema = z
   .object({
     targetWord: z.string().nullable().optional(),
     optionLabelFormat: z.string().optional(),

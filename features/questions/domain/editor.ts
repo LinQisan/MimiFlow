@@ -60,24 +60,6 @@ export function updateQuestionField<
   )
 }
 
-export function setCorrectQuestionOption<Question extends BaseEditableQuestion>(
-  questions: Question[],
-  questionId: string,
-  optionId: string,
-) {
-  return questions.map(question =>
-    question.id !== questionId
-      ? question
-      : {
-          ...question,
-          options: question.options.map(option => ({
-            ...option,
-            isCorrect: option.id === optionId,
-          })),
-        },
-  )
-}
-
 export function updateQuestionOption<Question extends BaseEditableQuestion>(
   questions: Question[],
   questionId: string,

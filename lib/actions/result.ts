@@ -5,7 +5,7 @@ import {
   toDomainError,
 } from '../errors/domain-error.ts'
 
-export type ActionError = {
+type ActionError = {
   code: DomainErrorCode
   message: string
   details?: DomainErrorDetails

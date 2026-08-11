@@ -1,18 +1,14 @@
 'use server'
 
 import prisma from '@/lib/prisma'
-import { revalidatePath } from 'next/cache'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import {
   normalizeQuestionContext,
   normalizeQuestionOptions,
 } from '@/lib/repositories/materials'
 import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-index'
-import { MaterialType, QuestionType } from '@prisma/client'
-import { Prisma } from '@prisma/client'
+import { MaterialType } from '@prisma/client'
 import {
-  asNumberOrDefault,
-  asStringOrNull,
   buildSearchDetailHref,
   extractMaterialSearchText,
   formatMediaDialogueMeta,
@@ -21,13 +17,8 @@ import {
   normalizeKeyword,
   shortText,
   sortByScore,
-  toJsonValue,
-  toNullableJsonValue,
   tokenizeKeyword,
 } from './domain'
-import { readOptionalJsonRecord } from '@/lib/validation/schema'
-import { encodeMaterialPayload } from '@/lib/codecs/material-payload'
-import { encodeQuestionContent } from '@/lib/codecs/question-content'
 
 export type GlobalSearchResult = {
   id: string
@@ -73,7 +64,7 @@ export async function searchGlobalContent(
     passageRows,
     quizRows,
     questionRows,
-    legacyDialogueRows,
+    audioDialogueRows,
     mediaDialogueRows,
   ] = await Promise.all([
     typeSet.has('vocabulary')
@@ -289,8 +280,8 @@ export async function searchGlobalContent(
     ),
   )
 
-  const rankedLegacyDialogueRows = sortByScore(
-    legacyDialogueRows,
+  const rankedAudioDialogueRows = sortByScore(
+    audioDialogueRows,
     item => [item.text, item.source],
     q,
   ).filter(item => includesAllTokens([item.text, item.source], tokens))
@@ -416,13 +407,13 @@ export async function searchGlobalContent(
     }),
   )
 
-  const legacyDialogueResults: GlobalSearchResult[] = rankedLegacyDialogueRows.map(
+  const audioDialogueResults: GlobalSearchResult[] = rankedAudioDialogueRows.map(
     item => ({
-      id: `dialogue-legacy:${item.sourceId}`,
+      id: `dialogue-audio:${item.sourceId}`,
       type: 'dialogue',
       title: shortText(item.text, 48),
       snippet: shortText(item.text, 100),
-      href: buildSearchDetailHref(`dialogue-legacy:${item.sourceId}`, 'dialogue', q),
+      href: buildSearchDetailHref(`dialogue-audio:${item.sourceId}`, 'dialogue', q),
       targetHref:
         item.sourceUrl && item.sourceUrl !== '#'
           ? item.sourceUrl
@@ -466,330 +457,6 @@ export async function searchGlobalContent(
     ...quizResults,
     ...questionResults,
     ...mediaDialogueResults,
-    ...legacyDialogueResults,
+    ...audioDialogueResults,
   ].slice(0, 50)
-}
-
-export async function getGlobalSearchResultDetail(
-  resultId: string,
-  type: GlobalSearchType,
-) {
-  const rid = (resultId || '').trim()
-  if (!rid) return null
-
-  if (type === 'vocabulary' && rid.startsWith('vocab-')) {
-    const id = rid.slice('vocab-'.length)
-    const row = await prisma.vocabulary.findUnique({
-      where: { id },
-      include: {
-        sentenceLinks: {
-          include: { sentence: true },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-    })
-    if (!row) return null
-    const focusParams = new URLSearchParams()
-    focusParams.set('focus', row.id)
-    focusParams.set('q', row.word)
-    return {
-      title: row.word,
-      type,
-      targetHref: `/vocabulary?${focusParams.toString()}`,
-      raw: row,
-    }
-  }
-
-  if (type === 'sentence' && rid.startsWith('sentence-')) {
-    const id = rid.slice('sentence-'.length)
-    const row = await prisma.vocabularySentence.findUnique({ where: { id } })
-    if (!row) return null
-    return {
-      title: row.text,
-      type,
-      targetHref: row.sourceUrl || '/search',
-      raw: row,
-    }
-  }
-
-  if (type === 'passage' && rid.startsWith('passage-')) {
-    const id = rid.slice('passage-'.length)
-    const row = await prisma.material.findUnique({
-      where: { id },
-      include: {
-        collectionMaterials: {
-          include: { collection: true },
-        },
-        questions: true,
-      },
-    })
-    if (!row) return null
-    return {
-      title: row.title || row.id,
-      type,
-      targetHref: '/practice',
-      raw: row,
-    }
-  }
-
-  if (type === 'quiz' && rid.startsWith('quiz-')) {
-    const id = rid.slice('quiz-'.length)
-    const row = await prisma.material.findUnique({
-      where: { id },
-      include: {
-        collectionMaterials: {
-          include: { collection: true },
-        },
-        questions: true,
-      },
-    })
-    if (!row) return null
-    return {
-      title: row.title || row.id,
-      type,
-      targetHref: '/practice',
-      raw: row,
-    }
-  }
-
-  if (type === 'question' && rid.startsWith('question-')) {
-    const id = rid.slice('question-'.length)
-    const row = await prisma.question.findUnique({
-      where: { id },
-      include: {
-        material: {
-          include: {
-            collectionMaterials: {
-              include: { collection: true },
-            },
-          },
-        },
-      },
-    })
-    if (!row) return null
-    return {
-      title: normalizeQuestionContext(row.prompt, row.context),
-      type,
-      targetHref: '/practice',
-      raw: row,
-    }
-  }
-
-  if (type === 'dialogue' && rid.startsWith('dialogue-legacy:')) {
-    const sourceId = rid.slice('dialogue-legacy:'.length)
-    const rows = await prisma.vocabularySentence.findMany({
-      where: {
-        sourceType: 'AUDIO_DIALOGUE',
-        sourceId,
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 30,
-    })
-    if (rows.length === 0) return null
-    return {
-      title: rows[0].text,
-      type,
-      targetHref: rows[0].sourceUrl || '/listening',
-      raw: rows,
-    }
-  }
-
-  if (type === 'dialogue' && rid.startsWith('dialogue-media:')) {
-    const payload = rid.slice('dialogue-media:'.length)
-    const separator = payload.indexOf('::')
-    if (separator <= 0) return null
-    const materialId = payload.slice(0, separator)
-    const stableId = payload.slice(separator + 2)
-    if (!materialId || !stableId) return null
-
-    const row = await prisma.mediaSubtitleLine.findUnique({
-      where: {
-        materialId_stableId: {
-          materialId,
-          stableId,
-        },
-      },
-      include: {
-        material: {
-          select: {
-            id: true,
-            title: true,
-            contentPayload: true,
-          },
-        },
-      },
-    })
-    if (!row) return null
-
-    const params = new URLSearchParams()
-    params.set('lineStableId', stableId)
-
-    return {
-      title: row.text.trim() || row.material.title || '影视字幕',
-      type,
-      targetHref: `/subtitles/${row.material.id}?${params.toString()}`,
-      raw: {
-        material: row.material,
-        dialogue: row,
-        meta: formatMediaDialogueMeta({
-          sourceType: row.subtitleSourceType === 'TV' ? 'TV' : 'MOVIE',
-          workTitle: row.workTitle || row.materialTitle,
-          season: row.season || '',
-          episode: row.episode || '',
-        }),
-      },
-    }
-  }
-
-  return null
-}
-
-export async function updateGlobalSearchResultDetail(input: {
-  resultId: string
-  type: GlobalSearchType
-  rawJson: string
-}) {
-  const rid = (input.resultId || '').trim()
-  const type = input.type
-  const rawJson = (input.rawJson || '').trim()
-
-  if (!rid || !type) {
-    return { success: false, message: '参数缺失，无法保存。' }
-  }
-  if (!rawJson) {
-    return { success: false, message: 'JSON 不能为空。' }
-  }
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(rawJson)
-  } catch {
-    return { success: false, message: 'JSON 格式错误，请检查后重试。' }
-  }
-
-  try {
-    if (type === 'vocabulary' && rid.startsWith('vocab-')) {
-      const id = rid.slice('vocab-'.length)
-      const payload = readOptionalJsonRecord(parsed)
-      if (!payload) return { success: false, message: '单词数据必须是对象。' }
-      await prisma.vocabulary.update({
-        where: { id },
-        data: {
-          word: asStringOrNull(payload.word) || '',
-          sourceType: (asStringOrNull(payload.sourceType) as
-            | 'AUDIO_DIALOGUE'
-            | 'MEDIA_SUBTITLE_LINE'
-            | 'ARTICLE_TEXT'
-            | 'QUIZ_QUESTION') || 'QUIZ_QUESTION',
-          sourceId: asStringOrNull(payload.sourceId) || '',
-          wordAudio: asStringOrNull(payload.wordAudio),
-          pronunciations: asStringOrNull(payload.pronunciations),
-          partsOfSpeech: asStringOrNull(payload.partsOfSpeech),
-          meanings: asStringOrNull(payload.meanings),
-        },
-      })
-      revalidatePath('/vocabulary')
-      revalidatePath('/search')
-      revalidatePath('/manage/search')
-      return { success: true, message: '单词数据已保存。' }
-    }
-
-    if (type === 'sentence' && rid.startsWith('sentence-')) {
-      const id = rid.slice('sentence-'.length)
-      const payload = readOptionalJsonRecord(parsed)
-      if (!payload) return { success: false, message: '句子数据必须是对象。' }
-      const text = asStringOrNull(payload.text) || ''
-      await prisma.vocabularySentence.update({
-        where: { id },
-        data: {
-          text,
-          normalizedText: (asStringOrNull(payload.normalizedText) || text).trim(),
-          translation: asStringOrNull(payload.translation),
-          audioFile: asStringOrNull(payload.audioFile),
-          source: asStringOrNull(payload.source) || '',
-          sourceUrl: asStringOrNull(payload.sourceUrl) || '',
-          sourceType: asStringOrNull(payload.sourceType) as
-            | 'AUDIO_DIALOGUE'
-            | 'MEDIA_SUBTITLE_LINE'
-            | 'ARTICLE_TEXT'
-            | 'QUIZ_QUESTION'
-            | null,
-          sourceId: asStringOrNull(payload.sourceId),
-        },
-      })
-      revalidatePath('/search')
-      revalidatePath('/manage/search')
-      return { success: true, message: '句子数据已保存。' }
-    }
-
-    if (
-      (type === 'passage' && rid.startsWith('passage-')) ||
-      (type === 'quiz' && rid.startsWith('quiz-'))
-    ) {
-      const id = rid.slice(type === 'passage' ? 'passage-'.length : 'quiz-'.length)
-      const payload = readOptionalJsonRecord(parsed)
-      if (!payload) return { success: false, message: '材料数据必须是对象。' }
-      const materialType =
-        type === 'passage' ? MaterialType.READING : MaterialType.VOCAB_GRAMMAR
-      const materialUpdateData: Prisma.MaterialUpdateInput = {
-        title: asStringOrNull(payload.title) || '',
-        chapterName: asStringOrNull(payload.chapterName),
-        contentPayload: encodeMaterialPayload(materialType, payload.contentPayload),
-      }
-      if ('metadata' in payload) {
-        materialUpdateData.metadata =
-          payload.metadata === null ? Prisma.JsonNull : payload.metadata
-      }
-      await prisma.material.update({
-        where: { id },
-        data: materialUpdateData,
-      })
-      revalidatePath('/practice')
-      revalidatePath('/practice')
-      revalidatePath('/search')
-      revalidatePath('/manage/search')
-      return { success: true, message: '材料数据已保存。' }
-    }
-
-    if (type === 'question' && rid.startsWith('question-')) {
-      const id = rid.slice('question-'.length)
-      const payload = readOptionalJsonRecord(parsed)
-      if (!payload) return { success: false, message: '题目数据必须是对象。' }
-      await prisma.question.update({
-        where: { id },
-        data: {
-          questionType:
-            typeof payload.questionType === 'string' &&
-            Object.values(QuestionType).includes(payload.questionType as QuestionType)
-              ? (payload.questionType as QuestionType)
-              : undefined,
-          prompt: asStringOrNull(payload.prompt),
-          context: asStringOrNull(payload.context),
-          content: encodeQuestionContent(payload.content),
-          options: toNullableJsonValue(payload.options),
-          answer: toJsonValue(payload.answer, {}),
-          analysis: asStringOrNull(payload.analysis),
-          note: asStringOrNull(payload.note),
-          sortOrder: asNumberOrDefault(payload.sortOrder, 0),
-        },
-      })
-      revalidatePath('/practice')
-      revalidatePath('/practice')
-      revalidatePath('/search')
-      revalidatePath('/manage/search')
-      return { success: true, message: '题目数据已保存。' }
-    }
-
-    if (type === 'dialogue') {
-      return {
-        success: false,
-        message: '当前暂不支持在此页直接修改听力聚合结果，请到对应管理页修改。',
-      }
-    }
-
-    return { success: false, message: '不支持的类型或结果 ID。' }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '保存失败'
-    return { success: false, message }
-  }
 }

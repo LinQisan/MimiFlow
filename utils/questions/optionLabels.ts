@@ -1,4 +1,4 @@
-export const OPTION_LABEL_FORMATS = [
+const OPTION_LABEL_FORMATS = [
   'numeric',
   'upper-alpha',
   'circled-number',

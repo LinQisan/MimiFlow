@@ -43,7 +43,7 @@ export type ExamHubLevelSummary = {
   papers: ExamHubPaperSummary[]
 }
 
-export type ExamHubManageSection = {
+type ExamHubManageSection = {
   key: string
   label: string
   detail: string

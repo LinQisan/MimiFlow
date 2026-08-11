@@ -6,7 +6,7 @@ type EpubManifestItem = {
   mediaType: string
 }
 
-export type ParsedEpubChapter = {
+type ParsedEpubChapter = {
   id: string
   title: string
   text: string

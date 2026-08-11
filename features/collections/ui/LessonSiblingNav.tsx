@@ -20,12 +20,15 @@ export default function LessonSiblingNav({
   lessons,
   currentLessonId,
   hrefBase = '/manage/listening',
+  appearance = 'default',
 }: {
   lessons: SiblingLesson[]
   currentLessonId: string
   hrefBase?: string
+  appearance?: 'default' | 'practice'
 }) {
   const dialog = useDialog()
+  const practiceAppearance = appearance === 'practice'
 
   const handleReorder = async (orderedIds: string[]) => {
     const res = await updateSortOrder('Lesson', orderedIds)
@@ -38,7 +41,9 @@ export default function LessonSiblingNav({
   if (lessons.length <= 1) return null
 
   return (
-    <details className='mb-4 rounded-2xl border border-gray-200 bg-white shadow-sm'>
+    <details className={practiceAppearance
+      ? 'mb-6 rounded-[18px] border border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'
+      : 'mb-4 rounded-2xl border border-gray-200 bg-white shadow-sm'}>
       <summary className='cursor-pointer list-none p-3 md:p-4 flex items-center justify-between text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden'>
         <span className='flex items-center gap-2'>
           <svg className='w-4 h-4 text-gray-400 transition-transform duration-300 group-open:-rotate-180' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
@@ -61,20 +66,28 @@ export default function LessonSiblingNav({
             return (
               <SortableItem key={lesson.id} id={lesson.id}>
                 <div
-                  className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-all ${
+                  className={`flex items-center justify-between rounded-xl border px-3 py-2.5 transition-all ${
                     isCurrent
-                      ? 'bg-indigo-50 border border-indigo-200 shadow-sm'
-                      : 'bg-white border border-gray-100 hover:border-indigo-200 hover:shadow-sm'
+                      ? practiceAppearance
+                        ? 'border-slate-300 bg-slate-100'
+                        : 'border-indigo-200 bg-indigo-50 shadow-sm'
+                      : practiceAppearance
+                        ? 'border-slate-100 bg-white hover:border-slate-300'
+                        : 'border-gray-100 bg-white hover:border-indigo-200 hover:shadow-sm'
                   }`}>
                   <div className='flex items-center gap-2 text-sm min-w-0'>
                     <DragHandle />
                     <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${
-                      isCurrent ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'
+                      isCurrent
+                        ? practiceAppearance
+                          ? 'bg-slate-950 text-white'
+                          : 'bg-indigo-600 text-white'
+                        : 'bg-gray-100 text-gray-500'
                     }`}>
                       {i + 1}
                     </span>
                     {isCurrent ? (
-                      <span className='font-bold text-indigo-700 truncate'>{lesson.title}</span>
+                      <span className={`truncate font-bold ${practiceAppearance ? 'text-slate-950' : 'text-indigo-700'}`}>{lesson.title}</span>
                     ) : (
                       <Link
                         href={`${hrefBase}/${lesson.id}`}

@@ -24,7 +24,7 @@ export type UploadCollectionLite = {
   }[]
 }
 
-export type QuestionOptionDraft = { text: string; isCorrect: boolean }
+type QuestionOptionDraft = { text: string; isCorrect: boolean }
 
 export type ArticlePreviewRow = {
   serial: string

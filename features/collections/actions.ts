@@ -1,10 +1,9 @@
 'use server'
 
-import { CollectionType, MaterialType } from '@prisma/client'
+import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
-import { resolveMaterialId } from '@/lib/repositories/collection/manage'
 
 async function isCollectionMoveValid(
   collectionId: string,
@@ -71,32 +70,6 @@ export async function deleteCollectionMaterial(materialId: string) {
     return { success: true, message: '材料已删除' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
-    return { success: false, message }
-  }
-}
-
-export async function updateCollectionMaterialTitle(
-  maybeId: string,
-  type: MaterialType,
-  title: string,
-) {
-  const nextTitle = title.trim()
-  if (!nextTitle) return { success: false, message: '标题不能为空' }
-  try {
-    const materialId = await resolveMaterialId(maybeId, type)
-    if (!materialId) return { success: false, message: '材料不存在' }
-    await prisma.material.update({
-      where: { id: materialId },
-      data: { title: nextTitle },
-    })
-    revalidatePath('/manage/collections')
-    revalidatePath(`/manage/collections/lesson/${maybeId}`)
-    revalidatePath(`/manage/listening/${maybeId}`)
-    revalidatePath(`/manage/collections/article/${maybeId}`)
-    revalidatePath(`/manage/collections/quiz/${maybeId}`)
-    return { success: true, message: '标题已更新' }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '更新失败'
     return { success: false, message }
   }
 }

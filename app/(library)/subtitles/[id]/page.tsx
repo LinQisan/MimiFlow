@@ -109,7 +109,7 @@ export default async function MediaSubtitleDetailPage({
     const dialogueId = item.id ?? index + 1
     return {
       id: dialogueId,
-      stableId: item.stableId || `legacy-${dialogueId}`,
+      stableId: item.stableId,
       text: item.text,
       start: item.start,
       end: item.end,

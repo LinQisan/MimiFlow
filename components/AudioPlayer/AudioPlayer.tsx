@@ -7,7 +7,7 @@ import { StudyTimeKind } from '@prisma/client'
 import { addSentenceToReview } from '@/modules/review/actions/memory'
 import { logMaterialPlaytime } from '@/features/audio/actions'
 
-import type { TooltipSaveState } from '@/components/vocabulary/VocabularyTooltip'
+import type { TooltipSaveState } from '@/components/vocabulary/VocabularySaveStatus'
 import WordTooltip from '@/components/exam/WordTooltip'
 import TrustedHtml from '@/components/ui/TrustedHtml'
 import WordMetaPanel from '@/components/vocabulary/WordMetaPanel'
@@ -119,6 +119,7 @@ export default function AudioPlayer({
   const totalPlaySecondsRef = useRef(initialTotalPlaySeconds)
   const dirtySecondsRef = useRef(0)
   const isFlushingRef = useRef(false)
+  const playerRootRef = useRef<HTMLDivElement>(null)
   const activeSentenceNo =
     activeId === null
       ? 0
@@ -360,14 +361,82 @@ export default function AudioPlayer({
 
   useEffect(() => {
     if (activeId === null) return
-    const targetId =
-      isBlindMode && previousSentenceId !== null ? previousSentenceId : activeId
-    const element = document.getElementById(`sentence-${targetId}`)
-    if (element) element.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [activeId, isBlindMode, previousSentenceId])
+    const frameId = window.requestAnimationFrame(() => {
+      const targetId =
+        isBlindMode && previousSentenceId !== null
+          ? previousSentenceId
+          : activeId
+      const element = document.getElementById(`sentence-${targetId}`)
+      if (!element) return
+
+      const root = isEmbedded ? playerRootRef.current : null
+      const rootRect = root?.getBoundingClientRect()
+      const headerBottom =
+        playerRootRef.current
+          ?.querySelector('header')
+          ?.getBoundingClientRect().bottom ?? 0
+      const viewportBottom = rootRect
+        ? Math.min(rootRect.bottom, window.innerHeight)
+        : window.innerHeight
+      const safeTop = Math.max(0, headerBottom) + 16
+      const safeBottom = Math.max(safeTop + 80, viewportBottom - 72)
+      const targetRect = element.getBoundingClientRect()
+      const scrollDelta =
+        targetRect.top < safeTop
+          ? targetRect.top - safeTop
+          : targetRect.bottom > safeBottom
+            ? targetRect.bottom - safeBottom
+            : 0
+
+      // 当前句仍在舒适阅读区时保持用户视角，只在离开视区时最小幅度跟随。
+      if (Math.abs(scrollDelta) < 1) return
+      const behavior = window.matchMedia('(prefers-reduced-motion: reduce)')
+        .matches
+        ? 'auto'
+        : 'smooth'
+      if (root) root.scrollBy({ top: scrollDelta, behavior })
+      else window.scrollBy({ top: scrollDelta, behavior })
+    })
+
+    return () => window.cancelAnimationFrame(frameId)
+  }, [activeId, isBlindMode, isEmbedded, previousSentenceId])
+
+  const activeVocabularyPanel =
+    activeId !== null && activeSentenceEntries.length > 0 ? (
+      <section className='rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4'>
+        <div className='mb-2 flex items-center justify-between'>
+          <h2 className='text-sm font-bold text-slate-900 dark:text-slate-100'>
+            当前句词汇
+          </h2>
+          <span className='text-[11px] text-slate-400'>
+            第 {activeSentenceNo} 句
+          </span>
+        </div>
+        <WordMetaPanel
+          entries={activeSentenceEntries}
+          showPronunciation={showPronunciation}
+          showMeaning={showMeaning}
+          contextSentence={
+            lesson.dialogue.find(item => item.id === activeId)?.text || ''
+          }
+          enableMeaningMatch={showMeaning}
+          matchedMeaningMap={meaningMatchBySentence[activeId] || {}}
+          onMatchedMeaningChange={(word, meaningIndex) => {
+            setMeaningMatchBySentence(prev => ({
+              ...prev,
+              [activeId]: {
+                ...(prev[activeId] || {}),
+                [word]: meaningIndex,
+              },
+            }))
+          }}
+        />
+      </section>
+    ) : null
 
   return (
     <div
+      ref={playerRootRef}
       className={`relative bg-slate-50 dark:bg-slate-950 ${
         isEmbedded ? 'min-h-full h-full overflow-y-auto' : 'min-h-screen'
       }`}>
@@ -438,41 +507,8 @@ export default function AudioPlayer({
         onBlindModeChange={setIsBlindMode}
       />
 
-      <div className='mx-auto w-full max-w-4xl px-3 py-3 md:px-5 md:py-4'>
-        {activeSentenceEntries.length > 0 ? (
-          <section className='mb-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4'>
-            <div className='mb-2 flex items-center justify-between'>
-              <h2 className='text-sm font-bold text-slate-900 dark:text-slate-100'>
-                当前句词汇
-              </h2>
-              <span className='text-[11px] text-slate-400'>
-                第 {activeSentenceNo} 句
-              </span>
-            </div>
-            <WordMetaPanel
-              entries={activeSentenceEntries}
-              showPronunciation={showPronunciation}
-              showMeaning={showMeaning}
-              contextSentence={
-                lesson.dialogue.find(item => item.id === activeId)?.text || ''
-              }
-              enableMeaningMatch={showMeaning}
-              matchedMeaningMap={meaningMatchBySentence[activeId || 0] || {}}
-              onMatchedMeaningChange={(word, meaningIndex) => {
-                if (!activeId) return
-                setMeaningMatchBySentence(prev => ({
-                  ...prev,
-                  [activeId]: {
-                    ...(prev[activeId] || {}),
-                    [word]: meaningIndex,
-                  },
-                }))
-              }}
-            />
-          </section>
-        ) : null}
-
-        <div className='space-y-2 pb-24 md:pb-32'>
+      <div className='mx-auto grid w-full max-w-6xl gap-4 px-3 py-3 md:px-5 md:py-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start'>
+        <div className='min-w-0 space-y-2 pb-24 md:pb-32'>
           {lesson.dialogue.map((item, index) => (
             <ListeningSentenceRow
               key={item.id}
@@ -496,6 +532,9 @@ export default function AudioPlayer({
               savingDialogueId={savingDialogueId}
               dialogueSaveState={dialogueSaveState}
               renderedText={annotateSentence(item.text)}
+              activeVocabulary={
+                activeId === item.id ? activeVocabularyPanel : null
+              }
               canAddToReview={isSentenceMeaningMatched(item.id)}
               onClick={() => handleSentenceClick(item)}
               onToggleLoop={event => {
@@ -506,6 +545,19 @@ export default function AudioPlayer({
             />
           ))}
         </div>
+
+        <aside className='sticky top-28 hidden max-h-[calc(100vh-8rem)] overflow-y-auto [overflow-anchor:none] lg:block'>
+          {activeVocabularyPanel || (
+            <div className='rounded-xl border border-dashed border-slate-300 bg-white/60 p-5 text-center dark:border-slate-700 dark:bg-slate-900/60'>
+              <p className='text-sm font-semibold text-slate-600 dark:text-slate-300'>
+                播放一句后显示词汇
+              </p>
+              <p className='mt-1 text-xs text-slate-400'>
+                词汇会固定在右侧，不会挤动正文
+              </p>
+            </div>
+          )}
+        </aside>
       </div>
     </div>
   )

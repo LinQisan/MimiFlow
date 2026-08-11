@@ -1,7 +1,7 @@
 import { MaterialType, Prisma } from '@prisma/client'
 import { z } from 'zod'
 
-export const materialDialogueSchema = z
+const materialDialogueSchema = z
   .object({
     id: z.coerce.number().finite().optional(),
     sequenceId: z.coerce.number().finite().optional(),
@@ -26,7 +26,7 @@ const audioPayloadFields = {
   tags: z.array(z.string()).catch([]),
 }
 
-export const listeningPayloadSchema = z
+const listeningPayloadSchema = z
   .object({
     ...audioPayloadFields,
     jlptLevel: z.string().catch(''),
@@ -40,11 +40,15 @@ export const listeningPayloadSchema = z
   })
   .passthrough()
 
-export const speakingPayloadSchema = z
+const speakingPayloadSchema = z
   .object(audioPayloadFields)
   .passthrough()
 
-export const readingPayloadSchema = z
+const mediaSubtitleDialogueSchema = materialDialogueSchema.extend({
+  stableId: z.string().trim().min(1),
+})
+
+const readingPayloadSchema = z
   .object({
     text: z.string().catch(''),
     description: z.string().catch(''),
@@ -66,7 +70,7 @@ export const readingPayloadSchema = z
   })
   .passthrough()
 
-export const vocabularyGrammarPayloadSchema = z
+const vocabularyGrammarPayloadSchema = z
   .object({
     title: z.string().catch(''),
     description: z.string().catch(''),
@@ -76,6 +80,7 @@ export const vocabularyGrammarPayloadSchema = z
 export const mediaSubtitlePayloadSchema = z
   .object({
     ...audioPayloadFields,
+    dialogues: z.array(mediaSubtitleDialogueSchema).catch([]),
     subtitleSourceType: z.enum(['MOVIE', 'TV']).catch('MOVIE'),
     subtitleWorkTitle: z.string().catch(''),
     subtitleSeason: z.string().catch(''),
@@ -98,7 +103,7 @@ export const materialPayloadEnvelopeSchema = z.discriminatedUnion('type', [
   }),
 ])
 
-export type MaterialPayloadEnvelope = z.output<
+type MaterialPayloadEnvelope = z.output<
   typeof materialPayloadEnvelopeSchema
 >
 export type MaterialPayload<T extends MaterialType> = Extract<

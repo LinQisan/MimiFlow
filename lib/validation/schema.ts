@@ -2,26 +2,17 @@ import { z } from 'zod'
 
 import { DomainError } from '../errors/domain-error.ts'
 
-export const jsonRecordSchema = z.record(z.string(), z.unknown())
-export const jsonRecordOrEmptySchema = jsonRecordSchema.catch({})
-export const stringOrEmptySchema = z.string().catch('')
-export const nullableStringSchema = z.string().nullable().catch(null)
-export const booleanOrFalseSchema = z.boolean().catch(false)
-export const finiteNumberSchema = z.coerce.number().finite()
-export const stringArraySchema = z.array(z.string())
+const jsonRecordSchema = z.record(z.string(), z.unknown())
+const jsonRecordOrEmptySchema = jsonRecordSchema.catch({})
+const stringOrEmptySchema = z.string().catch('')
+const booleanOrFalseSchema = z.boolean().catch(false)
+const finiteNumberSchema = z.coerce.number().finite()
+const stringArraySchema = z.array(z.string())
 
 export const readJsonRecord = (value: unknown) =>
   jsonRecordOrEmptySchema.parse(value)
 
-export const readOptionalJsonRecord = (value: unknown) => {
-  const result = jsonRecordSchema.safeParse(value)
-  return result.success ? result.data : null
-}
-
 export const readString = (value: unknown) => stringOrEmptySchema.parse(value)
-
-export const readNullableString = (value: unknown) =>
-  nullableStringSchema.parse(value)
 
 export const readBoolean = (value: unknown) =>
   booleanOrFalseSchema.parse(value)
@@ -31,11 +22,6 @@ export const readStringArray = (value: unknown) =>
 
 export function readFiniteNumber(value: unknown, fallback = 0): number {
   const result = finiteNumberSchema.safeParse(value)
-  return result.success ? result.data : fallback
-}
-
-export function readInteger(value: unknown, fallback = 0): number {
-  const result = z.coerce.number().finite().int().safeParse(value)
   return result.success ? result.data : fallback
 }
 

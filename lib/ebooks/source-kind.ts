@@ -1,6 +1,6 @@
-export const EBOOK_SOURCE_KINDS = ['EPUB', 'PASTED_BOOK'] as const
+const EBOOK_SOURCE_KINDS = ['EPUB', 'PASTED_BOOK'] as const
 
-export type EbookSourceKind = (typeof EBOOK_SOURCE_KINDS)[number]
+type EbookSourceKind = (typeof EBOOK_SOURCE_KINDS)[number]
 
 export function isEbookSourceKind(value: string | null | undefined) {
   return EBOOK_SOURCE_KINDS.includes(value as EbookSourceKind)

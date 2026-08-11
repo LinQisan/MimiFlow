@@ -53,7 +53,7 @@ function normalizeQuestionOptions(options: unknown, answer: unknown) {
   }))
 }
 
-export async function resolveMaterialId(maybeId: string, type: MaterialType) {
+async function resolveMaterialId(maybeId: string, type: MaterialType) {
   const direct = await prisma.material.findUnique({
     where: { id: maybeId },
     select: { id: true, type: true },

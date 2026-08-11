@@ -162,13 +162,3 @@ export const buildVocabularyCanonicalKeys = (rawWord: string) => {
   }
   return [normalized.toLowerCase()]
 }
-
-export const isLikelySameVocabulary = (left: string, right: string) => {
-  const leftKeys = new Set(buildVocabularyCanonicalKeys(left))
-  const rightKeys = new Set(buildVocabularyCanonicalKeys(right))
-  if (leftKeys.size === 0 || rightKeys.size === 0) return false
-  for (const key of leftKeys) {
-    if (rightKeys.has(key)) return true
-  }
-  return false
-}

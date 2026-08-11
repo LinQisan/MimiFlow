@@ -1,4 +1,4 @@
-export const AUDIO_DIALOGUE_SOURCE_SEPARATOR = '::'
+const AUDIO_DIALOGUE_SOURCE_SEPARATOR = '::'
 
 export function buildAudioDialogueSourceId(materialId: string, stableId: string) {
   const normalizedMaterialId = (materialId || '').trim()

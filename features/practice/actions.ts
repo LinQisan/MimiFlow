@@ -57,30 +57,6 @@ export async function updatePaperAttributes(formData: FormData) {
   }
 }
 
-export async function createFavoriteCollection(formData: FormData) {
-  try {
-    const title = String(formData.get('favoriteName') || '').trim()
-    if (!title) return { success: false, message: '收藏夹名称不能为空。' }
-
-    await prisma.collection.create({
-      data: {
-        title,
-        collectionType: CollectionType.FAVORITES,
-      },
-    })
-
-    revalidatePath('/practice')
-    revalidatePath('/')
-    revalidatePath('/manage/collections')
-    revalidatePath('/listening')
-
-    return { success: true, message: '收藏夹已创建。' }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '创建失败'
-    return { success: false, message }
-  }
-}
-
 export async function updateExamPaperMaterialType(formData: FormData) {
   try {
     const paperId = String(formData.get('paperId') || '').trim()

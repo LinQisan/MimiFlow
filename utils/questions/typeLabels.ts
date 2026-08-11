@@ -1,6 +1,6 @@
 import type { QuestionType } from '@prisma/client'
 
-export const QUESTION_TYPE_DISPLAY: Record<
+const QUESTION_TYPE_DISPLAY: Record<
   QuestionType,
   { label: string; description: string }
 > = {

@@ -30,7 +30,7 @@ export default function QuestionSectionAnchor({
     <div
       id='questions'
       ref={sectionRef}
-      className='min-h-[calc(100vh-5rem)] scroll-mt-20'>
+      className='scroll-mt-20'>
       {children}
     </div>
   )

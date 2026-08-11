@@ -66,11 +66,14 @@ export default function LessonQuestionsPanel({
   lessonId,
   initialQuestions,
   defaultListeningSectionNumber = '',
+  appearance = 'default',
 }: {
   lessonId: string
   initialQuestions: EditableQuestion[]
   defaultListeningSectionNumber?: string
+  appearance?: 'default' | 'practice'
 }) {
+  const practiceAppearance = appearance === 'practice'
   const dialog = useDialog()
   const { updateLessonQuestions, updateSortOrder } = useQuestionEditorMutations()
   const {
@@ -316,12 +319,26 @@ export default function LessonQuestionsPanel({
 
   // ─── Render ───
   return (
-    <section className='mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm'>
+    <section
+      className={
+        practiceAppearance
+          ? 'mt-0 overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'
+          : 'mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm'
+      }>
       {/* Header */}
-      <div className='sticky top-14 z-20 flex flex-wrap items-center justify-between gap-3 rounded-t-2xl border-b border-gray-100 bg-white/95 p-4 shadow-sm backdrop-blur md:p-5'>
+      <div
+        className={`sticky top-14 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-white/95 p-4 backdrop-blur md:p-5 ${
+          practiceAppearance
+            ? 'border-slate-100 shadow-none'
+            : 'rounded-t-2xl border-gray-100 shadow-sm'
+        }`}>
         <div className='flex items-center gap-3'>
-          <h2 className='text-lg font-black text-gray-800'>听力题目</h2>
-          <span className='rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700'>
+          <h2 className='text-lg font-semibold tracking-tight text-slate-950'>
+            {practiceAppearance ? '题目编辑' : '听力题目'}
+          </h2>
+          <span className={practiceAppearance
+            ? 'rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600'
+            : 'rounded-md border border-indigo-100 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700'}>
             {questions.length} 题
           </span>
           {isDirty && (
@@ -356,7 +373,9 @@ export default function LessonQuestionsPanel({
           <button
             type='button'
             onClick={() => setShowBulkImport(!showBulkImport)}
-            className='ui-btn ui-btn-sm border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'>
+            className={practiceAppearance
+              ? 'ui-btn ui-btn-sm'
+              : 'ui-btn ui-btn-sm border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'}>
             批量导入
           </button>
 
@@ -455,7 +474,9 @@ export default function LessonQuestionsPanel({
                 <SortableItem key={q.id} id={q.id}>
                   {isEditing ? (
                     /* ═══ Editing mode ═══ */
-                    <div className={`p-4 md:p-5 rounded-2xl border-2 shadow-sm transition-all ${tConfig.color.split(' ')[0]} border-opacity-50 border-indigo-300`}>
+                    <div className={practiceAppearance
+                      ? 'rounded-2xl border border-slate-300 bg-slate-50/60 p-4 transition-all md:p-5'
+                      : `p-4 md:p-5 rounded-2xl border-2 shadow-sm transition-all ${tConfig.color.split(' ')[0]} border-opacity-50 border-indigo-300`}>
                       <div className='flex justify-between items-center mb-4'>
                         <div className='flex items-center gap-2'>
                           <span className='px-2 py-0.5 rounded text-[10px] font-black bg-gray-900 text-white animate-pulse tracking-wider'>
@@ -700,7 +721,9 @@ export default function LessonQuestionsPanel({
                     </div>
                   ) : (
                     /* ═══ Display mode ═══ */
-                    <div className='bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group relative'>
+                    <div className={practiceAppearance
+                      ? 'group relative rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_38px_-30px_rgba(15,23,42,0.45)] md:p-5'
+                      : 'bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group relative'}>
                       <div className='flex justify-between items-start mb-3 gap-2'>
                         <div className='flex items-center gap-2.5 flex-wrap'>
                           <ActionInterceptor>

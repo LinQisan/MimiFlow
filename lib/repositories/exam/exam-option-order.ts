@@ -21,6 +21,6 @@ export function reorderExamOptionsForSession(
 ): ExamQuestionOptionView[] {
   if (options.length <= 1) return options
   if (NON_SHUFFLE_TYPES.has(questionType)) return options
+  if (options.every(option => !option.text.trim())) return options
   return shuffleArray(options)
 }
-

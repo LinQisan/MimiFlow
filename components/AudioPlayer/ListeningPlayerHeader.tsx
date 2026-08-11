@@ -60,7 +60,7 @@ export default function ListeningPlayerHeader({
 
   return (
     <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95'>
-      <div className='mx-auto w-full max-w-4xl px-3 py-2.5 md:px-5'>
+      <div className='mx-auto w-full max-w-6xl px-3 py-2.5 md:px-5'>
         <div className='flex items-center gap-2'>
           <button
             type='button'

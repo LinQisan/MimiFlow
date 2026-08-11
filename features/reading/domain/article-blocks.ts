@@ -1,9 +1,9 @@
-export type ArticleTextBlock = {
+type ArticleTextBlock = {
   type: 'text'
   text: string
 }
 
-export type ArticleTableBlock = {
+type ArticleTableBlock = {
   type: 'table'
   rows: string[][]
   hasHeader: boolean
