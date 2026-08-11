@@ -65,8 +65,6 @@ export function useUploadCenterState(
       title: '',
       description: '',
       content: '',
-      language: dbCollections[0]?.language || '',
-      examLevel: dbCollections[0]?.examLevel || '',
     },
     articleQuestions: [],
     articleQuickInput: '',
@@ -79,8 +77,6 @@ export function useUploadCenterState(
       targetWord: '',
       prompt: '',
       explanation: '',
-      language: dbCollections[0]?.language || '',
-      examLevel: dbCollections[0]?.examLevel || '',
       options: [
         { text: '', isCorrect: true },
         { text: '', isCorrect: false },

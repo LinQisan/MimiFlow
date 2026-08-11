@@ -8,8 +8,13 @@ import { z } from 'zod'
 
 import prisma from '@/lib/prisma'
 import { actionFailure, actionSuccess } from '@/lib/actions/result'
+import {
+  decodeMaterialPayload,
+  patchMaterialPayload,
+} from '@/lib/codecs/material-payload'
 import { DomainError } from '@/lib/errors/domain-error'
 import { formDataObject, parseInput } from '@/lib/validation/schema'
+import { updateDialogueTextAtIndex } from './domain/dialogue-editor'
 
 const materialIdSchema = z.string().trim().min(1, '材料 ID 缺失。')
 const speakingTitleSchema = z.object({
@@ -17,6 +22,11 @@ const speakingTitleSchema = z.object({
   title: z.string().trim().min(1, '标题不能为空。'),
 })
 const deleteAudioMaterialSchema = z.object({ id: materialIdSchema })
+const dialogueTextSchema = z.object({
+  id: materialIdSchema,
+  dialogueIndex: z.coerce.number().int().nonnegative(),
+  text: z.string().trim().min(1, '文本不能为空。').max(10000, '文本过长。'),
+})
 
 async function resolveLessonMaterialId(maybeId: string) {
   const material = await prisma.material.findUnique({
@@ -49,6 +59,52 @@ export async function updateSpeakingTitle(formData: FormData) {
     return actionSuccess({}, '标题已更新。')
   } catch (error) {
     return actionFailure(error, '更新失败。')
+  }
+}
+
+export async function updateListeningDialogueText(formData: FormData) {
+  try {
+    const { id, dialogueIndex, text } = parseInput(
+      dialogueTextSchema,
+      formDataObject(formData),
+    )
+    const material = await prisma.material.findUnique({
+      where: { id },
+      select: { id: true, type: true, contentPayload: true },
+    })
+    if (!material || material.type !== MaterialType.LISTENING) {
+      throw new DomainError('NOT_FOUND', '听力材料不存在。')
+    }
+
+    const payload = decodeMaterialPayload(
+      MaterialType.LISTENING,
+      material.contentPayload,
+    )
+    const dialogues = updateDialogueTextAtIndex(
+      payload.dialogues,
+      dialogueIndex,
+      text,
+    )
+    if (!dialogues) {
+      throw new DomainError('NOT_FOUND', '未找到对应的时间轴文本。')
+    }
+    await prisma.material.update({
+      where: { id: material.id },
+      data: {
+        contentPayload: patchMaterialPayload(
+          MaterialType.LISTENING,
+          material.contentPayload,
+          { dialogues },
+        ),
+      },
+    })
+
+    revalidatePath(`/manage/listening/${material.id}`)
+    revalidatePath(`/listening/${material.id}`)
+    revalidatePath('/listening')
+    return actionSuccess({ text }, '文本已更新。')
+  } catch (error) {
+    return actionFailure(error, '更新文本失败。')
   }
 }
 
@@ -85,12 +141,12 @@ export async function deleteAudioMaterial(formData: FormData) {
     revalidatePath('/listening')
     revalidatePath('/manage/practice')
     revalidatePath('/practice')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
     revalidatePath('/manage/system/audio')
     material.collectionMaterials.forEach(item => {
       revalidatePath(`/manage/practice/${item.collectionId}`)
       revalidatePath(`/practice/${item.collectionId}`)
-      revalidatePath(`/manage/collections/${item.collectionId}`)
+      revalidatePath('/manage/practice')
     })
 
     return actionSuccess(

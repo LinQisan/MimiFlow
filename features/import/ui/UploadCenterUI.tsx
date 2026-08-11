@@ -2,8 +2,8 @@
 'use client'
 
 import React, { useMemo } from 'react'
+import type { MaterialType } from '@prisma/client'
 import UploadForm from '@/features/import/ui/UploadForm'
-import AudioTimingStudio from '@/features/import/ui/AudioTimingStudio'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
 } from '@/components/manage/import/CollectionBrowserSelect'
@@ -36,11 +36,13 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '@/features/questions/domain/editor'
+import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 interface Props {
   dbLevels: UploadLevelLite[]
   dbCollections: UploadCollectionLite[]
   initialTab?: UploadCenterTab
+  initialMaterialType?: MaterialType
 }
 
 
@@ -49,6 +51,7 @@ export default function UploadCenterUI({
   dbLevels,
   dbCollections,
   initialTab = 'audio',
+  initialMaterialType = 'LISTENING',
 }: Props) {
   const dialog = useDialog()
   const { createArticle, createQuizQuestion, createCategory } =
@@ -109,6 +112,10 @@ export default function UploadCenterUI({
 
     const fullText = textarea.value
     const selectedWord = fullText.substring(start, end).trim()
+    if (!selectedWord) {
+      void dialog.alert('请选择实际文字，不能只选择空白。')
+      return
+    }
 
     // 精准截取包含该词的“单句”（不跨句）
     const contextSentence = extractSentenceAroundIndex(
@@ -116,12 +123,24 @@ export default function UploadCenterUI({
       start,
       Math.max(1, end - start),
     )
+    const blankToken = `[${articleQuestions.length + 1}]`
+    const sentenceStart = fullText.lastIndexOf(contextSentence, start)
+    const localSelectionStart = Math.max(0, start - sentenceStart)
+    const localSelectionEnd = Math.max(localSelectionStart, end - sentenceStart)
+    const blankContextSentence =
+      sentenceStart >= 0
+        ? contextSentence.slice(0, localSelectionStart) +
+          blankToken +
+          contextSentence.slice(localSelectionEnd)
+        : contextSentence.replace(selectedWord, blankToken)
+    const nextArticleText =
+      fullText.slice(0, start) + blankToken + fullText.slice(end)
 
     // 自动创建新题目
     const newQuestion = {
       questionType: 'FILL_BLANK',
-      prompt: contextSentence, // 🌟 直接用原句作为锚点，配合前台的精准挖空引擎！
-      contextSentence: contextSentence,
+      prompt: contextSentence,
+      contextSentence: blankContextSentence,
       explanation: '',
       options: [
         { text: selectedWord, isCorrect: true }, // 🌟 选中的词自动变成正确选项
@@ -132,6 +151,7 @@ export default function UploadCenterUI({
     }
 
     setArticleQuestions(prev => [...prev, newQuestion])
+    setArticleForm(prev => ({ ...prev, content: nextArticleText }))
 
     // 取消选中状态，方便继续选下一个词
     textarea.selectionStart = textarea.selectionEnd
@@ -263,7 +283,6 @@ export default function UploadCenterUI({
     setIsSubmitting(true)
     const res = await createArticle({
       ...articleForm,
-      level: articleForm.examLevel,
       questions: articleQuestions,
     })
     await dialog.alert(res.message)
@@ -293,7 +312,6 @@ export default function UploadCenterUI({
     const res = await createQuizQuestion({
       ...quizForm,
       paperId: quizForm.collectionId,
-      level: quizForm.examLevel,
     })
     await dialog.alert(res.message)
     if (res.success) {
@@ -514,8 +532,6 @@ export default function UploadCenterUI({
         targetWord: draft.targetWord || '',
         prompt: draft.prompt,
         explanation: draft.explanation,
-        language: quizForm.language,
-        level: quizForm.examLevel,
         options: draft.options,
       })
       if (res.success) {
@@ -658,22 +674,16 @@ export default function UploadCenterUI({
   }
 
   const applyArticleCollection = (collectionId: string) => {
-    const matched = localCollections.find(item => item.id === collectionId)
     setArticleForm(prev => ({
       ...prev,
       paperId: collectionId,
-      language: matched?.language || '',
-      examLevel: matched?.examLevel || '',
     }))
   }
 
   const applyQuizCollection = (collectionId: string) => {
-    const matched = localCollections.find(item => item.id === collectionId)
     setQuizForm(prev => ({
       ...prev,
       collectionId,
-      language: matched?.language || '',
-      examLevel: matched?.examLevel || '',
     }))
   }
 
@@ -715,7 +725,9 @@ export default function UploadCenterUI({
           parentId: null,
           sortOrder: 0,
           collectionType: res.paper.collectionType,
-          acceptedMaterialTypes: res.paper.acceptedMaterialTypes,
+          acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
+            res.paper.acceptedMaterialTypes,
+          ),
           level: { title: res.paper.level.title },
           lessons: [],
         }
@@ -802,13 +814,11 @@ export default function UploadCenterUI({
       <div className='w-full'>
         {activeTab === 'audio' && (
           <div className='animate-in slide-in-from-bottom-4 fade-in duration-500'>
-            <UploadForm levels={dbLevels} papers={dbCollections} />
-          </div>
-        )}
-
-        {activeTab === 'timed-audio' && (
-          <div className='animate-in slide-in-from-bottom-4 fade-in duration-500'>
-            <AudioTimingStudio collections={dbCollections} />
+            <UploadForm
+              levels={dbLevels}
+              papers={dbCollections}
+              defaultMaterialType={initialMaterialType}
+            />
           </div>
         )}
 
@@ -917,50 +927,6 @@ export default function UploadCenterUI({
                 单题录入
               </button>
             </div>
-
-            <details className='group rounded-lg border border-slate-200 bg-slate-50'>
-              <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
-                补充语言与等级
-                <span className='text-xs font-normal text-slate-400 group-open:hidden'>
-                  可选
-                </span>
-                <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
-                  收起
-                </span>
-              </summary>
-              <div className='grid grid-cols-1 gap-3 border-t border-slate-200 p-4 md:grid-cols-2'>
-              <label className='block text-sm font-bold text-gray-700'>
-                语言
-                <input
-                  type='text'
-                  value={quizForm.language}
-                  onChange={e =>
-                    setQuizForm({
-                      ...quizForm,
-                      language: e.target.value,
-                    })
-                  }
-                  className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-                  placeholder='例如：ja / en / zh'
-                />
-              </label>
-              <label className='block text-sm font-bold text-gray-700'>
-                等级
-                <input
-                  type='text'
-                  value={quizForm.examLevel}
-                  onChange={e =>
-                    setQuizForm({
-                      ...quizForm,
-                      examLevel: e.target.value,
-                    })
-                  }
-                  className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-                  placeholder='例如：N1 / B2'
-                />
-              </label>
-              </div>
-            </details>
 
             {quizEntryMode === 'bulk' ? (
               <BulkQuizPanel
@@ -1133,10 +1099,10 @@ export default function UploadCenterUI({
                 </div>
               )}
               <label className='mb-2 block text-sm font-bold text-blue-900'>
-                语境句
+                语境句（可选）
               </label>
               <p className='mb-2 text-xs text-blue-700'>
-                用于生词与复习展示，建议填写完整句子。
+                仅在题干不是完整语境，或需要补充定位句时填写。
               </p>
               <textarea
                 ref={quizContextTextareaRef}
@@ -1146,7 +1112,7 @@ export default function UploadCenterUI({
                 }
                 rows={2}
                 className='w-full border border-blue-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500'
-                placeholder='例如：チームの結束を強めよう。（可留空）'
+                placeholder='不要重复填写与题干相同的文字'
               />
               {(quizForm.questionType === 'PRONUNCIATION' ||
                 quizForm.questionType === 'SYNONYM_REPLACEMENT' ||

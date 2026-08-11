@@ -1,3 +1,5 @@
+import type { QuestionType } from '@prisma/client'
+
 import prisma from '@/lib/prisma'
 import {
   materialDialogueItems,
@@ -70,9 +72,16 @@ export async function getRetryQueueSummarySnapshot(now: Date) {
   }
 }
 
-export async function getDueRetryQuestionRows(now: Date, limit: number) {
+export async function getDueRetryQuestionRows(
+  now: Date,
+  limit: number,
+  questionType?: QuestionType,
+) {
   const rows = await prisma.questionRetry.findMany({
-    where: { dueAt: { lte: now } },
+    where: {
+      dueAt: { lte: now },
+      ...(questionType ? { question: { questionType } } : {}),
+    },
     orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
     take: limit,
     include: {
@@ -178,6 +187,17 @@ export async function getDueRetryQuestionRows(now: Date, limit: number) {
           : null,
     },
   }
+  })
+}
+
+export async function getDueRetryQuestionTypeRows(now: Date) {
+  return prisma.questionRetry.findMany({
+    where: { dueAt: { lte: now } },
+    orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      question: { select: { questionType: true } },
+    },
   })
 }
 

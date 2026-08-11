@@ -12,6 +12,10 @@ export function listCollectionsByTypes(types: CollectionType[]) {
       collectionType: true,
       parentId: true,
       sortOrder: true,
+      description: true,
+      language: true,
+      level: true,
+      _count: { select: { materials: true, children: true } },
     },
   })
 }

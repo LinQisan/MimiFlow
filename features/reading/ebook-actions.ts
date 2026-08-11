@@ -11,6 +11,7 @@ import {
   decodeMaterialPayload,
   encodeMaterialPayload,
 } from '@/lib/codecs/material-payload'
+import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 type ImportEpubState = {
   success: boolean
@@ -26,7 +27,9 @@ async function validateReadingCollection(collectionId: string) {
     where: { id: collectionId },
     select: { acceptedMaterialTypes: true },
   })
-  return Boolean(collection?.acceptedMaterialTypes.includes(MaterialType.READING))
+  return normalizeAcceptedMaterialTypes(
+    collection?.acceptedMaterialTypes ?? null,
+  ).includes(MaterialType.READING)
 }
 
 export async function importEpubAction(

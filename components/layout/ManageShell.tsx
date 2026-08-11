@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation'
 const manageItems = [
   { href: '/manage', label: '概览', exact: true },
   { href: '/manage/import', label: '导入' },
-  { href: '/manage/collections', label: '内容结构' },
   { href: '/manage/practice', label: '试卷' },
   { href: '/manage/listening', label: '听力' },
   { href: '/manage/shadowing', label: '跟读' },

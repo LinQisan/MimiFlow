@@ -7,9 +7,15 @@ export type CollectionNode = {
     | 'CHAPTER'
     | 'PAPER'
     | 'CUSTOM_GROUP'
-    | 'FAVORITES'
   parentId: string | null
   sortOrder: number
+  description: string | null
+  language: string | null
+  level: string | null
+  _count: {
+    materials: number
+    children: number
+  }
 }
 
 export type ShadowingRow = {

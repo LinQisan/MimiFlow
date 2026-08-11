@@ -10,6 +10,7 @@ import {
   submitRetryAnswer,
 } from '@/modules/review/actions/mistakes'
 import { QuestionRenderer } from '@/components/exam/QuestionRenderer'
+import CustomSelect from '@/components/ui/CustomSelect'
 import WordTooltip from '@/components/exam/WordTooltip'
 import ToggleSwitch from '@/components/ToggleSwitch'
 import type { ExamQuestion } from '@/components/exam/question-renderer/types'
@@ -19,6 +20,7 @@ import {
 } from '@/hooks/usePronunciationPrefs'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { formatTokyoDateTime } from '@/utils/time/format'
+import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 type Summary = {
@@ -29,6 +31,12 @@ type Summary = {
 
 type QueueItem = {
   retryId: string
+}
+
+type QuestionTypeSummary = {
+  questionType: string
+  count: number
+  firstRetryId: string
 }
 
 const formatPercent = (value: number) => `${Math.round(value * 100)}%`
@@ -54,11 +62,15 @@ export default function ReviewQuestionClient({
   currentItem,
   queue,
   currentIndex,
+  activeQuestionType,
+  questionTypes,
 }: {
   initialSummary: Summary
   currentItem: RetryQueueItem
   queue: QueueItem[]
   currentIndex: number
+  activeQuestionType: string | null
+  questionTypes: QuestionTypeSummary[]
 }) {
   const router = useRouter()
   const [item, setItem] = useState(currentItem)
@@ -84,6 +96,9 @@ export default function ReviewQuestionClient({
   const prevRetryId = currentIndex > 0 ? queue[currentIndex - 1]?.retryId : null
   const nextRetryId =
     currentIndex < queue.length - 1 ? queue[currentIndex + 1]?.retryId : null
+  const activeTypeQuery = activeQuestionType
+    ? `?type=${encodeURIComponent(activeQuestionType)}`
+    : ''
   const examQuestion = useMemo(() => mapRetryItemToExamQuestion(item), [item])
   const reviewAnswerMap = useMemo(
     () => (selectedOptionId ? { [examQuestion.id]: selectedOptionId } : {}),
@@ -229,6 +244,21 @@ export default function ReviewQuestionClient({
     }
   }
 
+  const handleQuestionTypeChange = (value: string) => {
+    if (value === 'all') {
+      const firstRetryId = questionTypes[0]?.firstRetryId
+      if (firstRetryId) router.push(`/review/${firstRetryId}`)
+      return
+    }
+
+    const selectedType = questionTypes.find(item => item.questionType === value)
+    if (selectedType) {
+      router.push(
+        `/review/${selectedType.firstRetryId}?type=${encodeURIComponent(value)}`,
+      )
+    }
+  }
+
   return (
     <main className='min-h-screen bg-slate-50 pb-24'>
       <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur'>
@@ -242,6 +272,18 @@ export default function ReviewQuestionClient({
             </p>
           </div>
           <div className='flex shrink-0 items-center gap-2'>
+            <CustomSelect
+              value={activeQuestionType || 'all'}
+              onChange={event => handleQuestionTypeChange(event.target.value)}
+              aria-label='选择复习题型'
+              className='h-8 min-w-32 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700'>
+              <option value='all'>全部题型 · {summary.dueCount}</option>
+              {questionTypes.map(type => (
+                <option key={type.questionType} value={type.questionType}>
+                  {getQuestionTypeLabel(type.questionType)} · {type.count}
+                </option>
+              ))}
+            </CustomSelect>
             <span className='hidden rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700 sm:inline-flex'>
               下一到期 {formatTokyoDateTime(summary.nextDueAt)}
             </span>
@@ -382,7 +424,10 @@ export default function ReviewQuestionClient({
           <button
             type='button'
             disabled={!prevRetryId || isPending}
-            onClick={() => prevRetryId && router.push(`/review/${prevRetryId}`)}
+            onClick={() =>
+              prevRetryId &&
+              router.push(`/review/${prevRetryId}${activeTypeQuery}`)
+            }
             className='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 md:px-4 md:text-sm'>
             上一题
           </button>
@@ -406,7 +451,9 @@ export default function ReviewQuestionClient({
             <button
               type='button'
               disabled={isPending}
-              onClick={() => router.push(`/review/${nextRetryId}`)}
+              onClick={() =>
+                router.push(`/review/${nextRetryId}${activeTypeQuery}`)
+              }
               className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40 md:px-4 md:text-sm'>
               下一题
             </button>

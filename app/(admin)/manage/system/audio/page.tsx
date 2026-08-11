@@ -24,6 +24,8 @@ type AudioItem = {
   linkedLessons: number
   linkedListeningMaterials: number
   linkedSpeakingMaterials: number
+  linkedSubtitleMaterials: number
+  linkedVocabularySentences: number
 }
 
 type AudioFolderSummary = {
@@ -135,7 +137,9 @@ export default function ManageAudioPage() {
   const [uploading, setUploading] = useState(false)
   const [search, setSearch] = useState('')
   const [folder, setFolder] = useState('')
-  const [usage, setUsage] = useState<'all' | 'listening' | 'speaking' | 'unlinked'>('all')
+  const [usage, setUsage] = useState<
+    'all' | 'listening' | 'speaking' | 'vocabulary' | 'unlinked'
+  >('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [folderOptions, setFolderOptions] = useState<string[]>([])
   const [folderSummaries, setFolderSummaries] = useState<AudioFolderSummary[]>([])
@@ -169,7 +173,7 @@ export default function ManageAudioPage() {
     }).formatToParts(new Date())
     const year = parts.find(part => part.type === 'year')?.value || 'unknown'
     const month = parts.find(part => part.type === 'month')?.value || '00'
-    return `uploads/${year}-${month}`
+    return `staging/${year}-${month}`
   })
   const fileRef = useRef<HTMLInputElement>(null)
   const audioRefs = useRef<Record<string, HTMLAudioElement | null>>({})
@@ -228,7 +232,8 @@ export default function ManageAudioPage() {
       { value: uploadFolder, label: uploadFolder },
       { value: 'listening', label: 'listening · 听力材料' },
       { value: 'shadowing', label: 'shadowing · 跟读材料' },
-      { value: 'imports', label: 'imports · 外部导入' },
+      { value: 'vocabulary', label: 'vocabulary · 词汇音频' },
+      { value: 'staging', label: 'staging · 待归类' },
       ...folderOptions
         .filter(item => item !== uploadFolder)
         .map(item => ({ value: item, label: item })),
@@ -239,6 +244,7 @@ export default function ManageAudioPage() {
     { value: 'all', label: '全部用途' },
     { value: 'listening', label: '听力材料使用中' },
     { value: 'speaking', label: '跟读材料使用中' },
+    { value: 'vocabulary', label: '词汇例句使用中' },
     { value: 'unlinked', label: '未关联材料' },
   ]
   const allVisibleSelected =
@@ -325,8 +331,11 @@ export default function ManageAudioPage() {
     if (typeof res.speakingRefUpdated === 'number' && res.speakingRefUpdated > 0)
       details.push(`跟读引用更新 ${res.speakingRefUpdated} 条`)
     if (typeof res.subtitleRefUpdated === 'number' && res.subtitleRefUpdated > 0) {
-      details.push(`字幕文本引用更新 ${res.subtitleRefUpdated} 条`)
+      details.push(`影视字幕引用更新 ${res.subtitleRefUpdated} 条`)
     }
+    if (typeof res.vocabularyRefUpdated === 'number' && res.vocabularyRefUpdated > 0)
+      details.push(`词汇例句引用更新 ${res.vocabularyRefUpdated} 条`)
+    if (res.sourceRemoved === false) details.push('旧文件需稍后清理')
     dialog.toast(
       details.length > 0 ? `${res.message}（${details.join('，')}）` : res.message,
       { tone: 'success' },
@@ -398,6 +407,8 @@ export default function ManageAudioPage() {
     if (typeof res.speakingRefUpdated === 'number' && res.speakingRefUpdated > 0)
       extra.push(`跟读引用 ${res.speakingRefUpdated}`)
     if (typeof res.subtitleRefUpdated === 'number') extra.push(`字幕引用 ${res.subtitleRefUpdated}`)
+    if (typeof res.vocabularyRefUpdated === 'number' && res.vocabularyRefUpdated > 0)
+      extra.push(`词汇引用 ${res.vocabularyRefUpdated}`)
     dialog.toast(`${res.message}${extra.length > 0 ? `（${extra.join('，')}）` : ''}`, {
       tone: 'success',
     })
@@ -655,7 +666,17 @@ export default function ManageAudioPage() {
                               <span className={item.linkedLessons > 0 ? 'text-amber-700' : 'text-emerald-700'}>
                                 {item.linkedLessons > 0 ? `已关联 ${item.linkedLessons}` : '未关联'}
                               </span>
-                              {item.linkedLessons > 0 ? <span>听力 {item.linkedListeningMaterials} · 跟读 {item.linkedSpeakingMaterials}</span> : null}
+                              {item.linkedLessons > 0 ? (
+                                <span>
+                                  听力 {item.linkedListeningMaterials} · 跟读 {item.linkedSpeakingMaterials}
+                                  {item.linkedVocabularySentences > 0
+                                    ? ` · 词汇 ${item.linkedVocabularySentences}`
+                                    : ''}
+                                  {item.linkedSubtitleMaterials > 0
+                                    ? ` · 字幕 ${item.linkedSubtitleMaterials}`
+                                    : ''}
+                                </span>
+                              ) : null}
                             </div>
                           </div>
                         </div>

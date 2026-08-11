@@ -66,39 +66,6 @@ export default function ArticleImportPanel({
       <section className='space-y-5 border border-gray-200 bg-gray-50/30 p-4 md:p-5'>
         {collectionSelector}
 
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-          <label className='block text-sm font-bold text-gray-700'>
-            语言
-            <input
-              type='text'
-              value={articleForm.language}
-              onChange={e =>
-                setArticleForm({
-                  ...articleForm,
-                  language: e.target.value,
-                })
-              }
-              className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-              placeholder='例如：ja / en / zh'
-            />
-          </label>
-          <label className='block text-sm font-bold text-gray-700'>
-            等级
-            <input
-              type='text'
-              value={articleForm.examLevel}
-              onChange={e =>
-                setArticleForm({
-                  ...articleForm,
-                  examLevel: e.target.value,
-                })
-              }
-              className='mt-2 w-full border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-              placeholder='例如：N1 / B2'
-            />
-          </label>
-        </div>
-
         <div>
           <label className='block text-sm font-bold text-gray-700 mb-2'>
             文章标题

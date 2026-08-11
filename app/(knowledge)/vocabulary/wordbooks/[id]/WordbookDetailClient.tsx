@@ -57,7 +57,6 @@ export default function WordbookDetailClient({
   items,
   currentPage,
   totalPages,
-  totalCount,
 }: Props) {
   const router = useRouter()
   const pathname = usePathname()
@@ -65,6 +64,7 @@ export default function WordbookDetailClient({
   const [keyword, setKeyword] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'flashcard'>('list')
   const [flashIndex, setFlashIndex] = useState(0)
+  const [showManagement, setShowManagement] = useState(false)
 
   const parentOptions = useMemo(
     () =>
@@ -97,7 +97,7 @@ export default function WordbookDetailClient({
 
   const currentFlash = filteredItems[flashIndex] || null
   const flashSentences = Array.isArray(currentFlash?.sentences)
-    ? currentFlash.sentences.slice(0, 3)
+    ? currentFlash.sentences.slice(0, 2)
     : []
 
   const playAudioFile = (audioFile?: string | null) => {
@@ -216,26 +216,11 @@ export default function WordbookDetailClient({
   }
 
   return (
-    <section className='rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_20px_60px_rgba(15,23,42,0.06)] md:p-5'>
-      <div className='mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4'>
-        <button type='button' onClick={() => void handleRename()} className='ui-btn'>
-          重命名
-        </button>
-        <button type='button' onClick={() => void handleMove()} className='ui-btn'>
-          移动
-        </button>
-        <button type='button' onClick={() => void handleCreateChild()} className='ui-btn'>
-          新建子单词书
-        </button>
-        <button type='button' onClick={() => void handleDeleteWordbook()} className='ui-btn ui-btn-danger'>
-          删除单词书
-        </button>
-        <span className='ml-auto text-sm font-semibold text-slate-500'>
-          本书 {totalCount} 条 · 第 {currentPage}/{totalPages} 页
+    <section className='rounded-2xl border border-slate-200 bg-white p-4 md:p-5'>
+      <div className='mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-4'>
+        <span className='text-sm text-slate-500'>
+          第 {currentPage}/{totalPages} 页
         </span>
-      </div>
-
-      <div className='mb-4 flex items-center justify-end'>
         <div className='flex items-center gap-1 rounded-xl bg-slate-100 p-1'>
           <button
             type='button'
@@ -261,56 +246,74 @@ export default function WordbookDetailClient({
             闪卡
           </button>
         </div>
+        <button
+          type='button'
+          aria-expanded={showManagement}
+          onClick={() => setShowManagement(value => !value)}
+          className='ui-btn ui-btn-sm'>
+          管理
+        </button>
       </div>
 
+      {showManagement ? (
+        <div className='mb-4 flex flex-wrap gap-2 rounded-xl bg-slate-50 p-3'>
+          <button type='button' onClick={() => void handleRename()} className='ui-btn ui-btn-sm'>
+            重命名
+          </button>
+          <button type='button' onClick={() => void handleMove()} className='ui-btn ui-btn-sm'>
+            移动
+          </button>
+          <button type='button' onClick={() => void handleCreateChild()} className='ui-btn ui-btn-sm'>
+            新建目录
+          </button>
+          <button type='button' onClick={() => void handleDeleteWordbook()} className='ui-btn ui-btn-sm ui-btn-danger'>
+            删除
+          </button>
+        </div>
+      ) : null}
+
       {parentWordbook ? (
-        <div className='mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2'>
-          <p className='text-xs font-semibold text-slate-500'>所属书籍</p>
+        <div className='mb-3 flex items-center gap-2 text-sm text-slate-500'>
+          <span>上级</span>
           <Link
             href={`/vocabulary/wordbooks/${parentWordbook.id}`}
-            className='mt-1 inline-flex text-sm font-bold text-slate-900 hover:text-slate-600'>
+            className='font-bold text-slate-900 hover:text-slate-600'>
             {parentWordbook.title}
           </Link>
         </div>
       ) : null}
 
       {chapterItems.length > 0 ? (
-        <div className='mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3'>
-          <p className='text-sm font-black text-slate-900'>目录</p>
-          <div className='mt-2 divide-y divide-slate-100 border-y border-slate-100'>
+        <div className='mb-4 overflow-hidden rounded-xl border border-slate-200'>
+          <div className='divide-y divide-slate-100'>
             {chapterItems.map(item => (
               <Link
                 key={`chapter-${item.id}`}
                 href={`/vocabulary/wordbooks/${item.id}`}
-                className='flex items-center justify-between px-1 py-2 text-sm transition hover:text-slate-600'>
+                className='flex items-center justify-between px-3 py-2.5 text-sm transition hover:bg-slate-50'>
                 <span className='font-bold text-slate-900'>{item.title}</span>
-                <span className='text-xs font-semibold text-slate-500'>{item.count} 条</span>
+                <span className='text-xs font-semibold text-slate-500'>{item.count} 词</span>
               </Link>
             ))}
           </div>
         </div>
       ) : null}
 
-      <div className='mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-3'>
-        <div className='flex flex-wrap items-center gap-2 border-b border-slate-100 pb-3'>
-          <input
-            value={keyword}
-            onChange={event => setKeyword(event.currentTarget.value)}
-            placeholder='仅搜索当前单词书词条'
-            className='h-10 min-w-[16rem] flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
-          />
-          <span className='text-xs font-semibold text-slate-500'>
-            搜索结果：{filteredItems.length} 条
-          </span>
-        </div>
-      </div>
+      <input
+        type='search'
+        value={keyword}
+        onChange={event => setKeyword(event.currentTarget.value)}
+        placeholder='搜索当前单词书'
+        aria-label='搜索当前单词书'
+        className='mb-4 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+      />
 
       {viewMode === 'list' ? (
         <div className='overflow-hidden rounded-2xl border border-slate-200 bg-white'>
           {filteredItems.map(item => (
             <div key={item.id} className='flex items-center gap-3 border-b border-slate-100 px-3 py-3 last:border-b-0 md:px-4'>
               <div className='flex-1 min-w-0'>
-                <p className='truncate text-[28px] font-black tracking-tight text-slate-900 md:text-[32px]'>
+                <p className='truncate text-xl font-black tracking-tight text-slate-900 md:text-2xl'>
                   {item.word}
                 </p>
                 <p className='mt-1 truncate text-xs font-semibold text-slate-500'>
@@ -348,8 +351,8 @@ export default function WordbookDetailClient({
           ) : null}
         </div>
       ) : (
-        <div className='animate-in fade-in zoom-in-95 duration-300'>
-          <div className='relative flex min-h-[calc(100vh-260px)] w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:p-7'>
+        <div className='mx-auto max-w-3xl'>
+          <div className='relative flex min-h-[520px] w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 md:p-7'>
           {currentFlash ? (
             <>
               <div className='mb-3 border-b border-slate-100 pb-4 text-center'>

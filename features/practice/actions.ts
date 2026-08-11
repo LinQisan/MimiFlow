@@ -2,7 +2,7 @@
 
 // Practice actions.
 
-import { CollectionType, MaterialType } from '@prisma/client'
+import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
@@ -24,9 +24,7 @@ export async function updatePaperAttributes(formData: FormData) {
     const collectionType =
       nextType === CollectionType.CUSTOM_GROUP
         ? CollectionType.CUSTOM_GROUP
-        : nextType === CollectionType.FAVORITES
-          ? CollectionType.FAVORITES
-          : CollectionType.PAPER
+        : CollectionType.PAPER
 
     const parsedSortOrder = Number.parseInt(sortOrderRaw || '0', 10)
     const sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0
@@ -48,56 +46,10 @@ export async function updatePaperAttributes(formData: FormData) {
     revalidatePath(`/practice/${paperId}`)
     revalidatePath('/manage/practice')
     revalidatePath('/')
-    revalidatePath('/manage/collections')
 
     return { success: true, message: '已保存。' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '保存失败'
-    return { success: false, message }
-  }
-}
-
-export async function updateExamPaperMaterialType(formData: FormData) {
-  try {
-    const paperId = String(formData.get('paperId') || '').trim()
-    const materialTypeInput = String(formData.get('materialType') || '').trim()
-
-    if (!paperId) return { success: false, message: 'paperId 缺失。' }
-
-    const allowedMaterialTypes = new Set<MaterialType>([
-      MaterialType.SPEAKING,
-      MaterialType.LISTENING,
-      MaterialType.READING,
-      MaterialType.VOCAB_GRAMMAR,
-    ])
-    const materialType = materialTypeInput as MaterialType
-    if (!allowedMaterialTypes.has(materialType)) {
-      return { success: false, message: 'MaterialType 非法。' }
-    }
-
-    const relations = await prisma.collectionMaterial.findMany({
-      where: { collectionId: paperId },
-      select: { materialId: true },
-    })
-    const materialIds = relations.map(item => item.materialId)
-    if (materialIds.length === 0) {
-      return { success: false, message: '该试卷下没有可更新的语料。' }
-    }
-
-    const result = await prisma.material.updateMany({
-      where: { id: { in: materialIds } },
-      data: { type: materialType },
-    })
-
-    revalidatePath('/practice')
-    revalidatePath(`/practice/${paperId}`)
-    revalidatePath('/listening')
-    revalidatePath('/')
-    revalidatePath('/manage/collections')
-
-    return { success: true, message: `已批量更新 ${result.count} 条语料。` }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '批量更新失败'
     return { success: false, message }
   }
 }

@@ -5,6 +5,7 @@ import { useMemo } from 'react'
 import ListeningQuickClassifyForm from '@/features/listening/ui/ListeningQuickClassifyForm'
 import CustomSelect from '@/components/ui/CustomSelect'
 import DeleteAudioMaterialButton from '@/features/listening/ui/DeleteAudioMaterialButton'
+import ShadowingLibraryManager from '@/features/listening/ui/ShadowingLibraryManager'
 import { useListeningListState } from '@/features/listening/hooks/useListeningListState'
 import { useListeningListMutations } from '@/features/listening/hooks/useListeningListMutations'
 import { useListeningListQuery } from '@/features/listening/hooks/useListeningListQuery'
@@ -36,11 +37,10 @@ export default function ListeningListClient({
     setBatchChapterId, managePage, setManagePage,
   } = useListeningListState()
   const {
-    bookState, createBookAction, creatingBook, chapterState,
-    createChapterAction, creatingChapter, batchState, batchAction, batching,
+    batchState, batchAction, batching,
   } = useListeningListMutations()
   const {
-    roots, books, chapters, papers, chapterOptions, filteredChapterOptions,
+    books, chapters, papers, chapterOptions, filteredChapterOptions,
     filteredRows, sortedRows: chapterSortedRows, visibleManageRows,
     totalPages: manageTotalPages, normalizedPage: normalizedManagePage, counts,
   } = useListeningListQuery({
@@ -226,78 +226,7 @@ export default function ListeningListClient({
         </div>
 
         {isShadowingWorkspace ? (
-          <details className='group mb-4 rounded-[18px] bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
-            <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
-              管理书籍与章节
-              <span className='text-xs text-slate-400 group-open:hidden'>展开</span>
-              <span className='hidden text-xs text-slate-400 group-open:inline'>收起</span>
-            </summary>
-          <div className='space-y-3 border-t border-slate-200 p-3'>
-            <div className='grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1fr_1fr_auto]'>
-              <form action={createBookAction} className='contents'>
-                <CustomSelect
-                  name='rootId'
-                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
-                  <option value=''>选择上级分类（LIBRARY_ROOT）</option>
-                  {roots.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </CustomSelect>
-                <input
-                  name='bookTitle'
-                  placeholder='新建书名（BOOK）'
-                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'
-                />
-                <button
-                  type='submit'
-                  disabled={creatingBook}
-                  className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:opacity-60'>
-                  {creatingBook ? '创建中...' : '新建书'}
-                </button>
-              </form>
-              {bookState.message ? (
-                <p
-                  className={`text-xs font-semibold ${bookState.success ? 'text-slate-700' : 'text-rose-600'}`}>
-                  {bookState.message}
-                </p>
-              ) : null}
-            </div>
-
-            <div className='grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1fr_1fr_auto]'>
-              <form action={createChapterAction} className='contents'>
-                <CustomSelect
-                  name='bookId'
-                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'>
-                  <option value=''>选择所属书（BOOK）</option>
-                  {books.map(item => (
-                    <option key={item.id} value={item.id}>
-                      {item.title}
-                    </option>
-                  ))}
-                </CustomSelect>
-                <input
-                  name='chapterTitle'
-                  placeholder='新建章节名（CHAPTER）'
-                  className='h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)]'
-                />
-                <button
-                  type='submit'
-                  disabled={creatingChapter}
-                  className='ui-btn ui-btn-sm ui-btn-primary h-9 px-3 disabled:opacity-60'>
-                  {creatingChapter ? '创建中...' : '新建章节'}
-                </button>
-              </form>
-              {chapterState.message ? (
-                <p
-                  className={`text-xs font-semibold ${chapterState.success ? 'text-slate-700' : 'text-rose-600'}`}>
-                  {chapterState.message}
-                </p>
-              ) : null}
-            </div>
-          </div>
-          </details>
+          <ShadowingLibraryManager collections={collections} />
         ) : null}
 
         {isShadowingWorkspace && selectedIds.length > 0 ? (

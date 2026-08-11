@@ -62,103 +62,6 @@ async function resolveMaterialId(maybeId: string, type: MaterialType) {
   return null
 }
 
-export async function getCollectionManageList() {
-  return prisma.collection.findMany({
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      language: true,
-      level: true,
-      sortOrder: true,
-      parentId: true,
-      collectionType: true,
-      createdAt: true,
-      _count: { select: { materials: true, children: true } },
-    },
-  })
-}
-
-export async function getCollectionManageDetail(collectionId: string) {
-  const collection = await prisma.collection.findUnique({
-    where: { id: collectionId },
-    select: {
-      id: true,
-      title: true,
-      description: true,
-      collectionType: true,
-      parent: { select: { id: true, title: true } },
-      children: {
-        orderBy: [{ sortOrder: 'asc' }, { title: 'asc' }],
-        select: {
-          id: true,
-          title: true,
-          collectionType: true,
-          _count: { select: { materials: true, children: true } },
-        },
-      },
-      createdAt: true,
-      _count: { select: { children: true } },
-      materials: {
-        orderBy: { sortOrder: 'asc' },
-        select: {
-          sortOrder: true,
-          material: {
-            select: {
-              id: true,
-              type: true,
-              title: true,
-              contentPayload: true,
-              _count: { select: { questions: true } },
-            },
-          },
-        },
-      },
-    },
-  })
-  if (!collection) return null
-
-  const items = collection.materials.map(row => {
-    const payload = decodeMaterialPayloadRecord(
-      row.material.type,
-      row.material.contentPayload,
-    )
-    return {
-      id: row.material.id,
-      materialId: row.material.id,
-      type: row.material.type,
-      title: getMaterialDisplayTitle(
-        row.material.type,
-        row.material.title,
-        row.material.contentPayload,
-        row.material.id,
-      ),
-      sortOrder: row.sortOrder,
-      questionCount: row.material._count.questions,
-      audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
-    }
-  })
-
-  return {
-    id: collection.id,
-    title: collection.title,
-    description: collection.description,
-    collectionType: collection.collectionType,
-    parent: collection.parent,
-    children: collection.children,
-    childCount: collection._count.children,
-    createdAt: collection.createdAt,
-    audio: items.filter(
-      item =>
-        item.type === MaterialType.LISTENING ||
-        item.type === MaterialType.SPEAKING,
-    ),
-    reading: items.filter(item => item.type === MaterialType.READING),
-    quizzes: items.filter(item => item.type === MaterialType.VOCAB_GRAMMAR),
-  }
-}
-
 export async function getReadingEditData(maybeId: string) {
   const materialId = await resolveMaterialId(maybeId, MaterialType.READING)
   if (!materialId) return null
@@ -168,7 +71,7 @@ export async function getReadingEditData(maybeId: string) {
       collectionMaterials: {
         take: 1,
         include: {
-          collection: { select: { id: true } },
+          collection: { select: { id: true, collectionType: true } },
         },
       },
       questions: {
@@ -187,12 +90,16 @@ export async function getReadingEditData(maybeId: string) {
       material.id,
     ),
     content: readString(payload.text) || readString(payload.transcript),
-    category: { levelId: material.collectionMaterials[0]?.collection.id || null },
+    category: {
+      levelId: material.collectionMaterials[0]?.collection.id || null,
+      collectionType:
+        material.collectionMaterials[0]?.collection.collectionType || null,
+    },
     questions: material.questions.map(question => ({
       id: question.id,
       questionType: question.questionType,
       prompt: question.prompt,
-      contextSentence: question.context || question.prompt || '',
+      contextSentence: question.context || '',
       options: normalizeQuestionOptions(question.options, question.answer),
     })),
   }
@@ -206,7 +113,7 @@ export async function getQuizEditData(maybeId: string) {
     include: {
       collectionMaterials: {
         take: 1,
-        include: { collection: { select: { id: true } } },
+        include: { collection: { select: { id: true, collectionType: true } } },
       },
       questions: {
         orderBy: { sortOrder: 'asc' },
@@ -222,13 +129,17 @@ export async function getQuizEditData(maybeId: string) {
       material.contentPayload,
       material.id,
     ),
-    category: { levelId: material.collectionMaterials[0]?.collection.id || null },
+    category: {
+      levelId: material.collectionMaterials[0]?.collection.id || null,
+      collectionType:
+        material.collectionMaterials[0]?.collection.collectionType || null,
+    },
     questions: material.questions.map(question => {
       const content = decodeQuestionContent(question.content)
       return {
         id: question.id,
         questionType: question.questionType,
-        contextSentence: question.context || question.prompt || '',
+        contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
         prompt: question.prompt,
         explanation: question.analysis,
@@ -353,7 +264,7 @@ export async function getListeningEditData(maybeId: string) {
       return {
         id: question.id,
         questionType: question.questionType,
-        contextSentence: question.context || question.prompt || '',
+        contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
         prompt: question.prompt,
         explanation: question.analysis,
@@ -461,7 +372,7 @@ export async function getSpeakingEditData(maybeId: string) {
       return {
         id: question.id,
         questionType: question.questionType,
-        contextSentence: question.context || question.prompt || '',
+        contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
         prompt: question.prompt,
         explanation: question.analysis,

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { CollectionType } from '@prisma/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
@@ -47,6 +48,7 @@ type EditableArticle = {
   questions?: ArticleQuestion[]
   category?: {
     levelId?: string | null
+    collectionType?: CollectionType | null
   } | null
 }
 
@@ -55,6 +57,11 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const backHref =
+    article.category?.collectionType === 'PAPER' && article.category.levelId
+      ? `/manage/practice/${article.category.levelId}`
+      : '/manage/reading'
+  const backLabel = article.category?.collectionType === 'PAPER' ? '返回试卷' : '返回阅读'
 
   useEffect(() => {
     const checkMobile = () => {
@@ -240,7 +247,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
         id: question.id,
         questionType: question.questionType,
         prompt: question.prompt,
-        contextSentence: question.contextSentence || question.prompt || '',
+        contextSentence: question.contextSentence || '',
         options: question.options.map(option => ({
           id: option.id,
           text: option.text,
@@ -279,9 +286,9 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
         <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
           <div>
           <Link
-            href={`/manage/collections/${article.category?.levelId || ''}`}
+            href={backHref}
             className='mb-2 inline-flex rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100'>
-            返回分组
+            {backLabel}
           </Link>
           <h1 className='text-3xl font-black text-gray-900 flex items-center gap-3'>
             <input

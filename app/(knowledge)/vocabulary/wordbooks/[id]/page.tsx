@@ -1,6 +1,5 @@
 // Vocabulary wordbook detail route.
 import Link from 'next/link'
-import PageHeader from '@/components/layout/PageHeader'
 import { notFound } from 'next/navigation'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import WordbookDetailClient from './WordbookDetailClient'
@@ -51,26 +50,20 @@ export default async function WordbookDetailPage({
 
   return (
     <main className='min-h-screen bg-slate-50 text-slate-900'>
-      <div className='mx-auto max-w-7xl px-4 py-6 md:px-6 md:py-8'>
-        <div className='mb-6'>
-          <PageHeader
-            showTitle
-            title={wordbook.title}
-            description='浏览目录、词条和记忆卡片。'
-            actions={<>
-              <Link
-                href='/vocabulary?view=wordbooks'
-                className='inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50'>
-                单词书架
-              </Link>
-              <Link
-                href='/vocabulary'
-                className='inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800'>
-                复习工作台
-              </Link>
-            </>}
-          />
-        </div>
+      <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
+        <header className='mb-5'>
+          <Link
+            href='/vocabulary?view=wordbooks'
+            className='text-sm font-semibold text-slate-500 transition hover:text-slate-900'>
+            ← 单词书
+          </Link>
+          <div className='mt-3 flex items-end justify-between gap-4'>
+            <h1 className='min-w-0 truncate text-2xl font-black tracking-tight text-slate-950'>
+              {wordbook.title}
+            </h1>
+            <span className='shrink-0 text-sm text-slate-500'>{totalCount} 词</span>
+          </div>
+        </header>
 
         <WordbookDetailClient
           wordbookId={wordbook.id}

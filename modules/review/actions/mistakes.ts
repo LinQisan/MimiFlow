@@ -1,8 +1,10 @@
 'use server'
 
+import { QuestionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import {
   getDueRetryQuestionRows,
+  getDueRetryQuestionTypeRows,
   getRetryQuestionRowById,
   getRetryQueueSummarySnapshot,
   softResetRetryAccuracy,
@@ -90,8 +92,18 @@ export async function getRetryQueueSummary() {
 
 export async function getDueRetryQuestions(
   limit = 20,
+  questionType?: string,
 ): Promise<RetryQueueItem[]> {
-  const rows = await getDueRetryQuestionRows(new Date(), limit)
+  const normalizedQuestionType = Object.values(QuestionType).includes(
+    questionType as QuestionType,
+  )
+    ? (questionType as QuestionType)
+    : undefined
+  const rows = await getDueRetryQuestionRows(
+    new Date(),
+    limit,
+    normalizedQuestionType,
+  )
 
   return rows.map(row => {
     const source = mapRetrySource(row)
@@ -116,6 +128,30 @@ export async function getDueRetryQuestions(
       sourceUrl: source.sourceUrl,
     }
   })
+}
+
+export async function getDueRetryQuestionTypeSummaries() {
+  const rows = await getDueRetryQuestionTypeRows(new Date())
+  const summaries = new Map<
+    string,
+    { questionType: string; count: number; firstRetryId: string }
+  >()
+
+  for (const row of rows) {
+    const questionType = row.question.questionType
+    const current = summaries.get(questionType)
+    if (current) {
+      current.count += 1
+    } else {
+      summaries.set(questionType, {
+        questionType,
+        count: 1,
+        firstRetryId: row.id,
+      })
+    }
+  }
+
+  return [...summaries.values()]
 }
 
 export async function getRetryQuestionById(

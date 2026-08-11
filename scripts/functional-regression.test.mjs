@@ -5,7 +5,10 @@ import test from 'node:test'
 
 import { evaluateSelectedOption } from '../modules/practice/domain/evaluate-attempt.ts'
 import { summarizePracticeSubmission } from '../modules/practice/domain/submission-summary.ts'
-import { normalizeQuestionDisplayText } from '../modules/practice/domain/question-text.ts'
+import {
+  normalizeQuestionDisplayText,
+  normalizeQuestionTextFields,
+} from '../modules/practice/domain/question-text.ts'
 import {
   annotateJapaneseText,
   escapeHtml,
@@ -66,8 +69,55 @@ import {
   removeQuestionOptionAt,
 } from '../utils/questions/editorOptions.ts'
 import { reorderExamOptionsForSession } from '../lib/repositories/exam/exam-option-order.ts'
+import { updateDialogueTextAtIndex } from '../features/listening/domain/dialogue-editor.ts'
+import { buildCollectionAudioFolder } from '../modules/import/audio/domain.ts'
 
 const ROOT = process.cwd()
+
+test('listening timeline text edits preserve timing and uploaded metadata', () => {
+  const dialogues = [
+    { id: 1, text: '旧文本', start: 1.2, end: 2.8, note: '保留' },
+    { id: 2, text: '下一句', start: 3, end: 4 },
+  ]
+  const updated = updateDialogueTextAtIndex(dialogues, 0, '新文本')
+
+  assert.deepEqual(updated?.[0], {
+    id: 1,
+    text: '新文本',
+    start: 1.2,
+    end: 2.8,
+    note: '保留',
+  })
+  assert.equal(updated?.[1], dialogues[1])
+  assert.equal(updateDialogueTextAtIndex(dialogues, 9, '不存在'), null)
+})
+
+test('audio uploads use stable type and collection folders', () => {
+  assert.equal(
+    buildCollectionAudioFolder({
+      materialType: 'LISTENING',
+      collection: {
+        id: '6ba8ddbb-9e5a-494c-9cf0-57dd7820a950',
+        title: '2025年7月N1',
+        collectionType: 'PAPER',
+        level: 'N1',
+      },
+    }),
+    'listening/jlpt/n1/2025-07',
+  )
+  assert.equal(
+    buildCollectionAudioFolder({
+      materialType: 'SPEAKING',
+      collection: {
+        id: 'chapter-12345678',
+        title: 'Unit 1',
+        collectionType: 'CHAPTER',
+        parent: { id: 'book-87654321', title: '跟读 教材' },
+      },
+    }),
+    'shadowing/跟读-教材/Unit-1',
+  )
+})
 
 test('audio-only listening options keep their authored order', () => {
   const options = [
@@ -101,6 +151,22 @@ test('question text import accepts a variable option count', () => {
     draft.options.map(option => option.text),
     ['はい', 'いいえ', 'わかりません'],
   )
+  assert.equal(draft.contextSentence, '')
+})
+
+test('question context stores only text distinct from the prompt', () => {
+  assert.deepEqual(
+    normalizeQuestionTextFields('  同一段 文字  ', '同一段   文字'),
+    { prompt: '同一段 文字', context: null },
+  )
+  assert.deepEqual(
+    normalizeQuestionTextFields('完整句', '带有 [1] 的定位句'),
+    { prompt: '完整句', context: '带有 [1] 的定位句' },
+  )
+  assert.deepEqual(normalizeQuestionTextFields('', '纯听力语境'), {
+    prompt: null,
+    context: '纯听力语境',
+  })
 })
 
 test('untrusted values are normalized at data boundaries', () => {
@@ -125,7 +191,7 @@ test('material payloads are discriminated by material type', () => {
     payload: { dialogues: [{ text: '会話', start: 1, end: 2 }] },
   })
   assert.equal(listening.payload.dialogues[0].text, '会話')
-  assert.deepEqual(listening.payload.tags, [])
+  assert.equal(listening.payload.tags, undefined)
 })
 
 test('question content stores extensions but never canonical question fields', () => {
@@ -185,7 +251,7 @@ test('audio library keeps uploads organized and folders hierarchical', async () 
     'utf8',
   )
 
-  assert.match(action, /return `uploads\/\$\{year\}-\$\{month\}`/)
+  assert.match(action, /return `staging\/\$\{year\}-\$\{month\}`/)
   assert.match(action, /item\.folder\.startsWith\(`\$\{selectedFolder\}\//)
   assert.match(action, /walkAudioFolders/)
   assert.match(action, /replace\(\/\[\^\\p\{L\}\\p\{N\}/)
@@ -433,6 +499,7 @@ test('partial practice submissions exclude unanswered questions', () => {
 
 test('internal empty question markers never reach practice UI', () => {
   assert.equal(normalizeQuestionDisplayText('（未填写语境句）'), null)
+  assert.equal(normalizeQuestionDisplayText('听力未填写语境句'), null)
   assert.equal(normalizeQuestionDisplayText('**未填写语境句）'), null)
   assert.equal(normalizeQuestionDisplayText('暂无文字题干'), null)
   assert.equal(
@@ -450,8 +517,13 @@ test('content writes use null instead of internal question placeholders', async 
     path.join(ROOT, 'features/practice/admin-actions.ts'),
     'utf8',
   )
+  const paperEditor = await readFile(
+    path.join(ROOT, 'features/practice/ui/PaperQuestionEditor.tsx'),
+    'utf8',
+  )
 
   assert.equal(contentActions.includes('未填写语境句'), false)
+  assert.equal(paperEditor.includes("|| '未填写题干'"), false)
   assert.equal(contentActions.includes('（听力题）'), false)
   assert.equal(paperActions.includes('未填写语境句'), false)
 })
@@ -517,7 +589,7 @@ test('management routes use one prefix and obsolete page routes are gone', async
   const required = [
     'app/(admin)/manage/page.tsx',
     'app/(admin)/manage/import/page.tsx',
-    'app/(admin)/manage/collections/page.tsx',
+    'app/(admin)/manage/shadowing/page.tsx',
     'app/(admin)/manage/practice/page.tsx',
     'app/(admin)/manage/listening/page.tsx',
     'app/(admin)/manage/vocabulary/page.tsx',
@@ -528,6 +600,10 @@ test('management routes use one prefix and obsolete page routes are gone', async
   ]
   const removed = [
     'app/(admin)/upload/page.tsx',
+    'app/(admin)/manage/collections/page.tsx',
+    'app/(admin)/manage/collections/[id]/page.tsx',
+    'app/(admin)/manage/collections/article/[id]/page.tsx',
+    'app/(admin)/manage/collections/quiz/[id]/page.tsx',
     'app/(admin)/papers/manage/page.tsx',
     'app/(study)/listening/manage/page.tsx',
     'app/(library)/collections/page.tsx',
@@ -646,9 +722,9 @@ test('listening import accepts MP3 uploads and supports multiple collections', a
   assert.match(uploadForm, /继续添加其他集合/)
   assert.doesNotMatch(uploadForm, /当前仅显示正式试卷/)
   assert.doesNotMatch(uploadForm, /批量录入说明/)
-  assert.match(questionEditor, /快速填写题目与选项/)
-  assert.match(questionEditor, /handleQuickOptionInput/)
-  assert.match(questionEditor, /parseMultiQuizText\(value\)\[0\]/)
+  assert.doesNotMatch(questionEditor, /快速填写题目与选项/)
+  assert.match(questionEditor, /handleParseBulk/)
+  assert.match(questionEditor, /parseMultiQuizText\(bulkText\)/)
   assert.match(questionEditor, /正确答案/)
   assert.equal(uploadForm.includes("paper.materialType === materialType"), false)
   assert.match(
@@ -769,7 +845,7 @@ test('project dropdowns use the custom listbox instead of native select menus', 
     'utf8',
   )
   const migratedFiles = [
-    'app/(admin)/manage/collections/CollectionEditor.tsx',
+    'features/listening/ui/ShadowingLibraryManager.tsx',
     'app/(admin)/manage/import/AnkiImportPanel.tsx',
     'app/(admin)/manage/vocabulary/page.tsx',
     'features/import/ui/UploadCenterUI.tsx',
@@ -777,7 +853,6 @@ test('project dropdowns use the custom listbox instead of native select menus', 
     'features/listening/ui/ListeningListClient.tsx',
     'features/listening/ui/ListeningQuickClassifyForm.tsx',
     'features/practice/ui/PaperAttributeForm.tsx',
-    'features/practice/ui/PaperMaterialTypeBatchForm.tsx',
     'app/(study)/practice/PapersListClient.tsx',
     'app/(study)/practice/custom/CustomPaperBuilderClient.tsx',
     'modules/import/components/BulkQuizPanel.tsx',

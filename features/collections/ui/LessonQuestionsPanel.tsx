@@ -102,8 +102,6 @@ export default function LessonQuestionsPanel({
     setBulkText,
     bulkParsed,
     setBulkParsed,
-    quickOptionInputs,
-    setQuickOptionInputs,
   } = useLessonQuestionPageState(initialSectionNumber)
 
   // ─── Add single question ───
@@ -148,36 +146,6 @@ export default function LessonQuestionsPanel({
   }
 
   const isAudioOnly = (questionId: string) => Boolean(audioOnlyFlags[questionId])
-
-  const handleQuickOptionInput = (questionId: string, value: string) => {
-    setQuickOptionInputs(current => ({ ...current, [questionId]: value }))
-    if (!value.trim()) return
-
-    const draft = parseMultiQuizText(value)[0]
-    if (!draft || draft.options.length < MIN_QUESTION_OPTION_COUNT) return
-
-    setQuestions(current =>
-      current.map(question =>
-        question.id !== questionId
-          ? question
-          : {
-              ...question,
-              prompt: draft.prompt || question.prompt,
-              contextSentence:
-                draft.contextSentence || question.contextSentence,
-              options: draft.options.map((option, index) => ({
-                id:
-                  question.options[index]?.id ||
-                  createQuestionOption(`${question.id}_opt`).id,
-                text: option.text,
-                isCorrect: option.isCorrect,
-              })),
-            },
-      ),
-    )
-    setAudioOnlyFlags(current => ({ ...current, [questionId]: false }))
-    setIsDirty(true)
-  }
 
   // ─── Bulk import ───
   const handleParseBulk = () => {
@@ -322,19 +290,19 @@ export default function LessonQuestionsPanel({
     <section
       className={
         practiceAppearance
-          ? 'mt-0 overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'
+          ? 'mt-0 overflow-hidden rounded-2xl border border-slate-200 bg-white'
           : 'mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm'
       }>
       {/* Header */}
       <div
-        className={`sticky top-14 z-20 flex flex-wrap items-center justify-between gap-3 border-b bg-white/95 p-4 backdrop-blur md:p-5 ${
+        className={`flex flex-wrap items-center justify-between gap-3 border-b bg-white p-4 md:p-5 ${
           practiceAppearance
             ? 'border-slate-100 shadow-none'
             : 'rounded-t-2xl border-gray-100 shadow-sm'
         }`}>
         <div className='flex items-center gap-3'>
-          <h2 className='text-lg font-semibold tracking-tight text-slate-950'>
-            {practiceAppearance ? '题目编辑' : '听力题目'}
+          <h2 className='text-lg font-bold tracking-tight text-slate-950'>
+            {practiceAppearance ? '题目' : '听力题目'}
           </h2>
           <span className={practiceAppearance
             ? 'rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600'
@@ -343,13 +311,13 @@ export default function LessonQuestionsPanel({
           </span>
           {isDirty && (
             <span className='rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700'>
-              有未保存更改
+              未保存
             </span>
           )}
         </div>
         <div className='flex flex-wrap items-center justify-end gap-2'>
           <label className='flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-600'>
-            <span>所属問題</span>
+            <span>問題</span>
             <input
               type='number'
               min='1'
@@ -376,7 +344,7 @@ export default function LessonQuestionsPanel({
             className={practiceAppearance
               ? 'ui-btn ui-btn-sm'
               : 'ui-btn ui-btn-sm border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100'}>
-            批量导入
+            导入
           </button>
 
           <button
@@ -386,7 +354,7 @@ export default function LessonQuestionsPanel({
             <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
               <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M12 4v16m8-8H4' />
             </svg>
-            新增听力题
+            新增题目
           </button>
 
           <button
@@ -394,16 +362,16 @@ export default function LessonQuestionsPanel({
             onClick={handleSave}
             disabled={isSaving}
             className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-50'>
-            {isSaving ? '保存中...' : '保存题目'}
+            {isSaving ? '保存中...' : '保存'}
           </button>
         </div>
       </div>
 
       {/* Bulk import panel */}
       {showBulkImport && (
-        <div className='border-b border-gray-100 bg-violet-50/30 p-4 md:p-5 space-y-3'>
+        <div className='space-y-3 border-b border-slate-100 bg-slate-50 p-4 md:p-5'>
           <div className='flex items-center justify-between'>
-            <p className='text-sm font-bold text-violet-800'>批量导入题目</p>
+            <p className='text-sm font-bold text-slate-800'>批量导入</p>
             <button onClick={() => { setShowBulkImport(false); setBulkParsed([]) }}
               className='text-xs text-gray-400 hover:text-gray-600'>关闭</button>
           </div>
@@ -411,18 +379,18 @@ export default function LessonQuestionsPanel({
             value={bulkText}
             onChange={e => setBulkText(e.target.value)}
             rows={8}
-            className='w-full rounded-xl border border-violet-200 bg-white p-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-violet-300 resize-none'
+            className='w-full resize-none rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
             placeholder={'粘贴题目文本，支持自动识别题型\n\n格式示例：\n1. 合宿の（　）を決めましょう。\n1 ひにち\n2 ひづけ\n3 にちじ\n4 にっき'}
           />
           <div className='flex items-center justify-between'>
             <button
               onClick={handleParseBulk}
               disabled={!bulkText.trim()}
-              className='text-xs px-5 py-2 bg-violet-600 text-white font-bold rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-50'>
+              className='ui-btn ui-btn-sm ui-btn-primary disabled:opacity-50'>
               解析预览
             </button>
             {bulkParsed.length > 0 && (
-              <span className='text-xs font-bold text-violet-700'>
+              <span className='text-xs font-bold text-slate-600'>
                 已解析 {bulkParsed.length} 道题
               </span>
             )}
@@ -432,7 +400,7 @@ export default function LessonQuestionsPanel({
               {bulkParsed.map((draft, i) => {
                 const tc = getTypeConfig(draft.questionType)
                 return (
-                  <div key={i} className='flex items-start gap-2 rounded-xl border border-violet-100 bg-white p-3'>
+                  <div key={i} className='flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3'>
                     <span className='shrink-0 rounded bg-gray-800 px-1.5 py-0.5 text-[10px] font-black text-white'>
                       Q{i + 1}
                     </span>
@@ -447,7 +415,7 @@ export default function LessonQuestionsPanel({
               })}
               <button
                 onClick={handleConfirmBulk}
-                className='w-full text-sm px-5 py-2.5 bg-violet-600 text-white font-bold rounded-xl hover:bg-violet-700 transition-colors'>
+                className='ui-btn ui-btn-primary w-full'>
                 确认导入 {bulkParsed.length} 题
               </button>
             </div>
@@ -498,13 +466,13 @@ export default function LessonQuestionsPanel({
                         {q.questionType !== 'LISTENING' && (
                           <div>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1 block'>
-                              语境句
+                              语境句（可选）
                             </label>
                             <textarea
                               value={q.contextSentence || ''}
                               onChange={e => handleUpdateQuestion(q.id, 'contextSentence', e.target.value)}
                               className='w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none h-20 shadow-sm'
-                              placeholder='请输入这道题的完整语境句'
+                              placeholder='仅在内容与题干不同时填写'
                             />
                           </div>
                         )}
@@ -548,32 +516,6 @@ export default function LessonQuestionsPanel({
                         </div>
 
                         <div>
-                          <div className='mb-4 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3'>
-                            <label className='mb-2 block text-xs font-black text-cyan-900'>
-                              快速填写题目与选项
-                            </label>
-                            <textarea
-                              value={quickOptionInputs[q.id] || ''}
-                              onChange={event =>
-                                handleQuickOptionInput(q.id, event.target.value)
-                              }
-                              rows={3}
-                              placeholder={'题干（可选）\n1. 选项一  2. 选项二  3. 选项三  4. 选项四'}
-                              className='w-full resize-y rounded-lg border border-cyan-200 bg-white px-3 py-2 text-sm leading-6 outline-none focus:ring-2 focus:ring-cyan-300'
-                            />
-                            {quickOptionInputs[q.id] ? (
-                              <p className={`mt-2 text-xs font-semibold ${
-                                parseMultiQuizText(quickOptionInputs[q.id]).length > 0
-                                  ? 'text-cyan-700'
-                                  : 'text-amber-700'
-                              }`}>
-                                {parseMultiQuizText(quickOptionInputs[q.id]).length > 0
-                                  ? '已自动填入下方选项。'
-                                  : `尚未识别到至少 ${MIN_QUESTION_OPTION_COUNT} 个完整选项。`}
-                              </p>
-                            ) : null}
-                          </div>
-
                           <div className='flex flex-wrap items-center justify-between gap-2 mb-1.5'>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider'>
                               选项（{q.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import type { QuestionType } from '@prisma/client'
+import type { CollectionType, QuestionType } from '@prisma/client'
 
 // 🌟 复用拖拽系统
 import {
@@ -46,7 +46,10 @@ type EditableQuestion = {
 type EditableQuiz = {
   id: string
   title: string
-  category?: { levelId?: string | null } | null
+  category?: {
+    levelId?: string | null
+    collectionType?: CollectionType | null
+  } | null
   questions: EditableQuestion[]
 }
 
@@ -74,6 +77,10 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
   } = useQuestionListEditorState<EditableQuestion>(quiz.questions || [])
 
   const { title, setTitle } = useQuizMetadataState(quiz.title || '')
+  const backHref =
+    quiz.category?.collectionType === 'PAPER' && quiz.category.levelId
+      ? `/manage/practice/${quiz.category.levelId}`
+      : '/manage/practice'
 
   // ================= 1. 新增题目 =================
   const handleAddNewQuestion = (
@@ -225,7 +232,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
         <div className='flex flex-col justify-between gap-4 md:flex-row md:items-start'>
         <div className='flex items-start gap-3 flex-1'>
           <Link
-            href={`/manage/collections/${quiz.category?.levelId || ''}`}
+            href={backHref}
             className='mt-2 p-2 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900 rounded-full transition-colors shrink-0'
             title='返回列表'>
             <svg
@@ -379,7 +386,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                           {q.questionType !== 'LISTENING' && (
                           <div>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
-                              语境句
+                              语境句（可选）
                             </label>
                             <textarea
                               value={q.contextSentence || ''}
@@ -391,7 +398,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                 )
                               }
                               className='w-full p-4 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none h-20 shadow-sm'
-                              placeholder='请输入这道题的完整语境句'
+                              placeholder='仅在内容与题干不同时填写'
                             />
                           </div>
                           )}

@@ -5,7 +5,6 @@ import { parseJsonStringList } from '@/utils/text/jsonList'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 import WordbooksBrowser from '@/features/vocabulary/ui/WordbooksBrowser'
-import PageHeader from '@/components/layout/PageHeader'
 import {
   resolveVocabularyGroupName,
   resolveVocabularyLanguageCode,
@@ -77,6 +76,38 @@ type FolderItem = {
   parentId: string | null
 }
 
+function VocabularyHeader({ activeView }: { activeView: 'workbench' | 'wordbooks' }) {
+  return (
+    <header className='mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
+      <h1 className='text-2xl font-black tracking-tight text-slate-950'>词汇</h1>
+      <nav
+        aria-label='词汇页面'
+        className='inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1'>
+        <Link
+          href='/vocabulary'
+          aria-current={activeView === 'workbench' ? 'page' : undefined}
+          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+            activeView === 'workbench'
+              ? 'bg-slate-900 text-white'
+              : 'text-slate-500 hover:text-slate-900'
+          }`}>
+          词汇
+        </Link>
+        <Link
+          href='/vocabulary?view=wordbooks'
+          aria-current={activeView === 'wordbooks' ? 'page' : undefined}
+          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
+            activeView === 'wordbooks'
+              ? 'bg-slate-900 text-white'
+              : 'text-slate-500 hover:text-slate-900'
+          }`}>
+          单词书
+        </Link>
+      </nav>
+    </header>
+  )
+}
+
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
@@ -113,35 +144,11 @@ export default async function VocabularyPage({
 
   if (activeView === 'wordbooks') {
     const wordbooks = await listWordbookShelf()
-    const totalWordbooks = wordbooks.length
-    const totalEntries = wordbooks.reduce(
-      (sum, item) => sum + item._count.entries,
-      0,
-    )
 
     return (
       <main className='min-h-screen bg-slate-50 pb-16'>
-        <div className='mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8'>
-          <PageHeader
-            title='词汇中心'
-            description='浏览单词书和已收录词汇。'
-            actions={<>
-                <Link
-                  href='/vocabulary'
-                  className='inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 transition hover:bg-slate-50'>
-                  复习工作台
-                </Link>
-                <Link
-                  href='/vocabulary?view=wordbooks'
-                  className='inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white'>
-                  单词书架
-                </Link>
-              </>}
-            meta={<>
-              <span>单词书 <strong className='text-slate-900'>{totalWordbooks}</strong></span>
-              <span>收录词条 <strong className='text-slate-900'>{totalEntries}</strong></span>
-            </>}
-          />
+        <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
+          <VocabularyHeader activeView='wordbooks' />
 
           <WordbooksBrowser
             items={wordbooks.map(item => ({
@@ -331,27 +338,8 @@ export default async function VocabularyPage({
 
   return (
     <main className='min-h-screen bg-slate-50 pb-16'>
-      <div className='mx-auto max-w-7xl px-4 py-6 md:px-8 md:py-8'>
-        <PageHeader
-          title='词汇中心'
-          description='复习生词，整理释义和例句。'
-          actions={<>
-              <Link
-                href='/vocabulary'
-                className='inline-flex h-10 items-center justify-center rounded-xl bg-slate-900 px-4 text-sm font-bold text-white'>
-                复习工作台
-              </Link>
-              <Link
-                href='/vocabulary?view=wordbooks'
-                className='inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50'>
-                单词书架
-              </Link>
-          </>}
-          meta={<>
-            <span>词条 <strong className='text-slate-900'>{totalCount}</strong></span>
-            <span>页码 <strong className='text-slate-900'>{normalizedPage}/{totalPages}</strong></span>
-          </>}
-        />
+      <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
+        <VocabularyHeader activeView='workbench' />
 
         <VocabularyTabs
           groupedData={groupedData}

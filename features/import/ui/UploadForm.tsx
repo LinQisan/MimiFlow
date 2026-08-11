@@ -48,6 +48,7 @@ type Props = {
     }[]
   }[]
   variant?: 'default' | 'media-subtitle'
+  defaultMaterialType?: MaterialType
 }
 
 
@@ -57,6 +58,7 @@ export default function UploadForm({
   levels,
   papers,
   variant = 'default',
+  defaultMaterialType = 'LISTENING',
 }: Props) {
   const dialog = useDialog()
   const router = useRouter()
@@ -90,18 +92,8 @@ export default function UploadForm({
     setAudioUploadFileNames,
     paperName,
     setPaperName,
-    materialDescription,
-    setMaterialDescription,
-    materialTranscript,
-    setMaterialTranscript,
-    materialSource,
-    setMaterialSource,
     materialLanguage,
     setMaterialLanguage,
-    materialTags,
-    setMaterialTags,
-    materialDifficulty,
-    setMaterialDifficulty,
     materialChapterName,
     setMaterialChapterName,
     materialType,
@@ -136,7 +128,7 @@ export default function UploadForm({
     setSelectedPaperIds,
     fileInputRef,
     audioInputRef,
-  } = useAudioUploadState(papers.length > 0)
+  } = useAudioUploadState(papers.length > 0, defaultMaterialType)
   const isMediaSubtitleVariant = variant === 'media-subtitle'
   const isBatchAss = selectedFileNames.length > 1
   const pastedSubtitleText = useMemo(
@@ -210,7 +202,7 @@ export default function UploadForm({
         setSelectedPaperId('')
         return
       }
-      const resolvedType: MaterialType = 'LISTENING'
+      const resolvedType = defaultMaterialType
       const latest = findLatestLessonByMaterialType(targetPaper, resolvedType)
       if (targetPaper && targetPaper.lessons.length > 0) {
         setTitle(autoIncrementString(latest?.title || ''))
@@ -228,6 +220,7 @@ export default function UploadForm({
     }
   }, [
     materialType,
+    defaultMaterialType,
     mode,
     papers,
     selectedPaperId,
@@ -257,10 +250,10 @@ export default function UploadForm({
 
   useEffect(() => {
     if (mode === 'new') {
-      setMaterialType('LISTENING')
+      setMaterialType(defaultMaterialType)
       setMaterialChapterName('')
     }
-  }, [mode, setMaterialType, setMaterialChapterName])
+  }, [defaultMaterialType, mode, setMaterialType, setMaterialChapterName])
 
   useEffect(() => {
     if (!isMediaSubtitleVariant) return
@@ -696,9 +689,6 @@ export default function UploadForm({
       <input type='hidden' name='subtitleWorkTitle' value={subtitleWorkTitle} />
       <input type='hidden' name='subtitleSeason' value={subtitleSeason} />
       <input type='hidden' name='subtitleEpisode' value={subtitleEpisode} />
-      {isMediaSubtitleVariant && (
-        <input type='hidden' name='materialSource' value={subtitleWorkTitle} />
-      )}
       <input
         type='hidden'
         name='assAudioOverrides'
@@ -807,7 +797,11 @@ export default function UploadForm({
                 name='collectionName'
                 value={paperName}
                 onChange={e => setPaperName(e.target.value)}
-                placeholder='集合名称（例：2025-07 N1 真题）'
+                placeholder={
+                  materialType === 'SPEAKING'
+                    ? '集合名称（例：教材名称 / Unit）'
+                    : '集合名称（例：2025-07 N1 真题）'
+                }
                 className='flex-[2] border border-gray-200 bg-gray-50 p-4 text-sm font-bold outline-none transition-colors focus:ring-2 focus:ring-blue-400'
               />
 
@@ -859,7 +853,9 @@ export default function UploadForm({
                 ? '例：N1 听力（留空则直接用字幕文件名）'
                 : isMediaSubtitleVariant
                   ? '留空则使用字幕文件名'
-                : '例：问题 1-01（可留空，不填则用字幕文件名）'
+                  : materialType === 'SPEAKING'
+                    ? '例：会話 01（可留空，不填则用字幕文件名）'
+                    : '例：问题 1-01（可留空，不填则用字幕文件名）'
             }
             className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
           />
@@ -1178,126 +1174,28 @@ export default function UploadForm({
         </div>
 
         {isMediaSubtitleVariant ? (
-          <details className='group mt-4 rounded-lg border border-slate-200 bg-slate-50'>
-            <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
-              补充检索信息
-              <span className='text-xs font-normal text-slate-400 group-open:hidden'>
-                可选
-              </span>
-              <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
-                收起
-              </span>
-            </summary>
-            <div className='border-t border-slate-200 p-3 md:p-4'>
-            <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
-              <input
-                name='materialLanguage'
-                value={materialLanguage}
-                onChange={e => setMaterialLanguage(e.target.value)}
-                placeholder='字幕语言（例：ja / en / zh）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
-              />
-              <input
-                name='materialTags'
-                value={materialTags}
-                onChange={e => setMaterialTags(e.target.value)}
-                placeholder='题材标签（逗号分隔，如：悬疑, 校园, 爱情）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
-              />
-              <input
-                name='materialDifficulty'
-                value={materialDifficulty}
-                onChange={e => setMaterialDifficulty(e.target.value)}
-                placeholder='台词难度（例：中级 / 高级）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
-              />
-            </div>
-
-            <textarea
-              name='materialDescription'
-              value={materialDescription}
-              onChange={e => setMaterialDescription(e.target.value)}
-              placeholder='场景说明（可选，例如：机场安检、商务会议）'
-              className='custom-scrollbar mt-2 min-h-[80px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
+          <label className='mt-4 block text-sm font-semibold text-slate-700'>
+            字幕语言
+            <input
+              name='materialLanguage'
+              value={materialLanguage}
+              onChange={e => setMaterialLanguage(e.target.value)}
+              placeholder='例如：ja / en / zh'
+              className='mt-2 w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
             />
-            <textarea
-              name='materialTranscript'
-              value={materialTranscript}
-              onChange={e => setMaterialTranscript(e.target.value)}
-              placeholder='全文文本（可选，便于检索）'
-              className='custom-scrollbar mt-2 min-h-[100px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
+          </label>
+        ) : materialType === 'SPEAKING' ? (
+          <label className='mt-4 block text-sm font-semibold text-slate-700'>
+            章节名称
+            <input
+              name='materialChapterName'
+              value={materialChapterName}
+              onChange={e => setMaterialChapterName(e.target.value)}
+              placeholder='例如：Section 01 / 会話 1'
+              className='mt-2 w-full border border-indigo-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
             />
-            </div>
-          </details>
-        ) : (
-          <details className='group mt-4 rounded-lg border border-slate-200 bg-slate-50'>
-            <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
-              补充来源、难度与检索信息
-              <span className='text-xs font-normal text-slate-400 group-open:hidden'>
-                可选
-              </span>
-              <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
-                收起
-              </span>
-            </summary>
-            <div className='border-t border-slate-200 p-3 md:p-4'>
-            {materialType === 'SPEAKING' && (
-              <input
-                name='materialChapterName'
-                value={materialChapterName}
-                onChange={e => setMaterialChapterName(e.target.value)}
-                placeholder='跟读章节名（例：Section 01 / 会話 1）'
-                className='mb-2 w-full border border-indigo-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
-              />
-            )}
-            <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
-              <input
-                name='materialSource'
-                value={materialSource}
-                onChange={e => setMaterialSource(e.target.value)}
-                placeholder='来源（例：JLPT N1 2026-07）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              />
-              <input
-                name='materialLanguage'
-                value={materialLanguage}
-                onChange={e => setMaterialLanguage(e.target.value)}
-                placeholder='语言（例：ja-JP / en-US）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              />
-              <input
-                name='materialDifficulty'
-                value={materialDifficulty}
-                onChange={e => setMaterialDifficulty(e.target.value)}
-                placeholder='难度（例：N1 / Advanced）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              />
-              <input
-                name='materialTags'
-                value={materialTags}
-                onChange={e => setMaterialTags(e.target.value)}
-                placeholder='标签（逗号分隔，如：交通, 机场, 会话）'
-                className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              />
-            </div>
-
-            <textarea
-              name='materialDescription'
-              value={materialDescription}
-              onChange={e => setMaterialDescription(e.target.value)}
-              placeholder='材料描述（可选）'
-              className='custom-scrollbar mt-2 min-h-[80px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-            />
-            <textarea
-              name='materialTranscript'
-              value={materialTranscript}
-              onChange={e => setMaterialTranscript(e.target.value)}
-              placeholder='全文文本（可选，便于检索与后续处理）'
-              className='custom-scrollbar mt-2 min-h-[100px] w-full resize-y border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-            />
-            </div>
-          </details>
-        )}
+          </label>
+        ) : null}
       </fieldset>
 
       <section className='rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>

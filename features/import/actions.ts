@@ -19,6 +19,9 @@ import {
   getMaterialCollectionTypeError,
   isCollectionTypeAllowedForMaterial,
 } from '@/modules/import/collection-policy'
+import {
+  buildCollectionAudioFolder,
+} from '@/modules/import/audio/domain'
 
 function assTimeToSeconds(timeStr: string): number {
   const [h, m, s] = timeStr.split(':')
@@ -39,12 +42,6 @@ type ProcessedSubtitle = {
   start: number
   end: number
   sequenceId: number
-}
-
-type TimedSubtitleDraft = {
-  text: string
-  start: number
-  end: number
 }
 
 function splitDialogueTextToLines(text: string) {
@@ -176,37 +173,6 @@ function applySmartPadding(
   }
 
   return result
-}
-
-function parseTimedSubtitleDrafts(raw: FormDataEntryValue | null) {
-  if (typeof raw !== 'string' || !raw.trim()) return []
-
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!Array.isArray(parsed)) return []
-
-    return parsed
-      .map(item => {
-        if (!item || typeof item !== 'object') return null
-        const record = item as Record<string, unknown>
-        const text = String(record.text || '').trim()
-        const start = Number(record.start)
-        const end = Number(record.end)
-        if (!text || !Number.isFinite(start) || !Number.isFinite(end)) {
-          return null
-        }
-        if (start < 0 || end <= start) return null
-        return {
-          text,
-          start: Number(start.toFixed(2)),
-          end: Number(end.toFixed(2)),
-        }
-      })
-      .filter((item): item is TimedSubtitleDraft => Boolean(item))
-      .sort((a, b) => a.start - b.start || a.end - b.end)
-  } catch {
-    return []
-  }
 }
 
 const AUDIO_EXTENSIONS = new Set([
@@ -399,9 +365,7 @@ function normalizeCollectionTypeForMaterial(
   const requested =
     rawCollectionType === CollectionType.CUSTOM_GROUP
       ? CollectionType.CUSTOM_GROUP
-      : rawCollectionType === CollectionType.FAVORITES
-        ? CollectionType.FAVORITES
-        : CollectionType.PAPER
+      : CollectionType.PAPER
 
   if (isCollectionTypeAllowedForMaterial(materialType, requested)) {
     return requested
@@ -529,13 +493,24 @@ async function ensureTargetCollections(
   }
 }
 
-async function getCollectionAudioFolderName(collectionId: string | null) {
+async function getCollectionAudioFolderName(
+  collectionId: string | null,
+  materialType: MaterialType,
+) {
   if (!collectionId) return ''
   const collection = await prisma.collection.findUnique({
     where: { id: collectionId },
-    select: { title: true },
+    select: {
+      id: true,
+      title: true,
+      level: true,
+      collectionType: true,
+      parent: { select: { id: true, title: true } },
+    },
   })
-  return toSafeFolderName(collection?.title || '')
+  if (!collection) return ''
+
+  return buildCollectionAudioFolder({ materialType, collection })
 }
 
 function parseUploadMode(raw: FormDataEntryValue | null) {
@@ -652,7 +627,10 @@ export async function uploadAssAndSaveData(formData: FormData) {
         : isMediaUploadMode
           ? MaterialType.MEDIA_SUBTITLE
           : MaterialType.LISTENING)
-    const audioFolderName = await getCollectionAudioFolderName(collectionId)
+    const audioFolderName = await getCollectionAudioFolderName(
+      collectionId,
+      matchedMaterialType,
+    )
     const title = (formData.get('title') as string)?.trim()
     const audioSourceType = (formData.get('audioSourceType') as string) || 'manual'
     const audioFileField = formData.get('audioFile')
@@ -742,20 +720,11 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const fallbackPaths: string[] = []
     const unmatchedAudio: string[] = []
     const assAudioOverrides = parseAssAudioOverrides(formData.get('assAudioOverrides'))
-    const materialDescription = (formData.get('materialDescription') as string)?.trim() || ''
-    const materialTranscript = (formData.get('materialTranscript') as string)?.trim() || ''
-    const materialSourceInput =
-      (formData.get('materialSource') as string)?.trim() || ''
-    const materialSource =
-      materialSourceInput || (isMediaUploadMode ? subtitleWorkTitle : '')
-    const materialLanguage = (formData.get('materialLanguage') as string)?.trim() || ''
-    const materialDifficulty = (formData.get('materialDifficulty') as string)?.trim() || ''
+    const materialLanguage = isMediaUploadMode
+      ? (formData.get('materialLanguage') as string)?.trim() || ''
+      : ''
     const materialChapterName =
       (formData.get('materialChapterName') as string)?.trim() || ''
-    const materialTags = ((formData.get('materialTags') as string) || '')
-      .split(/[，,]/)
-      .map(item => item.trim())
-      .filter(Boolean)
     let overrideApplied = 0
     let overrideInvalid = 0
     const sequencePlans = new Map(
@@ -867,12 +836,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
       if (subtitleWorkTitle) contentPayload.subtitleWorkTitle = subtitleWorkTitle
       if (subtitleSeason) contentPayload.subtitleSeason = subtitleSeason
       if (subtitleEpisode) contentPayload.subtitleEpisode = subtitleEpisode
-      if (materialDescription) contentPayload.description = materialDescription
-      if (materialTranscript) contentPayload.transcript = materialTranscript
-      if (materialSource) contentPayload.source = materialSource
       if (materialLanguage) contentPayload.language = materialLanguage
-      if (materialDifficulty) contentPayload.difficulty = materialDifficulty
-      if (materialTags.length > 0) contentPayload.tags = materialTags
       if (matchedMaterialType === MaterialType.LISTENING) {
         contentPayload.questionEntryRequired = true
       }
@@ -887,19 +851,6 @@ export async function uploadAssAndSaveData(formData: FormData) {
       }
 
       const metadata: Record<string, unknown> = {}
-      if (
-        materialSource ||
-        materialLanguage ||
-        materialDifficulty ||
-        materialTags.length > 0
-      ) {
-        metadata.upload = {
-          source: materialSource || null,
-          language: materialLanguage || null,
-          difficulty: materialDifficulty || null,
-          tags: materialTags,
-        }
-      }
       if (isMediaUploadMode) {
         metadata.subtitle = {
           noAudio: true,
@@ -975,7 +926,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
     revalidatePath('/')
     revalidatePath('/manage/import')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
     if (isMediaUploadMode) revalidatePath('/subtitles')
 
     return {
@@ -994,132 +945,6 @@ export async function uploadAssAndSaveData(formData: FormData) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '未知错误'
     console.error('处理失败:', error)
-    return { success: false, message: `导入失败: ${message}` }
-  }
-}
-
-export async function createShadowingFromTimedAudio(formData: FormData) {
-  try {
-    const title = String(formData.get('title') || '').trim()
-    const chapterName = String(formData.get('chapterName') || '').trim()
-    const collectionMode = String(formData.get('collectionMode') || 'existing')
-    const collectionIdInput = String(formData.get('collectionId') || '').trim()
-    const collectionName = String(formData.get('collectionName') || '').trim()
-    const description = String(formData.get('description') || '').trim()
-    const source = String(formData.get('source') || '').trim()
-    const language = String(formData.get('language') || '').trim()
-    const difficulty = String(formData.get('difficulty') || '').trim()
-    const tags = String(formData.get('tags') || '')
-      .split(/[，,]/)
-      .map(item => item.trim())
-      .filter(Boolean)
-    const audioFile = formData.get('audioFile') as File | null
-    const subtitleDrafts = parseTimedSubtitleDrafts(formData.get('subtitleLines'))
-
-    if (!title) throw new Error('请填写材料标题。')
-    if (!audioFile || audioFile.size === 0) throw new Error('请上传音频文件。')
-    if (subtitleDrafts.length === 0) {
-      throw new Error('请至少添加一条有效字幕。')
-    }
-
-    let targetCollectionId = collectionIdInput
-    if (collectionMode === 'new') {
-      if (!collectionName) throw new Error('请填写新集合名称。')
-      const created = await prisma.collection.create({
-        data: {
-          title: collectionName,
-          collectionType: CollectionType.FAVORITES,
-          acceptedMaterialTypes: [MaterialType.SPEAKING],
-        },
-        select: { id: true },
-      })
-      targetCollectionId = created.id
-    }
-
-    if (!targetCollectionId) throw new Error('请选择或新建跟读集合。')
-
-    const collection = await prisma.collection.findUnique({
-      where: { id: targetCollectionId },
-      select: { id: true, title: true },
-    })
-    if (!collection) throw new Error('目标集合不存在，请刷新页面重试。')
-
-    const savedAudioPath = await saveUploadedAudio(audioFile, collection.title)
-    const materialId = randomUUID()
-    const maxRow = await prisma.collectionMaterial.aggregate({
-      where: { collectionId: targetCollectionId },
-      _max: { sortOrder: true },
-    })
-    const nextSortOrder = (maxRow._max.sortOrder ?? -1) + 1
-
-    const dialogues: ProcessedSubtitle[] = subtitleDrafts.map((line, index) => ({
-      id: index + 1,
-      stableId: randomUUID(),
-      text: line.text,
-      start: line.start,
-      end: line.end,
-      sequenceId: index + 1,
-    }))
-    const transcript = dialogues.map(line => line.text).join('\n')
-    const contentPayload: Record<string, unknown> = {
-      audioUrl: savedAudioPath,
-      audioFile: savedAudioPath,
-      dialogues,
-      transcript,
-    }
-    if (description) contentPayload.description = description
-    if (source) contentPayload.source = source
-    if (language) contentPayload.language = language
-    if (difficulty) contentPayload.difficulty = difficulty
-    if (tags.length > 0) contentPayload.tags = tags
-
-    const metadata: Record<string, unknown> = {
-      upload: {
-        source: source || null,
-        language: language || null,
-        difficulty: difficulty || null,
-        tags,
-        creationMode: 'timed-audio',
-      },
-    }
-
-    await prisma.material.create({
-      data: {
-        id: materialId,
-        type: MaterialType.SPEAKING,
-        title,
-        chapterName: chapterName || title,
-        contentPayload: encodeMaterialPayload(
-          MaterialType.SPEAKING,
-          contentPayload,
-        ),
-        metadata: metadata as Prisma.InputJsonValue,
-        collectionMaterials: {
-          create: {
-            collectionId: targetCollectionId,
-            sortOrder: nextSortOrder,
-          },
-        },
-      },
-    })
-
-    revalidatePath('/')
-    revalidatePath('/manage/import')
-    revalidatePath('/listening')
-    revalidatePath('/manage/listening')
-    revalidatePath('/manage/shadowing')
-    revalidatePath('/manage/collections')
-
-    return {
-      success: true,
-      message: `已导入跟读材料：${title}（${dialogues.length} 条字幕）。`,
-      lessonId: materialId.split(':').slice(1).join(':'),
-      materialId,
-      audioFile: savedAudioPath,
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '未知错误'
-    console.error('音频打轴导入失败:', error)
     return { success: false, message: `导入失败: ${message}` }
   }
 }

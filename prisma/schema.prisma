@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
 }
 
 enum SourceType {
@@ -29,7 +29,6 @@ enum CollectionType {
   CHAPTER // 章节/Unit/Lesson
   PAPER // 官方试卷
   CUSTOM_GROUP // 用户自定义分组/生词本
-  FAVORITES // 默认收藏夹
 }
 
 // 题目类型枚举
@@ -215,8 +214,8 @@ enum GrammarExampleSource {
 model Grammar {
   id            String                 @id @default(cuid())
   name          String
-  meaning       String?                @db.Text
-  usageNote     String?                @map("usage_note") @db.Text
+  meaning       String?
+  usageNote     String?                @map("usage_note")
   createdAt     DateTime               @default(now()) @map("created_at")
   updatedAt     DateTime               @updatedAt @map("updated_at")
   tags          GrammarTagOnGrammar[]
@@ -231,9 +230,9 @@ model Grammar {
 model GrammarConstruction {
   id         String           @id @default(cuid())
   grammarId  String           @map("grammar_id")
-  connection String           @db.Text
-  meaning    String           @db.Text
-  note       String?          @db.Text
+  connection String
+  meaning    String
+  note       String?
   sortOrder  Int              @default(0) @map("sort_order")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
@@ -268,7 +267,7 @@ model GrammarTagOnGrammar {
 model GrammarCluster {
   id          String                 @id @default(cuid())
   title       String                 @unique
-  description String?                @db.Text
+  description String?
   createdAt   DateTime               @default(now()) @map("created_at")
   updatedAt   DateTime               @updatedAt @map("updated_at")
   members     GrammarClusterMember[]
@@ -292,9 +291,9 @@ model GrammarExample {
   id             String               @id @default(cuid())
   grammarId      String               @map("grammar_id")
   source         GrammarExampleSource
-  sentenceText   String               @map("sentence_text") @db.Text
-  translation    String?              @db.Text
-  note           String?              @db.Text
+  sentenceText   String               @map("sentence_text")
+  translation    String?
+  note           String?
   sentenceId     String?              @map("sentence_id")
   constructionId String?              @map("construction_id")
   createdAt      DateTime             @default(now()) @map("created_at")
@@ -351,12 +350,12 @@ model Question {
   templateType QuestionTemplate @default(CHOICE_QUIZ) @map("template_type")
   questionType QuestionType     @default(PRONUNCIATION) @map("question_type")
   content      Json
-  prompt       String?          @db.Text
-  context      String?          @db.Text
+  prompt       String?
+  context      String?
   options      Json?
   answer       Json
-  analysis     String?          @db.Text
-  note         String?          @db.Text
+  analysis     String?
+  note         String?
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
   sortOrder    Int              @default(0) @map("sort_order")
@@ -372,11 +371,11 @@ model Question {
 model Collection {
   id             String         @id @default(uuid())
   title          String
-  description    String?        @db.Text
+  description    String?
   language       String?
   level          String?
   collectionType CollectionType @map("collection_type")
-  acceptedMaterialTypes MaterialType[] @default([]) @map("accepted_material_types")
+  acceptedMaterialTypes Json           @default("[]") @map("accepted_material_types")
   parentId       String?        @map("parent_id")
   sortOrder      Int            @default(0) @map("sort_order")
   createdAt      DateTime       @default(now()) @map("created_at")

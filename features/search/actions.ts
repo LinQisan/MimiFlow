@@ -110,7 +110,7 @@ export async function searchGlobalContent(
               { title: { contains: primaryToken } },
               {
                 contentPayload: {
-                  path: ['text'],
+                  path: '$.text',
                   string_contains: primaryToken,
                 },
               },
@@ -138,7 +138,7 @@ export async function searchGlobalContent(
               { title: { contains: primaryToken } },
               {
                 contentPayload: {
-                  path: ['description'],
+                  path: '$.description',
                   string_contains: primaryToken,
                 },
               },

@@ -16,6 +16,7 @@ import {
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
 import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
+import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
 
 const updatePaperQuestionSchema = z.object({
   questionId: z.string().trim().min(1, '题目 ID 缺失。'),
@@ -65,8 +66,11 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   const input = parseInput(updatePaperQuestionSchema, payload)
   const questionId = input.questionId
 
-  const promptText = input.prompt.trim()
-  const contextText = input.contextSentence.trim()
+  const questionText = normalizeQuestionTextFields(
+    input.prompt,
+    input.contextSentence,
+  )
+  const promptText = questionText.prompt || ''
   const explanationText = (input.explanation || '').trim()
   const listeningSectionNumberText = (input.listeningSectionNumber || '').trim()
   let listeningSectionNumber: number | null = null
@@ -109,7 +113,6 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   }
 
   const currentContent = decodeQuestionContent(current.content)
-  const nextContext = contextText || promptText || null
   const currentListeningSectionTitle = String(
     currentContent.listeningSectionTitle || currentContent.sectionTitle || '听力',
   ).trim()
@@ -130,7 +133,7 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
 
   const data: Prisma.QuestionUpdateInput = {
     prompt: promptText || null,
-    context: nextContext,
+    context: questionText.context,
     analysis: explanationText || null,
     content: encodeQuestionContent(
       {

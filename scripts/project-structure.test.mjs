@@ -117,8 +117,6 @@ test('review routes and feature modules exist', async () => {
     'features/content/ui/EditArticleUI.tsx',
     'features/content/ui/EditQuizUI.tsx',
     'features/import/ui/UploadCenterUI.tsx',
-    'features/import/ui/AudioTimingWaveforms.tsx',
-    'features/import/hooks/useAudioTimingStudioState.ts',
     'features/import/hooks/useUploadMutations.ts',
     'features/listening/ui/ListeningListClient.tsx',
     'features/listening/ui/ListeningViewSwitcher.tsx',
@@ -216,6 +214,9 @@ test('review workflows preserve submitted state and keep clear exits', async () 
   assert.match(questionReview, /href='\/review'/)
   assert.match(questionReview, /href=\{item\.sourceUrl\}/)
   assert.match(questionReview, /disabled=\{!selectedOptionId \|\| isPending\}/)
+  assert.match(questionReview, /aria-label='选择复习题型'/)
+  assert.match(questionReview, /activeTypeQuery/)
+  assert.match(mistakeActions, /getDueRetryQuestionTypeSummaries/)
   assert.equal(questionReview.includes('优化后正确率'), false)
   assert.equal(questionReview.includes('满足条件后可轻度清理'), false)
   assert.equal(questionRenderer.includes('作答面板'), false)
@@ -275,12 +276,6 @@ test('large interactive editors keep state, mutations, domain logic, and views s
       /article-question-builder/,
       /ArticleImportPanel/,
     ]],
-    ['features/import/ui/AudioTimingStudio.tsx', [
-      /useAudioTimingStudioState/,
-      /useAudioTimingMutations/,
-      /domain\/audio-timing/,
-      /AudioTimingWaveforms/,
-    ]],
     ['app/(library)/subtitles/[id]/MediaSubtitleEditor.tsx', [
       /useMediaSubtitleEditorState/,
       /useMediaSubtitleMutations/,
@@ -339,8 +334,13 @@ test('content import keeps one task visible at a time', async () => {
   assert.equal(uploadCenter.includes('Step 2-4'), false)
   assert.match(uploadCenter, /quizEntryMode === 'bulk'/)
   assert.match(uploadCenter, /题目录入方式/)
-  assert.match(uploadForm, /补充来源、难度与检索信息/)
-  assert.match(uploadForm, /const resolvedType: MaterialType = 'LISTENING'/)
+  assert.match(importPage, /speaking: 'audio'/)
+  assert.equal(uploadCenter.includes('AudioTimingStudio'), false)
+  assert.equal(uploadCenter.includes('补充语言与等级'), false)
+  assert.equal(uploadForm.includes('补充来源、难度与检索信息'), false)
+  assert.match(uploadForm, /字幕语言/)
+  assert.match(uploadForm, /章节名称/)
+  assert.match(uploadForm, /const resolvedType = defaultMaterialType/)
   assert.equal(uploadForm.includes('paper.materialType === materialType'), false)
   assert.match(uploadForm, /name='collectionIds'/)
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
@@ -383,8 +383,9 @@ test('content import filters collections by explicit material capabilities', asy
     'utf8',
   )
 
-  assert.match(schema, /acceptedMaterialTypes MaterialType\[\]/)
-  assert.match(repository, /acceptedMaterialTypes: \{ has: materialType \}/)
+  assert.match(schema, /provider = "sqlite"/)
+  assert.match(schema, /acceptedMaterialTypes Json/)
+  assert.match(repository, /normalizeAcceptedMaterialTypes/)
   assert.match(importPage, /reading: 'READING'/)
   assert.match(
     capabilityMigration,
@@ -393,8 +394,8 @@ test('content import filters collections by explicit material capabilities', asy
 })
 
 test('management pages keep classification, exams, and audio responsibilities separate', async () => {
-  const collectionPage = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/collections/page.tsx'),
+  const shadowingLibraryManager = await readFile(
+    path.join(ROOT, 'features/listening/ui/ShadowingLibraryManager.tsx'),
     'utf8',
   )
   const practicePage = await readFile(
@@ -407,10 +408,6 @@ test('management pages keep classification, exams, and audio responsibilities se
   )
   const examRepository = await readFile(
     path.join(ROOT, 'lib/repositories/exam/index.ts'),
-    'utf8',
-  )
-  const collectionRepository = await readFile(
-    path.join(ROOT, 'lib/repositories/collection/manage.ts'),
     'utf8',
   )
   const listeningEditor = await readFile(
@@ -432,16 +429,19 @@ test('management pages keep classification, exams, and audio responsibilities se
     'utf8',
   )
 
-  assert.match(collectionPage, /调整名称、位置与顺序/)
-  assert.match(collectionPage, /个下级/)
-  assert.match(collectionPage, /前往试卷管理/)
-  assert.match(collectionPage, /item\.collectionType === 'PAPER'/)
+  assert.match(shadowingLibraryManager, /教材与章节/)
+  assert.match(shadowingLibraryManager, /createShadowingChapter/)
+  assert.match(shadowingLibraryManager, /updateCollectionAttributes/)
+  assert.match(shadowingLibraryManager, /deleteCollection/)
   assert.match(examRepository, /collectionType: CollectionType\.PAPER/)
   assert.equal(practicePage.includes('FavoriteCollectionCreateForm'), false)
   assert.equal(practicePage.includes('全部类型'), false)
+  assert.doesNotMatch(practicePage, /Official papers|查看练习页|预览|作答|元信息/)
+  assert.match(practicePage, /导入题目/)
+  assert.match(practicePage, /设置/)
   assert.match(listeningPage, /听力材料/)
   assert.match(listeningPage, /跟读材料/)
-  assert.match(listeningPage, /管理书籍与章节/)
+  assert.match(listeningPage, /ShadowingLibraryManager/)
   assert.match(listeningPage, /添加题目/)
   assert.match(listeningPage, /`\/manage\/listening\/\$\{item\.id\}#questions`/)
   assert.match(listeningPage, /`\/manage\/shadowing\/\$\{item\.id\}`/)
@@ -451,10 +451,15 @@ test('management pages keep classification, exams, and audio responsibilities se
   assert.match(listeningEditor, /LessonQuestionsPanel/)
   assert.match(listeningQuestionEditor, /aria-label='材料所属問題'/)
   assert.equal(listeningQuestionEditor.includes('所属問題（1、2、3…）'), false)
-  assert.match(paperQuestionEditor, /getQuestionTypeDisplay/)
-  assert.match(paperQuestionEditor, /搜索题干、语境、解析或材料名/)
-  assert.match(paperQuestionEditor, /保存题目/)
-  assert.match(collectionRepository, /item\.type === MaterialType\.SPEAKING/)
+  assert.match(paperQuestionEditor, /getQuestionTypeLabel/)
+  assert.doesNotMatch(
+    paperQuestionEditor,
+    /Paper editor|预览试卷|测试作答|按材料检查|InfoTile/,
+  )
+  assert.match(paperQuestionEditor, /placeholder='搜索题目'/)
+  assert.match(paperQuestionEditor, /\{isSaving \? '保存中…' : '保存题目'\}/)
+  assert.match(paperQuestionEditor, /题目内容/)
+  assert.match(paperQuestionEditor, /选项与答案/)
 })
 
 test('schema keeps one vocabulary organization model and a typed question', async () => {

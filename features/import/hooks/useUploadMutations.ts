@@ -3,7 +3,6 @@
 import { useCallback } from 'react'
 
 import {
-  createShadowingFromTimedAudio,
   listPublicAudioFiles,
   uploadAssAndSaveData,
 } from '@/features/import/actions'
@@ -39,8 +38,4 @@ export function useUploadCenterMutations() {
       [],
     ),
   }
-}
-
-export function useAudioTimingMutations() {
-  return { createShadowingFromTimedAudio }
 }

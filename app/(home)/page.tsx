@@ -53,11 +53,10 @@ const coreEntrances: HomeEntrance[] = [
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <div className='mb-6 flex items-baseline justify-between border-b border-slate-200 pb-3'>
+    <div className='mb-4'>
       <h2 className='text-xl font-semibold tracking-tight text-slate-900 md:text-2xl'>
         {title}
       </h2>
-      <span className='text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400'>Index</span>
     </div>
   )
 }
@@ -211,61 +210,59 @@ export default async function HomePage() {
   }
 
   return (
-    <main className='min-h-screen bg-white text-slate-900'>
+    <main className='min-h-screen text-slate-900'>
       <div className='mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10'>
-        <header className='mb-8 border-b border-slate-200 pb-7 md:mb-10 md:pb-8'>
-          <div className='grid gap-5 md:grid-cols-[1.2fr_0.8fr] md:items-end'>
-            <div className='grid grid-cols-2 gap-x-8 gap-y-6 border-y border-slate-200 py-5 md:grid-cols-4'>
-              <div>
-                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                  本周学习
-                </p>
-                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
-                  {weekHours}h
-                </p>
-              </div>
-              <div>
-                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                  生词总量
-                </p>
-                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
-                  {vocabCount}
-                </p>
-              </div>
-              <div>
-                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                  套卷数量
-                </p>
-                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
-                  {paperCount}
-                </p>
-              </div>
-              <div>
-                <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
-                  错题待复习
-                </p>
-                <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
-                  {wrongCount}
-                </p>
-              </div>
-            </div>
+        <section
+          aria-label='学习概览'
+          className='mb-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:mb-14 md:grid-cols-4'>
+          <div className='bg-white p-4 md:p-5'>
+            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+              本周学习
+            </p>
+            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+              {weekHours}h
+            </p>
           </div>
-        </header>
+          <div className='bg-white p-4 md:p-5'>
+            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+              生词总量
+            </p>
+            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+              {vocabCount}
+            </p>
+          </div>
+          <div className='bg-white p-4 md:p-5'>
+            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+              套卷数量
+            </p>
+            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+              {paperCount}
+            </p>
+          </div>
+          <div className='bg-white p-4 md:p-5'>
+            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+              错题待复习
+            </p>
+            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+              {wrongCount}
+            </p>
+          </div>
+        </section>
 
-        <section className='mb-14 md:mb-20'>
+        <section className='mb-12 md:mb-16'>
           <SectionTitle title='今日继续' />
           {studyRecords.length === 0 ? (
-            <div className='border-t border-slate-200 py-5'>
+            <div className='rounded-2xl border border-slate-200 bg-white px-5 py-6'>
               <p className='text-sm text-slate-500'>
                 今日任务已完成，可从下方学习中心开始新的内容。
               </p>
             </div>
           ) : (
-            <div className='space-y-2 border-t border-slate-200 pt-2'>
+            <div className='divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white'>
               {studyRecords.map(card => (
                 <div
                   key={card.id}
-                  className='flex flex-col gap-2 border-b border-slate-200 py-3 md:flex-row md:items-center md:justify-between'>
+                  className='flex flex-col gap-4 px-4 py-4 transition-colors hover:bg-slate-50/70 md:flex-row md:items-center md:justify-between md:px-5'>
                   <div className='min-w-0 space-y-1'>
                     <h3 className='truncate text-base font-semibold tracking-tight text-slate-900'>
                       {card.title}
@@ -303,13 +300,13 @@ export default async function HomePage() {
 
         <section className='mb-10'>
           <SectionTitle title='资料与工具' />
-          <div className='grid grid-cols-1 gap-2 border-t border-slate-200 pt-4 lg:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
             {coreEntrances.map(card => (
               <Link
                 key={card.title}
                 href={card.href}
-                className='group flex items-start justify-between border-b border-slate-200 py-4 transition-colors hover:bg-slate-50/60'>
-                <div className='flex items-start justify-between gap-3'>
+                className='group rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50/70'>
+                <div className='flex items-start justify-between gap-4'>
                   <div>
                     <h3 className='text-base font-semibold tracking-tight text-slate-900'>
                       {card.title}

@@ -566,18 +566,21 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
               id: true,
               title: true,
               language: true,
+              level: true,
               collectionType: true,
               parent: {
                 select: {
                   id: true,
                   title: true,
                   language: true,
+                  level: true,
                   collectionType: true,
                   parent: {
                     select: {
                       id: true,
                       title: true,
                       language: true,
+                      level: true,
                       collectionType: true,
                     },
                   },
@@ -673,7 +676,12 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
         parent?.language?.trim() ||
         grandParent?.language?.trim() ||
         '',
-      difficulty: readString(payload.difficulty) || '',
+      difficulty:
+        readString(payload.difficulty) ||
+        collection?.level?.trim() ||
+        parent?.level?.trim() ||
+        grandParent?.level?.trim() ||
+        '',
       tags,
       tagsText: tags.join(', '),
       dialogueCount: materialDialogueItems(

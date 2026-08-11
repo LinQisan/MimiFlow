@@ -48,52 +48,11 @@ export async function deleteCollection(collectionId: string) {
       where: { id: collectionId },
     })
     revalidatePath('/')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
     revalidatePath('/manage/import')
     return { success: true, message: '集合已删除' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '删除失败'
-    return { success: false, message }
-  }
-}
-
-export async function deleteCollectionMaterial(materialId: string) {
-  try {
-    const direct = await prisma.material.findUnique({
-      where: { id: materialId },
-      select: { id: true },
-    })
-    const finalId = direct?.id || materialId
-    await prisma.material.delete({ where: { id: finalId } })
-    revalidatePath('/')
-    revalidatePath('/manage/collections')
-    return { success: true, message: '材料已删除' }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '删除失败'
-    return { success: false, message }
-  }
-}
-
-export async function clearEmptyCollections() {
-  try {
-    const result = await prisma.collection.deleteMany({
-      where: {
-        collectionType: CollectionType.PAPER,
-        materials: {
-          none: {},
-        },
-        children: {
-          none: {},
-        },
-      },
-    })
-    revalidatePath('/')
-    revalidatePath('/manage/collections')
-    revalidatePath('/practice')
-    revalidatePath('/manage/import')
-    return { success: true, message: `已清理 ${result.count} 个空集合` }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '清理失败'
     return { success: false, message }
   }
 }
@@ -170,8 +129,7 @@ export async function updateCollectionAttributes(formData: FormData) {
     })
 
     revalidatePath('/')
-    revalidatePath('/manage/collections')
-    revalidatePath(`/manage/collections/${collectionId}`)
+    revalidatePath('/manage/shadowing')
     revalidatePath('/practice')
     revalidatePath(`/practice/${collectionId}`)
     revalidatePath('/manage/import')

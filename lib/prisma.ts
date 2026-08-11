@@ -1,14 +1,16 @@
 import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaD1 } from '@prisma/adapter-d1'
+import { env } from 'cloudflare:workers'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
+const workerEnv = env as unknown as CloudflareEnv
 
 const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL! }),
+    adapter: new PrismaD1(workerEnv.DB),
   })
 
 if (process.env.NODE_ENV !== 'production') {

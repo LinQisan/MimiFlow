@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786424700000,
+      "tag": "0000_mimiflow_d1",
+      "breakpoints": true
+    }
+  ]
+}

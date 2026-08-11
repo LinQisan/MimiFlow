@@ -287,12 +287,20 @@ export async function addVocabulariesToWordbook(
     })
     if (!existingWordbook) return { success: false, message: '单词书不存在' }
 
+    const existingEntries = await prisma.wordbookVocabulary.findMany({
+      where: {
+        wordbookId: trimmedWordbookId,
+        vocabularyId: { in: uniqueIds },
+      },
+      select: { vocabularyId: true },
+    })
+    const existingIds = new Set(existingEntries.map(row => row.vocabularyId))
+    const missingIds = uniqueIds.filter(id => !existingIds.has(id))
     const result = await prisma.wordbookVocabulary.createMany({
-      data: uniqueIds.map(vocabularyId => ({
+      data: missingIds.map(vocabularyId => ({
         wordbookId: trimmedWordbookId,
         vocabularyId,
       })),
-      skipDuplicates: true,
     })
     revalidatePath('/vocabulary')
     revalidatePath('/vocabulary')

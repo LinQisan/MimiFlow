@@ -181,7 +181,7 @@ const createDraft = (prompt: string, options: string[]): ParsedQuizDraft => {
   return {
     questionType,
     prompt,
-    contextSentence: prompt,
+    contextSentence: '',
     targetWord: inferTargetWord(questionType, prompt),
     explanation: '',
     options: options.map((text, index) => ({

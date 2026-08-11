@@ -90,9 +90,6 @@ export default function VocabularyTabs({
     updateVocabularySentencePosTags,
     updateVocabularyTags,
     addVocabulariesToWordbook,
-    createWordbook,
-    moveWordbook,
-    renameWordbook,
     rateVocabularyMemory,
   } = useVocabularyMutations()
   const workspace = useVocabularyWorkspaceState({
@@ -115,8 +112,7 @@ export default function VocabularyTabs({
     setIsBulkAddingToWordbook, sortMode, setSortMode, selectedPosFilter,
     setSelectedPosFilter, selectedFolderFilter, setSelectedFolderFilter,
     selectedGroupFilter, setSelectedGroupFilter, folderList, setFolderList,
-    selectedFolderManageId, setSelectedFolderManageId, activePronEditId,
-    setActivePronEditId, pronInput, setPronInput, activeFolderEditId,
+    activePronEditId, setActivePronEditId, pronInput, setPronInput, activeFolderEditId,
     setActiveFolderEditId, expandedInflectionIds, setExpandedInflectionIds,
     dragOffsetX, setDragOffsetX, cardTransitionState, setCardTransitionState,
     cardTransitionDirection, setCardTransitionDirection, searchingId,
@@ -154,10 +150,6 @@ export default function VocabularyTabs({
       }, {}),
     [flatFolders],
   )
-  const activeFolderContextId =
-    selectedFolderFilter !== 'all' && selectedFolderFilter !== 'none'
-      ? selectedFolderFilter
-      : selectedFolderManageId
   const bumpShuffleSeed = () => {
     shuffleSeedRef.current += 1
     setShuffleSeed(shuffleSeedRef.current)
@@ -274,119 +266,6 @@ export default function VocabularyTabs({
       setSearchResults(prev => ({ ...prev, [id]: res.data || [] }))
     if (!res.success) setSearchResults(prev => ({ ...prev, [id]: [] }))
     setIsSearchingMore(false)
-  }
-
-  const handleCreateFolder = async (parentId?: string | null) => {
-    const nextName = await dialog.prompt('单词书名称', {
-      title: parentId ? '新建子单词书' : '新建单词书',
-      defaultValue: '',
-      confirmText: '创建',
-    })
-    if (nextName == null) return
-    const trimmed = nextName.trim()
-    if (!trimmed) {
-      dialog.toast('单词书名称不能为空', { tone: 'error' })
-      return
-    }
-    const result = await createWordbook(trimmed, parentId || null)
-    if (!result.success || !result.wordbook) {
-      dialog.toast(result.message || '创建失败', { tone: 'error' })
-      return
-    }
-    setFolderList(prev => [
-      ...prev,
-      {
-        id: result.wordbook!.id,
-        name: result.wordbook!.title,
-        parentId: result.wordbook!.parentId,
-      },
-    ])
-    setSelectedFolderManageId(result.wordbook.id)
-    dialog.toast('单词书已创建', { tone: 'success' })
-  }
-
-  const handleRenameFolder = async (folderId: string) => {
-    const target = folderList.find(item => item.id === folderId)
-    if (!target) return
-    const nextName = await dialog.prompt('新的单词书名称', {
-      title: '重命名单词书',
-      defaultValue: target.name,
-      confirmText: '保存',
-    })
-    if (nextName == null) return
-    const trimmed = nextName.trim()
-    if (!trimmed) {
-      dialog.toast('单词书名称不能为空', { tone: 'error' })
-      return
-    }
-    const result = await renameWordbook(folderId, trimmed)
-    if (!result.success || !result.wordbook) {
-      dialog.toast(result.message || '重命名失败', { tone: 'error' })
-      return
-    }
-    setFolderList(prev =>
-      prev.map(item =>
-        item.id === folderId ? { ...item, name: result.wordbook!.title } : item,
-      ),
-    )
-    setLocalData(
-      prev =>
-        Object.fromEntries(
-          Object.entries(prev).map(([group, items]) => [
-            group,
-            items.map(item =>
-              item.folderId === folderId
-                ? { ...item, folderName: result.wordbook!.title }
-                : item,
-            ),
-          ]),
-        ) as Record<string, VocabItem[]>,
-    )
-    dialog.toast('单词书名称已更新', { tone: 'success' })
-  }
-
-  const handleMoveFolder = async (folderId: string) => {
-    const target = folderList.find(item => item.id === folderId)
-    if (!target) return
-    const options = [
-      { id: 'root', label: '根目录（无上级）' },
-      ...flatFolders
-        .filter(item => item.id !== folderId)
-        .map(item => ({
-          id: item.id,
-          label: item.pathLabel,
-        })),
-    ]
-    const optionText = options
-      .map((item, idx) => `${idx + 1}. ${item.label}`)
-      .join('\n')
-    const selected = await dialog.prompt(
-      `输入目标序号，把「${target.name}」移动到：\n${optionText}`,
-      {
-        title: '移动单词书',
-        defaultValue: '1',
-        confirmText: '移动',
-      },
-    )
-    if (selected == null) return
-    const index = Number(selected.trim())
-    if (!Number.isFinite(index) || index < 1 || index > options.length) {
-      dialog.toast('请输入有效的序号', { tone: 'error' })
-      return
-    }
-    const nextParentId =
-      options[index - 1].id === 'root' ? null : options[index - 1].id
-    const result = await moveWordbook(folderId, nextParentId)
-    if (!result.success || !result.wordbook) {
-      dialog.toast(result.message || '移动失败', { tone: 'error' })
-      return
-    }
-    setFolderList(prev =>
-      prev.map(item =>
-        item.id === folderId ? { ...item, parentId: nextParentId } : item,
-      ),
-    )
-    dialog.toast('单词书已移动', { tone: 'success' })
   }
 
   const handleOpenPronEditor = (vocab: VocabItem) => {
@@ -807,12 +686,6 @@ export default function VocabularyTabs({
   useEffect(() => {
     setFolderList(folders)
   }, [folders, setFolderList])
-
-  useEffect(() => {
-    if (!selectedFolderManageId) return
-    if (folderList.some(item => item.id === selectedFolderManageId)) return
-    setSelectedFolderManageId(null)
-  }, [folderList, selectedFolderManageId, setSelectedFolderManageId])
 
   useEffect(() => {
     if (bulkWordbookId === 'none') return
@@ -1342,9 +1215,6 @@ export default function VocabularyTabs({
         <div className='flex flex-col gap-3'>
           {viewMode !== 'flashcard' ? (
             <div className='flex w-full flex-wrap items-center gap-2 border-b border-slate-100 pb-3'>
-              <span className='mr-1 text-xs font-bold text-slate-500'>
-                语言分组
-              </span>
               {allExistingGroups.map(name => (
                 <button
                   key={name}
@@ -1576,7 +1446,7 @@ export default function VocabularyTabs({
                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                       : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                   }`}>
-                  记忆模式
+                  记忆
                 </button>
                 <button
                   type='button'
@@ -1590,51 +1460,23 @@ export default function VocabularyTabs({
                       ? 'border-slate-200 bg-slate-100 text-slate-800'
                       : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
                   }`}>
-                  随机顺序
+                  随机
                 </button>
-                {randomOrder && (
-                  <button
-                    type='button'
-                    onClick={() => {
-                      bumpShuffleSeed()
-                      setCurrentIndex(0)
-                    }}
-                    className='rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50'>
-                    重新打乱
-                  </button>
-                )}
-                {memoryMode && (
-                  <span className='ui-tag ui-tag-muted'>
-                    到期优先 + 新词优先
-                  </span>
-                )}
               </div>
             ) : (
               <div className='space-y-2'>
-                <div className='flex flex-wrap items-center gap-2'>
-                  <span className='text-xs font-bold text-gray-500'>排序</span>
-                  {(
-                    [
-                      { value: 'recent', label: '最新' },
+                <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
+                  <ControlDropdown
+                    ariaLabel='排序'
+                    value={sortMode}
+                    onChange={value => setSortMode(value as typeof sortMode)}
+                    className='w-full'
+                    options={[
+                      { value: 'recent', label: '最新收录' },
                       { value: 'word', label: '词汇 A-Z' },
-                      { value: 'pos', label: '词性' },
-                    ] as const
-                  ).map(item => (
-                    <button
-                      key={`sort-chip-${item.value}`}
-                      type='button'
-                      onClick={() => setSortMode(item.value)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-bold transition-colors ${
-                        sortMode === item.value
-                          ? 'border-slate-200 bg-slate-100 text-slate-800'
-                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                      }`}>
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
+                      { value: 'pos', label: '按词性' },
+                    ]}
+                  />
                   <ControlDropdown
                     ariaLabel='按词性筛选'
                     value={selectedPosFilter}
@@ -1653,9 +1495,6 @@ export default function VocabularyTabs({
                     value={selectedFolderFilter}
                     onChange={value => {
                       setSelectedFolderFilter(value)
-                      setSelectedFolderManageId(
-                        value !== 'all' && value !== 'none' ? value : null,
-                      )
                       const params = buildVocabularySearchParams({
                         page: '1',
                         wordbook: value,
@@ -1673,67 +1512,6 @@ export default function VocabularyTabs({
                     ]}
                   />
                 </div>
-
-                {isEditMode ? (
-                <div className='flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 p-2'>
-                  <span className='text-xs font-bold text-gray-500'>
-                    单词书管理
-                  </span>
-                  <ControlDropdown
-                    ariaLabel='选择要管理的单词书'
-                    value={activeFolderContextId || 'none'}
-                    onChange={value =>
-                      setSelectedFolderManageId(value === 'none' ? null : value)
-                    }
-                    className='w-full sm:max-w-sm'
-                    options={[
-                      { value: 'none', label: '未选择' },
-                      ...flatFolders.map(folder => ({
-                        value: folder.id,
-                        label: folder.pathLabel,
-                      })),
-                    ]}
-                  />
-                  <button
-                    type='button'
-                    onClick={() =>
-                      void handleCreateFolder(activeFolderContextId || null)
-                    }
-                    className='ui-btn ui-btn-sm'>
-                    {activeFolderContextId ? '新建子单词书' : '新建单词书'}
-                  </button>
-                  <button
-                    type='button'
-                    disabled={!activeFolderContextId}
-                    onClick={() =>
-                      activeFolderContextId &&
-                      void handleCreateFolder(activeFolderContextId)
-                    }
-                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    新建子单词书
-                  </button>
-                  <button
-                    type='button'
-                    disabled={!activeFolderContextId}
-                    onClick={() =>
-                      activeFolderContextId &&
-                      void handleRenameFolder(activeFolderContextId)
-                    }
-                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    重命名
-                  </button>
-                  <button
-                    type='button'
-                    disabled={!activeFolderContextId}
-                    onClick={() =>
-                      activeFolderContextId &&
-                      void handleMoveFolder(activeFolderContextId)
-                    }
-                    className='ui-btn ui-btn-sm disabled:pointer-events-none disabled:opacity-50'>
-                    移动
-                  </button>
-                </div>
-                ) : null}
 
                 <div className='flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 pt-2 text-xs text-gray-600'>
                   <span>
@@ -1878,13 +1656,13 @@ export default function VocabularyTabs({
 
       {/* 沉浸模式：详细例句与背诵 */}
       {viewMode === 'flashcard' && currentFlashVocab && (
-        <div className='animate-in fade-in zoom-in-95 duration-300'>
+        <div>
           <div
             onPointerDown={handleFlashCardPointerDown}
             onPointerMove={handleFlashCardPointerMove}
             onPointerUp={handleFlashCardPointerEnd}
             onPointerCancel={handleFlashCardPointerEnd}
-            className='relative flex min-h-[calc(100vh-210px)] w-full flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-[transform,opacity] duration-220 ease-out md:p-7'
+            className='relative mx-auto flex min-h-[560px] w-full max-w-4xl flex-col rounded-2xl border border-slate-200 bg-white p-5 transition-[transform,opacity] duration-220 ease-out md:p-7'
             style={{
               transform: `translateX(${dragOffsetX + cardTransitionOffset}px)`,
               opacity: cardTransitionOpacity,
@@ -1927,9 +1705,7 @@ export default function VocabularyTabs({
                           className='w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-100'
                         />
                         <p className='mt-1 px-1 text-[10px] text-slate-400'>
-                          日语支持「汉字:读音 + 原文段」（如 言:い い
-                          訳:わけ），也兼容空格或 | 拆分（如 にん
-                          げん）；外来语通常不需要拆分
+                          多个读音可用空格或 | 分隔。
                         </p>
                         <div className='mt-2 flex justify-end'>
                           <button
@@ -1985,7 +1761,6 @@ export default function VocabularyTabs({
               {currentFlashVocab.folderName && (
                 <div className='mt-3'>
                   <span className='ui-tag ui-tag-info h-6 px-3 text-xs font-bold'>
-                    单词书:{' '}
                     {currentFlashVocab.folderId
                       ? folderPathLabelMap[currentFlashVocab.folderId] ||
                         currentFlashVocab.folderName
@@ -1995,16 +1770,16 @@ export default function VocabularyTabs({
               )}
               {currentFlashVocab.tags && currentFlashVocab.tags.length > 0 && (
                 <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
-                  {currentFlashVocab.tags.slice(0, 4).map(tag => (
+                  {currentFlashVocab.tags.slice(0, 2).map(tag => (
                     <span
                       key={`${currentFlashVocab.id}-flash-tag-${tag}`}
                       className='ui-tag ui-tag-muted h-6 px-2.5 text-[11px]'>
                       #{tag}
                     </span>
                   ))}
-                  {currentFlashVocab.tags.length > 4 && (
+                  {currentFlashVocab.tags.length > 2 && (
                     <span className='ui-tag ui-tag-muted h-6 px-2 text-[11px]'>
-                      +{currentFlashVocab.tags.length - 4}
+                      +{currentFlashVocab.tags.length - 2}
                     </span>
                   )}
                 </div>

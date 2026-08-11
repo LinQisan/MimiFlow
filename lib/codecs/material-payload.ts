@@ -18,12 +18,12 @@ const audioPayloadFields = {
   audioFile: z.string().catch(''),
   audioUrl: z.string().catch(''),
   dialogues: z.array(materialDialogueSchema).catch([]),
-  description: z.string().catch(''),
-  transcript: z.string().catch(''),
-  source: z.string().catch(''),
-  language: z.string().catch(''),
-  difficulty: z.string().catch(''),
-  tags: z.array(z.string()).catch([]),
+  description: z.string().catch('').optional(),
+  transcript: z.string().catch('').optional(),
+  source: z.string().catch('').optional(),
+  language: z.string().catch('').optional(),
+  difficulty: z.string().catch('').optional(),
+  tags: z.array(z.string()).catch([]).optional(),
 }
 
 const listeningPayloadSchema = z

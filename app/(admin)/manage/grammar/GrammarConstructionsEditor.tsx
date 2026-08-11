@@ -104,21 +104,19 @@ export default function GrammarConstructionsEditor({
             setOverId(null)
           }}
           className={`rounded-lg border bg-white p-2.5 transition-colors ${
-            overId === item.id ? 'border-blue-300' : 'border-slate-200'
+            overId === item.id ? 'border-slate-500' : 'border-slate-200'
           }`}>
           <div className='mb-2 flex items-center justify-between'>
             <div className='flex items-center gap-2 text-xs font-semibold text-slate-500'>
-              <span className='inline-flex h-6 items-center rounded-md border border-slate-200 px-2'>
+              <span className='inline-flex h-6 items-center rounded-md bg-slate-100 px-2'>
                 #{index + 1}
               </span>
-              <span className='inline-flex h-6 items-center rounded-md border border-slate-200 px-2'>
-                拖拽排序
-              </span>
+              <span className='text-slate-400'>拖动排序</span>
             </div>
             <button
               type='button'
               onClick={() => removeRow(item.id)}
-              className='h-6 rounded-md border border-rose-200 bg-rose-50 px-2 text-xs font-semibold text-rose-700 hover:bg-rose-100'>
+              className='text-xs font-semibold text-slate-400 hover:text-rose-600'>
               删除
             </button>
           </div>
@@ -130,7 +128,7 @@ export default function GrammarConstructionsEditor({
                 value={item.connection}
                 onChange={e => updateField(item.id, 'connection', e.target.value)}
                 placeholder='例如：Vる + しかない'
-                className='h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-blue-400'
+                className='ui-input h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none'
               />
             </label>
             <label className='space-y-1'>
@@ -139,7 +137,7 @@ export default function GrammarConstructionsEditor({
                 value={item.meaning}
                 onChange={e => updateField(item.id, 'meaning', e.target.value)}
                 placeholder='例如：只好...'
-                className='h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-blue-400'
+                className='ui-input h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none'
               />
             </label>
           </div>
@@ -149,14 +147,14 @@ export default function GrammarConstructionsEditor({
             <input
               value={item.note}
               onChange={e => updateField(item.id, 'note', e.target.value)}
-              placeholder='例如：偏书面、常用于积极语境'
-              className='h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none focus:border-blue-400'
+              placeholder='可选'
+              className='ui-input h-8 w-full rounded-md border border-slate-200 px-2 text-sm outline-none'
             />
           </label>
 
           <label className='mt-2 block space-y-1'>
             <span className='text-[11px] font-semibold text-slate-600'>
-              该接续下例句（每行一条例句）
+              例句
             </span>
             <textarea
               value={item.examplesInput}
@@ -164,7 +162,7 @@ export default function GrammarConstructionsEditor({
                 updateField(item.id, 'examplesInput', e.target.value)
               }
               placeholder='例如：雨が降っているから、出かけない。'
-              className='min-h-[74px] w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-blue-400'
+              className='ui-input min-h-[64px] w-full rounded-md border border-slate-200 px-2 py-1.5 text-sm outline-none'
             />
           </label>
         </article>
@@ -173,8 +171,8 @@ export default function GrammarConstructionsEditor({
       <button
         type='button'
         onClick={addRow}
-        className='h-8 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 hover:bg-slate-100'>
-        + 新增接续
+        className='ui-btn ui-btn-sm'>
+        新增接续
       </button>
     </div>
   )

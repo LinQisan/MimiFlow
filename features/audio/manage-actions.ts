@@ -8,7 +8,7 @@ import {
   decodeMaterialPayloadRecord,
   patchMaterialPayload,
 } from '@/lib/codecs/material-payload'
-import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
 
@@ -33,6 +33,8 @@ type AudioRecord = {
   linkedLessons: number
   linkedListeningMaterials: number
   linkedSpeakingMaterials: number
+  linkedSubtitleMaterials: number
+  linkedVocabularySentences: number
 }
 
 type AudioFolderRecord = {
@@ -49,6 +51,7 @@ type RefUpdateResult = {
   listeningRefUpdated: number
   speakingRefUpdated: number
   subtitleRefUpdated: number
+  vocabularyRefUpdated: number
 }
 
 function toSafeFilename(name: string) {
@@ -86,7 +89,7 @@ function getDefaultUploadFolder() {
   }).formatToParts(new Date())
   const year = parts.find(part => part.type === 'year')?.value || 'unknown'
   const month = parts.find(part => part.type === 'month')?.value || '00'
-  return `uploads/${year}-${month}`
+  return `staging/${year}-${month}`
 }
 
 async function pathExists(targetPath: string) {
@@ -129,11 +132,20 @@ async function replaceAudioReference(
       listeningRefUpdated: 0,
       speakingRefUpdated: 0,
       subtitleRefUpdated: 0,
+      vocabularyRefUpdated: 0,
     }
   }
 
   const audioMaterials = await prisma.material.findMany({
-    where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
+    where: {
+      type: {
+        in: [
+          MaterialType.LISTENING,
+          MaterialType.SPEAKING,
+          MaterialType.MEDIA_SUBTITLE,
+        ],
+      },
+    },
     select: { id: true, type: true, contentPayload: true },
   })
 
@@ -146,7 +158,7 @@ async function replaceAudioReference(
     return audioFile === oldPath
   })
 
-  const updates = matchedMaterials.map(material => {
+  const materialUpdates = matchedMaterials.map(material => {
     return prisma.material.update({
       where: { id: material.id },
       data: {
@@ -162,20 +174,57 @@ async function replaceAudioReference(
     })
   })
 
-  if (updates.length > 0) {
-    await prisma.$transaction(updates)
-  }
+  const vocabularyRefUpdated = await prisma.vocabularySentence.count({
+    where: { audioFile: oldPath },
+  })
+  await prisma.$transaction([
+    ...materialUpdates,
+    prisma.vocabularySentence.updateMany({
+      where: { audioFile: oldPath },
+      data: { audioFile: nextPath },
+    }),
+  ])
 
   return {
-    lessonRefUpdated: updates.length,
+    lessonRefUpdated: matchedMaterials.filter(
+      material => material.type !== MaterialType.MEDIA_SUBTITLE,
+    ).length,
     listeningRefUpdated: matchedMaterials.filter(
       material => material.type === MaterialType.LISTENING,
     ).length,
     speakingRefUpdated: matchedMaterials.filter(
       material => material.type === MaterialType.SPEAKING,
     ).length,
-    subtitleRefUpdated: 0,
+    subtitleRefUpdated: matchedMaterials.filter(
+      material => material.type === MaterialType.MEDIA_SUBTITLE,
+    ).length,
+    vocabularyRefUpdated,
   }
+}
+
+async function relocateAudioFile(
+  oldPath: string,
+  oldAbsPath: string,
+  nextPath: string,
+  nextAbsPath: string,
+) {
+  await copyFile(oldAbsPath, nextAbsPath)
+  let refUpdated: RefUpdateResult
+  try {
+    refUpdated = await replaceAudioReference(oldPath, nextPath)
+  } catch (error) {
+    await unlink(nextAbsPath).catch(() => {})
+    throw error
+  }
+
+  let sourceRemoved = true
+  try {
+    await unlink(oldAbsPath)
+  } catch (error) {
+    sourceRemoved = false
+    console.error('新路径已生效，但旧录音清理失败:', error)
+  }
+  return { ...refUpdated, sourceRemoved }
 }
 
 async function walkAudioFiles(
@@ -227,7 +276,7 @@ export async function listAudioFilesAdmin(
     pageSize?: number
     keyword?: string
     folder?: string
-    usage?: 'all' | 'listening' | 'speaking' | 'unlinked'
+    usage?: 'all' | 'listening' | 'speaking' | 'vocabulary' | 'unlinked'
   },
 ) {
   try {
@@ -245,12 +294,28 @@ export async function listAudioFilesAdmin(
     const uniquePaths = Array.from(new Set(files.map(item => item.webPath)))
     const uniquePathSet = new Set(uniquePaths)
 
-    const audioMaterials = await prisma.material.findMany({
-      where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
-      select: { type: true, contentPayload: true },
-    })
+    const [audioMaterials, vocabularySentences] = await Promise.all([
+      prisma.material.findMany({
+        where: {
+          type: {
+            in: [
+              MaterialType.LISTENING,
+              MaterialType.SPEAKING,
+              MaterialType.MEDIA_SUBTITLE,
+            ],
+          },
+        },
+        select: { type: true, contentPayload: true },
+      }),
+      prisma.vocabularySentence.findMany({
+        where: { audioFile: { not: null } },
+        select: { audioFile: true },
+      }),
+    ])
     const listeningUsageMap = new Map<string, number>()
     const speakingUsageMap = new Map<string, number>()
+    const subtitleUsageMap = new Map<string, number>()
+    const vocabularyUsageMap = new Map<string, number>()
     for (const material of audioMaterials) {
       const payload = decodeMaterialPayloadRecord(
         material.type,
@@ -258,12 +323,21 @@ export async function listAudioFilesAdmin(
       )
       const audioPath = readString(payload.audioFile) || readString(payload.audioUrl)
       if (!audioPath || !uniquePathSet.has(audioPath)) continue
-      const usageMap =
-        material.type === MaterialType.LISTENING
-          ? listeningUsageMap
-          : speakingUsageMap
+      const usageMap = material.type === MaterialType.LISTENING
+        ? listeningUsageMap
+        : material.type === MaterialType.SPEAKING
+          ? speakingUsageMap
+          : subtitleUsageMap
       usageMap.set(audioPath, (usageMap.get(audioPath) || 0) + 1)
     }
+    vocabularySentences.forEach(sentence => {
+      const audioPath = sentence.audioFile || ''
+      if (!audioPath || !uniquePathSet.has(audioPath)) return
+      vocabularyUsageMap.set(
+        audioPath,
+        (vocabularyUsageMap.get(audioPath) || 0) + 1,
+      )
+    })
 
     const rows = await Promise.all(
       files.map(async file => {
@@ -281,9 +355,13 @@ export async function listAudioFilesAdmin(
           updatedAt: meta.mtime.toISOString(),
           linkedLessons:
             (listeningUsageMap.get(file.webPath) || 0) +
-            (speakingUsageMap.get(file.webPath) || 0),
+            (speakingUsageMap.get(file.webPath) || 0) +
+            (subtitleUsageMap.get(file.webPath) || 0) +
+            (vocabularyUsageMap.get(file.webPath) || 0),
           linkedListeningMaterials: listeningUsageMap.get(file.webPath) || 0,
           linkedSpeakingMaterials: speakingUsageMap.get(file.webPath) || 0,
+          linkedSubtitleMaterials: subtitleUsageMap.get(file.webPath) || 0,
+          linkedVocabularySentences: vocabularyUsageMap.get(file.webPath) || 0,
         } as AudioRecord
       }),
     )
@@ -327,6 +405,7 @@ export async function listAudioFilesAdmin(
         selectedUsage === 'all' ||
         (selectedUsage === 'listening' && item.linkedListeningMaterials > 0) ||
         (selectedUsage === 'speaking' && item.linkedSpeakingMaterials > 0) ||
+        (selectedUsage === 'vocabulary' && item.linkedVocabularySentences > 0) ||
         (selectedUsage === 'unlinked' && item.linkedLessons === 0)
       if (!usageOk) return false
       if (!keyword) return true
@@ -423,10 +502,21 @@ export async function deleteAudioFileAdmin(audioPath: string) {
       return { success: false, message: '非法路径。' }
     }
 
-    const audioMaterials = await prisma.material.findMany({
-      where: { type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] } },
-      select: { type: true, contentPayload: true },
-    })
+    const [audioMaterials, vocabularyCount] = await Promise.all([
+      prisma.material.findMany({
+        where: {
+          type: {
+            in: [
+              MaterialType.LISTENING,
+              MaterialType.SPEAKING,
+              MaterialType.MEDIA_SUBTITLE,
+            ],
+          },
+        },
+        select: { type: true, contentPayload: true },
+      }),
+      prisma.vocabularySentence.count({ where: { audioFile: audioPath } }),
+    ])
     const linkedMaterials = audioMaterials.filter(material => {
       const payload = decodeMaterialPayloadRecord(
         material.type,
@@ -435,16 +525,19 @@ export async function deleteAudioFileAdmin(audioPath: string) {
       const currentPath = readString(payload.audioFile) || readString(payload.audioUrl)
       return currentPath === audioPath
     })
-    if (linkedMaterials.length > 0) {
+    if (linkedMaterials.length > 0 || vocabularyCount > 0) {
       const listeningCount = linkedMaterials.filter(
         material => material.type === MaterialType.LISTENING,
       ).length
       const speakingCount = linkedMaterials.filter(
         material => material.type === MaterialType.SPEAKING,
       ).length
+      const subtitleCount = linkedMaterials.filter(
+        material => material.type === MaterialType.MEDIA_SUBTITLE,
+      ).length
       return {
         success: false,
-        message: `该录音仍被听力材料 ${listeningCount} 条、跟读材料 ${speakingCount} 条使用，无法删除。`,
+        message: `该录音仍被听力 ${listeningCount} 条、跟读 ${speakingCount} 条、影视字幕 ${subtitleCount} 条、词汇例句 ${vocabularyCount} 条使用，无法删除。`,
       }
     }
 
@@ -484,12 +577,16 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
       return { success: false, message: '目标文件夹中已存在同名文件。' }
     }
 
-    await rename(oldTarget.absPath, targetAbsPath)
-    const refUpdated = await replaceAudioReference(audioPath, nextWebPath)
+    const refUpdated = await relocateAudioFile(
+      audioPath,
+      oldTarget.absPath,
+      nextWebPath,
+      targetAbsPath,
+    )
 
     revalidatePath('/manage/system/audio')
     revalidatePath('/manage/import')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
 
     return {
       success: true,
@@ -499,6 +596,8 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
       listeningRefUpdated: refUpdated.listeningRefUpdated,
       speakingRefUpdated: refUpdated.speakingRefUpdated,
       subtitleRefUpdated: refUpdated.subtitleRefUpdated,
+      vocabularyRefUpdated: refUpdated.vocabularyRefUpdated,
+      sourceRemoved: refUpdated.sourceRemoved,
     }
   } catch (error) {
     console.error('移动录音失败:', error)
@@ -558,12 +657,16 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
       return { success: false, message: '同文件夹下已存在同名文件。' }
     }
 
-    await rename(target.absPath, nextAbsPath)
-    const refUpdated = await replaceAudioReference(audioPath, nextPath)
+    const refUpdated = await relocateAudioFile(
+      audioPath,
+      target.absPath,
+      nextPath,
+      nextAbsPath,
+    )
 
     revalidatePath('/manage/system/audio')
     revalidatePath('/manage/import')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
     return {
       success: true,
       message: `文件已重命名为 ${nextName}。`,
@@ -572,6 +675,8 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
       listeningRefUpdated: refUpdated.listeningRefUpdated,
       speakingRefUpdated: refUpdated.speakingRefUpdated,
       subtitleRefUpdated: refUpdated.subtitleRefUpdated,
+      vocabularyRefUpdated: refUpdated.vocabularyRefUpdated,
+      sourceRemoved: refUpdated.sourceRemoved,
     }
   } catch (error) {
     console.error('重命名录音失败:', error)
@@ -590,6 +695,7 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
   let listeningRefUpdated = 0
   let speakingRefUpdated = 0
   let subtitleRefUpdated = 0
+  let vocabularyRefUpdated = 0
 
   for (const itemPath of Array.from(new Set(paths))) {
     const res = await moveAudioFileAdmin(itemPath, targetFolder)
@@ -599,6 +705,7 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
       listeningRefUpdated += res.listeningRefUpdated || 0
       speakingRefUpdated += res.speakingRefUpdated || 0
       subtitleRefUpdated += res.subtitleRefUpdated || 0
+      vocabularyRefUpdated += res.vocabularyRefUpdated || 0
     } else {
       failed.push({ path: itemPath, message: res.message })
     }
@@ -613,6 +720,7 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
     listeningRefUpdated,
     speakingRefUpdated,
     subtitleRefUpdated,
+    vocabularyRefUpdated,
   }
 }
 

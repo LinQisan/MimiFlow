@@ -1,7 +1,7 @@
 import type { MaterialType } from '@prisma/client'
 
 import type { PickedFileMeta } from './types'
-export { isCollectionTypeAllowedForMaterial } from '../collection-policy'
+export { isCollectionTypeAllowedForMaterial } from '../collection-policy.ts'
 
 export const autoIncrementString = (str: string) => {
   if (!str) return ''
@@ -26,6 +26,77 @@ export const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
   if (!trimmed.endsWith('/')) return trimmed
   const baseName = assName.replace(/\.[^.]+$/, '')
   return `${trimmed}${baseName}.mp3`
+}
+
+export function deriveJlptPaperAudioFolder(title: string, level: string | null) {
+  const normalizedTitle = title.normalize('NFKC').trim()
+  const normalizedLevel = (
+    level ||
+    normalizedTitle.match(/\bN[1-5]\b/i)?.[0] ||
+    ''
+  )
+    .trim()
+    .toUpperCase()
+  if (!/^N[1-5]$/.test(normalizedLevel)) return null
+
+  const japaneseDate = normalizedTitle.match(/(20\d{2})\s*年\s*(\d{1,2})\s*月/)
+  const separatedDate = normalizedTitle.match(/(20\d{2})[-/.](\d{1,2})(?!\d)/)
+  const compactDate = normalizedTitle.match(/\b(20\d{2})(0[1-9]|1[0-2])\b/)
+  const match = japaneseDate || separatedDate || compactDate
+  if (!match) return null
+
+  const month = Number(match[2])
+  if (!Number.isInteger(month) || month < 1 || month > 12) return null
+  return `listening/jlpt/${normalizedLevel.toLowerCase()}/${match[1]}-${String(month).padStart(2, '0')}`
+}
+
+export function toAudioStorageSegment(value: string) {
+  return value
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 72) || 'untitled'
+}
+
+export function buildCollectionAudioFolder(input: {
+  materialType: MaterialType
+  collection: {
+    id: string
+    title: string
+    collectionType: string
+    level?: string | null
+    parent?: { id: string; title: string } | null
+  }
+}) {
+  const collectionSegment = toAudioStorageSegment(input.collection.title)
+
+  if (input.materialType === 'LISTENING') {
+    const jlptFolder =
+      input.collection.collectionType === 'PAPER'
+        ? deriveJlptPaperAudioFolder(
+            input.collection.title,
+            input.collection.level || null,
+          )
+        : null
+    if (jlptFolder) return jlptFolder
+    const parentSegment = input.collection.parent
+      ? `${toAudioStorageSegment(input.collection.parent.title)}/`
+      : ''
+    return `listening/collections/${parentSegment}${collectionSegment}`
+  }
+
+  if (input.materialType === 'SPEAKING') {
+    if (input.collection.parent) {
+      const parentSegment = toAudioStorageSegment(input.collection.parent.title)
+      return `shadowing/${parentSegment}/${collectionSegment}`
+    }
+    return `shadowing/${collectionSegment}`
+  }
+
+  return `staging/${collectionSegment}`
 }
 
 export const getDefaultCollectionTypeForMaterial = (materialType: MaterialType) => {

@@ -4,6 +4,7 @@ import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 import {
   encodeMaterialPayload,
   patchMaterialPayload,
@@ -20,6 +21,7 @@ import {
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
 import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
+import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
 
 type QuestionOptionInput = {
   text?: string | null
@@ -39,15 +41,11 @@ type CreateArticlePayload = {
   content?: string | null
   paperId?: string | null
   description?: string | null
-  language?: string | null
-  level?: string | null
   questions?: ArticleQuestionInput[] | null
 }
 
 type CreateQuizQuestionPayload = {
   paperId?: string | null
-  language?: string | null
-  level?: string | null
   questionType?: string | null
   prompt?: string | null
   contextSentence?: string | null
@@ -105,20 +103,23 @@ export async function createArticle(data: CreateArticlePayload) {
     if (!content) {
       return { success: false, message: '文章正文不能为空。' }
     }
-    const normalizedQuestions = (data.questions || []).map((q, index) => ({
-      questionType: toSafeQuestionType(
-        (q.questionType || '').trim(),
-        QuestionType.READING_COMPREHENSION,
-      ),
-      prompt: (q.prompt || '').trim() || null,
-      contextSentence:
-        (q.contextSentence || '').trim() ||
-        (q.prompt || '').trim() ||
-        null,
-      explanation: (q.explanation || '').trim(),
-      order: index + 1,
-      options: normalizeOptions(q.options),
-    }))
+    const normalizedQuestions = (data.questions || []).map((q, index) => {
+      const questionText = normalizeQuestionTextFields(
+        q.prompt,
+        q.contextSentence,
+      )
+      return {
+        questionType: toSafeQuestionType(
+          (q.questionType || '').trim(),
+          QuestionType.READING_COMPREHENSION,
+        ),
+        prompt: questionText.prompt,
+        contextSentence: questionText.context,
+        explanation: (q.explanation || '').trim(),
+        order: index + 1,
+        options: normalizeOptions(q.options),
+      }
+    })
 
     const exists = await prisma.collection.findUnique({
       where: { id: collectionId },
@@ -127,22 +128,16 @@ export async function createArticle(data: CreateArticlePayload) {
     if (!exists) {
       return { success: false, message: '所属集合不存在，请刷新后重试。' }
     }
-    if (!exists.acceptedMaterialTypes.includes(MaterialType.READING)) {
+    if (
+      !normalizeAcceptedMaterialTypes(exists.acceptedMaterialTypes).includes(
+        MaterialType.READING,
+      )
+    ) {
       return {
         success: false,
         message: '该集合未设置为阅读内容集合，请重新选择。',
       }
     }
-
-    const nextLanguage = (data.language || '').trim()
-    const nextLevel = (data.level || '').trim()
-    await prisma.collection.update({
-      where: { id: collectionId },
-      data: {
-        language: nextLanguage || null,
-        level: nextLevel || null,
-      },
-    })
 
     await prisma.material.create({
       data: {
@@ -193,16 +188,6 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
     })
     if (!collection) return { success: false, message: '集合不存在，请刷新后重试。' }
 
-    const nextLanguage = (data.language || '').trim()
-    const nextLevel = (data.level || '').trim()
-    await prisma.collection.update({
-      where: { id: data.paperId },
-      data: {
-        language: nextLanguage || null,
-        level: nextLevel || null,
-      },
-    })
-
     let quizMaterialId =
       (
         await prisma.collectionMaterial.findFirst({
@@ -240,8 +225,12 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       _max: { sortOrder: true },
     })
     const nextOrder = (maxOrder._max.sortOrder || 0) + 1
-    const promptText = (data.prompt || '').trim()
-    const contextText = (data.contextSentence || '').trim()
+    const questionText = normalizeQuestionTextFields(
+      data.prompt,
+      data.contextSentence,
+    )
+    const promptText = questionText.prompt || ''
+    const contextText = questionText.context || ''
     if (!promptText && !contextText) {
       return {
         success: false,
@@ -258,7 +247,7 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       rawQuestionType,
     )
     const normalizedOptions = normalizeOptions(data.options)
-    const normalizedContext = contextText || promptText || null
+    const normalizedContext = questionText.context
 
     await prisma.question.create({
       data: {
@@ -352,13 +341,16 @@ export async function updateArticleWithQuestions(
       const keepQuestionIds: string[] = []
       for (let index = 0; index < payload.questions.length; index += 1) {
         const question = payload.questions[index]
-        const promptText = (question.prompt || '').trim()
-        const contextText = (question.contextSentence || '').trim()
+        const questionText = normalizeQuestionTextFields(
+          question.prompt,
+          question.contextSentence,
+        )
+        const promptText = questionText.prompt || ''
         const questionType = toSafeQuestionType(
           (question.questionType || '').trim(),
           QuestionType.READING_COMPREHENSION,
         )
-        const normalizedContext = contextText || promptText || null
+        const normalizedContext = questionText.context
         const normalizedOptions = normalizeOptions(question.options)
         const nextQuestionData = {
           questionType,
@@ -471,8 +463,11 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
 
       for (let index = 0; index < payload.questions.length; index += 1) {
         const question = payload.questions[index]
-        const promptText = (question.prompt || '').trim()
-        const contextText = (question.contextSentence || '').trim()
+        const questionText = normalizeQuestionTextFields(
+          question.prompt,
+          question.contextSentence,
+        )
+        const promptText = questionText.prompt || ''
         const rawQuestionType = toSafeQuestionType(
           (question.questionType || '').trim(),
           QuestionType.PRONUNCIATION,
@@ -481,7 +476,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
           MaterialType.VOCAB_GRAMMAR,
           rawQuestionType,
         )
-        const normalizedContext = contextText || promptText || null
+        const normalizedContext = questionText.context
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
         const listeningSectionNumberText = String(
@@ -642,13 +637,16 @@ export async function updateLessonQuestions(
 
       for (let index = 0; index < payload.questions.length; index += 1) {
         const question = payload.questions[index]
-        const promptText = (question.prompt || '').trim()
-        const contextText = (question.contextSentence || '').trim()
+        const questionText = normalizeQuestionTextFields(
+          question.prompt,
+          question.contextSentence,
+        )
+        const promptText = questionText.prompt || ''
         const questionType = toSafeQuestionType(
           (question.questionType || '').trim(),
           QuestionType.PRONUNCIATION,
         )
-        const normalizedContext = contextText || promptText || null
+        const normalizedContext = questionText.context
         const targetWord = (question.targetWord || '').trim() || null
         const explanation = (question.explanation || '').trim() || null
         const normalizedOptions = normalizeOptions(question.options)
@@ -770,15 +768,11 @@ export async function createCategory(data: {
     const collectionType =
       requestedType === CollectionType.CUSTOM_GROUP
         ? CollectionType.CUSTOM_GROUP
-        : requestedType === CollectionType.FAVORITES
-          ? CollectionType.FAVORITES
-          : CollectionType.PAPER
+        : CollectionType.PAPER
     const typeLabel =
       collectionType === CollectionType.PAPER
         ? '试卷'
-        : collectionType === CollectionType.CUSTOM_GROUP
-          ? '分组'
-          : '收藏夹'
+        : '分组'
 
     const newCategory = await prisma.collection.create({
       data: {
@@ -800,7 +794,9 @@ export async function createCategory(data: {
         id: newCategory.id,
         name: newCategory.title,
         collectionType: newCategory.collectionType,
-        acceptedMaterialTypes: newCategory.acceptedMaterialTypes,
+        acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
+          newCategory.acceptedMaterialTypes,
+        ),
         level: { title: typeLabel },
       },
     }

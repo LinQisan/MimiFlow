@@ -3,6 +3,7 @@ import { CollectionType, MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 type UploadPageLevelLite = {
   id: string
@@ -31,7 +32,9 @@ type UploadPageCollectionLite = {
 function toCollectionTypeLabel(type: CollectionType) {
   if (type === CollectionType.PAPER) return '正式试卷'
   if (type === CollectionType.CUSTOM_GROUP) return '普通集合'
-  return '收藏夹'
+  if (type === CollectionType.BOOK) return '教材'
+  if (type === CollectionType.CHAPTER) return '章节'
+  return '教材库'
 }
 
 export async function getUploadPageSeedData({
@@ -44,10 +47,7 @@ export async function getUploadPageSeedData({
   dbLevels: UploadPageLevelLite[]
   dbCollections: UploadPageCollectionLite[]
 }> {
-  const collections = await prisma.collection.findMany({
-    where: materialType
-      ? { acceptedMaterialTypes: { has: materialType } }
-      : undefined,
+  const collectionRows = await prisma.collection.findMany({
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -74,11 +74,17 @@ export async function getUploadPageSeedData({
       },
     },
   })
+  const collections = materialType
+    ? collectionRows.filter(collection =>
+        normalizeAcceptedMaterialTypes(
+          collection.acceptedMaterialTypes,
+        ).includes(materialType),
+      )
+    : collectionRows
 
   const dbLevels: UploadPageLevelLite[] = [
     { id: CollectionType.PAPER, title: '正式试卷 - 真题 / 模考' },
     { id: CollectionType.CUSTOM_GROUP, title: '普通集合 - 教材 / 自定义练习' },
-    { id: CollectionType.FAVORITES, title: '收藏夹 - 临时归类 / 精选内容' },
   ]
 
   const priorityByType: Record<MaterialType, number> = {
@@ -140,7 +146,9 @@ export async function getUploadPageSeedData({
         parentId: collection.parentId,
         sortOrder: collection.sortOrder,
         collectionType: collection.collectionType,
-        acceptedMaterialTypes: collection.acceptedMaterialTypes,
+        acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
+          collection.acceptedMaterialTypes,
+        ),
         materialType:
           dominantMaterialTypeByCollection.get(collection.id) ||
           MaterialType.LISTENING,

@@ -64,7 +64,7 @@ export async function createShadowingBook(formData: FormData) {
     })
 
     revalidatePath('/listening')
-    revalidatePath('/manage/listening')
+    revalidatePath('/manage/shadowing')
     return { success: true, message: '书籍节点已创建。' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '创建失败'
@@ -103,7 +103,7 @@ export async function createShadowingChapter(formData: FormData) {
     })
 
     revalidatePath('/listening')
-    revalidatePath('/manage/listening')
+    revalidatePath('/manage/shadowing')
     return { success: true, message: '章节节点已创建。' }
   } catch (error) {
     const message = error instanceof Error ? error.message : '创建失败'
@@ -129,7 +129,7 @@ export async function assignShadowingMaterialToChapter(formData: FormData) {
     if (!chapterId) {
       await prisma.collectionMaterial.deleteMany({ where: { materialId } })
       revalidatePath('/listening')
-      revalidatePath('/manage/listening')
+      revalidatePath('/manage/shadowing')
       revalidatePath(`/listening/${materialId}`)
       return { success: true, message: '已移到未归类。' }
     }
@@ -162,10 +162,10 @@ export async function assignShadowingMaterialToChapter(formData: FormData) {
     })
 
     revalidatePath('/listening')
-    revalidatePath('/manage/listening')
+    revalidatePath('/manage/shadowing')
     revalidatePath(`/listening/${materialId}`)
     revalidatePath('/')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
 
     return { success: true, message: '已归类到目标章节。' }
   } catch (error) {
@@ -206,7 +206,7 @@ export async function batchAssignShadowingMaterials(formData: FormData) {
         where: { materialId: { in: validIds } },
       })
       revalidatePath('/listening')
-      revalidatePath('/manage/listening')
+      revalidatePath('/manage/shadowing')
       return { success: true, message: `已移出 ${result.count} 条材料（未归类）。` }
     }
 
@@ -235,14 +235,13 @@ export async function batchAssignShadowingMaterials(formData: FormData) {
           materialId,
           sortOrder: nextSort++,
         })),
-        skipDuplicates: true,
       })
     })
 
     revalidatePath('/listening')
-    revalidatePath('/manage/listening')
+    revalidatePath('/manage/shadowing')
     revalidatePath('/')
-    revalidatePath('/manage/collections')
+    revalidatePath('/manage/shadowing')
     return { success: true, message: `已批量归类 ${validIds.length} 条材料。` }
   } catch (error) {
     const message = error instanceof Error ? error.message : '批量归类失败'

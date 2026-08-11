@@ -13,8 +13,6 @@ export type UploadCollectionLite = {
   collectionType?: CollectionType
   acceptedMaterialTypes?: MaterialType[]
   materialType?: MaterialType
-  language?: string
-  examLevel?: string
   level: { title: string }
   lessons: {
     title: string
@@ -60,7 +58,6 @@ export type ParsedQuizDraft = {
 
 export type UploadCenterTab =
   | 'audio'
-  | 'timed-audio'
   | 'article'
   | 'quiz'
   | 'media'
@@ -70,8 +67,6 @@ export type ArticleFormState = {
   title: string
   description: string
   content: string
-  language: string
-  examLevel: string
 }
 
 export type QuizFormState = {
@@ -81,7 +76,5 @@ export type QuizFormState = {
   targetWord: string
   prompt: string
   explanation: string
-  language: string
-  examLevel: string
   options: QuestionOptionDraft[]
 }

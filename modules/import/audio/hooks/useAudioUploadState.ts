@@ -25,12 +25,7 @@ type AudioUploadState = {
   audioListLoading: boolean
   audioUploadFileNames: string[]
   paperName: string
-  materialDescription: string
-  materialTranscript: string
-  materialSource: string
   materialLanguage: string
-  materialTags: string
-  materialDifficulty: string
   materialChapterName: string
   materialType: MaterialType
   subtitleNoAudio: boolean
@@ -65,7 +60,10 @@ function reducer(state: AudioUploadState, action: AudioUploadAction) {
   return { ...state, [action.key]: next }
 }
 
-export function useAudioUploadState(hasPapers: boolean) {
+export function useAudioUploadState(
+  hasPapers: boolean,
+  defaultMaterialType: MaterialType = 'LISTENING',
+) {
   const [state, dispatch] = useReducer(reducer, {
     mode: hasPapers ? 'existing' : 'new',
     selectedPaperId: '',
@@ -80,14 +78,9 @@ export function useAudioUploadState(hasPapers: boolean) {
     audioListLoading: false,
     audioUploadFileNames: [],
     paperName: '',
-    materialDescription: '',
-    materialTranscript: '',
-    materialSource: '',
     materialLanguage: '',
-    materialTags: '',
-    materialDifficulty: '',
     materialChapterName: '',
-    materialType: 'LISTENING',
+    materialType: defaultMaterialType,
     subtitleNoAudio: false,
     subtitleSourceType: 'MOVIE',
     subtitleWorkTitle: '',
@@ -131,12 +124,7 @@ export function useAudioUploadState(hasPapers: boolean) {
       setAudioListLoading: setter('audioListLoading'),
       setAudioUploadFileNames: setter('audioUploadFileNames'),
       setPaperName: setter('paperName'),
-      setMaterialDescription: setter('materialDescription'),
-      setMaterialTranscript: setter('materialTranscript'),
-      setMaterialSource: setter('materialSource'),
       setMaterialLanguage: setter('materialLanguage'),
-      setMaterialTags: setter('materialTags'),
-      setMaterialDifficulty: setter('materialDifficulty'),
       setMaterialChapterName: setter('materialChapterName'),
       setMaterialType: setter('materialType'),
       setSubtitleNoAudio: setter('subtitleNoAudio'),

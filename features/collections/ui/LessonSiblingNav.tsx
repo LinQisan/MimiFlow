@@ -42,17 +42,14 @@ export default function LessonSiblingNav({
 
   return (
     <details className={practiceAppearance
-      ? 'mb-6 rounded-[18px] border border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'
+      ? 'mb-4 rounded-2xl border border-slate-200 bg-white'
       : 'mb-4 rounded-2xl border border-gray-200 bg-white shadow-sm'}>
       <summary className='cursor-pointer list-none p-3 md:p-4 flex items-center justify-between text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden'>
         <span className='flex items-center gap-2'>
-          <svg className='w-4 h-4 text-gray-400 transition-transform duration-300 group-open:-rotate-180' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-            <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M19 9l-7 7-7-7' />
-          </svg>
-          同组音频列表
+          同组材料
         </span>
-        <span className='rounded-md border border-gray-100 bg-gray-50 px-2 py-0.5 text-[11px] font-bold text-gray-500'>
-          {lessons.length} 项 · 拖拽排序
+        <span className='text-xs font-medium text-slate-400'>
+          {lessons.length} 项
         </span>
       </summary>
 
@@ -77,15 +74,13 @@ export default function LessonSiblingNav({
                   }`}>
                   <div className='flex items-center gap-2 text-sm min-w-0'>
                     <DragHandle />
-                    <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${
-                      isCurrent
-                        ? practiceAppearance
-                          ? 'bg-slate-950 text-white'
-                          : 'bg-indigo-600 text-white'
-                        : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      {i + 1}
-                    </span>
+                    {!practiceAppearance ? (
+                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${
+                        isCurrent ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {i + 1}
+                      </span>
+                    ) : null}
                     {isCurrent ? (
                       <span className={`truncate font-bold ${practiceAppearance ? 'text-slate-950' : 'text-indigo-700'}`}>{lesson.title}</span>
                     ) : (
@@ -96,16 +91,18 @@ export default function LessonSiblingNav({
                       </Link>
                     )}
                   </div>
-                  <div className='flex items-center gap-2 shrink-0 ml-2'>
-                    {(lesson._count?.questions ?? 0) > 0 && (
+                  {!practiceAppearance ? (
+                    <div className='flex items-center gap-2 shrink-0 ml-2'>
+                    {(lesson._count?.questions ?? 0) > 0 ? (
                       <span className='rounded-md border border-violet-100 bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold text-violet-700'>
                         {lesson._count?.questions} 题
                       </span>
-                    )}
-                    {isCurrent && (
+                    ) : null}
+                    {isCurrent ? (
                       <span className='text-[10px] font-bold text-indigo-500'>当前</span>
-                    )}
-                  </div>
+                    ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </SortableItem>
             )

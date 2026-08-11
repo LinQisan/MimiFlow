@@ -4,25 +4,16 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
 import type { ExamHubLevelSummary } from '@/lib/repositories/exam'
+import { getPaperQuestionBreakdown } from '@/features/practice/domain/paper-library'
 import PaperAttributeForm from '@/features/practice/ui/PaperAttributeForm'
-import PaperAdminPanel from '@/features/practice/ui/PaperAdminPanel'
-import { formatTokyoDateTime } from '@/utils/time/format'
 
 type Props = {
   levels: ExamHubLevelSummary[]
-  totalPaperCount: number
 }
 
-export default function ManagePapersListClient({
-  levels,
-  totalPaperCount,
-}: Props) {
+export default function ManagePapersListClient({ levels }: Props) {
   const [query, setQuery] = useState('')
   const [expandedPaperId, setExpandedPaperId] = useState<string | null>(null)
-  const allPapers = useMemo(
-    () => levels.flatMap(level => level.papers),
-    [levels],
-  )
   const normalizedQuery = query.trim().toLowerCase()
   const filteredLevels = useMemo(
     () =>
@@ -36,7 +27,6 @@ export default function ManagePapersListClient({
               paper.description,
               paper.language,
               paper.level,
-              String(paper.sortOrder),
             ]
               .filter(Boolean)
               .some(value =>
@@ -47,212 +37,88 @@ export default function ManagePapersListClient({
         .filter(level => level.papers.length > 0),
     [levels, normalizedQuery],
   )
-  const visiblePaperCount = filteredLevels.reduce(
-    (sum, level) => sum + level.papers.length,
-    0,
-  )
-  const totalQuestionCount = allPapers.reduce(
-    (sum, paper) => sum + paper.questionCount,
-    0,
-  )
-  const totalListeningSections = allPapers.reduce(
-    (sum, paper) => sum + paper.listeningSectionCount,
-    0,
-  )
-  const totalAttempts = allPapers.reduce(
-    (sum, paper) => sum + paper.attemptCount,
-    0,
-  )
 
   return (
-    <div className='min-h-screen bg-slate-50 pb-12 font-sans text-slate-900'>
-      <section className='px-4 pt-6 md:px-6 md:pt-8'>
-        <div className='mx-auto flex max-w-7xl flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:p-6'>
-          <div className='flex flex-wrap items-center gap-2'>
-            <div>
-              <h1 className='text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
-                试卷管理
-              </h1>
-              <p className='mt-1 text-sm text-slate-500'>
-                管理正式试卷的结构、题型、材料与作答数据。
-              </p>
-            </div>
-            <div className='ml-auto flex flex-wrap items-center gap-2'>
-              <Link href='/manage/import?type=questions' className='ui-btn ui-btn-primary ui-btn-sm'>
-                导入题目
-              </Link>
-              <Link href='/practice' className='ui-btn ui-btn-sm'>
-                查看练习页
-              </Link>
-            </div>
-          </div>
-
-          <div className='grid gap-2 sm:grid-cols-[minmax(240px,1fr)_auto]'>
-            <input
-              value={query}
-              onChange={event => setQuery(event.target.value)}
-              placeholder='搜索试卷名 / 语言 / 等级 / 描述'
-              className='h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-            />
-            <button
-              type='button'
-              onClick={() => setQuery('')}
-              className='ui-btn h-10'>
-              清除搜索
-            </button>
-          </div>
-          <div className='grid grid-cols-2 gap-2 md:grid-cols-4'>
-            <SummaryTile label='正式试卷' value={`${visiblePaperCount} / ${totalPaperCount}`} />
-            <SummaryTile label='题目总数' value={String(totalQuestionCount)} />
-            <SummaryTile label='聴解部分' value={String(totalListeningSections)} />
-            <SummaryTile label='累计作答' value={String(totalAttempts)} />
-          </div>
+    <main className='min-h-full px-3 py-4 md:px-6 md:py-6'>
+      <div className='mx-auto max-w-5xl space-y-5'>
+        <div className='flex items-center justify-between gap-3'>
+          <h1 className='text-xl font-black text-slate-950 md:text-2xl'>试卷</h1>
+          <Link
+            href='/manage/import?type=questions'
+            className='ui-btn ui-btn-sm ui-btn-primary'>
+            导入题目
+          </Link>
         </div>
-      </section>
 
-      <main className='mx-auto max-w-7xl space-y-6 px-4 py-6 md:px-6'>
+        <input
+          type='search'
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder='搜索试卷'
+          aria-label='搜索试卷'
+          className='h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+        />
+
         {filteredLevels.length === 0 ? (
-          <section className='border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-medium text-slate-500'>
-            没有匹配的试卷。
-          </section>
+          <p className='rounded-lg border border-dashed border-slate-300 px-3 py-5 text-sm text-slate-500'>
+            暂无试卷
+          </p>
         ) : (
           filteredLevels.map(level => (
-            <section key={level.id} className='scroll-mt-32'>
-              <div className='mb-3 flex items-center justify-between gap-3'>
-                <div>
-                  <p className='text-xs font-black tracking-[0.16em] text-slate-400 uppercase'>Official papers</p>
-                  <h2 className='mt-1 text-lg font-black tracking-tight text-slate-900'>{level.title}</h2>
-                  <p className='text-xs font-medium text-slate-500'>
-                    {level.papers.length} 套内容
-                  </p>
-                </div>
+            <section key={level.id} className='space-y-2'>
+              <div className='flex items-center gap-2'>
+                <h2 className='text-sm font-bold text-slate-500'>{level.title}</h2>
+                <span className='text-xs text-slate-400'>{level.papers.length}</span>
               </div>
 
-              <div className='space-y-3'>
+              <div className='space-y-2'>
                 {level.papers.map(paper => {
                   const isExpanded = expandedPaperId === paper.id
-                  const accuracy =
-                    paper.attemptAccuracyPct == null
-                      ? '--'
-                      : `${paper.attemptAccuracyPct}%`
+                  const breakdown = getPaperQuestionBreakdown(paper)
 
                   return (
                     <article
                       key={paper.id}
-                      className='overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow-md'>
-                      <div className='grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_360px]'>
-                        <div className='min-w-0'>
-                          <div className='flex flex-wrap items-start justify-between gap-3'>
-                            <div className='min-w-0'>
-                              <div className='mb-2 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500'>
-                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-1'>
-                                  正式试卷
-                                </span>
-                                <span>{paper.language || '语言未设置'}</span>
-                                <span>{paper.level || '等级未设置'}</span>
-                                <span>排序 {paper.sortOrder}</span>
-                              </div>
-                              <h3 className='line-clamp-2 text-lg font-black leading-snug text-slate-900'>
-                                {paper.name}
-                              </h3>
-                              {paper.description ? (
-                                <p className='mt-1 line-clamp-2 text-sm leading-6 text-slate-600'>
-                                  {paper.description}
-                                </p>
-                              ) : (
-                                <p className='mt-1 text-sm font-medium text-slate-400'>
-                                  暂无描述
-                                </p>
-                              )}
-                            </div>
-                            <div className='text-right text-xs font-semibold text-slate-500'>
-                              <div>{paper.moduleCount} 模块</div>
-                              <div>{paper.questionCount} 题</div>
-                            </div>
+                      className='rounded-xl border border-slate-200 bg-white p-3'>
+                      <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
+                        <div className='min-w-0 flex-1'>
+                          <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400'>
+                            <span>{paper.language || '未设置语言'}</span>
+                            <span>{paper.level || '未设置等级'}</span>
+                            <span>{paper.moduleCount} 模块</span>
+                            <span>{paper.questionCount} 题</span>
                           </div>
-
-                          <div className='mt-4 grid grid-cols-3 gap-2'>
-                            <StructureTile
-                              label='文字・語彙・文法'
-                              primary={`${paper.quizQuestionCount} 题`}
-                              secondary={`${paper.quizCount} 模块`}
-                            />
-                            <StructureTile
-                              label='聴解'
-                              primary={`${paper.listeningSectionCount} 部分`}
-                              secondary={`${paper.lessonQuestionCount} 题 / ${paper.lessonCount} 音频`}
-                            />
-                            <StructureTile
-                              label='読解'
-                              primary={`${paper.passageCount} 篇`}
-                              secondary={`${paper.questionCount -
-                                paper.quizQuestionCount -
-                                paper.lessonQuestionCount} 题`}
-                            />
+                          <h3 className='mt-1 truncate font-bold text-slate-900'>
+                            {paper.name}
+                          </h3>
+                          <div className='mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500'>
+                            {breakdown.map(item => (
+                              <span key={item.label}>
+                                {item.label} {item.value}
+                              </span>
+                            ))}
                           </div>
-
-                          {paper.manageSections.length > 0 && (
-                            <div className='mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3'>
-                              <div className='mb-2 text-xs font-black text-slate-700'>
-                                按部分编辑
-                              </div>
-                              <div className='flex flex-wrap gap-2'>
-                                {paper.manageSections.map(section => (
-                                  <Link
-                                    key={section.key}
-                                    href={`/manage/practice/${encodeURIComponent(
-                                      paper.id,
-                                    )}?section=${encodeURIComponent(section.key)}`}
-                                    className='inline-flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700'>
-                                    <span>{section.label}</span>
-                                    <span className='font-semibold text-slate-400'>
-                                      {section.detail}
-                                    </span>
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          )}
                         </div>
 
-                        <aside className='rounded-xl border border-slate-200 bg-slate-50 p-3'>
-                          <div className='grid grid-cols-2 gap-2 text-xs'>
-                            <Info label='正确率' value={accuracy} />
-                            <Info label='作答' value={`${paper.attemptCount} 次`} />
-                          </div>
-                          <div className='mt-3 grid grid-cols-2 gap-2'>
-                            <Link
-                              href={`/manage/practice/${encodeURIComponent(paper.id)}`}
-                              className='ui-btn ui-btn-primary h-9 justify-center text-sm'>
-                              编辑试卷
-                            </Link>
-                            <Link
-                              href={`/practice/${encodeURIComponent(paper.id)}`}
-                              className='ui-btn h-9 justify-center text-sm'>
-                              预览
-                            </Link>
-                            <Link
-                              href={`/practice/${encodeURIComponent(paper.id)}/do`}
-                              className='ui-btn h-9 justify-center text-sm'>
-                              作答
-                            </Link>
-                            <button
-                              type='button'
-                              onClick={() =>
-                                setExpandedPaperId(isExpanded ? null : paper.id)
-                              }
-                              className='ui-btn h-9 justify-center text-sm'>
-                              {isExpanded ? '收起元信息' : '元信息'}
-                            </button>
-                          </div>
-                        </aside>
+                        <div className='flex shrink-0 gap-2'>
+                          <Link
+                            href={`/manage/practice/${encodeURIComponent(paper.id)}`}
+                            className='ui-btn ui-btn-sm ui-btn-primary'>
+                            编辑
+                          </Link>
+                          <button
+                            type='button'
+                            onClick={() =>
+                              setExpandedPaperId(isExpanded ? null : paper.id)
+                            }
+                            className='ui-btn ui-btn-sm'>
+                            {isExpanded ? '收起' : '设置'}
+                          </button>
+                        </div>
                       </div>
 
                       {isExpanded && (
-                        <div className='border-t border-slate-200 bg-white p-4'>
-                          <div className='mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
-                            试卷信息与管理
-                          </div>
+                        <div className='mt-3 border-t border-slate-100 pt-3'>
                           <PaperAttributeForm
                             paperId={paper.id}
                             defaultTitle={paper.name}
@@ -261,11 +127,8 @@ export default function ManagePapersListClient({
                             defaultLevel={paper.level || ''}
                             defaultParentId={paper.parentId || ''}
                             defaultSortOrder={paper.sortOrder}
-                            createdAt={formatTokyoDateTime(paper.createdAt)}
-                            updatedAt={formatTokyoDateTime(paper.updatedAt)}
                             defaultCollectionType={paper.collectionType}
                           />
-                          <PaperAdminPanel paperId={paper.id} />
                         </div>
                       )}
                     </article>
@@ -275,47 +138,7 @@ export default function ManagePapersListClient({
             </section>
           ))
         )}
-      </main>
-    </div>
-  )
-}
-
-function StructureTile({
-  label,
-  primary,
-  secondary,
-}: {
-  label: string
-  primary: string
-  secondary: string
-}) {
-  return (
-    <div className='min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-2.5 md:p-3'>
-      <div className='text-xs font-bold text-slate-500'>{label}</div>
-      <div className='mt-1 text-sm font-black text-slate-900'>{primary}</div>
-      <div className='mt-0.5 text-xs font-medium text-slate-500'>
-        {secondary}
       </div>
-    </div>
-  )
-}
-
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className='rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5'>
-      <p className='text-[11px] font-bold text-slate-500'>{label}</p>
-      <p className='mt-0.5 text-xl font-black text-slate-950'>{value}</p>
-    </div>
-  )
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className='min-w-0 border border-slate-200 bg-white px-2.5 py-2'>
-      <div className='text-[11px] font-bold text-slate-400'>{label}</div>
-      <div className='mt-1 truncate text-xs font-semibold text-slate-700'>
-        {value}
-      </div>
-    </div>
+    </main>
   )
 }

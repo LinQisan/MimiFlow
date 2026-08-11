@@ -1,4 +1,16 @@
-import type { MaterialType } from '@prisma/client'
+import { MaterialType, type Prisma } from '@prisma/client'
+
+const materialTypes = new Set<string>(Object.values(MaterialType))
+
+export function normalizeAcceptedMaterialTypes(
+  value: Prisma.JsonValue | null,
+): MaterialType[] {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item): item is MaterialType =>
+      typeof item === 'string' && materialTypes.has(item),
+  )
+}
 
 export function isCollectionTypeAllowedForMaterial(
   materialType: MaterialType,

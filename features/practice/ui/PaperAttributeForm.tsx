@@ -16,8 +16,6 @@ type Props = {
   defaultLevel: string
   defaultParentId: string
   defaultSortOrder: number
-  createdAt: string
-  updatedAt: string
   defaultCollectionType: CollectionType
 }
 
@@ -31,8 +29,6 @@ export default function PaperAttributeForm({
   defaultLevel,
   defaultParentId,
   defaultSortOrder,
-  createdAt,
-  updatedAt,
   defaultCollectionType,
 }: Props) {
   const [state, formAction, pending] = useActionState(
@@ -43,71 +39,58 @@ export default function PaperAttributeForm({
   const normalizedCollectionType =
     defaultCollectionType === CollectionType.CUSTOM_GROUP
       ? CollectionType.CUSTOM_GROUP
-      : defaultCollectionType === CollectionType.FAVORITES
-        ? CollectionType.FAVORITES
-        : CollectionType.PAPER
+      : CollectionType.PAPER
 
   return (
     <form action={formAction} className='space-y-2'>
       <input type='hidden' name='paperId' value={paperId} />
-      <div className='grid grid-cols-1 gap-3 md:grid-cols-[1fr_220px_auto]'>
+      <input type='hidden' name='parentId' value={defaultParentId} />
+      <input type='hidden' name='description' value={defaultDescription} />
+      <div className='grid grid-cols-1 gap-2 md:grid-cols-2 lg:grid-cols-[2fr_1.4fr_1fr_1fr_5rem_auto]'>
         <input
           name='title'
           defaultValue={defaultTitle}
           placeholder='试卷名称'
-          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+          aria-label='试卷名称'
+          className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <CustomSelect
           name='collectionType'
           defaultValue={normalizedCollectionType}
-          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
-          <option value='PAPER'>正式试卷 - 真题 / 模考</option>
-          <option value='CUSTOM_GROUP'>普通集合 - 教材 / 自定义练习</option>
-          <option value='FAVORITES'>收藏夹 - 临时归类 / 精选内容</option>
+          aria-label='集合类型'
+          className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
+          <option value='PAPER'>正式试卷</option>
+          <option value='CUSTOM_GROUP'>普通集合</option>
         </CustomSelect>
-        <button
-          type='submit'
-          disabled={pending}
-          className='ui-btn ui-btn-sm ui-btn-primary h-10 min-w-20 disabled:cursor-not-allowed disabled:opacity-60'>
-          {pending ? '保存中...' : '保存'}
-        </button>
-      </div>
-      <div className='grid grid-cols-1 gap-3 md:grid-cols-3'>
         <input
           name='language'
           defaultValue={defaultLanguage}
-          placeholder='语言（例：ja / en / zh）'
-          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+          placeholder='语言'
+          aria-label='语言'
+          className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='level'
           defaultValue={defaultLevel}
-          placeholder='等级（例：N1 / B2）'
-          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+          placeholder='等级'
+          aria-label='等级'
+          className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
         <input
           name='sortOrder'
           type='number'
           defaultValue={defaultSortOrder}
           placeholder='排序'
-          className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+          aria-label='排序'
+          className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
         />
+        <button
+          type='submit'
+          disabled={pending}
+          className='ui-btn ui-btn-sm ui-btn-primary h-9 disabled:cursor-not-allowed disabled:opacity-60'>
+          {pending ? '保存中' : '保存'}
+        </button>
       </div>
-      <input
-        name='parentId'
-        defaultValue={defaultParentId}
-        placeholder='父级集合 ID（可选）'
-        className='h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-      />
-      <textarea
-        name='description'
-        defaultValue={defaultDescription}
-        placeholder='试卷描述（可选）'
-        className='min-h-20 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
-      />
-      <p className='text-[11px] font-medium text-slate-400'>
-        ID: {paperId} · 创建: {createdAt} · 更新: {updatedAt}
-      </p>
       {state.message ? (
         <p
           className={`text-xs font-semibold ${

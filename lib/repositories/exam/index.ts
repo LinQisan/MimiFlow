@@ -3,7 +3,10 @@ import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { getMaterialDisplayTitle } from '../materials/material-title'
 import { reorderExamOptionsForSession } from './exam-option-order'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
-import { normalizeQuestionDisplayText } from '@/modules/practice/domain/question-text'
+import {
+  normalizeQuestionDisplayText,
+  normalizeQuestionTextFields,
+} from '@/modules/practice/domain/question-text'
 import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
@@ -620,7 +623,6 @@ export async function findLevelsWithPapersAndCounts(): Promise<
   const order: Array<{ type: CollectionType; title: string }> = [
     { type: CollectionType.PAPER, title: '试卷' },
     { type: CollectionType.CUSTOM_GROUP, title: '分组' },
-    { type: CollectionType.FAVORITES, title: '收藏夹' },
   ]
   for (const item of order) {
     const rows = grouped.get(item.type) || []
@@ -837,6 +839,7 @@ export async function getManagePaperEditData(paperId: string) {
         : '',
       questions: material.questions.map((row, index) => {
         const content = decodeQuestionContent(row.content)
+        const questionText = normalizeQuestionTextFields(row.prompt, row.context)
         const answerIds = new Set(toAnswerIds(row.answer))
         const listeningSection =
           material.type === MaterialType.LISTENING
@@ -861,8 +864,8 @@ export async function getManagePaperEditData(paperId: string) {
         return {
           id: row.id,
           questionType: row.questionType,
-          prompt: row.prompt || '',
-          contextSentence: row.context || row.prompt || '',
+          prompt: questionText.prompt || '',
+          contextSentence: questionText.context || '',
           explanation: row.analysis || '',
           listeningSectionTitle: listeningSection?.title || '',
           listeningSectionKey: listeningSection?.key || '',

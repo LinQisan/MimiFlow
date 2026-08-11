@@ -531,13 +531,20 @@ export async function updateVocabularyTags(
 
       if (tags.length === 0) return
 
-      await tx.vocabularyTagOnVocabulary.createMany({
-        data: tags.map(tag => ({
-          vocabularyId: vocabId,
-          tagId: tag.id,
-        })),
-        skipDuplicates: true,
-      })
+      await Promise.all(
+        tags.map(tag =>
+          tx.vocabularyTagOnVocabulary.upsert({
+            where: {
+              vocabularyId_tagId: {
+                vocabularyId: vocabId,
+                tagId: tag.id,
+              },
+            },
+            update: {},
+            create: { vocabularyId: vocabId, tagId: tag.id },
+          }),
+        ),
+      )
     })
 
     revalidatePath('/vocabulary')

@@ -12,7 +12,7 @@ const importGroups = [
     label: '练习内容',
     items: [
       ['listening', '听力材料', 'MP3 与字幕'],
-      ['speaking', '跟读材料', '音频与时间轴'],
+      ['speaking', '跟读材料', 'MP3 与字幕'],
       ['reading', '阅读文章', '正文与表格'],
       ['questions', '练习题', '单题或批量'],
     ],
@@ -34,7 +34,7 @@ type ImportType = (typeof importTypeValues)[number]
 
 const uploadTabs: Partial<Record<ImportType, UploadCenterTab>> = {
   listening: 'audio',
-  speaking: 'timed-audio',
+  speaking: 'audio',
   reading: 'article',
   questions: 'quiz',
   subtitles: 'media',
@@ -118,6 +118,7 @@ export default async function UnifiedImportPage({
               dbLevels={dbLevels}
               dbCollections={dbCollections}
               initialTab={uploadTabs[importType]}
+              initialMaterialType={importMaterialTypes[importType]}
             />
           )}
         </section>
