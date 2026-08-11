@@ -44,7 +44,9 @@ export async function getManageIndexData() {
     vocabCount,
     recentCollections,
   ] = await Promise.all([
-    prisma.collection.count({ where: { collectionType: CollectionType.PAPER } }),
+    prisma.collection.count({
+      where: { collectionType: CollectionType.PAPER },
+    }),
     prisma.material.count({ where: { type: MaterialType.LISTENING } }),
     prisma.material.count({ where: { type: MaterialType.READING } }),
     prisma.material.count({ where: { type: MaterialType.VOCAB_GRAMMAR } }),
@@ -131,10 +133,7 @@ export async function getUploadPageSeedData({
     [MaterialType.SPEAKING]: 0,
   }
   const dominantMaterialTypeByCollection = new Map<string, MaterialType>()
-  const typeCountByCollection = new Map<
-    string,
-    Record<MaterialType, number>
-  >()
+  const typeCountByCollection = new Map<string, Record<MaterialType, number>>()
   for (const collection of collections) {
     const current = {
       [MaterialType.LISTENING]: 0,
@@ -158,42 +157,44 @@ export async function getUploadPageSeedData({
     )
   }
 
-  const dbCollections: UploadPageCollectionLite[] = collections.map(collection => {
-    const lessons = collection.materials.map(row => {
-      const payload = decodeMaterialPayloadRecord(
-        row.material.type,
-        row.material.contentPayload,
-      )
+  const dbCollections: UploadPageCollectionLite[] = collections.map(
+    collection => {
+      const lessons = collection.materials.map(row => {
+        const payload = decodeMaterialPayloadRecord(
+          row.material.type,
+          row.material.contentPayload,
+        )
+
+        return {
+          title: getMaterialDisplayTitle(
+            row.material.type,
+            row.material.title,
+            row.material.contentPayload,
+            row.material.title,
+          ),
+          chapterName: row.material.chapterName || '',
+          materialType: row.material.type,
+          audioFile: String(payload.audioFile || payload.audioUrl || ''),
+        }
+      })
 
       return {
-        title: getMaterialDisplayTitle(
-          row.material.type,
-          row.material.title,
-          row.material.contentPayload,
-          row.material.title,
-        ),
-        chapterName: row.material.chapterName || '',
-        materialType: row.material.type,
-        audioFile: String(payload.audioFile || payload.audioUrl || ''),
+        id: collection.id,
+        name: collection.title,
+        parentId: collection.parentId,
+        sortOrder: collection.sortOrder,
+        collectionType: collection.collectionType,
+        acceptedMaterialTypes: collection.acceptedMaterialTypes,
+        materialType:
+          dominantMaterialTypeByCollection.get(collection.id) ||
+          MaterialType.LISTENING,
+        language: collection.language || undefined,
+        examLevel: collection.level || undefined,
+        level: { title: toCollectionTypeLabel(collection.collectionType) },
+        lessons,
       }
-    })
-
-    return {
-      id: collection.id,
-      name: collection.title,
-      parentId: collection.parentId,
-      sortOrder: collection.sortOrder,
-      collectionType: collection.collectionType,
-      acceptedMaterialTypes: collection.acceptedMaterialTypes,
-      materialType:
-        dominantMaterialTypeByCollection.get(collection.id) ||
-        MaterialType.LISTENING,
-      language: collection.language || undefined,
-      examLevel: collection.level || undefined,
-      level: { title: toCollectionTypeLabel(collection.collectionType) },
-      lessons,
-    }
-  })
+    },
+  )
 
   return { dbLevels, dbCollections }
 }

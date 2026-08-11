@@ -8,6 +8,10 @@ import type {
   ArticleImportedQuestionDraft,
   ArticlePreviewRow,
 } from '../types'
+import {
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '@/features/questions/domain/editor'
 
 export default function ArticleImportPanel({
   articleForm,
@@ -145,7 +149,7 @@ export default function ArticleImportPanel({
             読解题目（可选）
           </h3>
           <p className='mt-1 text-xs text-blue-700'>
-            可通过划词自动生成，也可粘贴 1.2.3.4 格式快速导入。
+            可通过划词自动生成，也可粘贴带序号的选项快速导入（至少 2 个）。
           </p>
         </div>
 
@@ -174,6 +178,31 @@ export default function ArticleImportPanel({
                   </div>
                 </div>
 
+                <div className='mb-2 flex items-center justify-between gap-2'>
+                  <span className='text-xs font-bold text-blue-800'>
+                    {q.options.length} 个选项（最少 {MIN_QUESTION_OPTION_COUNT} 个）
+                  </span>
+                  <button
+                    type='button'
+                    onClick={() =>
+                      setArticleQuestions(previous =>
+                        previous.map((question, questionIndex) =>
+                          questionIndex === qIndex
+                            ? {
+                                ...question,
+                                options: [
+                                  ...question.options,
+                                  { text: '', isCorrect: false },
+                                ],
+                              }
+                            : question,
+                        ),
+                      )
+                    }
+                    className='border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100'>
+                    + 添加选项
+                  </button>
+                </div>
                 <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                   {q.options.map((opt, optIndex: number) => (
                     <div
@@ -233,6 +262,28 @@ export default function ArticleImportPanel({
                         placeholder={`选项 ${optIndex + 1}`}
                         className={`min-w-0 flex-1 rounded-md border px-3 py-2 transition-colors ${opt.isCorrect ? 'border-blue-400 bg-blue-50 font-bold text-blue-700 ' : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-blue-300'} outline-none focus:ring-2 focus:ring-blue-500`}
                       />
+                      <button
+                        type='button'
+                        disabled={q.options.length <= MIN_QUESTION_OPTION_COUNT}
+                        onClick={() =>
+                          setArticleQuestions(previous =>
+                            previous.map((question, questionIndex) =>
+                              questionIndex === qIndex
+                                ? rebuildFillBlankPromptFromQuestion({
+                                    ...question,
+                                    options: removeQuestionOptionAt(
+                                      question.options,
+                                      optIndex,
+                                    ),
+                                  })
+                                : question,
+                            ),
+                          )
+                        }
+                        aria-label={`删除选项 ${optIndex + 1}`}
+                        className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                        删除
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -240,7 +291,7 @@ export default function ArticleImportPanel({
                 <div className='mt-4 pt-3 border-t border-gray-100'>
                   <input
                     type='text'
-                    placeholder='在此粘贴 1. 2. 3. 4. 选项文本，系统将自动拆分并匹配正确答案。'
+                    placeholder='在此粘贴带序号的选项文本，系统将自动拆分并匹配正确答案。'
                     onChange={e => {
                       handleParseCardOptions(qIndex, e.target.value)
                       e.target.value = ''
@@ -261,7 +312,7 @@ export default function ArticleImportPanel({
             value={articleQuickInput}
             onChange={e => setArticleQuickInput(e.target.value)}
             rows={3}
-            placeholder='粘贴含 1. 2. 3. 4. 选项的题目文本'
+            placeholder='粘贴含至少 2 个带序号选项的题目文本'
             className='w-full px-4 py-3 border border-blue-200 focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm bg-white mb-3'
           />
           <button

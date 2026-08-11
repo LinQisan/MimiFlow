@@ -15,6 +15,7 @@ import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
+import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
 
 const updatePaperQuestionSchema = z.object({
   questionId: z.string().trim().min(1, '题目 ID 缺失。'),
@@ -32,6 +33,10 @@ const updatePaperQuestionSchema = z.object({
         text: z.string().catch(''),
         isCorrect: z.boolean().catch(false),
       }),
+    )
+    .min(
+      MIN_QUESTION_OPTION_COUNT,
+      `每道题至少需要 ${MIN_QUESTION_OPTION_COUNT} 个选项。`,
     )
     .max(100),
 })
@@ -75,13 +80,11 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
     }
     listeningSectionNumber = Math.floor(parsedNumber)
   }
-  const normalizedOptions = input.options
-    .map((item, index) => ({
-      id: (item.id || '').trim() || `opt_${index + 1}`,
-      text: (item.text || '').trim(),
-      isCorrect: Boolean(item.isCorrect),
-    }))
-    .filter(item => item.text.length > 0)
+  const normalizedOptions = input.options.map((item, index) => ({
+    id: (item.id || '').trim() || `opt_${index + 1}`,
+    text: (item.text || '').trim(),
+    isCorrect: Boolean(item.isCorrect),
+  }))
 
   const current = await prisma.question.findUnique({
     where: { id: questionId },
@@ -150,19 +153,17 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
     ),
   }
 
-  if (normalizedOptions.length > 0) {
-    const correctOption = normalizedOptions.find(item => item.isCorrect)
-    if (!correctOption) {
-      throw new DomainError('VALIDATION_ERROR', '请至少设置一个正确答案。')
-    }
-    data.options = toNullableJsonValue(
-      normalizedOptions.map(item => ({
-        id: item.id,
-        text: item.text,
-      })),
-    )
-    data.answer = toJsonValue(correctOption.id, '')
+  const correctOption = normalizedOptions.find(item => item.isCorrect)
+  if (!correctOption) {
+    throw new DomainError('VALIDATION_ERROR', '请至少设置一个正确答案。')
   }
+  data.options = toNullableJsonValue(
+    normalizedOptions.map(item => ({
+      id: item.id,
+      text: item.text,
+    })),
+  )
+  data.answer = toJsonValue(correctOption.id, '')
 
   await prisma.question.update({
     where: { id: questionId },

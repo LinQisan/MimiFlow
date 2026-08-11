@@ -15,6 +15,9 @@ import {
   getQuestionEditorTypeConfig as getTypeConfig,
   createDefaultQuestionOptions,
   getDefaultQuestionPrompt,
+  createQuestionOption,
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
   updateQuestionOption,
   updateQuestionField,
 } from '@/features/questions/domain/editor'
@@ -127,6 +130,38 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
   ) => {
     setQuestions(current =>
       updateQuestionOption(current, qId, optIndex, field, value),
+    )
+  }
+
+  const handleAddOption = (questionId: string) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: [
+                ...question.options,
+                createQuestionOption(`${question.id}_opt`),
+              ],
+            }
+          : question,
+      ),
+    )
+  }
+
+  const handleRemoveOption = (questionId: string, optionIndex: number) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: removeQuestionOptionAt(
+                question.options,
+                optionIndex,
+              ),
+            }
+          : question,
+      ),
     )
   }
 
@@ -413,11 +448,18 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                           </div>
 
                           <div>
-                            <div className='flex items-center justify-between mb-2'>
+                            <div className='flex flex-wrap items-center justify-between gap-2 mb-2'>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider'>
-                              选项（点击单选框设置正确答案）
+                              选项（{q.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
                             </label>
-                            {q.questionType === 'LISTENING' && (
+                            <div className='flex items-center gap-2'>
+                              <button
+                                type='button'
+                                onClick={() => handleAddOption(q.id)}
+                                className='rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100'>
+                                + 添加选项
+                              </button>
+                              {q.questionType === 'LISTENING' && (
                               <button
                                 type='button'
                                 onClick={() => handleToggleAudioOnly(q.id, !isAudioOnly(q.id))}
@@ -431,7 +473,8 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                 }`} />
                                 纯听力选项
                               </button>
-                            )}
+                              )}
+                            </div>
                             </div>
                             <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
                               {q.options?.map((opt, i: number) => (
@@ -470,6 +513,14 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                     placeholder='输入选项'
                                   />
                                   )}
+                                  <button
+                                    type='button'
+                                    disabled={q.options.length <= MIN_QUESTION_OPTION_COUNT}
+                                    onClick={() => handleRemoveOption(q.id, i)}
+                                    aria-label={`删除选项 ${i + 1}`}
+                                    className='shrink-0 rounded-md px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                                    删除
+                                  </button>
                                 </div>
                               ))}
                             </div>

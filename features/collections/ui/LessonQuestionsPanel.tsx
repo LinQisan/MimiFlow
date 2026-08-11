@@ -20,7 +20,10 @@ import {
 import { parseMultiQuizText } from '@/modules/import/domain/quiz-text-parser'
 import {
   createDefaultQuestionOptions,
+  createQuestionOption,
   getQuestionEditorTypeConfig as getTypeConfig,
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
   updateQuestionField,
   updateQuestionOption,
 } from '@/features/questions/domain/editor'
@@ -103,6 +106,7 @@ export default function LessonQuestionsPanel({
   // ─── Add single question ───
   const handleAddNewQuestion = () => {
     const id = `new_${Date.now()}`
+    const defaultOptionCount = Number(listeningSectionNumber) === 4 ? 3 : 4
     const newQ: EditableQuestion = {
       id,
       questionType: 'LISTENING' as QuestionType,
@@ -113,7 +117,10 @@ export default function LessonQuestionsPanel({
       listeningSectionNumber,
       optionLabelFormat: 'numeric',
       customOptionLabels: '',
-      options: createDefaultQuestionOptions(`${id}_opt`, ['', '', '', '']),
+      options: createDefaultQuestionOptions(
+        `${id}_opt`,
+        Array.from({ length: defaultOptionCount }, () => ''),
+      ),
     }
     setQuestions([...questions, newQ])
     setEditingQuestionId(newQ.id)
@@ -144,7 +151,7 @@ export default function LessonQuestionsPanel({
     if (!value.trim()) return
 
     const draft = parseMultiQuizText(value)[0]
-    if (!draft || draft.options.length !== 4) return
+    if (!draft || draft.options.length < MIN_QUESTION_OPTION_COUNT) return
 
     setQuestions(current =>
       current.map(question =>
@@ -155,10 +162,12 @@ export default function LessonQuestionsPanel({
               prompt: draft.prompt || question.prompt,
               contextSentence:
                 draft.contextSentence || question.contextSentence,
-              options: question.options.map((option, index) => ({
-                ...option,
-                text: draft.options[index]?.text || '',
-                isCorrect: index === 0,
+              options: draft.options.map((option, index) => ({
+                id:
+                  question.options[index]?.id ||
+                  createQuestionOption(`${question.id}_opt`).id,
+                text: option.text,
+                isCorrect: option.isCorrect,
               })),
             },
       ),
@@ -210,6 +219,40 @@ export default function LessonQuestionsPanel({
   const handleUpdateOption = (qId: string, optIndex: number, field: 'text' | 'isCorrect', value: string | boolean) => {
     setQuestions(current =>
       updateQuestionOption(current, qId, optIndex, field, value),
+    )
+    setIsDirty(true)
+  }
+
+  const handleAddOption = (questionId: string) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: [
+                ...question.options,
+                createQuestionOption(`${question.id}_opt`),
+              ],
+            }
+          : question,
+      ),
+    )
+    setIsDirty(true)
+  }
+
+  const handleRemoveOption = (questionId: string, optionIndex: number) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: removeQuestionOptionAt(
+                question.options,
+                optionIndex,
+              ),
+            }
+          : question,
+      ),
     )
     setIsDirty(true)
   }
@@ -505,16 +548,23 @@ export default function LessonQuestionsPanel({
                               }`}>
                                 {parseMultiQuizText(quickOptionInputs[q.id]).length > 0
                                   ? '已自动填入下方选项。'
-                                  : '尚未识别到完整的 4 个选项。'}
+                                  : `尚未识别到至少 ${MIN_QUESTION_OPTION_COUNT} 个完整选项。`}
                               </p>
                             ) : null}
                           </div>
 
-                          <div className='flex items-center justify-between mb-1.5'>
+                          <div className='flex flex-wrap items-center justify-between gap-2 mb-1.5'>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider'>
-                              选项（点击单选框设置正确答案）
+                              选项（{q.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
                             </label>
-                            {q.questionType === 'LISTENING' && (
+                            <div className='flex items-center gap-2'>
+                              <button
+                                type='button'
+                                onClick={() => handleAddOption(q.id)}
+                                className='rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100'>
+                                + 添加选项
+                              </button>
+                              {q.questionType === 'LISTENING' && (
                               <button
                                 type='button'
                                 onClick={() => handleToggleAudioOnly(q.id, !isAudioOnly(q.id))}
@@ -528,14 +578,15 @@ export default function LessonQuestionsPanel({
                                 }`} />
                                 纯听力选项
                               </button>
-                            )}
+                              )}
+                            </div>
                           </div>
                           {!isAudioOnly(q.id) ? (
                             <div className='mb-3 flex flex-wrap items-center gap-2'>
                               <span className='text-xs font-semibold text-slate-500'>正确答案</span>
-                              {[1, 2, 3, 4].map((number, optionIndex) => (
+                              {q.options.map((_, optionIndex) => (
                                 <button
-                                  key={number}
+                                  key={optionIndex}
                                   type='button'
                                   onClick={() =>
                                     handleUpdateOption(
@@ -550,7 +601,7 @@ export default function LessonQuestionsPanel({
                                       ? 'bg-cyan-600 text-white'
                                       : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                                   }`}>
-                                  {number}
+                                  {optionIndex + 1}
                                 </button>
                               ))}
                             </div>
@@ -621,6 +672,14 @@ export default function LessonQuestionsPanel({
                                     placeholder='输入选项'
                                   />
                                 )}
+                                <button
+                                  type='button'
+                                  disabled={q.options.length <= MIN_QUESTION_OPTION_COUNT}
+                                  onClick={() => handleRemoveOption(q.id, i)}
+                                  aria-label={`删除选项 ${i + 1}`}
+                                  className='shrink-0 rounded-md px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                                  删除
+                                </button>
                               </div>
                             ))}
                           </div>

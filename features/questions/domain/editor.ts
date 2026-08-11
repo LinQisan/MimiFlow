@@ -1,11 +1,26 @@
 import type { QuestionType } from '@prisma/client'
 
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
+export {
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '@/utils/questions/editorOptions'
 
 export type EditableQuestionOption = {
   id: string
   text: string
   isCorrect: boolean
+}
+
+let optionIdSequence = 0
+
+export function createQuestionOption(idPrefix: string): EditableQuestionOption {
+  optionIdSequence += 1
+  return {
+    id: `${idPrefix}_${Date.now()}_${optionIdSequence}`,
+    text: '',
+    isCorrect: false,
+  }
 }
 
 export type BaseEditableQuestion = {

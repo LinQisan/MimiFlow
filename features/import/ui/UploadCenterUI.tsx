@@ -11,7 +11,6 @@ import { useDialog } from '@/context/DialogContext'
 import { toCollectionBrowserOptions } from '@/components/manage/import/collectionBrowserOptions'
 import CustomSelect from '@/components/ui/CustomSelect'
 import {
-  detectQuestionType,
   inferTargetWord,
   parseMultiQuizText,
 } from '@/modules/import/domain/quiz-text-parser'
@@ -33,6 +32,10 @@ import type {
 import BulkQuizPanel from '@/modules/import/components/BulkQuizPanel'
 import ArticleImportPanel from '@/modules/import/components/ArticleImportPanel'
 import { useUploadCenterMutations } from '@/features/import/hooks/useUploadMutations'
+import {
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '@/features/questions/domain/editor'
 
 interface Props {
   dbLevels: UploadLevelLite[]
@@ -138,19 +141,10 @@ export default function UploadCenterUI({
   // ================= 🌟 3. 新增：单题专属的选项解析魔法 =================
   const handleParseCardOptions = (qIndex: number, text: string) => {
     if (!text.trim()) return
+    const draft = parseMultiQuizText(text)[0]
 
-    // 专属的正则表达式，只提取选项，不提取题干
-    const regex =
-      /(?:1[．.\s]|①|１[．.\s])([\s\S]*?)(?:2[．.\s]|②|２[．.\s])([\s\S]*?)(?:3[．.\s]|③|３[．.\s])([\s\S]*?)(?:4[．.\s]|④|４[．.\s])([\s\S]*)/i
-    const match = text.match(regex)
-
-    if (match) {
-      const newOptionsTexts = [
-        match[1].trim(),
-        match[2].trim(),
-        match[3].trim(),
-        match[4].trim(),
-      ]
+    if (draft && draft.options.length >= MIN_QUESTION_OPTION_COUNT) {
+      const newOptionsTexts = draft.options.map(option => option.text)
 
       const newQs = [...articleQuestions]
 
@@ -166,7 +160,7 @@ export default function UploadCenterUI({
       )
       if (newCorrectIdx === -1) newCorrectIdx = 0 // 如果找不到完美匹配，兜底选第1个
 
-      // 覆盖更新这道题的 4 个选项
+      // 按粘贴内容覆盖这道题自己的选项集合
       newQs[qIndex].options = newOptionsTexts.map((txt, idx) => ({
         text: txt,
         isCorrect: idx === newCorrectIdx,
@@ -175,7 +169,7 @@ export default function UploadCenterUI({
 
       setArticleQuestions(newQs)
     } else {
-      void dialog.alert('解析失败：未识别到 1. 2. 3. 4. 选项格式。')
+      void dialog.alert('解析失败：请至少提供 2 个带序号的选项。')
     }
   }
   // ================= 提交处理 =================
@@ -189,7 +183,7 @@ export default function UploadCenterUI({
         articleForm.content,
       )
     if (drafts.length === 0) {
-      void dialog.alert('解析失败，请检查是否包含 1. 2. 3. 4. 四个选项。')
+      void dialog.alert('解析失败，请检查每题是否至少包含 2 个选项。')
       return
     }
 
@@ -319,34 +313,25 @@ export default function UploadCenterUI({
   const handleQuickParse = (text: string) => {
     setQuickInput(text)
     if (!text.trim()) return
+    const draft = parseMultiQuizText(text)[0]
 
-    const regex =
-      /([\s\S]*?)(?:1[．.\s]|①|１[．.\s])([\s\S]*?)(?:2[．.\s]|②|２[．.\s])([\s\S]*?)(?:3[．.\s]|③|３[．.\s])([\s\S]*?)(?:4[．.\s]|④|４[．.\s])([\s\S]*)/i
-    const match = text.match(regex)
-
-    if (match) {
-      const questionText = match[1].trim()
-      const detectedType = detectQuestionType(questionText, [
-        match[2].trim(),
-        match[3].trim(),
-        match[4].trim(),
-        match[5].trim(),
-      ])
-      const inferredTargetWord = inferTargetWord(detectedType, questionText)
+    if (draft && draft.options.length >= MIN_QUESTION_OPTION_COUNT) {
+      const inferredTargetWord = inferTargetWord(
+        draft.questionType,
+        draft.prompt,
+      )
 
       setSortSequence([])
       setQuizForm(prev => ({
         ...prev,
-        questionType: detectedType,
-        prompt: questionText,
-        contextSentence: questionText,
+        questionType: draft.questionType,
+        prompt: draft.prompt,
+        contextSentence: draft.contextSentence,
         targetWord: inferredTargetWord,
-        options: [
-          { text: match[2].trim(), isCorrect: prev.options[0].isCorrect },
-          { text: match[3].trim(), isCorrect: prev.options[1].isCorrect },
-          { text: match[4].trim(), isCorrect: prev.options[2].isCorrect },
-          { text: match[5].trim(), isCorrect: prev.options[3].isCorrect },
-        ],
+        options: draft.options.map((option, index) => ({
+          text: option.text,
+          isCorrect: prev.options[index]?.isCorrect ?? index === 0,
+        })),
       }))
     }
   }
@@ -355,7 +340,7 @@ export default function UploadCenterUI({
     const parsed = parseMultiQuizText(bulkQuickInput)
     setBulkParsedQuestions(parsed)
     if (parsed.length === 0) {
-      void dialog.alert('未识别到完整题目。请检查是否包含每题 4 个选项。')
+      void dialog.alert('未识别到完整题目。请检查每题是否至少包含 2 个选项。')
       return
     }
     // 同步首题到单题编辑区，方便立刻校对
@@ -449,6 +434,38 @@ export default function UploadCenterUI({
           })),
         }
       }),
+    )
+  }
+
+  const handleBulkAddOption = (qIndex: number) => {
+    setBulkParsedQuestions(previous =>
+      previous.map((question, index) =>
+        index === qIndex
+          ? {
+              ...question,
+              options: [
+                ...question.options,
+                { text: '', isCorrect: false },
+              ],
+            }
+          : question,
+      ),
+    )
+  }
+
+  const handleBulkRemoveOption = (qIndex: number, optionIndex: number) => {
+    setBulkParsedQuestions(previous =>
+      previous.map((question, index) =>
+        index === qIndex
+          ? {
+              ...question,
+              options: removeQuestionOptionAt(
+                question.options,
+                optionIndex,
+              ),
+            }
+          : question,
+      ),
     )
   }
 
@@ -559,7 +576,7 @@ export default function UploadCenterUI({
     const newSeq = [...sortSequence, index]
     setSortSequence(newSeq)
 
-    if (newSeq.length === 4) {
+    if (newSeq.length === quizForm.options.length) {
       setQuizForm(prev => {
         const parts = prev.prompt.split(/([＿_]{2,}|[★＊])/).filter(Boolean)
         let slotCount = 0
@@ -966,6 +983,8 @@ export default function UploadCenterUI({
               handleBulkTargetWordChange={handleBulkTargetWordChange}
               setBulkCorrectOption={setBulkCorrectOption}
               handleBulkOptionTextChange={handleBulkOptionTextChange}
+              handleBulkAddOption={handleBulkAddOption}
+              handleBulkRemoveOption={handleBulkRemoveOption}
               />
             ) : (
               <>
@@ -974,7 +993,7 @@ export default function UploadCenterUI({
                 快速粘贴（推荐）
               </label>
               <p className='mb-3 text-xs leading-relaxed text-blue-700'>
-                粘贴包含题干和 4 个选项的文本，系统会自动拆分并填充表单。
+                粘贴包含题干和至少 2 个选项的文本，系统会自动拆分并填充表单。
                 <br />
                 <span className='font-mono bg-white/50 px-1 rounded'>
                   友人にピアノの伴奏を頼まれた。 1．はんそう 2．ばんそう
@@ -995,13 +1014,13 @@ export default function UploadCenterUI({
                     正确答案
                   </span>
                   <div className='flex flex-wrap gap-2'>
-                    {[1, 2, 3, 4].map((num, idx) => (
+                    {quizForm.options.map((_, idx) => (
                       <button
-                        key={num}
+                        key={idx}
                         type='button'
                         onClick={() => setCorrectOption(idx)}
                         className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-blue-500 text-white shadow-blue-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                        选项 {num}
+                        选项 {idx + 1}
                       </button>
                     ))}
                   </div>
@@ -1071,7 +1090,7 @@ export default function UploadCenterUI({
               {quizForm.questionType === 'SORTING' && (
                 <div className='mb-4 border border-orange-200 bg-orange-50 p-4'>
                   <label className='mb-2 block text-sm font-bold text-orange-800'>
-                    排序设置：按正确语序依次点击 4 个选项
+                    排序设置：按正确语序依次点击全部选项
                   </label>
                   <div className='flex flex-wrap gap-2 mb-4'>
                     {quizForm.options.map((opt, i) => {
@@ -1094,7 +1113,7 @@ export default function UploadCenterUI({
                       )
                     })}
                   </div>
-                  {sortSequence.length === 4 ? (
+                  {sortSequence.length === quizForm.options.length ? (
                     <div className='text-sm text-blue-600 font-bold flex justify-between items-center'>
                       <span>
                         语序组装完成，系统已自动提取星号答案与完整句子。
@@ -1108,7 +1127,7 @@ export default function UploadCenterUI({
                     </div>
                   ) : (
                     <div className='text-xs text-orange-500'>
-                      还需点击 {4 - sortSequence.length} 个选项
+                      还需点击 {quizForm.options.length - sortSequence.length} 个选项
                     </div>
                   )}
                 </div>
@@ -1169,9 +1188,25 @@ export default function UploadCenterUI({
             </section>
 
             <section className='border border-gray-200 bg-gray-50/40 p-4 md:p-5'>
-              <label className='mb-3 block text-sm font-bold text-gray-700'>
-                选项设置
-              </label>
+              <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+                <label className='block text-sm font-bold text-gray-700'>
+                  选项设置（{quizForm.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
+                </label>
+                <button
+                  type='button'
+                  onClick={() =>
+                    setQuizForm(previous => ({
+                      ...previous,
+                      options: [
+                        ...previous.options,
+                        { text: '', isCorrect: false },
+                      ],
+                    }))
+                  }
+                  className='border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100'>
+                  + 添加选项
+                </button>
+              </div>
               <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
                 {quizForm.options.map((opt, idx) => (
                   <div
@@ -1195,6 +1230,23 @@ export default function UploadCenterUI({
                       className='min-w-0 flex-1 border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500'
                       placeholder={`选项 ${idx + 1}`}
                     />
+                    <button
+                      type='button'
+                      disabled={quizForm.options.length <= MIN_QUESTION_OPTION_COUNT}
+                      onClick={() => {
+                        setSortSequence([])
+                        setQuizForm(previous => ({
+                          ...previous,
+                          options: removeQuestionOptionAt(
+                            previous.options,
+                            idx,
+                          ),
+                        }))
+                      }}
+                      aria-label={`删除选项 ${idx + 1}`}
+                      className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                      删除
+                    </button>
                   </div>
                 ))}
               </div>

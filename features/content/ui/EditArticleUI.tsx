@@ -14,6 +14,11 @@ import { updateArticleWithQuestions } from '@/modules/content/actions/materials'
 import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
+import {
+  createQuestionOption,
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '@/features/questions/domain/editor'
 
 const splitIntoSentences = (text: string) => {
   if (!text) return []
@@ -169,6 +174,38 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
         }
         return { ...q, options: newOptions }
       }),
+    )
+  }
+
+  const handleAddOption = (questionId: string) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: [
+                ...question.options,
+                createQuestionOption(`${question.id}_opt`),
+              ],
+            }
+          : question,
+      ),
+    )
+  }
+
+  const handleRemoveOption = (questionId: string, optionIndex: number) => {
+    setQuestions(current =>
+      current.map(question =>
+        question.id === questionId
+          ? {
+              ...question,
+              options: removeQuestionOptionAt(
+                question.options,
+                optionIndex,
+              ),
+            }
+          : question,
+      ),
     )
   }
 
@@ -368,6 +405,17 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
                               className='w-full p-3 bg-white border border-indigo-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-3 resize-none h-20'
                               placeholder='输入题干...'
                             />
+                            <div className='mb-2 flex items-center justify-between gap-2'>
+                              <span className='text-xs font-bold text-indigo-700'>
+                                {q.options.length} 个选项（最少 {MIN_QUESTION_OPTION_COUNT} 个）
+                              </span>
+                              <button
+                                type='button'
+                                onClick={() => handleAddOption(q.id)}
+                                className='rounded-lg border border-indigo-200 bg-white px-3 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50'>
+                                + 添加选项
+                              </button>
+                            </div>
                             <div className='space-y-2'>
                               {q.options?.map((opt, i: number) => (
                                 <div
@@ -399,6 +447,14 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
                                     }
                                     className='flex-1 bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-800 outline-none'
                                   />
+                                  <button
+                                    type='button'
+                                    disabled={q.options.length <= MIN_QUESTION_OPTION_COUNT}
+                                    onClick={() => handleRemoveOption(q.id, i)}
+                                    aria-label={`删除选项 ${i + 1}`}
+                                    className='shrink-0 rounded-md px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                                    删除
+                                  </button>
                                 </div>
                               ))}
                             </div>

@@ -20,6 +20,11 @@ import {
 } from '@/features/questions/domain/paper-editor'
 import { usePaperQuestionEditorState } from '@/features/questions/hooks/usePaperQuestionEditorState'
 import { useQuestionEditorMutations } from '@/features/questions/hooks/useQuestionEditorMutations'
+import {
+  createQuestionOption,
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '@/features/questions/domain/editor'
 
 type EditableOption = {
   id: string
@@ -277,6 +282,58 @@ export default function PaperQuestionEditor({
           }),
         }
       }),
+    )
+  }
+
+  const addOption = (materialId: string, questionId: string) => {
+    setDirtyIds(current => new Set(current).add(questionId))
+    setMaterials(previous =>
+      previous.map(material =>
+        material.id !== materialId
+          ? material
+          : {
+              ...material,
+              questions: material.questions.map(question =>
+                question.id !== questionId
+                  ? question
+                  : {
+                      ...question,
+                      options: [
+                        ...question.options,
+                        createQuestionOption(`${question.id}_opt`),
+                      ],
+                    },
+              ),
+            },
+      ),
+    )
+  }
+
+  const removeOption = (
+    materialId: string,
+    questionId: string,
+    optionIndex: number,
+  ) => {
+    setDirtyIds(current => new Set(current).add(questionId))
+    setMaterials(previous =>
+      previous.map(material =>
+        material.id !== materialId
+          ? material
+          : {
+              ...material,
+              questions: material.questions.map(question =>
+                question.id !== questionId
+                  ? question
+                  : {
+                      ...question,
+                      options: removeQuestionOptionAt(
+                        question.options,
+                        optionIndex,
+                      ),
+                    },
+              ),
+            },
+      ),
     )
   }
 
@@ -542,8 +599,16 @@ export default function PaperQuestionEditor({
 
                         {question.options.length > 0 && (
                           <div className='mt-3 space-y-2 rounded-lg border border-slate-200 bg-white p-2.5'>
-                            <div className='text-xs font-bold text-slate-600'>
-                              选项与正确答案（单选）
+                            <div className='flex items-center justify-between gap-2'>
+                              <div className='text-xs font-bold text-slate-600'>
+                                选项与正确答案（{question.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
+                              </div>
+                              <button
+                                type='button'
+                                onClick={() => addOption(material.id, question.id)}
+                                className='rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100'>
+                                + 添加选项
+                              </button>
                             </div>
                             <div className='grid grid-cols-1 gap-2 md:grid-cols-[220px_1fr]'>
                               <CustomSelect
@@ -582,7 +647,7 @@ export default function PaperQuestionEditor({
                             {question.options.map((option, optionIndex) => (
                               <div
                                 key={option.id}
-                                className='grid grid-cols-[auto,1fr] items-center gap-2'>
+                                className='grid grid-cols-[auto,1fr,auto] items-center gap-2'>
                                 <input
                                   type='radio'
                                   name={`correct-${question.id}`}
@@ -615,6 +680,20 @@ export default function PaperQuestionEditor({
                                     ),
                                   )}`}
                                 />
+                                <button
+                                  type='button'
+                                  disabled={question.options.length <= MIN_QUESTION_OPTION_COUNT}
+                                  onClick={() =>
+                                    removeOption(
+                                      material.id,
+                                      question.id,
+                                      optionIndex,
+                                    )
+                                  }
+                                  aria-label={`删除选项 ${optionIndex + 1}`}
+                                  className='rounded-md px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                                  删除
+                                </button>
                               </div>
                             ))}
                           </div>

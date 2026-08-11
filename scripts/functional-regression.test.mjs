@@ -61,8 +61,37 @@ import {
   decodeQuestionContent,
   encodeQuestionContent,
 } from '../lib/codecs/question-content.ts'
+import {
+  MIN_QUESTION_OPTION_COUNT,
+  removeQuestionOptionAt,
+} from '../utils/questions/editorOptions.ts'
 
 const ROOT = process.cwd()
+
+test('question editors keep at least two options and preserve one correct answer', () => {
+  const options = [
+    { id: 'a', isCorrect: false },
+    { id: 'b', isCorrect: true },
+    { id: 'c', isCorrect: false },
+  ]
+  const afterCorrectRemoval = removeQuestionOptionAt(options, 1)
+  assert.equal(afterCorrectRemoval.length, MIN_QUESTION_OPTION_COUNT)
+  assert.equal(afterCorrectRemoval[0].isCorrect, true)
+  assert.deepEqual(
+    removeQuestionOptionAt(afterCorrectRemoval, 0),
+    afterCorrectRemoval,
+  )
+})
+
+test('question text import accepts a variable option count', () => {
+  const [draft] = parseMultiQuizText(
+    'どちらが自然ですか。\n1. はい\n2. いいえ\n3. わかりません',
+  )
+  assert.deepEqual(
+    draft.options.map(option => option.text),
+    ['はい', 'いいえ', 'わかりません'],
+  )
+})
 
 test('untrusted values are normalized at data boundaries', () => {
   assert.deepEqual(readJsonRecord({ title: 'ok' }), { title: 'ok' })

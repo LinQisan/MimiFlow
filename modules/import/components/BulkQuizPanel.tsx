@@ -3,6 +3,7 @@
 import type { RefObject } from 'react'
 import type { ParsedQuizDraft } from '../types'
 import CustomSelect from '@/components/ui/CustomSelect'
+import { MIN_QUESTION_OPTION_COUNT } from '@/features/questions/domain/editor'
 
 export default function BulkQuizPanel({
   bulkQuickInput,
@@ -22,6 +23,8 @@ export default function BulkQuizPanel({
   handleBulkTargetWordChange,
   setBulkCorrectOption,
   handleBulkOptionTextChange,
+  handleBulkAddOption,
+  handleBulkRemoveOption,
 }: {
   bulkQuickInput: string
   setBulkQuickInput: (value: string) => void
@@ -40,6 +43,8 @@ export default function BulkQuizPanel({
   handleBulkTargetWordChange: (index: number, value: string) => void
   setBulkCorrectOption: (questionIndex: number, optionIndex: number) => void
   handleBulkOptionTextChange: (questionIndex: number, optionIndex: number, value: string) => void
+  handleBulkAddOption: (questionIndex: number) => void
+  handleBulkRemoveOption: (questionIndex: number, optionIndex: number) => void
 }) {
   return (
 <section className='border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
@@ -47,8 +52,8 @@ export default function BulkQuizPanel({
         批量粘贴多题（智能识别）
       </label>
       <p className='mb-3 text-xs leading-relaxed text-blue-700'>
-        一次粘贴多题文本，系统会按“题干 + 4 个选项”自动拆分。 支持
-        `1.2.3.4`、`①②③④`、`A.B.C.D` 选项标记。
+        一次粘贴多题文本，系统会按“题干 + 至少 2 个选项”自动拆分。支持
+        数字、带圈数字或字母选项标记。
       </p>
       <textarea
         value={bulkQuickInput}
@@ -197,6 +202,17 @@ export default function BulkQuizPanel({
                 </div>
               )}
 
+              <div className='mt-3 flex items-center justify-between gap-2'>
+                <span className='text-xs font-bold text-blue-800'>
+                  {bulkParsedQuestions[bulkEditingIndex].options.length} 个选项（最少 {MIN_QUESTION_OPTION_COUNT} 个）
+                </span>
+                <button
+                  type='button'
+                  onClick={() => handleBulkAddOption(bulkEditingIndex)}
+                  className='border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100'>
+                  + 添加选项
+                </button>
+              </div>
               <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2'>
                 {bulkParsedQuestions[bulkEditingIndex].options.map(
                   (opt, optIndex) => (
@@ -226,6 +242,19 @@ export default function BulkQuizPanel({
                         placeholder={`选项 ${optIndex + 1}`}
                         className='min-w-0 flex-1 border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400'
                       />
+                      <button
+                        type='button'
+                        disabled={bulkParsedQuestions[bulkEditingIndex].options.length <= MIN_QUESTION_OPTION_COUNT}
+                        onClick={() =>
+                          handleBulkRemoveOption(
+                            bulkEditingIndex,
+                            optIndex,
+                          )
+                        }
+                        aria-label={`删除选项 ${optIndex + 1}`}
+                        className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                        删除
+                      </button>
                     </label>
                   ),
                 )}

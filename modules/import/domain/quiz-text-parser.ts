@@ -5,6 +5,11 @@ const CIRCLED_NUMBER_INDEX: Record<string, number> = {
   '②': 1,
   '③': 2,
   '④': 3,
+  '⑤': 4,
+  '⑥': 5,
+  '⑦': 6,
+  '⑧': 7,
+  '⑨': 8,
 }
 
 export const detectQuestionType = (
@@ -25,7 +30,7 @@ export const detectQuestionType = (
     compactPrompt.length <= 8 &&
     /[\u3040-\u30ff\u4e00-\u9fff]/.test(compactPrompt) &&
     !/[。！？.!?]/.test(compactPrompt) &&
-    options.length === 4 &&
+    options.length >= 2 &&
     sentenceLikeOptionCount >= 3
 
   if (/★|＊/.test(text)) return 'SORTING'
@@ -57,16 +62,16 @@ export const inferTargetWord = (
 const parseOptionLine = (rawLine: string) => {
   const line = rawLine.trim()
   if (!line) return null
-  const digit = line.match(/^([1-4])[．.、)\s]+([\s\S]*)$/)
+  const digit = line.match(/^([1-9])[．.、)\s]+([\s\S]*)$/)
   if (digit)
     return { index: Number(digit[1]) - 1, text: (digit[2] || '').trim() }
-  const circled = line.match(/^([①②③④])[ \t　]*([\s\S]*)$/)
+  const circled = line.match(/^([①②③④⑤⑥⑦⑧⑨])[ \t　]*([\s\S]*)$/)
   if (circled)
     return {
       index: CIRCLED_NUMBER_INDEX[circled[1]],
       text: (circled[2] || '').trim(),
     }
-  const alpha = line.match(/^([A-Da-d])[．.、)\s]+([\s\S]*)$/)
+  const alpha = line.match(/^([A-Ia-i])[．.、)\s]+([\s\S]*)$/)
   if (alpha)
     return {
       index: alpha[1].toUpperCase().charCodeAt(0) - 65,
@@ -83,14 +88,24 @@ const parseInlineOptionSet = (rawLine: string) => {
     '2': 1,
     '3': 2,
     '4': 3,
+    '5': 4,
+    '6': 5,
+    '7': 6,
+    '8': 7,
+    '9': 8,
     ...CIRCLED_NUMBER_INDEX,
     A: 0,
     B: 1,
     C: 2,
     D: 3,
+    E: 4,
+    F: 5,
+    G: 6,
+    H: 7,
+    I: 8,
   }
   const markerRegex =
-    /(^|[\s　])([1-4①②③④A-Da-d])[．.、，:：)\-]?\s*/g
+    /(^|[\s　])([1-9①②③④⑤⑥⑦⑧⑨A-Ia-i])[．.、，:：)\-]?\s*/g
   const markers: Array<{ start: number; end: number; index: number }> = []
   let match: RegExpExecArray | null
   while ((match = markerRegex.exec(line)) !== null) {
@@ -102,10 +117,15 @@ const parseInlineOptionSet = (rawLine: string) => {
       index: mapped,
     })
   }
-  if (markers.length < 4) return null
-  for (let index = 0; index <= markers.length - 4; index += 1) {
-    const window = markers.slice(index, index + 4)
-    if (!window.every((marker, position) => marker.index === position)) continue
+  if (markers.length < 2) return null
+  for (let index = 0; index < markers.length - 1; index += 1) {
+    if (markers[index]?.index !== 0) continue
+    const window = [markers[index]]
+    for (let cursor = index + 1; cursor < markers.length; cursor += 1) {
+      if (markers[cursor]?.index !== window.length) break
+      window.push(markers[cursor])
+    }
+    if (window.length < 2) continue
     const options = window.map((current, position) =>
       line
         .slice(current.end, window[position + 1]?.start || line.length)
@@ -140,7 +160,7 @@ const splitLineByOptionMarkers = (rawLine: string) => {
   const line = rawLine.trim()
   if (!line) return [] as string[]
   const markerRegex =
-    /(^|[\s　])(①|②|③|④|[1-4][．.、，:：)\-]|[A-Da-d][．.、，:：)\-])\s*/g
+    /(^|[\s　])(①|②|③|④|⑤|⑥|⑦|⑧|⑨|[1-9][．.、，:：)\-]|[A-Ia-i][．.、，:：)\-])\s*/g
   const starts: number[] = []
   let match: RegExpExecArray | null
   while ((match = markerRegex.exec(line)) !== null)
@@ -179,19 +199,21 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
     .flatMap(splitLineByOptionMarkers)
   const results: ParsedQuizDraft[] = []
   let promptLines: string[] = []
-  let options = ['', '', '', '']
+  let options: string[] = []
   let seenOption = false
   let lastOptionIndex = -1
 
   const reset = () => {
     promptLines = []
-    options = ['', '', '', '']
+    options = []
     seenOption = false
     lastOptionIndex = -1
   }
   const flushIfReady = () => {
     const normalizedOptions = options.map(item => item.trim())
-    if (!normalizedOptions.every(Boolean)) return false
+    if (normalizedOptions.length < 2 || !normalizedOptions.every(Boolean)) {
+      return false
+    }
     results.push(createDraft(promptLines.join('\n').trim(), normalizedOptions))
     reset()
     return true
@@ -279,7 +301,6 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
       seenOption = true
       lastOptionIndex = optionLine.index
       options[optionLine.index] = optionLine.text
-      if (options.every(item => item.trim().length > 0)) flushIfReady()
       return
     }
     if (!seenOption) {

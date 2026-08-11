@@ -19,6 +19,7 @@ import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
+import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
 
 type QuestionOptionInput = {
   text?: string | null
@@ -71,10 +72,13 @@ const normalizeOptions = (
   optionsInput: QuestionOptionInput[] | null | undefined,
 ): { text: string; isCorrect: boolean }[] => {
   const source = Array.isArray(optionsInput) ? optionsInput : []
+  if (source.length > 0 && source.length < MIN_QUESTION_OPTION_COUNT) {
+    throw new Error(`每道题至少需要 ${MIN_QUESTION_OPTION_COUNT} 个选项。`)
+  }
   const normalized =
     source.length > 0
-      ? source.map((option, index) => ({
-          text: (option?.text || '').trim() || `选项 ${index + 1}`,
+      ? source.map(option => ({
+          text: (option?.text || '').trim(),
           isCorrect: Boolean(option?.isCorrect),
         }))
       : [
