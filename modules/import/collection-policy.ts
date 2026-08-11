@@ -1,19 +1,23 @@
-import { MaterialType, type Prisma } from '@prisma/client'
+import type { Prisma } from '@prisma/client'
+import {
+  MaterialType,
+  type MaterialType as MaterialTypeValue,
+} from '../../lib/domain/prisma-enums.ts'
 
 const materialTypes = new Set<string>(Object.values(MaterialType))
 
 export function normalizeAcceptedMaterialTypes(
   value: Prisma.JsonValue | null,
-): MaterialType[] {
+): MaterialTypeValue[] {
   if (!Array.isArray(value)) return []
   return value.filter(
-    (item): item is MaterialType =>
+    (item): item is MaterialTypeValue =>
       typeof item === 'string' && materialTypes.has(item),
   )
 }
 
 export function isCollectionTypeAllowedForMaterial(
-  materialType: MaterialType,
+  materialType: MaterialTypeValue,
   collectionType: string,
 ): boolean {
   if (materialType === 'LISTENING') return collectionType === 'PAPER'
@@ -23,7 +27,7 @@ export function isCollectionTypeAllowedForMaterial(
 }
 
 export function getMaterialCollectionTypeError(
-  materialType: MaterialType,
+  materialType: MaterialTypeValue,
   collectionType: string,
 ): string {
   if (isCollectionTypeAllowedForMaterial(materialType, collectionType)) return ''

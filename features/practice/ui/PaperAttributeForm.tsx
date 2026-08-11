@@ -2,7 +2,7 @@
 
 // Practice attribute form.
 
-import { CollectionType } from '@prisma/client'
+import { CollectionType } from '@/lib/domain/prisma-enums'
 import { useActionState } from 'react'
 
 import { updatePaperAttributes } from '@/features/practice/actions'

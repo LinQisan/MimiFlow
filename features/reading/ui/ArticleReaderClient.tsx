@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { SourceType } from '@prisma/client'
+import { SourceType } from '@/lib/domain/prisma-enums'
 import WordTooltip from '@/components/exam/WordTooltip'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { saveReadingProgress } from '@/features/reading/progress-actions'
