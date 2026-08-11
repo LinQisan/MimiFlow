@@ -15,11 +15,22 @@ const summarize = (value: string | null, fallback: string) => {
   return normalized.length > 96 ? `${normalized.slice(0, 92)}…` : normalized
 }
 
-export default async function ReadingCenterPage({
-  searchParams,
-}: {
+type ReadingCenterPageProps = {
   searchParams: Promise<{ tab?: string }>
-}) {
+}
+
+export default async function ReadingCenterPage(props: ReadingCenterPageProps) {
+  try {
+    return await renderReadingCenterPage(props)
+  } catch (error) {
+    console.error('Failed to render reading data', error)
+    throw error
+  }
+}
+
+async function renderReadingCenterPage({
+  searchParams,
+}: ReadingCenterPageProps) {
   const { tab } = await searchParams
   const materials = await listReadingMaterials()
   const articles = materials.filter(item => !isEbookSourceKind(item.sourceKind))

@@ -1,4 +1,4 @@
-import { MaterialType, Prisma, SourceType } from '@prisma/client'
+import { MaterialType, Prisma, SourceType } from '#prisma-client'
 
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'

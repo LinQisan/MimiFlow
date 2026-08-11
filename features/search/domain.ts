@@ -1,4 +1,4 @@
-import { MaterialType } from '@prisma/client'
+import { MaterialType } from '#prisma-client'
 import { readString } from '@/lib/validation/schema'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 

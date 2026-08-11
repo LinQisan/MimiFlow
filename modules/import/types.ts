@@ -1,4 +1,4 @@
-import type { CollectionType, MaterialType } from '@prisma/client'
+import type { CollectionType, MaterialType } from '#prisma-client'
 
 export type UploadLevelLite = {
   id: string

@@ -1,5 +1,5 @@
 -- Generated from the local PostgreSQL database for Sites D1.
--- Existing D1 rows win on primary-key or unique-key conflicts.
+-- Existing valid D1 rows win on primary-key or unique-key conflicts.
 -- media_subtitle_lines
 INSERT OR IGNORE INTO "media_subtitle_lines" ("id", "material_id", "stable_id", "sequence_id", "text", "normalized_text", "search_text", "note", "start", "end", "material_title", "work_title", "season", "episode", "subtitle_source_type", "created_at", "updated_at") VALUES
 ('cmolj1hpf00vul83q3ue5ag9w', '9ca51cd4-28eb-4034-ac60-51fd60f0f625', 'b1c93d87-bd6a-44b1-bc42-b475a874a41c', 329, '(小早川) 大したもんだね', '(小早川) 大したもんだね', '(小早川) 大したもんだね tokeikannosatsujin.s01e01.1080p.hulujp.web-dl.aac.2.0.h.264-blacktv_subtitles01.jpn 钟表馆事件 1 1 电视剧 tv', NULL, 1428.7, 1431.15, 'tokeikannosatsujin.S01E01.1080p.HuluJP.WEB-DL.AAC.2.0.H.264-BlackTV_Subtitles01.JPN', '钟表馆事件', '1', '1', 'TV', '2026-04-30T04:35:58.160+00:00', '2026-04-30T04:35:58.160+00:00'),

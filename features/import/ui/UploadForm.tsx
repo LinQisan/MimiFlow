@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import type { CollectionType, MaterialType } from '@prisma/client'
+import type { CollectionType, MaterialType } from '#prisma-client'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
 } from '@/components/manage/import/CollectionBrowserSelect'

@@ -1,7 +1,7 @@
 // app/upload/action.ts
 'use server'
 
-import { CollectionType, MaterialType, Prisma } from '@prisma/client'
+import { CollectionType, MaterialType, Prisma } from '#prisma-client'
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'

@@ -1,6 +1,6 @@
 'use server'
 
-import { SourceType } from '@prisma/client'
+import { SourceType } from '#prisma-client'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import prisma from '@/lib/prisma'

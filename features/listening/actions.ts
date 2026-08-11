@@ -2,7 +2,7 @@
 
 // Listening material actions.
 
-import { CollectionType, MaterialType } from '@prisma/client'
+import { CollectionType, MaterialType } from '#prisma-client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'

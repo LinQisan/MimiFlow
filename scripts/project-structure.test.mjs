@@ -75,6 +75,26 @@ test('production hides every management route and public navigation entry', asyn
   assert.equal(studyNavigation.includes("href='/manage'"), false)
 })
 
+test('Prisma is generated for Cloudflare and source avoids the Node client', async () => {
+  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
+  const files = (
+    await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
+  ).flat()
+  const legacyImports = []
+
+  assert.match(schema, /provider\s*=\s*"prisma-client"/)
+  assert.match(schema, /runtime\s*=\s*"cloudflare"/)
+
+  for (const file of files) {
+    const content = await readFile(file, 'utf8')
+    if (content.includes("from '@prisma/client'")) {
+      legacyImports.push(path.relative(ROOT, file))
+    }
+  }
+
+  assert.deepEqual(legacyImports, [])
+})
+
 test('review routes and feature modules exist', async () => {
   const required = [
     'app/(study)/review/page.tsx',

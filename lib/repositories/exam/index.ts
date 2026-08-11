@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma'
-import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
+import { CollectionType, MaterialType, QuestionType } from '#prisma-client'
 import { getMaterialDisplayTitle } from '../materials/material-title'
 import { reorderExamOptionsForSession } from './exam-option-order'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'

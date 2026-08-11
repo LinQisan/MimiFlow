@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import type { MaterialType } from '@prisma/client'
+import type { MaterialType } from '#prisma-client'
 import UploadForm from '@/features/import/ui/UploadForm'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,

@@ -7,7 +7,7 @@ import {
   normalizeQuestionOptions,
 } from '@/lib/repositories/materials'
 import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-index'
-import { MaterialType } from '@prisma/client'
+import { MaterialType } from '#prisma-client'
 import {
   buildSearchDetailHref,
   extractMaterialSearchText,

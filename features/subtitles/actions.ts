@@ -2,7 +2,7 @@
 
 // Subtitle library actions.
 
-import { MaterialType } from '@prisma/client'
+import { MaterialType } from '#prisma-client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'

@@ -1,5 +1,5 @@
 -- Generated from the local PostgreSQL database for Sites D1.
--- Existing D1 rows win on primary-key or unique-key conflicts.
+-- Existing valid D1 rows win on primary-key or unique-key conflicts.
 -- media_subtitle_lines
 INSERT OR IGNORE INTO "media_subtitle_lines" ("id", "material_id", "stable_id", "sequence_id", "text", "normalized_text", "search_text", "note", "start", "end", "material_title", "work_title", "season", "episode", "subtitle_source_type", "created_at", "updated_at") VALUES
 ('cmo49me6i02k6pp3qlnqv5fzr', '1e2d815d-24f8-459a-91e2-1af9f72aa57f', 'a895d0a1-2d42-44e8-896a-88671c7ae4f4', 553, '気が弱い人や声が小さい人が', '気が弱い人や声が小さい人が', '気が弱い人や声が小さい人が unnatural.s01e03.jp 非自然死亡 1 3 电视剧 tv', NULL, 1649.45, 1652.23, 'Unnatural.S01E03.jp', '非自然死亡', '1', '3', 'TV', '2026-04-18T02:40:12.208+00:00', '2026-04-18T02:40:12.208+00:00'),

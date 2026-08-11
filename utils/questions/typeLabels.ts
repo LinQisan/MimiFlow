@@ -1,4 +1,4 @@
-import type { QuestionType } from '@prisma/client'
+import type { QuestionType } from '#prisma-client'
 
 const QUESTION_TYPE_DISPLAY: Record<
   QuestionType,

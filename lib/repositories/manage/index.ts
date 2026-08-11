@@ -1,4 +1,4 @@
-import { CollectionType, MaterialType } from '@prisma/client'
+import { CollectionType, MaterialType } from '#prisma-client'
 
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'

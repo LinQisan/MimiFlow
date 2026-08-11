@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import type { CollectionType } from '@prisma/client'
+import type { CollectionType } from '#prisma-client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 

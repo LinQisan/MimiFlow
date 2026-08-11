@@ -1,4 +1,4 @@
-import type { QuestionType } from '@prisma/client'
+import type { QuestionType } from '#prisma-client'
 
 import prisma from '@/lib/prisma'
 import {

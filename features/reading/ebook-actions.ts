@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { MaterialType } from '@prisma/client'
+import { MaterialType } from '#prisma-client'
 import prisma from '@/lib/prisma'
 import { parseEpub } from '@/lib/ebooks/epub'
 import { parsePastedBookText } from '@/lib/ebooks/pasted-book'

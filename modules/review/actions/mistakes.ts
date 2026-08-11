@@ -1,6 +1,6 @@
 'use server'
 
-import { QuestionType } from '@prisma/client'
+import { QuestionType } from '#prisma-client'
 import { revalidatePath } from 'next/cache'
 import {
   getDueRetryQuestionRows,

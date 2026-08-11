@@ -1,7 +1,7 @@
 // app/collections/lesson/[lessonId]/LessonQuestionsPanel.tsx
 'use client'
 
-import type { QuestionType } from '@prisma/client'
+import type { QuestionType } from '#prisma-client'
 
 import {
   SortableList,

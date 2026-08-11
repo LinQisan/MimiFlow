@@ -113,13 +113,24 @@ const normalizeSentencePosTags = (list?: string[] | null) =>
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
   ).slice(0, 1)
 
-export default async function VocabularyPage({
-  searchParams,
-}: {
+type VocabularyPageProps = {
   searchParams?:
     | Record<string, string | string[] | undefined>
     | Promise<Record<string, string | string[] | undefined>>
-}) {
+}
+
+export default async function VocabularyPage(props: VocabularyPageProps) {
+  try {
+    return await renderVocabularyPage(props)
+  } catch (error) {
+    console.error('Failed to render vocabulary data', error)
+    throw error
+  }
+}
+
+async function renderVocabularyPage({
+  searchParams,
+}: VocabularyPageProps) {
   const PAGE_SIZE = 48
   const resolvedSearchParams = await Promise.resolve(searchParams || {})
   const pageValue = Array.isArray(resolvedSearchParams.page)

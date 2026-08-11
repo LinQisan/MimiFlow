@@ -1,7 +1,7 @@
 'use server'
 
 // Shared FSRS actions for vocabulary and sentence memory reviews.
-import { MaterialType, Prisma } from '@prisma/client'
+import { MaterialType, Prisma } from '#prisma-client'
 import {
   Rating,
   checkParameters,

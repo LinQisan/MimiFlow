@@ -46,6 +46,15 @@ function formatShortDate(value: Date) {
 }
 
 export default async function MediaSubtitlesPage() {
+  try {
+    return await renderMediaSubtitlesPage()
+  } catch (error) {
+    console.error('Failed to render subtitle data', error)
+    throw error
+  }
+}
+
+async function renderMediaSubtitlesPage() {
   const rows = await listMediaSubtitleMaterials()
 
   const items = rows
