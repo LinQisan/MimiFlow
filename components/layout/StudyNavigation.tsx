@@ -58,11 +58,6 @@ export default function StudyNavigation() {
           <Link href='/search' className='ui-btn ui-btn-sm' aria-label='搜索'>
             搜索
           </Link>
-          <Link
-            href='/manage'
-            className='hidden h-9 items-center border-b border-transparent px-3 text-[13px] font-medium tracking-wide text-slate-500 hover:border-slate-400 hover:text-slate-950 md:inline-flex'>
-            管理
-          </Link>
           <ResourceMenu />
         </div>
       </div>

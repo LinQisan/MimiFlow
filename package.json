@@ -23,6 +23,7 @@
     "db:report:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs",
     "db:migrate:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs --apply",
     "db:migrate:dialogue-source-ids": "node scripts/migrate-dialogue-source-ids.mjs --apply",
+    "db:export:sites-d1": "node scripts/export-postgres-to-d1.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "dev:turbopack": "next dev --turbopack"
   },

@@ -8,6 +8,76 @@
       "when": 1786424700000,
       "tag": "0000_mimiflow_d1",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786426200000,
+      "tag": "0001_local_postgres_snapshot_01",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786426200001,
+      "tag": "0001_local_postgres_snapshot_02",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786426200002,
+      "tag": "0001_local_postgres_snapshot_03",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786426200003,
+      "tag": "0001_local_postgres_snapshot_04",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786426200004,
+      "tag": "0001_local_postgres_snapshot_05",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786426200005,
+      "tag": "0001_local_postgres_snapshot_06",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1786426200006,
+      "tag": "0001_local_postgres_snapshot_07",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786426200007,
+      "tag": "0001_local_postgres_snapshot_08",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1786426200008,
+      "tag": "0001_local_postgres_snapshot_09",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786426200009,
+      "tag": "0001_local_postgres_snapshot_10",
+      "breakpoints": true
     }
   ]
 }

@@ -60,6 +60,21 @@ test('removed product routes are not referenced by source code', async () => {
   assert.deepEqual(violations, [])
 })
 
+test('production hides every management route and public navigation entry', async () => {
+  const manageLayout = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/layout.tsx'),
+    'utf8',
+  )
+  const studyNavigation = await readFile(
+    path.join(ROOT, 'components/layout/StudyNavigation.tsx'),
+    'utf8',
+  )
+
+  assert.match(manageLayout, /process\.env\.NODE_ENV === 'production'/)
+  assert.match(manageLayout, /notFound\(\)/)
+  assert.equal(studyNavigation.includes("href='/manage'"), false)
+})
+
 test('review routes and feature modules exist', async () => {
   const required = [
     'app/(study)/review/page.tsx',
