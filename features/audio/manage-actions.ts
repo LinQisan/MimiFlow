@@ -1,6 +1,6 @@
 'use server'
 
-import { MaterialType } from '#prisma-client'
+import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { isPathInsideRoot, resolvePathInsideRoot } from '@/utils/files/path'
 import { readString } from '@/lib/validation/schema'

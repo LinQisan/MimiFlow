@@ -7,7 +7,7 @@ import {
   useRef,
   type SetStateAction,
 } from 'react'
-import type { MaterialType } from '#prisma-client'
+import type { MaterialType } from '@prisma/client'
 
 import type { LastUploadResult, PickedFileMeta, UploadStatus } from '../types'
 

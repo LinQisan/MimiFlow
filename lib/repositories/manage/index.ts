@@ -1,9 +1,8 @@
-import { CollectionType, MaterialType } from '#prisma-client'
+import { CollectionType, MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
-import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 type UploadPageLevelLite = {
   id: string
@@ -47,7 +46,10 @@ export async function getUploadPageSeedData({
   dbLevels: UploadPageLevelLite[]
   dbCollections: UploadPageCollectionLite[]
 }> {
-  const collectionRows = await prisma.collection.findMany({
+  const collections = await prisma.collection.findMany({
+    where: materialType
+      ? { acceptedMaterialTypes: { has: materialType } }
+      : undefined,
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -74,14 +76,6 @@ export async function getUploadPageSeedData({
       },
     },
   })
-  const collections = materialType
-    ? collectionRows.filter(collection =>
-        normalizeAcceptedMaterialTypes(
-          collection.acceptedMaterialTypes,
-        ).includes(materialType),
-      )
-    : collectionRows
-
   const dbLevels: UploadPageLevelLite[] = [
     { id: CollectionType.PAPER, title: '正式试卷 - 真题 / 模考' },
     { id: CollectionType.CUSTOM_GROUP, title: '普通集合 - 教材 / 自定义练习' },
@@ -146,9 +140,7 @@ export async function getUploadPageSeedData({
         parentId: collection.parentId,
         sortOrder: collection.sortOrder,
         collectionType: collection.collectionType,
-        acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
-          collection.acceptedMaterialTypes,
-        ),
+        acceptedMaterialTypes: collection.acceptedMaterialTypes,
         materialType:
           dominantMaterialTypeByCollection.get(collection.id) ||
           MaterialType.LISTENING,

@@ -2,19 +2,14 @@
   "name": "my-app",
   "version": "0.1.0",
   "private": true,
-  "imports": {
-    "#prisma-client": "./generated/prisma/client.ts"
-  },
   "engines": {
     "node": ">=22 <25"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
-    "dev:next": "next dev",
+    "dev": "next dev",
     "dev:webpack": "next dev --webpack",
-    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "build:next": "next build",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
+    "build": "next build",
+    "start": "next start",
     "lint": "eslint",
     "test": "node --test scripts/*.test.mjs",
     "typecheck": "tsc --noEmit",
@@ -26,7 +21,6 @@
     "db:report:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs",
     "db:migrate:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs --apply",
     "db:migrate:dialogue-source-ids": "node scripts/migrate-dialogue-source-ids.mjs --apply",
-    "db:export:sites-d1": "node scripts/export-postgres-to-d1.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "dev:turbopack": "next dev --turbopack"
   },
@@ -34,7 +28,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@prisma/adapter-d1": "^7.9.1",
+    "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "dotenv": "^17.4.2",
     "jszip": "^3.10.1",
@@ -47,23 +41,15 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@cloudflare/workers-types": "^4.20260702.1",
     "@prisma/config": "^7.9.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^20.19.43",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
     "eslint": "^9",
     "eslint-config-next": "^16.3.0",
     "prisma": "^7.9.1",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5",
-    "vinext": "1.0.0-beta.2",
-    "vite": "8.0.13",
-    "wrangler": "4.92.0"
-  },
-  "type": "module"
+    "typescript": "^5"
+  }
 }

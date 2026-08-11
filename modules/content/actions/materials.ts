@@ -1,10 +1,9 @@
 'use server'
 
-import { CollectionType, MaterialType, QuestionType } from '#prisma-client'
+import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
-import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 import {
   encodeMaterialPayload,
   patchMaterialPayload,
@@ -128,11 +127,7 @@ export async function createArticle(data: CreateArticlePayload) {
     if (!exists) {
       return { success: false, message: '所属集合不存在，请刷新后重试。' }
     }
-    if (
-      !normalizeAcceptedMaterialTypes(exists.acceptedMaterialTypes).includes(
-        MaterialType.READING,
-      )
-    ) {
+    if (!exists.acceptedMaterialTypes.includes(MaterialType.READING)) {
       return {
         success: false,
         message: '该集合未设置为阅读内容集合，请重新选择。',
@@ -794,9 +789,7 @@ export async function createCategory(data: {
         id: newCategory.id,
         name: newCategory.title,
         collectionType: newCategory.collectionType,
-        acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
-          newCategory.acceptedMaterialTypes,
-        ),
+        acceptedMaterialTypes: newCategory.acceptedMaterialTypes,
         level: { title: typeLabel },
       },
     }

@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
 import { resolveResumeActions } from '@/lib/home/resume-actions'
-import { MaterialType } from '#prisma-client'
+import { MaterialType } from '@prisma/client'
 import { getTodayStudyPlan } from '@/modules/progress/server/today-plan'
 import { getHomeDashboardData } from '@/features/home/server/repository'
 

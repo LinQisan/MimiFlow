@@ -5,15 +5,6 @@ import { findLevelsWithPapersAndCounts } from '@/lib/repositories/exam'
 import PapersListClient from './PapersListClient'
 
 export default async function AllPapersPage() {
-  try {
-    return await renderAllPapersPage()
-  } catch (error) {
-    console.error('Failed to render practice data', error)
-    throw error
-  }
-}
-
-async function renderAllPapersPage() {
   const levels = await findLevelsWithPapersAndCounts()
 
   if (levels.length === 0) {

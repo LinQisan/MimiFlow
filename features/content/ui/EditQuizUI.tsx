@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import type { CollectionType, QuestionType } from '#prisma-client'
+import type { CollectionType, QuestionType } from '@prisma/client'
 
 // 🌟 复用拖拽系统
 import {

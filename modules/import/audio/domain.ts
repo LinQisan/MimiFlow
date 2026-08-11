@@ -1,4 +1,4 @@
-import type { MaterialType } from '#prisma-client'
+import type { MaterialType } from '@prisma/client'
 
 import type { PickedFileMeta } from './types'
 export { isCollectionTypeAllowedForMaterial } from '../collection-policy.ts'

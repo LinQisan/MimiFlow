@@ -1,4 +1,4 @@
-import { MaterialType, Prisma } from '#prisma-client'
+import { MaterialType, Prisma } from '@prisma/client'
 import { z } from 'zod'
 
 const materialDialogueSchema = z

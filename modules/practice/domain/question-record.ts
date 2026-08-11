@@ -1,4 +1,4 @@
-import { MaterialType, QuestionType } from '#prisma-client'
+import { MaterialType, QuestionType } from '@prisma/client'
 
 const QUESTION_TYPE_VALUES = new Set<string>(Object.values(QuestionType))
 

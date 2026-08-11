@@ -1,4 +1,4 @@
-import { MaterialType } from '#prisma-client'
+import { MaterialType } from '@prisma/client'
 
 type ResumeAction = {
   href: string

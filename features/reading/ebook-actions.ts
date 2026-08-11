@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
-import { MaterialType } from '#prisma-client'
+import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { parseEpub } from '@/lib/ebooks/epub'
 import { parsePastedBookText } from '@/lib/ebooks/pasted-book'
@@ -11,7 +11,6 @@ import {
   decodeMaterialPayload,
   encodeMaterialPayload,
 } from '@/lib/codecs/material-payload'
-import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 type ImportEpubState = {
   success: boolean
@@ -27,9 +26,7 @@ async function validateReadingCollection(collectionId: string) {
     where: { id: collectionId },
     select: { acceptedMaterialTypes: true },
   })
-  return normalizeAcceptedMaterialTypes(
-    collection?.acceptedMaterialTypes ?? null,
-  ).includes(MaterialType.READING)
+  return Boolean(collection?.acceptedMaterialTypes.includes(MaterialType.READING))
 }
 
 export async function importEpubAction(

@@ -1,5 +1,5 @@
 import prisma from '@/lib/prisma'
-import { MaterialType } from '#prisma-client'
+import { MaterialType } from '@prisma/client'
 import {
   getMaterialDisplayTitle,
   getReadingCardTitle,

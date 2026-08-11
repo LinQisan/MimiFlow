@@ -2,7 +2,7 @@
 
 // Practice actions.
 
-import { CollectionType } from '#prisma-client'
+import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'

@@ -1,4 +1,4 @@
-import type { MaterialType } from '#prisma-client'
+import type { MaterialType } from '@prisma/client'
 
 export type PickedFileMeta = {
   name: string

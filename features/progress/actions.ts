@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
-import { StudyTimeKind } from '#prisma-client'
+import { StudyTimeKind } from '@prisma/client'
 
 const toDateKey = (date: Date) =>
   new Intl.DateTimeFormat('en-CA', {

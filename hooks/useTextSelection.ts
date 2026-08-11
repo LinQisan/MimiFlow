@@ -1,5 +1,5 @@
 // hooks/useTextSelection.ts
-import { SourceType } from '#prisma-client'
+import { SourceType } from '@prisma/client'
 import { useState, useEffect, useRef } from 'react'
 import {
   cleanInlineSelectionText,

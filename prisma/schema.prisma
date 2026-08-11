@@ -1,13 +1,11 @@
 // prisma/schema.prisma
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-  runtime  = "cloudflare"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 enum SourceType {
@@ -216,8 +214,8 @@ enum GrammarExampleSource {
 model Grammar {
   id            String                 @id @default(cuid())
   name          String
-  meaning       String?
-  usageNote     String?                @map("usage_note")
+  meaning       String?                @db.Text
+  usageNote     String?                @map("usage_note") @db.Text
   createdAt     DateTime               @default(now()) @map("created_at")
   updatedAt     DateTime               @updatedAt @map("updated_at")
   tags          GrammarTagOnGrammar[]
@@ -232,9 +230,9 @@ model Grammar {
 model GrammarConstruction {
   id         String           @id @default(cuid())
   grammarId  String           @map("grammar_id")
-  connection String
-  meaning    String
-  note       String?
+  connection String           @db.Text
+  meaning    String           @db.Text
+  note       String?          @db.Text
   sortOrder  Int              @default(0) @map("sort_order")
   createdAt  DateTime         @default(now()) @map("created_at")
   updatedAt  DateTime         @updatedAt @map("updated_at")
@@ -269,7 +267,7 @@ model GrammarTagOnGrammar {
 model GrammarCluster {
   id          String                 @id @default(cuid())
   title       String                 @unique
-  description String?
+  description String?                @db.Text
   createdAt   DateTime               @default(now()) @map("created_at")
   updatedAt   DateTime               @updatedAt @map("updated_at")
   members     GrammarClusterMember[]
@@ -293,9 +291,9 @@ model GrammarExample {
   id             String               @id @default(cuid())
   grammarId      String               @map("grammar_id")
   source         GrammarExampleSource
-  sentenceText   String               @map("sentence_text")
-  translation    String?
-  note           String?
+  sentenceText   String               @map("sentence_text") @db.Text
+  translation    String?              @db.Text
+  note           String?              @db.Text
   sentenceId     String?              @map("sentence_id")
   constructionId String?              @map("construction_id")
   createdAt      DateTime             @default(now()) @map("created_at")
@@ -352,12 +350,12 @@ model Question {
   templateType QuestionTemplate @default(CHOICE_QUIZ) @map("template_type")
   questionType QuestionType     @default(PRONUNCIATION) @map("question_type")
   content      Json
-  prompt       String?
-  context      String?
+  prompt       String?          @db.Text
+  context      String?          @db.Text
   options      Json?
   answer       Json
-  analysis     String?
-  note         String?
+  analysis     String?          @db.Text
+  note         String?          @db.Text
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
   sortOrder    Int              @default(0) @map("sort_order")
@@ -373,11 +371,11 @@ model Question {
 model Collection {
   id             String         @id @default(uuid())
   title          String
-  description    String?
+  description    String?        @db.Text
   language       String?
   level          String?
   collectionType CollectionType @map("collection_type")
-  acceptedMaterialTypes Json           @default("[]") @map("accepted_material_types")
+  acceptedMaterialTypes MaterialType[] @default([]) @map("accepted_material_types")
   parentId       String?        @map("parent_id")
   sortOrder      Int            @default(0) @map("sort_order")
   createdAt      DateTime       @default(now()) @map("created_at")

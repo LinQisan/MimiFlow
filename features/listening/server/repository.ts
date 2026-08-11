@@ -1,4 +1,4 @@
-import { StudyTimeKind, type CollectionType } from '#prisma-client'
+import { StudyTimeKind, type CollectionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 

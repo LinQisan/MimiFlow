@@ -2,7 +2,7 @@
 'use client'
 
 import React, { useMemo } from 'react'
-import type { MaterialType } from '#prisma-client'
+import type { MaterialType } from '@prisma/client'
 import UploadForm from '@/features/import/ui/UploadForm'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
@@ -36,7 +36,6 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '@/features/questions/domain/editor'
-import { normalizeAcceptedMaterialTypes } from '@/modules/import/collection-policy'
 
 interface Props {
   dbLevels: UploadLevelLite[]
@@ -725,9 +724,7 @@ export default function UploadCenterUI({
           parentId: null,
           sortOrder: 0,
           collectionType: res.paper.collectionType,
-          acceptedMaterialTypes: normalizeAcceptedMaterialTypes(
-            res.paper.acceptedMaterialTypes,
-          ),
+          acceptedMaterialTypes: res.paper.acceptedMaterialTypes,
           level: { title: res.paper.level.title },
           lessons: [],
         }

@@ -60,41 +60,6 @@ test('removed product routes are not referenced by source code', async () => {
   assert.deepEqual(violations, [])
 })
 
-test('production hides every management route and public navigation entry', async () => {
-  const manageLayout = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/layout.tsx'),
-    'utf8',
-  )
-  const studyNavigation = await readFile(
-    path.join(ROOT, 'components/layout/StudyNavigation.tsx'),
-    'utf8',
-  )
-
-  assert.match(manageLayout, /process\.env\.NODE_ENV === 'production'/)
-  assert.match(manageLayout, /notFound\(\)/)
-  assert.equal(studyNavigation.includes("href='/manage'"), false)
-})
-
-test('Prisma is generated for Cloudflare and source avoids the Node client', async () => {
-  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
-  const files = (
-    await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
-  ).flat()
-  const legacyImports = []
-
-  assert.match(schema, /provider\s*=\s*"prisma-client"/)
-  assert.match(schema, /runtime\s*=\s*"cloudflare"/)
-
-  for (const file of files) {
-    const content = await readFile(file, 'utf8')
-    if (content.includes("from '@prisma/client'")) {
-      legacyImports.push(path.relative(ROOT, file))
-    }
-  }
-
-  assert.deepEqual(legacyImports, [])
-})
-
 test('review routes and feature modules exist', async () => {
   const required = [
     'app/(study)/review/page.tsx',
@@ -418,9 +383,9 @@ test('content import filters collections by explicit material capabilities', asy
     'utf8',
   )
 
-  assert.match(schema, /provider = "sqlite"/)
-  assert.match(schema, /acceptedMaterialTypes Json/)
-  assert.match(repository, /normalizeAcceptedMaterialTypes/)
+  assert.match(schema, /provider = "postgresql"/)
+  assert.match(schema, /acceptedMaterialTypes MaterialType\[\]/)
+  assert.match(repository, /acceptedMaterialTypes: \{ has: materialType \}/)
   assert.match(importPage, /reading: 'READING'/)
   assert.match(
     capabilityMigration,

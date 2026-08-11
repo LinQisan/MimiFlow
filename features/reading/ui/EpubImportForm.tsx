@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState, useMemo, useState } from 'react'
-import type { CollectionType, MaterialType } from '#prisma-client'
+import type { CollectionType, MaterialType } from '@prisma/client'
 
 import {
   importEpubAction,

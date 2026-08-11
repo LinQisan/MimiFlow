@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react'
 import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
-import { SourceType } from '@/lib/domain/prisma-enums'
+import { SourceType } from '@prisma/client'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 // --- 预设的常用词性选项 (可根据需要修改) ---

@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { StudyTimeKind } from '@/lib/domain/prisma-enums'
+import { StudyTimeKind } from '@prisma/client'
 
 import { addSentenceToReview } from '@/modules/review/actions/memory'
 import { logMaterialPlaytime } from '@/features/audio/actions'

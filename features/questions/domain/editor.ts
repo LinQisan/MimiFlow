@@ -1,4 +1,4 @@
-import type { QuestionType } from '#prisma-client'
+import type { QuestionType } from '@prisma/client'
 
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 export {

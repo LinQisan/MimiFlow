@@ -4,7 +4,7 @@ import UploadCenterUI from '@/features/import/ui/UploadCenterUI'
 import EpubImportForm from '@/features/reading/ui/EpubImportForm'
 import { getUploadPageSeedData } from '@/lib/repositories/manage'
 import type { UploadCenterTab } from '@/modules/import/types'
-import type { MaterialType } from '#prisma-client'
+import type { MaterialType } from '@prisma/client'
 import AnkiImportPanel from './AnkiImportPanel'
 
 const importGroups = [

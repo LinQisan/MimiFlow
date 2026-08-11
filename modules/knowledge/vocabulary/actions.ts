@@ -4,7 +4,7 @@
 import {
   MaterialType,
   SourceType,
-} from '#prisma-client'
+} from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
