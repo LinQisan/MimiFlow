@@ -1,4 +1,4 @@
-const KANJI_REGEX = /[\u4e00-\u9fff]/
+const KANJI_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]/
 
 export const escapeHtml = (text: string) =>
   text
@@ -11,9 +11,17 @@ export const escapeHtml = (text: string) =>
 const isKanjiChar = (ch: string) => KANJI_REGEX.test(ch)
 const hasKanji = (text: string) => KANJI_REGEX.test(text)
 const hasJapanese = (text: string) => /[\u3040-\u30ffー\u4e00-\u9fff]/.test(text)
+const normalizeKanaComparable = (value: string) =>
+  Array.from(value.normalize('NFKC'))
+    .map(character => {
+      const codepoint = character.codePointAt(0) || 0
+      return codepoint >= 0x30a1 && codepoint <= 0x30f6
+        ? String.fromCodePoint(codepoint - 0x60)
+        : character
+    })
+    .join('')
 const normalizeComparable = (value: string) =>
-  value
-    .normalize('NFKC')
+  normalizeKanaComparable(value)
     .toLowerCase()
     .replace(/\s+/g, '')
     .trim()
@@ -51,6 +59,7 @@ export const buildJapaneseRubyHtml = (
   options?: {
     rubyClassName?: string
     rtClassName?: string
+    groupKanji?: boolean
   },
 ) => {
   const cleanWord = word.trim()
@@ -106,7 +115,7 @@ export const buildJapaneseRubyHtml = (
       const hasKanjiInBase = baseChars.some(isKanjiChar)
       if (baseChars.length > 1 && hasKanjiInBase) {
         const allKanji = baseChars.every(isKanjiChar)
-        if (allKanji) {
+        if (allKanji && !options?.groupKanji) {
           const readings = splitPronunciationForKanji(base, reading)
           baseChars.forEach((ch, index) => {
             const piece = readings[index] || ''
@@ -135,7 +144,8 @@ export const buildJapaneseRubyHtml = (
     while (
       prefix < wordChars.length &&
       prefix < pronChars.length &&
-      wordChars[prefix] === pronChars[prefix]
+      normalizeKanaComparable(wordChars[prefix]) ===
+        normalizeKanaComparable(pronChars[prefix])
     ) {
       prefix += 1
     }
@@ -144,8 +154,8 @@ export const buildJapaneseRubyHtml = (
     while (
       suffix < wordChars.length - prefix &&
       suffix < pronChars.length - prefix &&
-      wordChars[wordChars.length - 1 - suffix] ===
-        pronChars[pronChars.length - 1 - suffix]
+      normalizeKanaComparable(wordChars[wordChars.length - 1 - suffix]) ===
+        normalizeKanaComparable(pronChars[pronChars.length - 1 - suffix])
     ) {
       suffix += 1
     }
@@ -193,7 +203,11 @@ export const buildJapaneseRubyHtml = (
   while (wordCursor < wordChars.length) {
     const ch = wordChars[wordCursor]
     if (!isKanjiChar(ch)) {
-      if (pronCursor < pronChars.length && pronChars[pronCursor] === ch) {
+      if (
+        pronCursor < pronChars.length &&
+        normalizeKanaComparable(pronChars[pronCursor]) ===
+          normalizeKanaComparable(ch)
+      ) {
         pronCursor += 1
       }
       output += escapeHtml(ch)
@@ -214,19 +228,26 @@ export const buildJapaneseRubyHtml = (
     if (nextLiteral) {
       const searchStart = pronCursor
       for (let i = searchStart; i < pronChars.length; i += 1) {
-        if (pronChars[i] === nextLiteral) {
+        if (
+          normalizeKanaComparable(pronChars[i]) ===
+          normalizeKanaComparable(nextLiteral)
+        ) {
           pronBoundary = i
           break
         }
       }
     }
     const pronRun = pronChars.slice(pronCursor, pronBoundary).join('')
-    const readings = splitPronunciationForKanji(kanjiRun, pronRun)
-    const kanjiChars = Array.from(kanjiRun)
-    for (let i = 0; i < kanjiChars.length; i += 1) {
-      const base = kanjiChars[i]
-      const reading = readings[i] || ''
-      output += reading ? buildRuby(base, reading) : escapeHtml(base)
+    if (options?.groupKanji && pronRun) {
+      output += buildRuby(kanjiRun, pronRun)
+    } else {
+      const readings = splitPronunciationForKanji(kanjiRun, pronRun)
+      const kanjiChars = Array.from(kanjiRun)
+      for (let i = 0; i < kanjiChars.length; i += 1) {
+        const base = kanjiChars[i]
+        const reading = readings[i] || ''
+        output += reading ? buildRuby(base, reading) : escapeHtml(base)
+      }
     }
 
     pronCursor = pronBoundary
@@ -243,6 +264,7 @@ export const annotateJapaneseText = (
   options?: {
     rubyClassName?: string
     rtClassName?: string
+    groupKanji?: boolean
   },
 ) => {
   const entries = Object.entries(pronMap)
@@ -274,6 +296,218 @@ export const annotateJapaneseText = (
       continue
     }
     html += buildJapaneseRubyHtml(match.word, match.pron, options)
+    cursor += match.length
+  }
+
+  return html
+}
+
+export type JapaneseRubyLexeme = {
+  surface: string
+  dictionaryForm: string
+  normalizedForm: string
+  reading: string
+  dictionaryReading: string
+  partsOfSpeech: string[]
+}
+
+const shouldShowSudachiRuby = (
+  lexeme: JapaneseRubyLexeme,
+  pronunciation: string,
+) => hasKanji(lexeme.surface) && Boolean(pronunciation.trim())
+
+const buildBestLexemeMatches = (
+  text: string,
+  lexicon: Record<string, JapaneseRubyLexeme>,
+) => {
+  const entries = Object.values(lexicon)
+    .filter(item => item.surface && text.includes(item.surface))
+    .sort((left, right) => right.surface.length - left.surface.length)
+  const bestByStart = new Map<
+    number,
+    { lexeme: JapaneseRubyLexeme; length: number }
+  >()
+  entries.forEach(lexeme => {
+    let from = 0
+    while (from < text.length) {
+      const start = text.indexOf(lexeme.surface, from)
+      if (start === -1) break
+      const previous = bestByStart.get(start)
+      if (!previous || lexeme.surface.length > previous.length) {
+        bestByStart.set(start, { lexeme, length: lexeme.surface.length })
+      }
+      from = start + 1
+    }
+  })
+  return bestByStart
+}
+
+export const formatJapaneseTextWithRubyNotation = (
+  text: string,
+  pronunciationMap: Record<string, string>,
+) => {
+  const entries = Object.entries(pronunciationMap)
+    .filter(([word, pronunciation]) =>
+      hasJapanese(word) && Boolean(pronunciation.trim()),
+    )
+    .sort((left, right) => right[0].length - left[0].length)
+  const bestByStart = new Map<
+    number,
+    { word: string; pronunciation: string; length: number }
+  >()
+  entries.forEach(([word, pronunciation]) => {
+    let from = 0
+    while (from < text.length) {
+      const start = text.indexOf(word, from)
+      if (start === -1) break
+      const previous = bestByStart.get(start)
+      if (!previous || word.length > previous.length) {
+        bestByStart.set(start, {
+          word,
+          pronunciation: pronunciation.trim(),
+          length: word.length,
+        })
+      }
+      from = start + 1
+    }
+  })
+
+  let cursor = 0
+  let output = ''
+  while (cursor < text.length) {
+    const match = bestByStart.get(cursor)
+    if (!match) {
+      output += text[cursor]
+      cursor += 1
+      continue
+    }
+    output +=
+      normalizeComparable(match.word) ===
+      normalizeComparable(match.pronunciation)
+        ? match.word
+        : `{${match.word}|${match.pronunciation}}`
+    cursor += match.length
+  }
+  return output
+}
+
+export const formatJapaneseTextWithSudachiRubyNotation = (
+  text: string,
+  lexicon: Record<string, JapaneseRubyLexeme>,
+) => {
+  const bestByStart = buildBestLexemeMatches(text, lexicon)
+  let cursor = 0
+  let output = ''
+  while (cursor < text.length) {
+    const match = bestByStart.get(cursor)
+    if (!match) {
+      output += text[cursor]
+      cursor += 1
+      continue
+    }
+    const pronunciation = match.lexeme.reading.trim()
+    output += shouldShowSudachiRuby(match.lexeme, pronunciation)
+      ? buildJapaneseRubyNotation(match.lexeme.surface, pronunciation)
+      : match.lexeme.surface
+    cursor += match.length
+  }
+  return output
+}
+
+const buildJapaneseRubyNotation = (word: string, pronunciation: string) => {
+  const wordChars = Array.from(word)
+  const pronunciationChars = Array.from(pronunciation.replace(/[\s\u3000]+/g, ''))
+  let output = ''
+  let wordCursor = 0
+  let pronunciationCursor = 0
+
+  while (wordCursor < wordChars.length) {
+    const character = wordChars[wordCursor]
+    if (!isKanjiChar(character)) {
+      if (
+        normalizeKanaComparable(pronunciationChars[pronunciationCursor] || '') ===
+        normalizeKanaComparable(character)
+      ) {
+        pronunciationCursor += 1
+      }
+      output += character
+      wordCursor += 1
+      continue
+    }
+
+    let runEnd = wordCursor
+    while (runEnd < wordChars.length && isKanjiChar(wordChars[runEnd])) {
+      runEnd += 1
+    }
+    const kanjiRun = wordChars.slice(wordCursor, runEnd).join('')
+    const nextLiteral = wordChars
+      .slice(runEnd)
+      .find(item => !isKanjiChar(item) && item.trim())
+    let pronunciationEnd = pronunciationChars.length
+    if (nextLiteral) {
+      const boundary = pronunciationChars.findIndex(
+        (item, index) =>
+          index >= pronunciationCursor &&
+          normalizeKanaComparable(item) === normalizeKanaComparable(nextLiteral),
+      )
+      if (boundary >= 0) pronunciationEnd = boundary
+    }
+    const reading = pronunciationChars
+      .slice(pronunciationCursor, pronunciationEnd)
+      .join('')
+    output += reading ? `{${kanjiRun}|${reading}}` : kanjiRun
+    pronunciationCursor = pronunciationEnd
+    wordCursor = runEnd
+  }
+
+  return output
+}
+
+export const annotateJapaneseTextWithSudachi = (
+  text: string,
+  lexicon: Record<string, JapaneseRubyLexeme>,
+  options?: {
+    pronunciationMap?: Record<string, string>
+    useSudachiReading?: boolean
+    rubyEnabled?: boolean
+    rubyClassName?: string
+    rtClassName?: string
+  },
+) => {
+  const bestByStart = buildBestLexemeMatches(text, lexicon)
+  if (bestByStart.size === 0) return escapeHtml(text)
+
+  let cursor = 0
+  let html = ''
+  while (cursor < text.length) {
+    const match = bestByStart.get(cursor)
+    if (!match) {
+      html += escapeHtml(text[cursor])
+      cursor += 1
+      continue
+    }
+
+    const { lexeme } = match
+    const pronunciation = options?.useSudachiReading
+      ? lexeme.reading
+      : (
+          options?.pronunciationMap?.[lexeme.surface] ||
+          options?.pronunciationMap?.[lexeme.dictionaryForm] ||
+          ''
+        ).trim()
+    const tokenHtml =
+      options?.rubyEnabled &&
+      pronunciation &&
+      (!options.useSudachiReading ||
+        shouldShowSudachiRuby(lexeme, pronunciation))
+        ? buildJapaneseRubyHtml(lexeme.surface, pronunciation, {
+            rubyClassName: options.rubyClassName,
+            rtClassName: options.rtClassName,
+            groupKanji: Boolean(options.useSudachiReading),
+          })
+        : escapeHtml(lexeme.surface)
+    const partOfSpeech = lexeme.partsOfSpeech[0] || ''
+    html += `<span data-sudachi-token="true" data-sudachi-surface="${escapeHtml(lexeme.surface)}" data-sudachi-lemma="${escapeHtml(lexeme.dictionaryForm)}" data-sudachi-normalized="${escapeHtml(lexeme.normalizedForm)}" data-sudachi-reading="${escapeHtml(lexeme.dictionaryReading || lexeme.reading)}" data-sudachi-pos="${escapeHtml(partOfSpeech)}">${tokenHtml}</span>`
     cursor += match.length
   }
 

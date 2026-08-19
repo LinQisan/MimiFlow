@@ -53,6 +53,7 @@ export default function WordTooltip({
   sourceType,
   sourceId,
   initialMeta,
+  detectedWord,
   onClose,
   onSaved,
 }: {
@@ -64,6 +65,13 @@ export default function WordTooltip({
   sourceType: SourceType
   sourceId: string
   initialMeta?: VocabularyMeta
+  detectedWord?: {
+    surface: string
+    dictionaryForm: string
+    normalizedForm: string
+    reading: string
+    partOfSpeech: string
+  } | null
   onClose?: () => void
   onSaved?: (payload: { word: string; meta: VocabularyMeta }) => void
 }) {
@@ -97,12 +105,18 @@ export default function WordTooltip({
   useEffect(() => {
     setSaveState('idle')
     setStatusMessage('')
-    setHeadwordValue(word)
-    const initialPron = (initialMeta?.pronunciations || []).join(' / ')
+    const detectedHeadword = detectedWord?.dictionaryForm?.trim() || word
+    setHeadwordValue(detectedHeadword)
+    const initialPron =
+      (initialMeta?.pronunciations || []).join(' / ') ||
+      detectedWord?.reading ||
+      ''
     setPronunciationValue(initialPron)
-    setPartOfSpeechValue(initialMeta?.partsOfSpeech?.[0] || '')
+    setPartOfSpeechValue(
+      initialMeta?.partsOfSpeech?.[0] || detectedWord?.partOfSpeech || '',
+    )
     setMeaningValue((initialMeta?.meanings || []).join('; '))
-  }, [word, initialMeta])
+  }, [word, initialMeta, detectedWord])
 
   const requestClose = useCallback(() => {
     if (closeTimerRef.current != null) {
@@ -345,7 +359,9 @@ export default function WordTooltip({
             className={BASE_INPUT_CLASS}
           />
           <p className={SECTION_HINT_CLASS}>
-            默认带入当前划词词面；如需保存原形，请手动改成词典形。
+            {detectedWord
+              ? `SudachiPy：${detectedWord.surface}${detectedWord.surface !== detectedWord.dictionaryForm ? ` → ${detectedWord.dictionaryForm}` : ''}`
+              : '可修改为词典形。'}
           </p>
         </section>
 
@@ -361,7 +377,7 @@ export default function WordTooltip({
             className={BASE_INPUT_CLASS}
           />
           <p className={SECTION_HINT_CLASS}>
-            支持假名或罗马音。多个读音请用 /、逗号、分号或换行分隔。
+            多个读音用 / 分隔。
           </p>
         </section>
 
@@ -423,7 +439,7 @@ export default function WordTooltip({
                 className={BASE_INPUT_CLASS}
               />
               <p className={SECTION_HINT_CLASS}>
-                多个释义请用分号 ( ; ) 隔开。
+                多个释义用分号隔开。
               </p>
             </section>
           </div>

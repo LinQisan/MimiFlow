@@ -1,14 +1,11 @@
-const DOMAIN_ERROR_CODES = [
-  'VALIDATION_ERROR',
-  'NOT_FOUND',
-  'CONFLICT',
-  'UNAUTHORIZED',
-  'FORBIDDEN',
-  'STORAGE_ERROR',
-  'INTERNAL_ERROR',
-] as const
-
-export type DomainErrorCode = (typeof DOMAIN_ERROR_CODES)[number]
+export type DomainErrorCode =
+  | 'VALIDATION_ERROR'
+  | 'NOT_FOUND'
+  | 'CONFLICT'
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'STORAGE_ERROR'
+  | 'INTERNAL_ERROR'
 
 export type DomainErrorDetails = Record<string, string[]>
 

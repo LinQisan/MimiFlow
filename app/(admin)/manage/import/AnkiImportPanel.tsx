@@ -52,7 +52,7 @@ export default function AnkiImportPanel() {
   const audioRef = useRef<HTMLInputElement | null>(null)
   const [isAudioDragging, setIsAudioDragging] = useState(false)
   const [pickedAudioNames, setPickedAudioNames] = useState<string[]>([])
-  const [audioFolder, setAudioFolder] = useState('imports/anki')
+  const [audioFolder, setAudioFolder] = useState('vocabulary/anki')
   const [globalTags, setGlobalTags] = useState('书籍:N2核心, 单元:Unit01')
   const [notebookName, setNotebookName] = useState('')
   const [wordbookId, setWordbookId] = useState('')
@@ -223,11 +223,11 @@ export default function AnkiImportPanel() {
   }
 
   return (
-    <section className='rounded-2xl border border-slate-200 bg-white p-4 md:p-6'>
+    <section className='w-full'>
       <div className='mx-auto max-w-6xl'>
         <section className='border-b border-gray-200 pb-5'>
-          <h1 className='text-3xl font-black text-gray-900'>Anki 导入器</h1>
-          <p className='mt-2 text-sm text-gray-500'>
+          <h1 className='sr-only'>Anki 导入器</h1>
+          <p className='text-sm leading-6 text-gray-500'>
             先识别 TXT/TSV，再批量上传音频并自动匹配。支持字段：单词、单词注音、单词释义、例句、例句翻译、用法、单词发音、句子发音。
           </p>
         </section>
@@ -291,7 +291,7 @@ export default function AnkiImportPanel() {
               value={audioFolder}
               onChange={event => setAudioFolder(event.currentTarget.value)}
               className='h-10 border border-gray-200 bg-white px-3 text-sm outline-none focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100'
-              placeholder='imports/anki'
+              placeholder='vocabulary/anki'
             />
           </label>
           <div className='mt-3 grid grid-cols-1 gap-3 md:grid-cols-2'>

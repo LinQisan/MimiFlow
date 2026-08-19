@@ -1,7 +1,7 @@
 // app/admin/upload/UploadCenterUI.tsx
 'use client'
 
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import type { MaterialType } from '@prisma/client'
 import UploadForm from '@/features/import/ui/UploadForm'
 import CollectionBrowserSelect, {
@@ -10,10 +10,7 @@ import CollectionBrowserSelect, {
 import { useDialog } from '@/context/DialogContext'
 import { toCollectionBrowserOptions } from '@/components/manage/import/collectionBrowserOptions'
 import CustomSelect from '@/components/ui/CustomSelect'
-import {
-  inferTargetWord,
-  parseMultiQuizText,
-} from '@/modules/import/domain/quiz-text-parser'
+import { parseMultiQuizText } from '@/modules/import/domain/quiz-text-parser'
 import {
   buildArticleQuestionsFromQuickInput,
   extractSentenceAroundIndex,
@@ -36,28 +33,60 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '@/features/questions/domain/editor'
+import { IMPORT_QUESTION_TYPES } from '@/modules/import/domain/question-type-options'
+import {
+  parseSortingPrompt,
+  supportsSeparateQuestionContext,
+  usesExplicitQuestionTargetWord,
+} from '@/modules/practice/domain/question-text'
+import type { PaperReadingQuestionType } from '@/features/questions/domain/paper-editor'
+import {
+  findNewsCollectionId,
+  getNewsTypeLabel,
+  isAutomaticMorningEdition,
+  isAutomaticFrontPageSection,
+  supportsBreakingEdition,
+  todayForDateInput,
+  toLegacyNewsSeries,
+} from '@/features/reading/domain/news-metadata'
 
 interface Props {
   dbLevels: UploadLevelLite[]
   dbCollections: UploadCollectionLite[]
   initialTab?: UploadCenterTab
   initialMaterialType?: MaterialType
+  language?: string
+  collectionScope?: 'paper' | 'material'
+  defaultQuestionType?: string
+  toeicPartLabel?: string
+  defaultListeningSectionNumber?: string
+  listeningSectionLabel?: string
 }
-
-
 
 export default function UploadCenterUI({
   dbLevels,
   dbCollections,
   initialTab = 'audio',
   initialMaterialType = 'LISTENING',
+  language = 'ja',
+  collectionScope = 'material',
+  defaultQuestionType,
+  toeicPartLabel,
+  defaultListeningSectionNumber,
+  listeningSectionLabel,
 }: Props) {
   const dialog = useDialog()
+  const defaultArticleSourceKind =
+    collectionScope === 'material' && initialMaterialType === 'READING'
+      ? 'NEWS'
+      : 'ARTICLE'
   const { createArticle, createQuizQuestion, createCategory } =
     useUploadCenterMutations()
   const {
     quizEntryMode,
     setQuizEntryMode,
+    articleQuestionType,
+    setArticleQuestionType,
     localCollections,
     setLocalCollections,
     activeTab,
@@ -88,13 +117,41 @@ export default function UploadCenterUI({
     setSortSequence,
     quizContextTextareaRef,
     bulkContextTextareaRef,
-  } = useUploadCenterState(dbCollections, initialTab)
+  } = useUploadCenterState(
+    dbCollections,
+    initialTab,
+    defaultQuestionType,
+    defaultArticleSourceKind,
+  )
 
   const collectionOptions: CollectionBrowserOption[] = useMemo(
     () => toCollectionBrowserOptions(localCollections),
     [localCollections],
   )
+  const selectedArticleCollection = localCollections.find(
+    (collection) => collection.id === articleForm.paperId,
+  )
+  const isPaperArticleCollection =
+    selectedArticleCollection?.collectionType === 'PAPER'
+  const selectedNewsCollectionId = findNewsCollectionId(
+    localCollections,
+    { source: articleForm.newsSource, column: articleForm.newsColumn },
+  )
+  const selectedNewsCollection = localCollections.find(
+    collection => collection.id === selectedNewsCollectionId,
+  )
 
+  useEffect(() => {
+    if (
+      activeTab !== 'article' ||
+      articleForm.sourceKind !== 'NEWS' ||
+      articleForm.publishedDate
+    ) return
+    setArticleForm(previous => ({
+      ...previous,
+      publishedDate: todayForDateInput(),
+    }))
+  }, [activeTab, articleForm.publishedDate, articleForm.sourceKind, setArticleForm])
 
   // ================= 🌟 2. 新增：划词一键生成填空题引擎 =================
   const handleMakeBlank = () => {
@@ -137,7 +194,7 @@ export default function UploadCenterUI({
 
     // 自动创建新题目
     const newQuestion = {
-      questionType: 'FILL_BLANK',
+      questionType: articleQuestionType,
       prompt: contextSentence,
       contextSentence: blankContextSentence,
       explanation: '',
@@ -149,8 +206,8 @@ export default function UploadCenterUI({
       ],
     }
 
-    setArticleQuestions(prev => [...prev, newQuestion])
-    setArticleForm(prev => ({ ...prev, content: nextArticleText }))
+    setArticleQuestions((prev) => [...prev, newQuestion])
+    setArticleForm((prev) => ({ ...prev, content: nextArticleText }))
 
     // 取消选中状态，方便继续选下一个词
     textarea.selectionStart = textarea.selectionEnd
@@ -163,16 +220,16 @@ export default function UploadCenterUI({
     const draft = parseMultiQuizText(text)[0]
 
     if (draft && draft.options.length >= MIN_QUESTION_OPTION_COUNT) {
-      const newOptionsTexts = draft.options.map(option => option.text)
+      const newOptionsTexts = draft.options.map((option) => option.text)
 
       const newQs = [...articleQuestions]
 
       // 🌟 自动寻的魔法：寻找哪个新选项包含了我们刚才“划词”选中的正确答案
-      const currentCorrectOpt = newQs[qIndex].options.find(o => o.isCorrect)
+      const currentCorrectOpt = newQs[qIndex].options.find((o) => o.isCorrect)
       const correctText = currentCorrectOpt ? currentCorrectOpt.text : ''
 
       let newCorrectIdx = newOptionsTexts.findIndex(
-        t =>
+        (t) =>
           t === correctText ||
           t.includes(correctText) ||
           correctText.includes(t),
@@ -196,17 +253,23 @@ export default function UploadCenterUI({
   const handleArticleAddQuestion = () => {
     if (!articleQuickInput.trim()) return
 
-    const { drafts, previewRows } =
-      buildArticleQuestionsFromQuickInput(
-        articleQuickInput,
-        articleForm.content,
-      )
+    const { drafts, previewRows } = buildArticleQuestionsFromQuickInput(
+      articleQuickInput,
+      articleForm.content,
+    )
     if (drafts.length === 0) {
       void dialog.alert('解析失败，请检查每题是否至少包含 2 个选项。')
       return
     }
 
-    setArticleParsedDrafts(drafts)
+    setArticleParsedDrafts(
+      isPaperArticleCollection
+        ? drafts.map((draft) => ({
+            ...draft,
+            questionType: articleQuestionType,
+          }))
+        : drafts,
+    )
     setArticleParsedPreviewRows(previewRows)
     dialog.toast(`已识别 ${drafts.length} 道题，请先确认预览`, {
       tone: 'success',
@@ -215,7 +278,7 @@ export default function UploadCenterUI({
 
   const handleConfirmArticlePreviewImport = () => {
     if (articleParsedDrafts.length === 0) return
-    if (articleParsedPreviewRows.some(row => row.isDuplicateToken)) {
+    if (articleParsedPreviewRows.some((row) => row.isDuplicateToken)) {
       void dialog.alert('检测到重号占位符，请先修正文中的重复编号后再导入。')
       return
     }
@@ -229,13 +292,16 @@ export default function UploadCenterUI({
       delete nextDraft.__previewToken
       delete nextDraft.__previewDuplicateToken
 
-      if (draft.questionType !== 'FILL_BLANK') {
+      if (
+        draft.questionType !== 'FILL_BLANK' &&
+        draft.questionType !== 'TOEIC_TEXT_COMPLETION'
+      ) {
         return nextDraft
       }
       const sequenceNo = importedStartIndex + idx + 1
       const nextToken = `[${sequenceNo}]`
       const correctText =
-        draft.options.find(option => option.isCorrect)?.text?.trim() || ''
+        draft.options.find((option) => option.isCorrect)?.text?.trim() || ''
       const matchedToken = (draft.__previewToken || '').trim()
 
       if (matchedToken && nextContent.includes(matchedToken)) {
@@ -267,8 +333,8 @@ export default function UploadCenterUI({
       }
     })
 
-    setArticleForm(prev => ({ ...prev, content: nextContent }))
-    setArticleQuestions(prev => [...prev, ...normalizedDrafts])
+    setArticleForm((prev) => ({ ...prev, content: nextContent }))
+    setArticleQuestions((prev) => [...prev, ...normalizedDrafts])
     setArticleQuickInput('')
     setArticleParsedDrafts([])
     setArticleParsedPreviewRows([])
@@ -279,18 +345,55 @@ export default function UploadCenterUI({
 
   const handleArticleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (articleForm.sourceKind === 'NEWS') {
+      if (!articleForm.newsType || !articleForm.newsSource || !articleForm.newsSection.trim()) {
+        await dialog.alert('请完整选择新闻类型、来源和版面。')
+        return
+      }
+      if (articleForm.newsType === 'column' && !articleForm.newsColumn) {
+        await dialog.alert('请选择专栏名称。')
+        return
+      }
+    }
     setIsSubmitting(true)
+    const submissionSeries =
+      articleForm.sourceKind === 'NEWS'
+        ? toLegacyNewsSeries(articleForm.newsType, articleForm.newsColumn)
+        : ''
+    const submissionCollectionId =
+      findNewsCollectionId(localCollections, {
+        source: articleForm.newsSource,
+        column: articleForm.newsColumn,
+      }) ||
+      articleForm.paperId
     const res = await createArticle({
       ...articleForm,
+      paperId: submissionCollectionId,
+      newsSeries: submissionSeries,
+      pageNumber: articleForm.newsSection,
+      questionType: articleQuestionType,
       questions: articleQuestions,
     })
     await dialog.alert(res.message)
     if (res.success) {
-      setArticleForm(prev => ({
+      setArticleForm((prev) => ({
         ...prev,
         title: '',
         description: '',
         content: '',
+        paperId:
+          defaultArticleSourceKind === 'NEWS' ? '' : prev.paperId,
+        sourceKind: defaultArticleSourceKind,
+        publishedDate:
+          defaultArticleSourceKind === 'NEWS' ? todayForDateInput() : '',
+        edition: '',
+        newsSeries: '',
+        pageNumber: '',
+        newsSource: '',
+        newsType: '',
+        newsSection: '',
+        newsColumn: '',
+        newsTopic: '',
       }))
       setArticleQuestions([])
     }
@@ -303,7 +406,7 @@ export default function UploadCenterUI({
     const contextText = quizForm.contextSentence.trim()
     if (!promptText && !contextText) {
       await dialog.alert(
-        '请先填写题目内容再保存。\n可选方式：\n1) 使用“快速粘贴（推荐）”自动解析\n2) 在“题目呈现”填写题干\n3) 在“语境句”填写完整句子',
+        '请先填写题目内容再保存。\n可选方式：\n1) 使用“快速粘贴”自动解析\n2) 填写题干\n3) 题干不是完整句子时，补充题目原句',
       )
       return
     }
@@ -315,10 +418,11 @@ export default function UploadCenterUI({
     await dialog.alert(res.message)
     if (res.success) {
       setQuickInput('')
-      setQuizForm(prev => ({
+      setQuizForm((prev) => ({
         ...prev,
         contextSentence: '',
         targetWord: '',
+        sortingOrder: [],
         prompt: '',
         explanation: '',
         options: prev.options.map((_, i) => ({ text: '', isCorrect: i === 0 })),
@@ -333,18 +437,14 @@ export default function UploadCenterUI({
     const draft = parseMultiQuizText(text)[0]
 
     if (draft && draft.options.length >= MIN_QUESTION_OPTION_COUNT) {
-      const inferredTargetWord = inferTargetWord(
-        draft.questionType,
-        draft.prompt,
-      )
-
       setSortSequence([])
-      setQuizForm(prev => ({
+      setQuizForm((prev) => ({
         ...prev,
-        questionType: draft.questionType,
+        questionType: defaultQuestionType || draft.questionType,
         prompt: draft.prompt,
         contextSentence: draft.contextSentence,
-        targetWord: inferredTargetWord,
+        targetWord: '',
+        sortingOrder: [],
         options: draft.options.map((option, index) => ({
           text: option.text,
           isCorrect: prev.options[index]?.isCorrect ?? index === 0,
@@ -354,19 +454,24 @@ export default function UploadCenterUI({
   }
 
   const handleBulkQuickParse = () => {
-    const parsed = parseMultiQuizText(bulkQuickInput)
+    const parsed = parseMultiQuizText(bulkQuickInput).map((draft) => ({
+      ...draft,
+      questionType: (defaultQuestionType ||
+        draft.questionType) as ParsedQuizDraft['questionType'],
+    }))
     setBulkParsedQuestions(parsed)
     if (parsed.length === 0) {
       void dialog.alert('未识别到完整题目。请检查每题是否至少包含 2 个选项。')
       return
     }
     // 同步首题到单题编辑区，方便立刻校对
-    setQuizForm(prev => ({
+    setQuizForm((prev) => ({
       ...prev,
       questionType: parsed[0].questionType,
       prompt: parsed[0].prompt,
       contextSentence: parsed[0].contextSentence,
       targetWord: parsed[0].targetWord || '',
+      sortingOrder: parsed[0].sortingOrder || [],
       explanation: parsed[0].explanation,
       options: parsed[0].options,
     }))
@@ -375,13 +480,17 @@ export default function UploadCenterUI({
   }
 
   const handleBulkPromptChange = (index: number, value: string) => {
-    setBulkParsedQuestions(prev =>
+    setBulkParsedQuestions((prev) =>
       prev.map((item, i) =>
         i === index
           ? {
               ...item,
               prompt: value,
-              contextSentence: value || item.contextSentence,
+              contextSentence: supportsSeparateQuestionContext(
+                item.questionType,
+              )
+                ? value || item.contextSentence
+                : '',
             }
           : item,
       ),
@@ -389,7 +498,7 @@ export default function UploadCenterUI({
   }
 
   const handleBulkContextSentenceChange = (index: number, value: string) => {
-    setBulkParsedQuestions(prev =>
+    setBulkParsedQuestions((prev) =>
       prev.map((item, i) =>
         i === index ? { ...item, contextSentence: value } : item,
       ),
@@ -397,9 +506,53 @@ export default function UploadCenterUI({
   }
 
   const handleBulkTargetWordChange = (index: number, value: string) => {
-    setBulkParsedQuestions(prev =>
+    setBulkParsedQuestions((prev) =>
       prev.map((item, i) =>
         i === index ? { ...item, targetWord: value.trim() } : item,
+      ),
+    )
+  }
+
+  const handleBulkSortingOptionClick = (
+    questionIndex: number,
+    optionIndex: number,
+  ) => {
+    setBulkParsedQuestions((previous) =>
+      previous.map((question, index) => {
+        if (index !== questionIndex || question.questionType !== 'SORTING')
+          return question
+        const currentOrder = question.sortingOrder || []
+        if (currentOrder.includes(optionIndex)) return question
+        const sortingOrder = [...currentOrder, optionIndex]
+        const starIndex = Math.max(0, parseSortingPrompt(question.prompt).starIndex)
+        return {
+          ...question,
+          contextSentence: '',
+          sortingOrder,
+          options: question.options.map((option, currentIndex) => ({
+            ...option,
+            isCorrect:
+              sortingOrder.length === question.options.length &&
+              currentIndex === sortingOrder[starIndex],
+          })),
+        }
+      }),
+    )
+  }
+
+  const handleBulkSortingReset = (questionIndex: number) => {
+    setBulkParsedQuestions((previous) =>
+      previous.map((question, index) =>
+        index === questionIndex
+          ? {
+              ...question,
+              sortingOrder: [],
+              options: question.options.map((option, optionIndex) => ({
+                ...option,
+                isCorrect: optionIndex === 0,
+              })),
+            }
+          : question,
       ),
     )
   }
@@ -410,7 +563,7 @@ export default function UploadCenterUI({
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     if (start === end) {
-      void dialog.alert('请先在当前题的语境句中划选目标词。')
+      void dialog.alert('请先在当前题的“题目原句”中划选目标词。')
       return
     }
     const selected = textarea.value.slice(start, end).trim()
@@ -426,11 +579,12 @@ export default function UploadCenterUI({
     optionIndex: number,
     value: string,
   ) => {
-    setBulkParsedQuestions(prev =>
+    setBulkParsedQuestions((prev) =>
       prev.map((item, i) => {
         if (i !== qIndex) return item
         return {
           ...item,
+          sortingOrder: [],
           options: item.options.map((opt, idx) =>
             idx === optionIndex ? { ...opt, text: value } : opt,
           ),
@@ -440,7 +594,7 @@ export default function UploadCenterUI({
   }
 
   const setBulkCorrectOption = (qIndex: number, optionIndex: number) => {
-    setBulkParsedQuestions(prev =>
+    setBulkParsedQuestions((prev) =>
       prev.map((item, i) => {
         if (i !== qIndex) return item
         return {
@@ -455,15 +609,13 @@ export default function UploadCenterUI({
   }
 
   const handleBulkAddOption = (qIndex: number) => {
-    setBulkParsedQuestions(previous =>
+    setBulkParsedQuestions((previous) =>
       previous.map((question, index) =>
         index === qIndex
           ? {
               ...question,
-              options: [
-                ...question.options,
-                { text: '', isCorrect: false },
-              ],
+              sortingOrder: [],
+              options: [...question.options, { text: '', isCorrect: false }],
             }
           : question,
       ),
@@ -471,15 +623,13 @@ export default function UploadCenterUI({
   }
 
   const handleBulkRemoveOption = (qIndex: number, optionIndex: number) => {
-    setBulkParsedQuestions(previous =>
+    setBulkParsedQuestions((previous) =>
       previous.map((question, index) =>
         index === qIndex
           ? {
               ...question,
-              options: removeQuestionOptionAt(
-                question.options,
-                optionIndex,
-              ),
+              sortingOrder: [],
+              options: removeQuestionOptionAt(question.options, optionIndex),
             }
           : question,
       ),
@@ -490,15 +640,30 @@ export default function UploadCenterUI({
     qIndex: number,
     questionType: ParsedQuizDraft['questionType'],
   ) => {
-    setBulkParsedQuestions(prev =>
-      prev.map((item, i) => (i === qIndex ? { ...item, questionType } : item)),
+    setBulkParsedQuestions((prev) =>
+      prev.map((item, i) =>
+        i === qIndex
+          ? {
+              ...item,
+              questionType,
+              contextSentence: supportsSeparateQuestionContext(questionType)
+                ? item.contextSentence
+                : '',
+              targetWord: usesExplicitQuestionTargetWord(questionType)
+                ? item.targetWord
+                : '',
+              sortingOrder:
+                questionType === 'SORTING' ? item.sortingOrder || [] : [],
+            }
+          : item,
+      ),
     )
   }
 
   const handleBulkRemoveQuestion = (qIndex: number) => {
-    setBulkParsedQuestions(prev => {
+    setBulkParsedQuestions((prev) => {
       const next = prev.filter((_, i) => i !== qIndex)
-      setBulkEditingIndex(current => {
+      setBulkEditingIndex((current) => {
         if (next.length === 0) return 0
         if (qIndex < current) return current - 1
         if (qIndex === current) return Math.min(current, next.length - 1)
@@ -514,7 +679,11 @@ export default function UploadCenterUI({
       return
     }
     if (!quizForm.collectionId) {
-      await dialog.alert('请先选择所属集合。')
+      await dialog.alert(
+        collectionScope === 'paper'
+          ? '请先选择所属试卷。'
+          : '请先选择保存位置。',
+      )
       return
     }
 
@@ -529,6 +698,7 @@ export default function UploadCenterUI({
         questionType: draft.questionType,
         contextSentence: draft.contextSentence,
         targetWord: draft.targetWord || '',
+        sortingOrder: draft.sortingOrder || [],
         prompt: draft.prompt,
         explanation: draft.explanation,
         options: draft.options,
@@ -546,10 +716,11 @@ export default function UploadCenterUI({
       setBulkQuickInput('')
       setBulkParsedQuestions([])
       setQuickInput('')
-      setQuizForm(prev => ({
+      setQuizForm((prev) => ({
         ...prev,
         contextSentence: '',
         targetWord: '',
+        sortingOrder: [],
         prompt: '',
         explanation: '',
         options: prev.options.map((_, idx) => ({
@@ -563,7 +734,7 @@ export default function UploadCenterUI({
 
     const preview = failed
       .slice(0, 5)
-      .map(item => `第 ${item.index} 题：${item.message}`)
+      .map((item) => `第 ${item.index} 题：${item.message}`)
       .join('\n')
     await dialog.alert(
       `已保存 ${successCount} 题，失败 ${failed.length} 题。\n${preview}${failed.length > 5 ? '\n…' : ''}`,
@@ -571,7 +742,7 @@ export default function UploadCenterUI({
   }
 
   const setCorrectOption = (index: number) => {
-    setQuizForm(prev => {
+    setQuizForm((prev) => {
       const newOptions = prev.options.map((opt, i) => ({
         ...opt,
         isCorrect: i === index,
@@ -592,64 +763,58 @@ export default function UploadCenterUI({
     setSortSequence(newSeq)
 
     if (newSeq.length === quizForm.options.length) {
-      setQuizForm(prev => {
-        const parts = prev.prompt.split(/([＿_]{2,}|[★＊])/).filter(Boolean)
-        let slotCount = 0
-        let starSlotIndex = -1
-
-        parts.forEach(part => {
-          if (/[＿_]{2,}|[★＊]/.test(part)) {
-            if (/[★＊]/.test(part)) starSlotIndex = slotCount
-            slotCount++
-          }
-        })
-        if (starSlotIndex === -1) starSlotIndex = 0
+      setQuizForm((prev) => {
+        const starSlotIndex = Math.max(0, parseSortingPrompt(prev.prompt).starIndex)
 
         const correctOptionIndex = newSeq[starSlotIndex]
         const newOptions = prev.options.map((opt, i) => ({
           ...opt,
           isCorrect: i === correctOptionIndex,
         }))
-        const joinedOptionsText = newSeq
-          .map(idx => prev.options[idx].text)
-          .join('')
-
-        const blankAreaRegex = /[＿_★＊][＿_★＊\s　]+[＿_★＊]/
-        let newContextSentence = prev.prompt
-
-        if (blankAreaRegex.test(prev.prompt)) {
-          newContextSentence = prev.prompt.replace(
-            blankAreaRegex,
-            joinedOptionsText,
-          )
-        } else {
-          newContextSentence = prev.prompt
-            .replace(/[★＊]/, joinedOptionsText)
-            .replace(/[＿_]{2,}/g, '')
-        }
 
         return {
           ...prev,
           options: newOptions,
-          contextSentence: newContextSentence,
+          contextSentence: '',
+          sortingOrder: newSeq,
         }
       })
     }
   }
+  const handleSortReset = () => {
+    setSortSequence([])
+    setQuizForm((previous) => ({
+      ...previous,
+      sortingOrder: [],
+      options: previous.options.map((option, index) => ({
+        ...option,
+        isCorrect: index === 0,
+      })),
+    }))
+  }
   const quizHasQuestionContent =
     quizForm.prompt.trim().length > 0 ||
     quizForm.contextSentence.trim().length > 0
+  const quizSupportsSeparateContext = supportsSeparateQuestionContext(
+    quizForm.questionType,
+  )
+  const quizUsesTargetWord = usesExplicitQuestionTargetWord(
+    quizForm.questionType,
+  )
+  const quizSortingReady =
+    quizForm.questionType !== 'SORTING' ||
+    quizForm.sortingOrder.length === quizForm.options.length
 
   const renderTargetWordPreview = (sentence: string, targetWord: string) => {
     if (!targetWord || !sentence.includes(targetWord))
-      return sentence || '（语境句预览）'
+      return sentence || '（题目原句预览）'
     const index = sentence.indexOf(targetWord)
     const before = sentence.slice(0, index)
     const after = sentence.slice(index + targetWord.length)
     return (
       <>
         {before}
-        <span className='border-b-2 border-blue-500 font-semibold text-blue-700'>
+        <span className="border-b-2 border-blue-500 font-semibold text-blue-700">
           {targetWord}
         </span>
         {after}
@@ -663,24 +828,74 @@ export default function UploadCenterUI({
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     if (start === end) {
-      void dialog.alert('请先在“语境句”中用鼠标划选一个目标词。')
+      void dialog.alert('请先在“题目原句”中用鼠标划选一个目标词。')
       return
     }
     const selected = textarea.value.slice(start, end).trim()
     if (!selected) return
-    setQuizForm(prev => ({ ...prev, targetWord: selected }))
+    setQuizForm((prev) => ({ ...prev, targetWord: selected }))
     dialog.toast(`已设置目标词：${selected}`, { tone: 'success' })
   }
 
   const applyArticleCollection = (collectionId: string) => {
-    setArticleForm(prev => ({
+    setArticleForm((prev) => ({
       ...prev,
       paperId: collectionId,
     }))
   }
 
+  const applyNewsMetadata = (patch: Partial<typeof articleForm>) => {
+    setArticleForm(previous => {
+      const nextSource = patch.newsSource ?? previous.newsSource
+      const newsColumn =
+        patch.newsType && patch.newsType !== 'column'
+          ? ''
+          : patch.newsColumn !== undefined
+            ? patch.newsColumn
+            : nextSource === '日経' && previous.newsColumn === '天声人語'
+              ? ''
+              : nextSource === '朝日' && previous.newsColumn === '春秋'
+                ? ''
+                : previous.newsColumn
+      const next = { ...previous, ...patch, newsColumn }
+      const automaticMorning = isAutomaticMorningEdition({
+        source: next.newsSource,
+        type: next.newsType,
+        column: next.newsColumn,
+      })
+      return {
+        ...next,
+        newsSection: isAutomaticFrontPageSection({
+          type: next.newsType,
+          column: next.newsColumn,
+        })
+          ? '一面'
+          : next.newsSection,
+        edition: automaticMorning
+          ? 'MORNING'
+          : next.edition === 'FLASH' &&
+              !supportsBreakingEdition({
+                source: next.newsSource,
+                type: next.newsType,
+              })
+            ? ''
+            : next.edition,
+      }
+    })
+  }
+
+  const applyArticleQuestionType = (questionType: PaperReadingQuestionType) => {
+    setArticleQuestionType(questionType)
+    setArticleQuestions((previous) =>
+      previous.map((question) => ({ ...question, questionType })),
+    )
+    setArticleParsedDrafts((previous) =>
+      previous.map((question) => ({ ...question, questionType })),
+    )
+  }
+
   const applyQuizCollection = (collectionId: string) => {
-    setQuizForm(prev => ({
+    setQuizForm((prev) => ({
       ...prev,
       collectionId,
     }))
@@ -704,18 +919,19 @@ export default function UploadCenterUI({
       setIsSavingCat,
       resetNameOnly,
     } = useCollectionCreatorState(dbLevels[0]?.id || '')
+    const destinationName = collectionScope === 'paper' ? '试卷' : '资料集'
 
     const handleSaveCategory = async () => {
       if (!newCatData.name.trim()) {
-        await dialog.alert('集合名称不能为空。')
+        await dialog.alert(`请填写${destinationName}名称。`)
         return
       }
       setIsSavingCat(true)
 
       const res = await createCategory({
         ...newCatData,
-        materialType:
-          activeTab === 'article' ? 'READING' : 'VOCAB_GRAMMAR',
+        language,
+        materialType: activeTab === 'article' ? 'READING' : 'VOCAB_GRAMMAR',
       })
       if (res.success && res.paper) {
         const createdCollection: UploadCollectionLite = {
@@ -725,10 +941,11 @@ export default function UploadCenterUI({
           sortOrder: 0,
           collectionType: res.paper.collectionType,
           acceptedMaterialTypes: res.paper.acceptedMaterialTypes,
+          language,
           level: { title: res.paper.level.title },
           lessons: [],
         }
-        setLocalCollections(prev => [createdCollection, ...prev])
+        setLocalCollections((prev) => [createdCollection, ...prev])
         onChange(res.paper.id)
         setIsCreating(false)
         resetNameOnly()
@@ -738,17 +955,26 @@ export default function UploadCenterUI({
       setIsSavingCat(false)
     }
 
+    const isFlatCollection = activeTab === 'quiz' || activeTab === 'article'
+
     return (
-      <div className='mb-6 border border-slate-200 bg-white p-4 transition-colors duration-300 md:p-5'>
-        <div className='mb-3 flex items-center justify-between'>
-          <label className='block text-sm font-bold text-slate-900'>
-            所属集合
+      <div
+        className={
+          isFlatCollection
+            ? 'border-b border-slate-200 pb-6'
+            : 'mb-6 border border-slate-200 bg-white p-4 transition-colors duration-300 md:p-5'
+        }
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <label className="block text-sm font-bold text-slate-900">
+            {collectionScope === 'paper' ? '所属试卷' : '保存位置'}
           </label>
           <button
-            type='button'
+            type="button"
             onClick={() => setIsCreating(!isCreating)}
-            className='border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900'>
-            {isCreating ? '取消新建' : '新建集合'}
+            className="border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900"
+          >
+            {isCreating ? '取消' : `新建${destinationName}`}
           </button>
         </div>
 
@@ -757,74 +983,93 @@ export default function UploadCenterUI({
             value={value}
             onChange={onChange}
             options={collectionOptions}
-            placeholder='无可用集合，请先新建'
-            recentKey='manage.upload.collection.recent'
+            placeholder={`请选择${destinationName}`}
+            recentKey="manage.upload.collection.recent"
           />
         ) : (
-          <div className='animate-in slide-in-from-top-2 flex flex-col gap-3 border border-slate-200 bg-slate-50 p-4 fade-in'>
-            <div className='flex flex-col gap-2 md:flex-row md:gap-3'>
-              <div className='w-full md:w-1/3'>
+          <div className="animate-in slide-in-from-top-2 flex flex-col gap-3 border-t border-slate-200 bg-slate-50/60 p-4 fade-in">
+            <div className="flex flex-col gap-2 md:flex-row md:gap-3">
+              <div
+                className={
+                  collectionScope === 'paper' ? 'hidden' : 'w-full md:w-1/3'
+                }
+              >
                 <CustomSelect
                   value={newCatData.collectionType}
-                  onChange={e =>
-                    setNewCatData({ ...newCatData, collectionType: e.target.value })
+                  onChange={(e) =>
+                    setNewCatData({
+                      ...newCatData,
+                      collectionType: e.target.value,
+                    })
                   }
-                  className='h-full w-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-100'>
-                  {dbLevels.map(lvl => (
+                  className="h-full w-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-100"
+                >
+                  {dbLevels.map((lvl) => (
                     <option key={lvl.id} value={lvl.id}>
                       {lvl.title}
                     </option>
                   ))}
                 </CustomSelect>
-                <p className='mt-2 text-xs font-semibold text-slate-500'>
-                  选择这个集合之后主要放在哪里使用。
-                </p>
               </div>
               <input
-                type='text'
+                type="text"
                 value={newCatData.name}
-                onChange={e =>
+                onChange={(e) =>
                   setNewCatData({ ...newCatData, name: e.target.value })
                 }
-                placeholder='集合名称，例如：2025-07 N1 真题'
-                className='flex-1 border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-100'
+                placeholder={
+                  collectionScope === 'paper'
+                    ? language === 'en'
+                      ? '试卷名称，例如：TOEIC 模拟题 01'
+                      : '试卷名称，例如：2025-07 N1 真题'
+                    : '资料集名称，例如：日本新闻'
+                }
+                className="flex-1 border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-slate-100"
               />
             </div>
             <button
-              type='button'
+              type="button"
               onClick={handleSaveCategory}
               disabled={isSavingCat}
-              className='w-full border border-slate-200 bg-slate-900 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50'>
-              {isSavingCat ? '创建中...' : '确认创建并使用该集合'}
+              className="w-full border border-slate-200 bg-slate-900 py-2.5 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+            >
+              {isSavingCat ? '创建中...' : `创建并选择此${destinationName}`}
             </button>
           </div>
         )}
         {hint && !isCreating ? (
-          <p className='mt-3 text-xs leading-5 text-slate-500'>{hint}</p>
+          <p className="mt-3 text-xs leading-5 text-slate-500">{hint}</p>
         ) : null}
       </div>
     )
   }
 
   return (
-    <div className='space-y-6'>
-      <div className='w-full'>
+    <div className="space-y-6">
+      <div className="w-full">
         {activeTab === 'audio' && (
-          <div className='animate-in slide-in-from-bottom-4 fade-in duration-500'>
+          <div className="animate-in slide-in-from-bottom-4 fade-in duration-500">
             <UploadForm
               levels={dbLevels}
               papers={dbCollections}
               defaultMaterialType={initialMaterialType}
+              defaultLanguage={language}
+              collectionScope={collectionScope}
+              defaultQuestionType={defaultQuestionType}
+              toeicPartLabel={toeicPartLabel}
+              defaultListeningSectionNumber={defaultListeningSectionNumber}
+              listeningSectionLabel={listeningSectionLabel}
             />
           </div>
         )}
 
         {activeTab === 'media' && (
-          <div className='animate-in slide-in-from-bottom-4 fade-in duration-500'>
+          <div className="animate-in slide-in-from-bottom-4 fade-in duration-500">
             <UploadForm
               levels={dbLevels}
               papers={dbCollections}
-              variant='media-subtitle'
+              variant="media-subtitle"
+              defaultLanguage={language}
             />
           </div>
         )}
@@ -837,23 +1082,60 @@ export default function UploadCenterUI({
             setArticleQuestions={setArticleQuestions}
             articleTextareaRef={articleTextareaRef}
             collectionSelector={
-              <CollectionSelector
-                value={articleForm.paperId}
-                onChange={applyArticleCollection}
-                hint='仅显示可承载阅读文章的集合。综合系列可以同时包含文章与跟读，学习入口仍按材料类型分别展示。'
-              />
+              articleForm.sourceKind === 'NEWS' &&
+              articleForm.newsSource &&
+              selectedNewsCollection ? (
+                <div className='border-b border-slate-200 pb-6'>
+                  <span className='block text-sm font-bold text-slate-900'>
+                    已选择
+                  </span>
+                  <div className='mt-3 flex flex-wrap items-center gap-2'>
+                    <span className='rounded-full bg-slate-950 px-3 py-1.5 text-xs font-bold text-white'>
+                      {articleForm.newsSource} · {getNewsTypeLabel(articleForm.newsType)}
+                      {articleForm.newsColumn ? ` · ${articleForm.newsColumn}` : ''}
+                    </span>
+                    <span className='text-xs text-slate-500'>
+                      将按所选新闻信息保存
+                    </span>
+                  </div>
+                </div>
+              ) : articleForm.sourceKind === 'NEWS' ? (
+                <div className='border-b border-slate-200 pb-6'>
+                  <span className='block text-sm font-bold text-slate-900'>
+                    新闻保存位置
+                  </span>
+                  <p className='mt-2 text-xs leading-5 text-slate-500'>
+                    请在下方选择类型与来源，系统会自动匹配保存位置。
+                  </p>
+                </div>
+              ) : (
+                <CollectionSelector
+                  value={articleForm.paperId}
+                  onChange={applyArticleCollection}
+                />
+              )
             }
+            isPaperCollection={isPaperArticleCollection}
+            paperQuestionType={articleQuestionType}
+            fixedQuestionTypeLabel={toeicPartLabel}
+            onPaperQuestionTypeChange={applyArticleQuestionType}
+            onNewsMetadataChange={applyNewsMetadata}
             handleMakeBlank={handleMakeBlank}
             handleParseCardOptions={handleParseCardOptions}
             articleQuickInput={articleQuickInput}
             setArticleQuickInput={setArticleQuickInput}
             handleArticleAddQuestion={handleArticleAddQuestion}
             articleParsedDrafts={articleParsedDrafts}
-            handleConfirmArticlePreviewImport={handleConfirmArticlePreviewImport}
+            handleConfirmArticlePreviewImport={
+              handleConfirmArticlePreviewImport
+            }
             articleParsedPreviewRows={articleParsedPreviewRows}
             isSubmitting={isSubmitting}
             handleArticleSubmit={handleArticleSubmit}
-            onRemoveQuestion={async questionIndex => {
+            onUnderlineSelectionMissing={() =>
+              void dialog.alert('请先选中需要加下划线的文字。')
+            }
+            onRemoveQuestion={async (questionIndex) => {
               const confirmed = await dialog.confirm(
                 `确认移除第 ${questionIndex + 1} 题吗？`,
                 {
@@ -863,32 +1145,25 @@ export default function UploadCenterUI({
                 },
               )
               if (!confirmed) return
-              setArticleQuestions(previous =>
+              setArticleQuestions((previous) =>
                 previous.filter((_, index) => index !== questionIndex),
               )
             }}
           />
         )}
 
-        {/* ================= 3. 题目上传视图 (代码未改动) ================= */}
         {activeTab === 'quiz' && (
           <form
-            onSubmit={event => {
+            onSubmit={(event) => {
               if (quizEntryMode === 'bulk') {
                 event.preventDefault()
                 return
               }
               void handleQuizSubmit(event)
             }}
-            className='animate-in space-y-8 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] fade-in slide-in-from-bottom-4 duration-500 md:p-8'>
-            <div className='space-y-1'>
-              <h2 className='text-xl font-black text-gray-900 md:text-2xl'>
-                导入练习题
-              </h2>
-              <p className='text-sm text-gray-500'>
-                可先粘贴整题自动解析，再做少量校对后保存。
-              </p>
-            </div>
+            className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+          >
+            <h2 className="sr-only">导入练习题</h2>
 
             <CollectionSelector
               value={quizForm.collectionId}
@@ -896,350 +1171,406 @@ export default function UploadCenterUI({
             />
 
             <div
-              role='tablist'
-              aria-label='题目录入方式'
-              className='grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
+              role="tablist"
+              aria-label="题目录入方式"
+              className="flex border-b border-slate-200 pt-5"
+            >
               <button
-                type='button'
-                role='tab'
+                type="button"
+                role="tab"
                 aria-selected={quizEntryMode === 'bulk'}
                 onClick={() => setQuizEntryMode('bulk')}
-                className={`rounded-md px-3 py-2.5 text-sm font-semibold transition-colors ${
+                className={`!rounded-none border-b-2 px-4 py-3 text-sm font-semibold outline-none transition-colors focus-visible:border-slate-950 focus-visible:text-slate-950 ${
                   quizEntryMode === 'bulk'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}>
+                    ? 'border-slate-950 text-slate-950'
+                    : 'border-transparent text-slate-400 hover:text-slate-700'
+                }`}
+              >
                 批量粘贴
               </button>
               <button
-                type='button'
-                role='tab'
+                type="button"
+                role="tab"
                 aria-selected={quizEntryMode === 'single'}
                 onClick={() => setQuizEntryMode('single')}
-                className={`rounded-md px-3 py-2.5 text-sm font-semibold transition-colors ${
+                className={`!rounded-none border-b-2 px-4 py-3 text-sm font-semibold outline-none transition-colors focus-visible:border-slate-950 focus-visible:text-slate-950 ${
                   quizEntryMode === 'single'
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}>
+                    ? 'border-slate-950 text-slate-950'
+                    : 'border-transparent text-slate-400 hover:text-slate-700'
+                }`}
+              >
                 单题录入
               </button>
             </div>
 
             {quizEntryMode === 'bulk' ? (
               <BulkQuizPanel
-              bulkQuickInput={bulkQuickInput}
-              setBulkQuickInput={setBulkQuickInput}
-              handleBulkQuickParse={handleBulkQuickParse}
-              isSubmitting={isSubmitting}
-              bulkParsedQuestions={bulkParsedQuestions}
-              handleBulkQuizSave={handleBulkQuizSave}
-              bulkEditingIndex={bulkEditingIndex}
-              setBulkEditingIndex={setBulkEditingIndex}
-              handleBulkRemoveQuestion={handleBulkRemoveQuestion}
-              handleBulkQuestionTypeChange={handleBulkQuestionTypeChange}
-              handleBulkPromptChange={handleBulkPromptChange}
-              bulkContextTextareaRef={bulkContextTextareaRef}
-              handleBulkContextSentenceChange={handleBulkContextSentenceChange}
-              handleBulkPickTargetWordFromSelection={
-                handleBulkPickTargetWordFromSelection
-              }
-              handleBulkTargetWordChange={handleBulkTargetWordChange}
-              setBulkCorrectOption={setBulkCorrectOption}
-              handleBulkOptionTextChange={handleBulkOptionTextChange}
-              handleBulkAddOption={handleBulkAddOption}
-              handleBulkRemoveOption={handleBulkRemoveOption}
+                bulkQuickInput={bulkQuickInput}
+                setBulkQuickInput={setBulkQuickInput}
+                handleBulkQuickParse={handleBulkQuickParse}
+                isSubmitting={isSubmitting}
+                bulkParsedQuestions={bulkParsedQuestions}
+                handleBulkQuizSave={handleBulkQuizSave}
+                bulkEditingIndex={bulkEditingIndex}
+                setBulkEditingIndex={setBulkEditingIndex}
+                handleBulkRemoveQuestion={handleBulkRemoveQuestion}
+                handleBulkQuestionTypeChange={handleBulkQuestionTypeChange}
+                handleBulkPromptChange={handleBulkPromptChange}
+                bulkContextTextareaRef={bulkContextTextareaRef}
+                handleBulkContextSentenceChange={
+                  handleBulkContextSentenceChange
+                }
+                handleBulkPickTargetWordFromSelection={
+                  handleBulkPickTargetWordFromSelection
+                }
+                handleBulkTargetWordChange={handleBulkTargetWordChange}
+                handleBulkSortingOptionClick={handleBulkSortingOptionClick}
+                handleBulkSortingReset={handleBulkSortingReset}
+                setBulkCorrectOption={setBulkCorrectOption}
+                handleBulkOptionTextChange={handleBulkOptionTextChange}
+                handleBulkAddOption={handleBulkAddOption}
+                handleBulkRemoveOption={handleBulkRemoveOption}
+                fixedQuestionTypeLabel={toeicPartLabel}
               />
             ) : (
               <>
-            <section className='border border-blue-100 bg-blue-50/50 p-4 shadow-inner md:p-5'>
-              <label className='mb-2 block text-sm font-black text-blue-900'>
-                快速粘贴（推荐）
-              </label>
-              <p className='mb-3 text-xs leading-relaxed text-blue-700'>
-                粘贴包含题干和至少 2 个选项的文本，系统会自动拆分并填充表单。
-                <br />
-                <span className='font-mono bg-white/50 px-1 rounded'>
-                  友人にピアノの伴奏を頼まれた。 1．はんそう 2．ばんそう
-                  3．はんそ 4．ばんそ
-                </span>
-              </p>
-              <textarea
-                value={quickInput}
-                onChange={e => handleQuickParse(e.target.value)}
-                rows={3}
-                placeholder='在此粘贴整题文本'
-                className='w-full px-4 py-3 border border-blue-200 focus:ring-2 focus:ring-blue-500 outline-none resize-y text-sm bg-white'
-              />
-
-              {quizForm.questionType !== 'SORTING' && (
-                <div className='mt-4 border border-blue-100 bg-white/75 p-3'>
-                  <span className='mb-2 block text-xs font-bold tracking-wide text-blue-800'>
-                    正确答案
-                  </span>
-                  <div className='flex flex-wrap gap-2'>
-                    {quizForm.options.map((_, idx) => (
-                      <button
-                        key={idx}
-                        type='button'
-                        onClick={() => setCorrectOption(idx)}
-                        className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-blue-500 text-white shadow-blue-200' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                        选项 {idx + 1}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </section>
-
-            <div className='flex items-center gap-4'>
-              <div className='flex-1 h-px bg-gray-100'></div>
-              <span className='text-xs font-bold text-gray-300'>
-                解析结果可继续编辑
-              </span>
-              <div className='flex-1 h-px bg-gray-100'></div>
-            </div>
-
-            <section className='grid grid-cols-1 gap-4 lg:grid-cols-2'>
-              <div className='border border-gray-200 bg-gray-50/40 p-4'>
-                <label className='mb-2 block text-sm font-bold text-gray-700'>
-                  题型选择
-                </label>
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-3'>
-                  {[
-                    { value: 'PRONUNCIATION', label: '漢字読み' },
-                    { value: 'SYNONYM_REPLACEMENT', label: '言い換え類義' },
-                    { value: 'WORD_DISTINCTION', label: '用法' },
-                    { value: 'GRAMMAR', label: '文脈・文法選択' },
-                    { value: 'SORTING', label: '文の組み立て' },
-                  ].map(type => (
-                    <button
-                      key={type.value}
-                      type='button'
-                      onClick={() => {
-                        setSortSequence([])
-                        setQuizForm({ ...quizForm, questionType: type.value })
-                      }}
-                      className={`border px-3 py-2 text-sm font-bold transition-colors ${
-                        quizForm.questionType === type.value
-                          ? 'border-blue-300 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                      }`}>
-                      {type.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className='border border-gray-200 bg-gray-50/40 p-4'>
-                <label className='mb-2 block text-sm font-bold text-gray-700'>
-                  题目呈现
-                </label>
-                <p className='mb-2 text-xs text-gray-500'>
-                  前台做题时显示这段文字。
-                </p>
-                <input
-                  type='text'
-                  value={quizForm.prompt}
-                  onChange={e =>
-                    setQuizForm({ ...quizForm, prompt: e.target.value })
-                  }
-                  className='w-full border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500'
-                  placeholder='例如：チームの(　　　)を強めよう。（可留空）'
-                />
-              </div>
-            </section>
-
-            <section className='border border-blue-100 bg-blue-50/40 p-4'>
-              {quizForm.questionType === 'SORTING' && (
-                <div className='mb-4 border border-orange-200 bg-orange-50 p-4'>
-                  <label className='mb-2 block text-sm font-bold text-orange-800'>
-                    排序设置：按正确语序依次点击全部选项
+                <section className="border-b border-slate-200 py-6">
+                  <label className="mb-2 block text-sm font-black text-slate-900">
+                    快速粘贴
                   </label>
-                  <div className='flex flex-wrap gap-2 mb-4'>
-                    {quizForm.options.map((opt, i) => {
-                      const isClicked = sortSequence.includes(i)
-                      const orderNum = sortSequence.indexOf(i) + 1
-                      return (
-                        <button
-                          key={`sort-option-${opt.text || 'empty'}-${i}`}
-                          type='button'
-                          disabled={isClicked || !opt.text}
-                          onClick={() => handleSortClick(i)}
-                          className={`relative px-4 py-2 font-bold transition-colors ${isClicked ? 'bg-orange-200 text-orange-500 opacity-50' : 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-100'}`}>
-                          {opt.text || `选项 ${i + 1}`}
-                          {isClicked && (
-                            <span className='absolute -top-2 -right-2 w-5 h-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center'>
-                              {orderNum}
-                            </span>
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {sortSequence.length === quizForm.options.length ? (
-                    <div className='text-sm text-blue-600 font-bold flex justify-between items-center'>
-                      <span>
-                        语序组装完成，系统已自动提取星号答案与完整句子。
+                  <textarea
+                    value={quickInput}
+                    onChange={(e) => handleQuickParse(e.target.value)}
+                    rows={3}
+                    placeholder="在此粘贴整题文本"
+                    className="w-full resize-y border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
+
+                  {quizForm.questionType !== 'SORTING' && (
+                    <div className="mt-4">
+                      <span className="mb-2 block text-xs font-bold tracking-wide text-slate-500">
+                        正确答案
                       </span>
-                      <button
-                        type='button'
-                        onClick={() => setSortSequence([])}
-                        className='text-orange-500 underline'>
-                        重置顺序
-                      </button>
-                    </div>
-                  ) : (
-                    <div className='text-xs text-orange-500'>
-                      还需点击 {quizForm.options.length - sortSequence.length} 个选项
+                      <div className="flex flex-wrap gap-2">
+                        {quizForm.options.map((_, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onClick={() => setCorrectOption(idx)}
+                            className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-600 hover:border-slate-500'}`}
+                          >
+                            {idx + 1}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
-                </div>
-              )}
-              <label className='mb-2 block text-sm font-bold text-blue-900'>
-                语境句（可选）
-              </label>
-              <p className='mb-2 text-xs text-blue-700'>
-                仅在题干不是完整语境，或需要补充定位句时填写。
-              </p>
-              <textarea
-                ref={quizContextTextareaRef}
-                value={quizForm.contextSentence}
-                onChange={e =>
-                  setQuizForm({ ...quizForm, contextSentence: e.target.value })
-                }
-                rows={2}
-                className='w-full border border-blue-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500'
-                placeholder='不要重复填写与题干相同的文字'
-              />
-              {(quizForm.questionType === 'PRONUNCIATION' ||
-                quizForm.questionType === 'SYNONYM_REPLACEMENT' ||
-                quizForm.questionType === 'WORD_DISTINCTION') && (
-                <div className='mt-3 border border-blue-200 bg-white p-3'>
-                  <div className='mb-2 flex flex-wrap items-center gap-2'>
-                    <button
-                      type='button'
-                      onClick={handlePickTargetWordFromSelection}
-                      className='h-9 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100'>
-                      从语境句划词设为读音目标
-                    </button>
-                    <input
-                      type='text'
-                      value={quizForm.targetWord}
-                      onChange={e =>
-                        setQuizForm({
-                          ...quizForm,
-                          targetWord: e.target.value.trim(),
-                        })
-                      }
-                      placeholder='或手动输入目标词'
-                      className='h-9 min-w-0 flex-1 border border-blue-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-                    />
-                  </div>
-                  <div className='text-sm leading-relaxed text-gray-700'>
-                    {renderTargetWordPreview(
-                      quizForm.contextSentence,
-                      quizForm.targetWord,
+                </section>
+
+                <section className="grid grid-cols-1 gap-6 border-b border-slate-200 py-6 lg:grid-cols-[minmax(0,3fr)_minmax(260px,2fr)]">
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">
+                      题型
+                    </label>
+                    {toeicPartLabel ? (
+                      <div className="border-b border-slate-950 px-1 py-3 text-sm font-bold text-slate-950">
+                        {toeicPartLabel}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                        {IMPORT_QUESTION_TYPES.map((type) => (
+                          <button
+                            key={type.value}
+                            type="button"
+                            aria-pressed={quizForm.questionType === type.value}
+                            onClick={() => {
+                              setSortSequence([])
+                              setQuizForm({
+                                ...quizForm,
+                                questionType: type.value,
+                                contextSentence:
+                                  supportsSeparateQuestionContext(type.value)
+                                    ? quizForm.contextSentence
+                                    : '',
+                                targetWord: usesExplicitQuestionTargetWord(
+                                  type.value,
+                                )
+                                  ? quizForm.targetWord
+                                  : '',
+                                sortingOrder:
+                                  type.value === 'SORTING'
+                                    ? quizForm.sortingOrder
+                                    : [],
+                              })
+                            }}
+                            className={`!rounded-none border-b px-1 py-2.5 text-left text-sm font-bold outline-none transition-colors focus-visible:border-slate-950 focus-visible:text-slate-950 ${
+                              quizForm.questionType === type.value
+                                ? 'border-slate-950 text-slate-950'
+                                : 'border-slate-200 text-slate-500 hover:border-slate-500 hover:text-slate-800'
+                            }`}
+                          >
+                            <span className="mr-1.5 text-[10px] text-slate-400">
+                              問題 {type.number}
+                            </span>
+                            {type.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
-              {!quizHasQuestionContent && (
-                <div className='mt-3 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800'>
-                  请先补充题目内容，再保存题目。可在“快速粘贴”“题目呈现”或“语境句”任一处输入。
-                </div>
-              )}
-            </section>
 
-            <section className='border border-gray-200 bg-gray-50/40 p-4 md:p-5'>
-              <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-                <label className='block text-sm font-bold text-gray-700'>
-                  选项设置（{quizForm.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
-                </label>
-                <button
-                  type='button'
-                  onClick={() =>
-                    setQuizForm(previous => ({
-                      ...previous,
-                      options: [
-                        ...previous.options,
-                        { text: '', isCorrect: false },
-                      ],
-                    }))
-                  }
-                  className='border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100'>
-                  + 添加选项
-                </button>
-              </div>
-              <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-                {quizForm.options.map((opt, idx) => (
-                  <div
-                    key={`option-editor-${opt.text || 'empty'}-${idx}`}
-                    className='flex min-w-0 items-center gap-3 border border-gray-200 bg-white px-3 py-2.5'>
+                  <div>
+                    <label className="mb-2 block text-sm font-bold text-gray-700">
+                      题目呈现
+                    </label>
                     <input
-                      type='radio'
-                      name='correctOption'
-                      checked={opt.isCorrect}
-                      onChange={() => setCorrectOption(idx)}
-                      className='w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300'
+                      type="text"
+                      value={quizForm.prompt}
+                      onChange={(e) =>
+                        setQuizForm({ ...quizForm, prompt: e.target.value })
+                      }
+                      className="w-full border border-slate-300 bg-white px-4 py-3 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                      placeholder="例如：チームの(　　　)を強めよう。（可留空）"
                     />
-                    <input
-                      type='text'
-                      value={opt.text}
-                      onChange={e => {
-                        const newOptions = [...quizForm.options]
-                        newOptions[idx].text = e.target.value
-                        setQuizForm({ ...quizForm, options: newOptions })
-                      }}
-                      className='min-w-0 flex-1 border border-gray-200 px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500'
-                      placeholder={`选项 ${idx + 1}`}
-                    />
+                  </div>
+                </section>
+
+                {quizSupportsSeparateContext ||
+                quizUsesTargetWord ||
+                quizForm.questionType === 'SORTING' ? (
+                  <section className="border-b border-slate-200 py-6">
+                    {quizForm.questionType === 'SORTING' && (
+                      <div className="mb-4 border border-orange-200 bg-orange-50 p-4">
+                        <label className="mb-2 block text-sm font-bold text-orange-800">
+                          排序设置：按正确语序依次点击全部选项
+                        </label>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {quizForm.options.map((opt, i) => {
+                            const isClicked = sortSequence.includes(i)
+                            const orderNum = sortSequence.indexOf(i) + 1
+                            return (
+                              <button
+                                key={`sort-option-${i}`}
+                                type="button"
+                                disabled={isClicked || !opt.text}
+                                onClick={() => handleSortClick(i)}
+                                className={`relative px-4 py-2 font-bold transition-colors ${isClicked ? 'bg-orange-200 text-orange-500 opacity-50' : 'bg-white text-orange-600 border border-orange-200 hover:bg-orange-100'}`}
+                              >
+                                {opt.text || `选项 ${i + 1}`}
+                                {isClicked && (
+                                  <span className="absolute -top-2 -right-2 w-5 h-5 bg-orange-500 text-white text-xs rounded-full flex items-center justify-center">
+                                    {orderNum}
+                                  </span>
+                                )}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        {sortSequence.length === quizForm.options.length ? (
+                          <div className="text-sm text-blue-600 font-bold flex justify-between items-center">
+                            <span>已保存正确语序和星号答案。</span>
+                            <button
+                              type="button"
+                              onClick={handleSortReset}
+                              className="text-orange-500 underline"
+                            >
+                              重置顺序
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-orange-500">
+                            还需点击{' '}
+                            {quizForm.options.length - sortSequence.length}{' '}
+                            个选项
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {quizSupportsSeparateContext ? (
+                      <>
+                        <label className="block text-sm font-bold text-slate-900">
+                          题目原句（可选）
+                        </label>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          题干不是完整句子时填写；题干已包含原句则留空。
+                        </p>
+                        <textarea
+                          ref={quizContextTextareaRef}
+                          value={quizForm.contextSentence}
+                          onChange={(e) =>
+                            setQuizForm({
+                              ...quizForm,
+                              contextSentence: e.target.value,
+                            })
+                          }
+                          rows={2}
+                          className="mt-3 w-full !resize-none !rounded-none border-0 border-b border-slate-300 bg-transparent px-0 py-3 outline-none transition-colors focus:border-slate-950 focus:ring-0"
+                          placeholder="填写题目实际出现的完整句子"
+                        />
+                      </>
+                    ) : null}
+                    {quizUsesTargetWord && (
+                      <div className="mt-3">
+                        <label className="mb-2 block text-xs font-bold text-slate-600">
+                          目标词
+                        </label>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          {quizSupportsSeparateContext ? (
+                            <button
+                              type="button"
+                              onClick={handlePickTargetWordFromSelection}
+                              className="h-9 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100"
+                            >
+                              从原句划词设为目标词
+                            </button>
+                          ) : null}
+                          <input
+                            type="text"
+                            value={quizForm.targetWord}
+                            onChange={(e) =>
+                              setQuizForm({
+                                ...quizForm,
+                                targetWord: e.target.value.trim(),
+                              })
+                            }
+                            placeholder={
+                              quizForm.questionType === 'PRONUNCIATION'
+                                ? '填写题干中需要标注的汉字'
+                                : '填写题干中需要替换的词'
+                            }
+                            className="h-9 min-w-0 flex-1 border border-blue-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div className="text-sm leading-relaxed text-gray-700">
+                          {renderTargetWordPreview(
+                            quizSupportsSeparateContext
+                              ? quizForm.contextSentence
+                              : quizForm.prompt,
+                            quizForm.targetWord,
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    {!quizHasQuestionContent && (
+                      <div className="mt-3 border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                        请先填写题干，或补充题目原句。
+                      </div>
+                    )}
+                  </section>
+                ) : null}
+
+                <section className="border-b border-slate-200 py-6">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <label className="block text-sm font-bold text-gray-700">
+                      选项设置（{quizForm.options.length} 个，最少{' '}
+                      {MIN_QUESTION_OPTION_COUNT} 个）
+                    </label>
                     <button
-                      type='button'
-                      disabled={quizForm.options.length <= MIN_QUESTION_OPTION_COUNT}
+                      type="button"
                       onClick={() => {
                         setSortSequence([])
-                        setQuizForm(previous => ({
+                        setQuizForm((previous) => ({
                           ...previous,
-                          options: removeQuestionOptionAt(
-                            previous.options,
-                            idx,
-                          ),
+                          sortingOrder: [],
+                          options: [
+                            ...previous.options,
+                            { text: '', isCorrect: false },
+                          ],
                         }))
                       }}
-                      aria-label={`删除选项 ${idx + 1}`}
-                      className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
-                      删除
+                      className="border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                    >
+                      + 添加选项
                     </button>
                   </div>
-                ))}
-              </div>
-            </section>
+                  <div className="divide-y divide-slate-200 border-y border-slate-200">
+                    {quizForm.options.map((opt, idx) => (
+                      <div
+                        key={`option-editor-${idx}`}
+                        className="flex min-w-0 items-center gap-3 py-3"
+                      >
+                        <input
+                          type="radio"
+                          name="correctOption"
+                          checked={opt.isCorrect}
+                          onChange={() => setCorrectOption(idx)}
+                          className="w-5 h-5 text-blue-600 focus:ring-blue-500 border-gray-300"
+                        />
+                        <input
+                          type="text"
+                          value={opt.text}
+                          onChange={(e) => {
+                            setSortSequence([])
+                            setQuizForm((previous) => ({
+                              ...previous,
+                              sortingOrder: [],
+                              options: previous.options.map(
+                                (option, optionIndex) =>
+                                  optionIndex === idx
+                                    ? { ...option, text: e.target.value }
+                                    : option,
+                              ),
+                            }))
+                          }}
+                          className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 outline-none focus:ring-0"
+                          placeholder={`选项 ${idx + 1}`}
+                        />
+                        <button
+                          type="button"
+                          disabled={
+                            quizForm.options.length <= MIN_QUESTION_OPTION_COUNT
+                          }
+                          onClick={() => {
+                            setSortSequence([])
+                            setQuizForm((previous) => ({
+                              ...previous,
+                              sortingOrder: [],
+                              options: removeQuestionOptionAt(
+                                previous.options,
+                                idx,
+                              ),
+                            }))
+                          }}
+                          aria-label={`删除选项 ${idx + 1}`}
+                          className="shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25"
+                        >
+                          删除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </section>
 
-            <section>
-              <label className='block text-sm font-bold text-gray-700 mb-2'>
-                解析（可选）
-              </label>
-              <textarea
-                value={quizForm.explanation}
-                onChange={e =>
-                  setQuizForm({ ...quizForm, explanation: e.target.value })
-                }
-                rows={2}
-                className='w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50'
-                placeholder='可补充解题思路或易错点。'
-              />
-            </section>
+                <section className="py-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    解析（可选）
+                  </label>
+                  <textarea
+                    value={quizForm.explanation}
+                    onChange={(e) =>
+                      setQuizForm({ ...quizForm, explanation: e.target.value })
+                    }
+                    rows={2}
+                    className="w-full px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50"
+                    placeholder="可补充解题思路或易错点。"
+                  />
+                </section>
 
-            <button
-              disabled={isSubmitting || !quizHasQuestionContent}
-              type='submit'
-              className='w-full bg-blue-600 py-4 font-black text-white transition-colors hover:bg-blue-700 disabled:opacity-50'>
-              {isSubmitting
-                ? '保存中...'
-                : quizHasQuestionContent
-                  ? '保存当前单题'
-                  : '请先填写题目内容'}
-            </button>
+                <button
+                  disabled={
+                    isSubmitting || !quizHasQuestionContent || !quizSortingReady
+                  }
+                  type="submit"
+                  className="w-full bg-slate-900 py-3.5 font-black text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+                >
+                  {isSubmitting
+                    ? '保存中...'
+                    : !quizSortingReady
+                      ? '请先设置正确语序'
+                      : quizHasQuestionContent
+                        ? '保存当前单题'
+                        : '请先填写题目内容'}
+                </button>
               </>
             )}
           </form>

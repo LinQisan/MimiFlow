@@ -53,10 +53,11 @@ const coreEntrances: HomeEntrance[] = [
 
 function SectionTitle({ title }: { title: string }) {
   return (
-    <div className='mb-4'>
-      <h2 className='text-xl font-semibold tracking-tight text-slate-900 md:text-2xl'>
+    <div className='mb-4 flex items-center gap-3'>
+      <h2 className='shrink-0 text-xl font-semibold tracking-tight text-slate-900 md:text-2xl'>
         {title}
       </h2>
+      <span className='h-px flex-1 bg-slate-900/10' />
     </div>
   )
 }
@@ -212,57 +213,57 @@ export default async function HomePage() {
   return (
     <main className='min-h-screen text-slate-900'>
       <div className='mx-auto max-w-7xl px-4 py-8 md:px-8 md:py-10'>
-        <section
+        <dl
           aria-label='学习概览'
-          className='mb-10 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:mb-14 md:grid-cols-4'>
-          <div className='bg-white p-4 md:p-5'>
-            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+          className='mb-12 grid grid-cols-2 border-b border-slate-900/10 py-4 md:mb-16 md:grid-cols-4'>
+          <div className='border-r border-slate-900/10 pr-4'>
+            <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>
               本周学习
-            </p>
-            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+            </dt>
+            <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>
               {weekHours}h
-            </p>
+            </dd>
           </div>
-          <div className='bg-white p-4 md:p-5'>
-            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+          <div className='pl-4 md:border-r md:border-slate-900/10 md:pr-4'>
+            <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>
               生词总量
-            </p>
-            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+            </dt>
+            <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>
               {vocabCount}
-            </p>
+            </dd>
           </div>
-          <div className='bg-white p-4 md:p-5'>
-            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+          <div className='mt-4 border-r border-slate-900/10 pr-4 md:mt-0 md:pl-4'>
+            <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>
               套卷数量
-            </p>
-            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+            </dt>
+            <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>
               {paperCount}
-            </p>
+            </dd>
           </div>
-          <div className='bg-white p-4 md:p-5'>
-            <p className='text-[11px] font-semibold tracking-[0.24em] text-slate-500 uppercase'>
+          <div className='mt-4 pl-4 md:mt-0'>
+            <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>
               错题待复习
-            </p>
-            <p className='mt-1 text-2xl font-semibold tracking-tight text-slate-900'>
+            </dt>
+            <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>
               {wrongCount}
-            </p>
+            </dd>
           </div>
-        </section>
+        </dl>
 
         <section className='mb-12 md:mb-16'>
           <SectionTitle title='今日继续' />
           {studyRecords.length === 0 ? (
-            <div className='rounded-2xl border border-slate-200 bg-white px-5 py-6'>
+            <div className='border-b border-slate-900/10 py-5'>
               <p className='text-sm text-slate-500'>
                 今日任务已完成，可从下方学习中心开始新的内容。
               </p>
             </div>
           ) : (
-            <div className='divide-y divide-slate-200 overflow-hidden rounded-2xl border border-slate-200 bg-white'>
+            <div>
               {studyRecords.map(card => (
                 <div
                   key={card.id}
-                  className='flex flex-col gap-4 px-4 py-4 transition-colors hover:bg-slate-50/70 md:flex-row md:items-center md:justify-between md:px-5'>
+                  className='flex flex-col gap-4 border-b border-slate-900/10 py-4 transition-colors hover:bg-white/50 md:flex-row md:items-center md:justify-between'>
                   <div className='min-w-0 space-y-1'>
                     <h3 className='truncate text-base font-semibold tracking-tight text-slate-900'>
                       {card.title}
@@ -300,12 +301,12 @@ export default async function HomePage() {
 
         <section className='mb-10'>
           <SectionTitle title='资料与工具' />
-          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-x-8 lg:grid-cols-2'>
             {coreEntrances.map(card => (
               <Link
                 key={card.title}
                 href={card.href}
-                className='group rounded-2xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 hover:bg-slate-50/70'>
+                className='group border-b border-slate-900/10 py-4 transition-colors hover:bg-white/50'>
                 <div className='flex items-start justify-between gap-4'>
                   <div>
                     <h3 className='text-base font-semibold tracking-tight text-slate-900'>

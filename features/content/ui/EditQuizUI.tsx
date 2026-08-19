@@ -26,6 +26,10 @@ import { useQuestionEditorMutations } from '@/features/questions/hooks/useQuesti
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 import { useQuizMetadataState } from '@/features/questions/hooks/useQuestionEditorPageState'
 import QuestionTypeBadge from '@/features/questions/components/QuestionTypeBadge'
+import {
+  supportsSeparateQuestionContext,
+  usesExplicitQuestionTargetWord,
+} from '@/modules/practice/domain/question-text'
 
 type EditableOption = {
   id: string
@@ -38,6 +42,7 @@ type EditableQuestion = {
   questionType: QuestionType
   contextSentence: string
   targetWord?: string | null
+  sortingOrder?: number[]
   prompt?: string | null
   explanation?: string | null
   options: EditableOption[]
@@ -204,6 +209,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
           questionType: q.questionType,
           contextSentence: q.contextSentence || '',
           targetWord: q.targetWord || '',
+          sortingOrder: q.sortingOrder || [],
           prompt: q.prompt || '',
           explanation: q.explanation || '',
           options: (q.options || []).map(opt => ({
@@ -331,6 +337,11 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                     {getQuestionTypeLabel('GRAMMAR')}
                   </button>
                   <button
+                    onClick={() => handleAddNewQuestion('GRAMMAR_SELECTION')}
+                    className='w-full text-left px-3 py-2.5 hover:bg-blue-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
+                    {getQuestionTypeLabel('GRAMMAR_SELECTION')}
+                  </button>
+                  <button
                     onClick={() => handleAddNewQuestion('SORTING')}
                     className='w-full text-left px-3 py-2.5 hover:bg-orange-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
                     {getQuestionTypeLabel('SORTING')}
@@ -383,7 +394,8 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
 
                         <ActionInterceptor className='space-y-5'>
                           {/* 语境句 - 听力题不显示 */}
-                          {q.questionType !== 'LISTENING' && (
+                          {q.questionType !== 'LISTENING' &&
+                            supportsSeparateQuestionContext(q.questionType) && (
                           <div>
                             <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
                               语境句（可选）
@@ -404,9 +416,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                           )}
 
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
-                            {(q.questionType === 'PRONUNCIATION' ||
-                              q.questionType === 'SYNONYM_REPLACEMENT' ||
-                              q.questionType === 'WORD_DISTINCTION') && (
+                            {usesExplicitQuestionTargetWord(q.questionType) && (
                               <div>
                                 <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
                                   目标词
@@ -429,9 +439,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
 
                             <div
                               className={
-                                q.questionType !== 'PRONUNCIATION' &&
-                                q.questionType !== 'SYNONYM_REPLACEMENT' &&
-                                q.questionType !== 'WORD_DISTINCTION'
+                                !usesExplicitQuestionTargetWord(q.questionType)
                                   ? 'md:col-span-2'
                                   : ''
                               }>
@@ -586,7 +594,8 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
 
                         <div className='pl-8'>
                           {/* 语境句 - 听力题不显示 */}
-                          {q.questionType !== 'LISTENING' && (
+                          {q.questionType !== 'LISTENING' &&
+                            supportsSeparateQuestionContext(q.questionType) && (
                           <div className='text-base text-gray-800 font-bold leading-relaxed mb-2'>
                             {q.contextSentence || (
                               <span className='text-red-400 italic font-medium text-sm'>
@@ -597,9 +606,12 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                           )}
 
                           {/* 题干提示 */}
-                          {(q.prompt || q.targetWord) && (
+                          {(q.prompt ||
+                            (usesExplicitQuestionTargetWord(q.questionType) &&
+                              q.targetWord)) && (
                             <div className='text-xs text-gray-500 font-medium mb-5 flex items-center gap-2'>
-                              {q.targetWord && (
+                              {usesExplicitQuestionTargetWord(q.questionType) &&
+                                q.targetWord && (
                                 <span className='bg-emerald-50 text-emerald-700 border border-emerald-100 px-1.5 rounded font-bold'>
                                   划线词: {q.targetWord}
                                 </span>

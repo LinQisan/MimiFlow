@@ -1014,21 +1014,12 @@ export default function MediaSubtitleEditor({
           sourceId={selection.sourceId}
           initialMeta={localVocabularyMetaMap[selection.text]}
           onSaved={({ word, meta }) => {
-            setLocalVocabularyMetaMap(prev => {
-              const next = { ...prev, [word]: meta }
-              if (selection.text && selection.text !== word) {
-                next[selection.text] = meta
-              }
-              return next
-            })
+            setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))
             if (meta.pronunciations[0]) {
-              setLocalPronunciationMap(prev => {
-                const next = { ...prev, [word]: meta.pronunciations[0] }
-                if (selection.text && selection.text !== word) {
-                  next[selection.text] = meta.pronunciations[0]
-                }
-                return next
-              })
+              setLocalPronunciationMap(prev => ({
+                ...prev,
+                [word]: meta.pronunciations[0],
+              }))
             }
           }}
           onClose={closeSelection}

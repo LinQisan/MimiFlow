@@ -17,9 +17,11 @@ import type {
   UploadCenterTab,
   UploadCollectionLite,
 } from '../types'
+import type { PaperReadingQuestionType } from '@/features/questions/domain/paper-editor'
 
 type UploadCenterState = {
   quizEntryMode: 'bulk' | 'single'
+  articleQuestionType: PaperReadingQuestionType
   localCollections: UploadCollectionLite[]
   isSubmitting: boolean
   articleForm: ArticleFormState
@@ -42,7 +44,10 @@ type UploadCenterAction = {
   }
 }[keyof UploadCenterState]
 
-function uploadCenterReducer(state: UploadCenterState, action: UploadCenterAction) {
+function uploadCenterReducer(
+  state: UploadCenterState,
+  action: UploadCenterAction,
+) {
   const current = state[action.key]
   const next =
     typeof action.value === 'function'
@@ -54,17 +59,35 @@ function uploadCenterReducer(state: UploadCenterState, action: UploadCenterActio
 export function useUploadCenterState(
   dbCollections: UploadCollectionLite[],
   initialTab: UploadCenterTab = 'audio',
+  initialQuestionType?: string,
+  defaultArticleSourceKind: 'ARTICLE' | 'NEWS' = 'ARTICLE',
 ) {
   const activeTab = initialTab
   const [state, dispatch] = useReducer(uploadCenterReducer, {
     quizEntryMode: 'bulk',
+    articleQuestionType:
+      initialQuestionType === 'TOEIC_TEXT_COMPLETION' ||
+      initialQuestionType === 'TOEIC_READING_COMPREHENSION'
+        ? initialQuestionType
+        : 'READING_SHORT',
     localCollections: dbCollections,
     isSubmitting: false,
     articleForm: {
-      paperId: dbCollections[0]?.id || '',
+      paperId:
+        defaultArticleSourceKind === 'NEWS' ? '' : dbCollections[0]?.id || '',
       title: '',
       description: '',
       content: '',
+      sourceKind: defaultArticleSourceKind,
+      publishedDate: '',
+      edition: '',
+      newsSeries: '',
+      pageNumber: '',
+      newsSource: '',
+      newsType: '',
+      newsSection: '',
+      newsColumn: '',
+      newsTopic: '',
     },
     articleQuestions: [],
     articleQuickInput: '',
@@ -72,9 +95,10 @@ export function useUploadCenterState(
     articleParsedDrafts: [],
     quizForm: {
       collectionId: dbCollections[0]?.id || '',
-      questionType: 'PRONUNCIATION',
+      questionType: initialQuestionType || 'PRONUNCIATION',
       contextSentence: '',
       targetWord: '',
+      sortingOrder: [],
       prompt: '',
       explanation: '',
       options: [
@@ -102,6 +126,7 @@ export function useUploadCenterState(
   const setters = useMemo(
     () => ({
       setQuizEntryMode: setter('quizEntryMode'),
+      setArticleQuestionType: setter('articleQuestionType'),
       setLocalCollections: setter('localCollections'),
       setIsSubmitting: setter('isSubmitting'),
       setArticleForm: setter('articleForm'),
@@ -147,15 +172,13 @@ export function useCollectionCreatorState(defaultLevelId: string) {
   )
   const setIsCreating = (value: SetStateAction<boolean>) =>
     dispatch({
-      isCreating:
-        typeof value === 'function' ? value(state.isCreating) : value,
+      isCreating: typeof value === 'function' ? value(state.isCreating) : value,
     })
   const setNewCatData = (
     value: SetStateAction<{ collectionType: string; name: string }>,
   ) =>
     dispatch({
-      newCatData:
-        typeof value === 'function' ? value(state.newCatData) : value,
+      newCatData: typeof value === 'function' ? value(state.newCatData) : value,
     })
   const setIsSavingCat = (value: SetStateAction<boolean>) =>
     dispatch({
@@ -164,7 +187,7 @@ export function useCollectionCreatorState(defaultLevelId: string) {
     })
 
   const resetNameOnly = () =>
-    setNewCatData(previous => ({
+    setNewCatData((previous) => ({
       ...previous,
       name: '',
     }))

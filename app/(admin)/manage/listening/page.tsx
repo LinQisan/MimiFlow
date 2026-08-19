@@ -5,7 +5,16 @@ import {
 import ListeningListClient from '@/features/listening/ui/ListeningListClient'
 import { listCollectionsByTypes } from '@/features/listening/server/repository'
 
-export default async function ManageListeningPage() {
+export default async function ManageListeningPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>
+}) {
+  const resolvedSearchParams = await searchParams
+  const pageValue = Array.isArray(resolvedSearchParams.page)
+    ? resolvedSearchParams.page[0]
+    : resolvedSearchParams.page
+  const initialManagePage = Math.max(1, Number.parseInt(pageValue || '1', 10) || 1)
   const [listeningRows, collections] = await Promise.all([
     listListeningLessonsForShadowing(),
     listCollectionsByTypes(['PAPER']),
@@ -17,6 +26,7 @@ export default async function ManageListeningPage() {
       collections={collections}
       mode='manage'
       workspace='listening'
+      initialManagePage={initialManagePage}
     />
   )
 }

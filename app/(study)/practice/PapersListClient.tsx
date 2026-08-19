@@ -3,23 +3,36 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 
-import type { ExamHubLevelSummary } from '@/lib/repositories/exam'
+import type {
+  ExamHubLevelSummary,
+  PracticePerformanceGroup,
+} from '@/lib/repositories/exam'
 import CustomSelect from '@/components/ui/CustomSelect'
 import PaperLibraryItem from '@/features/practice/ui/PaperLibraryItem'
+import PerformanceStatsDialog from '@/features/practice/ui/PerformanceStatsDialog'
+import PracticeVocabularyAnalyticsDialog from '@/features/practice/ui/PracticeVocabularyAnalyticsDialog'
+import type { PracticeVocabularyAnalytics } from '@/features/practice/domain/vocabulary-analytics'
 import { usePaperLibraryState } from '@/features/practice/hooks/usePaperLibraryState'
 import {
   filterPaperLevels,
   getPaperFilterOptions,
   getPaperLibraryStats,
-  groupPapersByLanguageAndLevel,
+  paperLanguageUsesLevels,
 } from '@/features/practice/domain/paper-library'
 
 type Props = {
   levels: ExamHubLevelSummary[]
   totalPaperCount: number
+  performanceGroups: PracticePerformanceGroup[]
+  vocabularyAnalytics: PracticeVocabularyAnalytics
 }
 
-export default function PapersListClient({ levels, totalPaperCount }: Props) {
+export default function PapersListClient({
+  levels,
+  totalPaperCount,
+  performanceGroups,
+  vocabularyAnalytics,
+}: Props) {
   const {
     query,
     setQuery,
@@ -27,21 +40,26 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
     setLanguage,
     level,
     setLevel,
+    sort,
+    setSort,
     reset,
   } = usePaperLibraryState()
   const allPapers = useMemo(() => levels.flatMap(item => item.papers), [levels])
   const stats = useMemo(() => getPaperLibraryStats(allPapers), [allPapers])
   const filterOptions = useMemo(() => getPaperFilterOptions(allPapers), [allPapers])
   const filteredLevels = useMemo(
-    () => filterPaperLevels(levels, { query, language, level }),
-    [language, level, levels, query],
+    () => filterPaperLevels(levels, { query, language, level, sort }),
+    [language, level, levels, query, sort],
   )
   const filteredPaperCount = filteredLevels.reduce(
     (sum, item) => sum + item.papers.length,
     0,
   )
   const hasActiveFilter =
-    Boolean(query.trim()) || language !== 'all' || level !== 'all'
+    Boolean(query.trim()) ||
+    language !== 'all' ||
+    level !== 'all' ||
+    sort !== 'newest'
 
   return (
     <div className='min-h-screen bg-[#f6f5f1] pb-16 font-sans text-slate-900'>
@@ -59,20 +77,27 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
             </div>
             <div className='mt-4 border-r border-slate-900/10 pr-4 md:mt-0 md:pl-4'>
               <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>累计练习</dt>
-              <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>{stats.attempts}</dd>
+              <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>{stats.completedPractices}</dd>
             </div>
             <div className='mt-4 pl-4 md:mt-0'>
               <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>平均正确率</dt>
-              <dd className='mt-1 text-xl font-semibold tabular-nums text-slate-950'>
-                {stats.averageAccuracy !== null ? `${stats.averageAccuracy}%` : '—'}
+              <dd>
+                <PerformanceStatsDialog
+                  groups={performanceGroups}
+                  averageAccuracy={stats.averageAccuracy}
+                  papers={allPapers}
+                />
               </dd>
             </div>
           </dl>
-          <Link
-            href='/practice/custom'
-            className='inline-flex h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 lg:w-auto'>
-            自定义抽题
-          </Link>
+          <div className='flex flex-col gap-2 sm:flex-row'>
+            <PracticeVocabularyAnalyticsDialog analytics={vocabularyAnalytics} />
+            <Link
+              href='/practice/custom'
+              className='inline-flex h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 lg:w-auto'>
+              自定义抽题
+            </Link>
+          </div>
           </div>
         </div>
       </header>
@@ -100,16 +125,28 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
               </label>
               <label className='block'>
                 <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>语言</span>
-                <CustomSelect value={language} onChange={event => setLanguage(event.currentTarget.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
+                <CustomSelect value={language} onChange={event => {
+                  const nextLanguage = event.currentTarget.value
+                  setLanguage(nextLanguage)
+                  if (!paperLanguageUsesLevels(nextLanguage)) setLevel('all')
+                }} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
                   <option value='all'>全部语言</option>
                   {filterOptions.languages.map(item => <option key={item} value={item}>{item}</option>)}
                 </CustomSelect>
               </label>
-              <label className='block'>
+              {paperLanguageUsesLevels(language) ? <label className='block'>
                 <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>等级</span>
                 <CustomSelect value={level} onChange={event => setLevel(event.currentTarget.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
                   <option value='all'>全部等级</option>
                   {filterOptions.levels.map(item => <option key={item} value={item}>{item}</option>)}
+                </CustomSelect>
+              </label> : null}
+              <label className='block'>
+                <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>排序方式</span>
+                <CustomSelect value={sort} onChange={event => setSort(event.currentTarget.value as typeof sort)} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
+                  <option value='newest'>最新试卷优先</option>
+                  <option value='oldest'>最早试卷优先</option>
+                  <option value='name'>按名称排序</option>
                 </CustomSelect>
               </label>
             </div>
@@ -152,18 +189,9 @@ export default function PapersListClient({ levels, totalPaperCount }: Props) {
                     </div>
                   ) : null}
 
-                  <div className='space-y-8'>
-                    {groupPapersByLanguageAndLevel(levelGroup.papers).map(group => (
-                      <section key={`${levelGroup.id}-${group.language}-${group.level}`}>
-                        <div className='mb-3 flex items-center gap-3'>
-                          <h2 className='text-sm font-semibold text-slate-800'>{group.language} · {group.level}</h2>
-                          <span className='h-px flex-1 bg-slate-900/10' />
-                          <span className='text-xs tabular-nums text-slate-400'>{group.papers.length} 套</span>
-                        </div>
-                        <div className='space-y-3'>
-                          {group.papers.map(paper => <PaperLibraryItem key={paper.id} paper={paper} />)}
-                        </div>
-                      </section>
+                  <div className='space-y-3'>
+                    {levelGroup.papers.map(paper => (
+                      <PaperLibraryItem key={paper.id} paper={paper} />
                     ))}
                   </div>
                 </section>

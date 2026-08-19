@@ -28,7 +28,7 @@ export const deriveAudioPathFromDir = (audioPath: string, assName: string) => {
   return `${trimmed}${baseName}.mp3`
 }
 
-export function deriveJlptPaperAudioFolder(title: string, level: string | null) {
+function deriveJlptPaperAudioFolder(title: string, level: string | null) {
   const normalizedTitle = title.normalize('NFKC').trim()
   const normalizedLevel = (
     level ||
@@ -50,7 +50,7 @@ export function deriveJlptPaperAudioFolder(title: string, level: string | null) 
   return `listening/jlpt/${normalizedLevel.toLowerCase()}/${match[1]}-${String(month).padStart(2, '0')}`
 }
 
-export function toAudioStorageSegment(value: string) {
+function toAudioStorageSegment(value: string) {
   return value
     .normalize('NFKC')
     .trim()

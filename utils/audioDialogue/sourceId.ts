@@ -18,3 +18,25 @@ export function parseAudioDialogueSourceId(sourceId: string) {
   if (!materialId || !stableId) return null
   return { materialId, stableId }
 }
+
+export function findAudioDialogueTiming(
+  dialogues: Array<{
+    stableId?: string
+    sequenceId?: number
+    id?: number
+    start: number
+    end: number
+  }>,
+  sourceKey: string,
+) {
+  const normalizedKey = (sourceKey || '').trim()
+  if (!normalizedKey) return null
+  const dialogue = dialogues.find(item =>
+    [item.stableId, item.sequenceId, item.id]
+      .map(value => String(value ?? '').trim())
+      .filter(Boolean)
+      .includes(normalizedKey),
+  )
+  if (!dialogue || dialogue.end <= dialogue.start) return null
+  return { start: dialogue.start, end: dialogue.end }
+}

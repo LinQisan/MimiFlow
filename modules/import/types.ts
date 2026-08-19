@@ -1,4 +1,5 @@
 import type { CollectionType, MaterialType } from '@prisma/client'
+import type { NewsColumn, NewsEdition, NewsSource, NewsType } from '@/features/reading/domain/news-metadata'
 
 export type UploadLevelLite = {
   id: string
@@ -13,6 +14,8 @@ export type UploadCollectionLite = {
   collectionType?: CollectionType
   acceptedMaterialTypes?: MaterialType[]
   materialType?: MaterialType
+  language?: string
+  examLevel?: string
   level: { title: string }
   lessons: {
     title: string
@@ -47,26 +50,36 @@ export type ParsedQuizDraft = {
     | 'PRONUNCIATION'
     | 'SORTING'
     | 'GRAMMAR'
+    | 'GRAMMAR_SELECTION'
     | 'WORD_DISTINCTION'
     | 'SYNONYM_REPLACEMENT'
+    | 'TOEIC_INCOMPLETE_SENTENCES'
   prompt: string
   contextSentence: string
   targetWord?: string
+  sortingOrder?: number[]
   explanation: string
   options: QuestionOptionDraft[]
+  sourceSerial?: number
 }
 
-export type UploadCenterTab =
-  | 'audio'
-  | 'article'
-  | 'quiz'
-  | 'media'
+export type UploadCenterTab = 'audio' | 'article' | 'quiz' | 'media'
 
 export type ArticleFormState = {
   paperId: string
   title: string
   description: string
   content: string
+  sourceKind: 'ARTICLE' | 'NEWS'
+  publishedDate: string
+  edition: NewsEdition
+  newsSeries: '' | '天声人語' | '社説' | '春秋'
+  pageNumber: string
+  newsSource: NewsSource
+  newsType: NewsType
+  newsSection: string
+  newsColumn: NewsColumn
+  newsTopic: string
 }
 
 export type QuizFormState = {
@@ -74,6 +87,7 @@ export type QuizFormState = {
   questionType: string
   contextSentence: string
   targetWord: string
+  sortingOrder: number[]
   prompt: string
   explanation: string
   options: QuestionOptionDraft[]

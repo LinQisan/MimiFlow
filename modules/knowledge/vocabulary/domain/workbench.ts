@@ -1,11 +1,11 @@
 import { Rating } from 'ts-fsrs'
 
 import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
+import { formatVocabularySentenceSource } from '@/utils/vocabulary/sourceDisplay'
 import type {
   FolderItem,
   InflectionFamily,
   InflectionVariant,
-  SentenceItem,
   VocabItem,
 } from '../types'
 
@@ -51,73 +51,7 @@ export const normalizeLanguageCode = (value: string) => {
 export const supportsPronunciationByLanguage = (languageCode?: string) =>
   languageCode === 'ja' || languageCode === 'en'
 
-const stripLeadingIcons = (text: string) =>
-  text.replace(/^[^\p{L}\p{N}\u4e00-\u9fa5ぁ-んァ-ヶ]+/u, '').trim()
-
-const getSentenceSourceType = (sentence: SentenceItem) => {
-  const sourceText = stripLeadingIcons(sentence.source || '')
-  if (sourceText.includes('题目') || sentence.sourceUrl.startsWith('/practice/'))
-    return '题目'
-  if (sentence.sourceUrl.startsWith('/reading/articles/')) return '文章'
-  if (sentence.sourceUrl.startsWith('/listening/')) return '听力'
-  if (sourceText.includes('阅读')) return '文章'
-  if (sourceText.includes('听力')) return '听力'
-  if (sourceText.includes('题')) return '题目'
-  return ''
-}
-
-export const getSentenceSourceDisplay = (sentence: SentenceItem) => {
-  const sourceType = getSentenceSourceType(sentence)
-  const sourceText = stripLeadingIcons(sentence.source || '')
-  const [, ...rest] = sourceText.split(/[：:]/)
-  const detail = rest.join('：').trim()
-  const normalizedDetail = !detail || detail === '未知来源' ? '' : detail
-  if (!sourceType && !normalizedDetail) return ''
-  if (!sourceType) return normalizedDetail
-  if (!normalizedDetail || normalizedDetail === sourceType) return sourceType
-  return `${sourceType} · ${normalizedDetail}`
-}
-
-export const detectInflectedSurface = (word: string, sentenceText: string) => {
-  const cleanWord = word.trim()
-  if (!cleanWord || !sentenceText) return ''
-  if (!/[\u3040-\u30ff\u4e00-\u9fff]/.test(cleanWord)) return ''
-  const escapedWord = escapeRegExp(cleanWord)
-  const suffixes = [
-    'しませんでした',
-    'しなかった',
-    'くなかった',
-    'ませんでした',
-    'ました',
-    'ません',
-    'なかった',
-    'ている',
-    'ていた',
-    'られる',
-    'かった',
-    'します',
-    'しない',
-    'して',
-    'した',
-    'ない',
-    'たい',
-    'ます',
-    'です',
-    'だ',
-    'た',
-    'て',
-    'な',
-    'に',
-    'く',
-  ]
-  for (const suffix of suffixes) {
-    const matched =
-      sentenceText.match(new RegExp(`${escapedWord}${escapeRegExp(suffix)}`))?.[0] ||
-      ''
-    if (matched && matched !== cleanWord) return matched
-  }
-  return ''
-}
+export const getSentenceSourceDisplay = formatVocabularySentenceSource
 
 const dateToMs = (value?: Date | string | null) => {
   if (!value) return Number.NaN

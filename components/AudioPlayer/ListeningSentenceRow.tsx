@@ -25,8 +25,6 @@ export default function ListeningSentenceRow({
   savingDialogueId,
   dialogueSaveState,
   renderedText,
-  activeVocabulary,
-  canAddToReview,
   onClick,
   onToggleLoop,
   onAddToReview,
@@ -40,8 +38,6 @@ export default function ListeningSentenceRow({
   savingDialogueId: number | null
   dialogueSaveState: TooltipSaveState
   renderedText: ReactNode
-  activeVocabulary?: ReactNode
-  canAddToReview: boolean
   onClick: () => void
   onToggleLoop: (event: MouseEvent) => void
   onAddToReview: (event: MouseEvent) => void
@@ -78,7 +74,8 @@ export default function ListeningSentenceRow({
           } ${blindState === 'clear' ? 'border-slate-400' : ''}`}>
           <div className='flex min-w-0 gap-3'>
             <span
-              className='mt-0.5 w-5 shrink-0 text-right text-[11px] font-semibold tabular-nums text-slate-400'
+              data-context-ignore='true'
+              className='pointer-events-none mt-0.5 w-5 shrink-0 select-none text-right text-[11px] font-semibold tabular-nums text-slate-400'
               aria-hidden='true'>
               {sequence}
             </span>
@@ -94,11 +91,9 @@ export default function ListeningSentenceRow({
           <button
             type='button'
             onClick={onAddToReview}
-            aria-label={
-              canAddToReview ? `收藏第 ${sequence} 句` : '先完成释义匹配'
-            }
-            title={canAddToReview ? '加入跟读训练库' : '先完成释义匹配'}
-            disabled={savingDialogueId === item.id || !canAddToReview}
+            aria-label={`收藏第 ${sequence} 句`}
+            title='加入跟读训练库'
+            disabled={savingDialogueId === item.id}
             className={`flex h-9 w-9 items-center justify-center rounded-lg border text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${saveClass}`}>
             <SaveStatusIcon state={currentState} className='h-4 w-4' />
           </button>
@@ -130,11 +125,6 @@ export default function ListeningSentenceRow({
         </div>
       </div>
 
-      {activeVocabulary ? (
-        <div className='mt-2 [overflow-anchor:none] lg:hidden'>
-          {activeVocabulary}
-        </div>
-      ) : null}
     </div>
   )
 }

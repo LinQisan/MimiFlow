@@ -4,9 +4,7 @@ import { redirect } from 'next/navigation'
 
 import { PracticePlayer } from '@/components/exam/PracticePlayer'
 import {
-  getRandomExamQuestionsByTypeCounts,
-  randomPracticeTypeOptions,
-  type RandomPracticeCountMap,
+  getRandomExamQuestionsBySelections,
   type RandomPracticeScope,
 } from '@/lib/repositories/exam'
 
@@ -19,8 +17,8 @@ function toFirstValue(
   return value
 }
 
-function buildTitleFromCounts(
-  countMap: RandomPracticeCountMap,
+function buildPracticeTitle(
+  requestedCount: number,
   sourceCollections: string[] = [],
   filters?: {
     language?: string
@@ -28,16 +26,7 @@ function buildTitleFromCounts(
     scope?: RandomPracticeScope
   },
 ): string {
-  const parts = randomPracticeTypeOptions
-    .map(option => {
-      const count = countMap[option.key] || 0
-      if (count <= 0) return null
-      return `${option.label} ${count} 题`
-    })
-    .filter((item): item is string => Boolean(item))
-
-  const core =
-    parts.length === 0 ? '随机练习' : `随机练习 · ${parts.join(' + ')}`
+  const core = `随机练习 · ${requestedCount} 题`
 
   const filterParts: string[] = []
   if (filters?.scope === 'unattempted') filterParts.push('未做题')
@@ -63,22 +52,16 @@ export default async function CustomPaperDoingPage({
 }) {
   const resolved = await searchParams
 
-  const countMap: RandomPracticeCountMap = {}
-  for (const option of randomPracticeTypeOptions) {
-    const key = `count_${option.key}`
-    const rawValue = toFirstValue(resolved[key])
-    const parsed = Math.max(0, Math.floor(Number(rawValue || 0)))
-    if (parsed > 0) {
-      countMap[option.key] = parsed
-    }
-  }
-
-  const totalRequested = Object.values(countMap).reduce(
-    (sum, value) => sum + (value || 0),
+  const selectionKeys = (toFirstValue(resolved.sections) || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)
+  const totalRequested = Math.max(
     0,
+    Math.min(100, Math.floor(Number(toFirstValue(resolved.count) || 0))),
   )
 
-  if (totalRequested <= 0) {
+  if (totalRequested <= 0 || selectionKeys.length === 0) {
     redirect('/practice/custom')
   }
 
@@ -89,11 +72,11 @@ export default async function CustomPaperDoingPage({
     rawScope === 'attempted' || rawScope === 'all'
       ? rawScope
       : 'unattempted'
-  const examData = await getRandomExamQuestionsByTypeCounts(countMap, {
-    language,
-    level,
-    scope,
-  })
+  const examData = await getRandomExamQuestionsBySelections(
+    selectionKeys,
+    totalRequested,
+    { language, level, scope },
+  )
 
   if (examData.questions.length === 0) {
     return (
@@ -118,7 +101,7 @@ export default async function CustomPaperDoingPage({
   return (
     <PracticePlayer
       questions={examData.questions}
-      paperTitle={buildTitleFromCounts(countMap, examData.sourceCollections, {
+      paperTitle={buildPracticeTitle(totalRequested, examData.sourceCollections, {
         language,
         level,
         scope,

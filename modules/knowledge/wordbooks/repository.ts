@@ -1,17 +1,5 @@
 import prisma from '@/lib/prisma'
 
-export function listWordbookShelf() {
-  return prisma.wordbook.findMany({
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    select: {
-      id: true,
-      title: true,
-      parentId: true,
-      _count: { select: { entries: true } },
-    },
-  })
-}
-
 export function listWordbookOptions() {
   return prisma.wordbook.findMany({
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],

@@ -1,9 +1,52 @@
 'use client'
 
 import type { RefObject } from 'react'
-import type { ParsedQuizDraft } from '../types'
 import CustomSelect from '@/components/ui/CustomSelect'
 import { MIN_QUESTION_OPTION_COUNT } from '@/features/questions/domain/editor'
+import {
+  IMPORT_QUESTION_TYPES,
+  getImportQuestionTypeLabel,
+} from '../domain/question-type-options'
+import type { ParsedQuizDraft } from '../types'
+import {
+  supportsSeparateQuestionContext,
+  usesExplicitQuestionTargetWord,
+} from '@/modules/practice/domain/question-text'
+
+type Props = {
+  bulkQuickInput: string
+  setBulkQuickInput: (value: string) => void
+  handleBulkQuickParse: () => void
+  isSubmitting: boolean
+  bulkParsedQuestions: ParsedQuizDraft[]
+  handleBulkQuizSave: () => Promise<void>
+  bulkEditingIndex: number
+  setBulkEditingIndex: (index: number) => void
+  handleBulkRemoveQuestion: (index: number) => void
+  handleBulkQuestionTypeChange: (
+    index: number,
+    value: ParsedQuizDraft['questionType'],
+  ) => void
+  handleBulkPromptChange: (index: number, value: string) => void
+  bulkContextTextareaRef: RefObject<HTMLTextAreaElement | null>
+  handleBulkContextSentenceChange: (index: number, value: string) => void
+  handleBulkPickTargetWordFromSelection: () => void
+  handleBulkTargetWordChange: (index: number, value: string) => void
+  handleBulkSortingOptionClick: (
+    questionIndex: number,
+    optionIndex: number,
+  ) => void
+  handleBulkSortingReset: (questionIndex: number) => void
+  setBulkCorrectOption: (questionIndex: number, optionIndex: number) => void
+  handleBulkOptionTextChange: (
+    questionIndex: number,
+    optionIndex: number,
+    value: string,
+  ) => void
+  handleBulkAddOption: (questionIndex: number) => void
+  handleBulkRemoveOption: (questionIndex: number, optionIndex: number) => void
+  fixedQuestionTypeLabel?: string
+}
 
 export default function BulkQuizPanel({
   bulkQuickInput,
@@ -21,248 +64,304 @@ export default function BulkQuizPanel({
   handleBulkContextSentenceChange,
   handleBulkPickTargetWordFromSelection,
   handleBulkTargetWordChange,
+  handleBulkSortingOptionClick,
+  handleBulkSortingReset,
   setBulkCorrectOption,
   handleBulkOptionTextChange,
   handleBulkAddOption,
   handleBulkRemoveOption,
-}: {
-  bulkQuickInput: string
-  setBulkQuickInput: (value: string) => void
-  handleBulkQuickParse: () => void
-  isSubmitting: boolean
-  bulkParsedQuestions: ParsedQuizDraft[]
-  handleBulkQuizSave: () => Promise<void>
-  bulkEditingIndex: number
-  setBulkEditingIndex: (index: number) => void
-  handleBulkRemoveQuestion: (index: number) => void
-  handleBulkQuestionTypeChange: (index: number, value: ParsedQuizDraft['questionType']) => void
-  handleBulkPromptChange: (index: number, value: string) => void
-  bulkContextTextareaRef: RefObject<HTMLTextAreaElement | null>
-  handleBulkContextSentenceChange: (index: number, value: string) => void
-  handleBulkPickTargetWordFromSelection: () => void
-  handleBulkTargetWordChange: (index: number, value: string) => void
-  setBulkCorrectOption: (questionIndex: number, optionIndex: number) => void
-  handleBulkOptionTextChange: (questionIndex: number, optionIndex: number, value: string) => void
-  handleBulkAddOption: (questionIndex: number) => void
-  handleBulkRemoveOption: (questionIndex: number, optionIndex: number) => void
-}) {
+  fixedQuestionTypeLabel,
+}: Props) {
+  const currentQuestion = bulkParsedQuestions[bulkEditingIndex]
+  const canPickTargetWord = currentQuestion
+    ? usesExplicitQuestionTargetWord(currentQuestion.questionType)
+    : false
+  const canUseSeparateContext = currentQuestion
+    ? supportsSeparateQuestionContext(currentQuestion.questionType)
+    : false
+  const hasIncompleteSorting = bulkParsedQuestions.some(
+    question =>
+      question.questionType === 'SORTING' &&
+      (question.sortingOrder?.length || 0) !== question.options.length,
+  )
+
   return (
-<section className='border border-blue-100 bg-blue-50/40 p-4 md:p-5'>
-      <label className='mb-2 block text-sm font-black text-blue-900'>
-        批量粘贴多题（智能识别）
-      </label>
-      <p className='mb-3 text-xs leading-relaxed text-blue-700'>
-        一次粘贴多题文本，系统会按“题干 + 至少 2 个选项”自动拆分。支持
-        数字、带圈数字或字母选项标记。
-      </p>
-      <textarea
-        value={bulkQuickInput}
-        onChange={e => setBulkQuickInput(e.target.value)}
-        rows={7}
-        placeholder='在此粘贴多道题目（题与题之间建议空一行）'
-        className='w-full resize-y border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-blue-500'
-      />
-      <div className='mt-3 flex flex-wrap items-center gap-2'>
-        <button
-          type='button'
-          onClick={handleBulkQuickParse}
-          className='bg-white border border-blue-200 px-4 py-2 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100'>
-          识别多题
-        </button>
-        <button
-          type='button'
-          disabled={isSubmitting || bulkParsedQuestions.length === 0}
-          onClick={() => void handleBulkQuizSave()}
-          className='bg-blue-600 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50'>
-          {isSubmitting
-            ? '批量保存中...'
-            : `批量保存（${bulkParsedQuestions.length}）`}
-        </button>
-        {bulkParsedQuestions.length > 0 && (
-          <span className='text-xs font-semibold text-blue-700'>
-            已识别 {bulkParsedQuestions.length}{' '}
-            题（可在下方逐题校对后再保存）
-          </span>
-        )}
+    <section aria-labelledby='bulk-import-heading'>
+      <div className='py-6'>
+        <label
+          id='bulk-import-heading'
+          className='mb-3 block text-sm font-bold text-slate-900'>
+          粘贴题目
+        </label>
+        <textarea
+          value={bulkQuickInput}
+          onChange={event => setBulkQuickInput(event.target.value)}
+          rows={7}
+          placeholder={'粘贴多道题目，可连续排列或用空行分隔\n支持 1、①、A 等选项序号'}
+          className='w-full resize-y border border-slate-300 bg-white px-4 py-3 text-sm leading-6 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+        />
+        <div className='mt-3 flex flex-wrap items-center gap-3'>
+          <button
+            type='button'
+            onClick={handleBulkQuickParse}
+            className='bg-slate-900 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700'>
+            识别题目
+          </button>
+          <button
+            type='button'
+            disabled={
+              isSubmitting ||
+              bulkParsedQuestions.length === 0 ||
+              hasIncompleteSorting
+            }
+            title={
+              hasIncompleteSorting ? '请先为所有问题6设置正确语序' : undefined
+            }
+            onClick={() => void handleBulkQuizSave()}
+            className='border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40'>
+            {isSubmitting ? '保存中…' : `保存 ${bulkParsedQuestions.length} 题`}
+          </button>
+          {bulkParsedQuestions.length > 0 ? (
+            <span className='text-xs font-semibold text-slate-500'>
+              已识别 {bulkParsedQuestions.length} 题
+            </span>
+          ) : null}
+        </div>
       </div>
 
-      {bulkParsedQuestions.length > 0 && (
-        <div className='mt-4 border-t border-blue-200 pt-4'>
-          <div className='mb-3 flex gap-2 overflow-x-auto pb-1'>
-            {bulkParsedQuestions.map((_, qIndex) => (
+      {currentQuestion ? (
+        <div className='border-t border-slate-200 pt-6'>
+          <div className='flex items-center gap-1 overflow-x-auto border-b border-slate-200'>
+            {bulkParsedQuestions.map((question, questionIndex) => (
               <button
-                key={`bulk-tab-${qIndex}`}
+                key={`bulk-question-${questionIndex}`}
                 type='button'
-                onClick={() => setBulkEditingIndex(qIndex)}
-                className={`h-8 shrink-0 border px-3 text-xs font-bold transition-colors ${
-                  bulkEditingIndex === qIndex
-                    ? 'border-blue-300 bg-blue-100 text-blue-800'
-                    : 'border-blue-200 bg-white text-blue-700 hover:bg-blue-50'
+                onClick={() => setBulkEditingIndex(questionIndex)}
+                aria-current={bulkEditingIndex === questionIndex ? 'step' : undefined}
+                title={getImportQuestionTypeLabel(question.questionType)}
+                className={`shrink-0 !rounded-none border-b-2 px-3 py-2.5 text-xs font-bold outline-none transition-colors focus-visible:border-slate-950 focus-visible:text-slate-950 ${
+                  bulkEditingIndex === questionIndex
+                    ? 'border-slate-900 text-slate-950'
+                    : 'border-transparent text-slate-400 hover:text-slate-700'
                 }`}>
-                第 {qIndex + 1} 题
+                {questionIndex + 1}
               </button>
             ))}
           </div>
 
-          {bulkParsedQuestions[bulkEditingIndex] && (
-            <div className='border border-blue-200 bg-white p-3'>
-              <div className='mb-2 flex items-center justify-between gap-2'>
-                <span className='text-sm font-bold text-blue-800'>
-                  当前编辑：第 {bulkEditingIndex + 1} 题
+          <div className='py-6'>
+            <div className='mb-5 flex items-center justify-between gap-3'>
+              <div>
+                <span className='text-sm font-black text-slate-950'>
+                  第 {bulkEditingIndex + 1} 题
                 </span>
-                <button
-                  type='button'
-                  onClick={() =>
-                    handleBulkRemoveQuestion(bulkEditingIndex)
-                  }
-                  className='border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50'>
-                  删除
-                </button>
+                <span className='ml-2 text-xs font-semibold text-slate-400'>
+                  {fixedQuestionTypeLabel ||
+                    getImportQuestionTypeLabel(currentQuestion.questionType)}
+                </span>
               </div>
+              <button
+                type='button'
+                onClick={() => handleBulkRemoveQuestion(bulkEditingIndex)}
+                className='px-2 py-1 text-xs font-bold text-rose-600 transition hover:bg-rose-50'>
+                删除
+              </button>
+            </div>
 
-              <div className='grid grid-cols-1 gap-2 md:grid-cols-[140px_1fr]'>
+            <div className='grid gap-5 md:grid-cols-[220px_minmax(0,1fr)]'>
+              {fixedQuestionTypeLabel ? (
+                <div>
+                  <span className='mb-2 block text-xs font-bold text-slate-500'>
+                    题型
+                  </span>
+                  <div className='flex h-11 items-center border-b border-slate-950 px-1 text-sm font-bold text-slate-950'>
+                    {fixedQuestionTypeLabel}
+                  </div>
+                </div>
+              ) : (
+              <label className='block'>
+                <span className='mb-2 block text-xs font-bold text-slate-500'>
+                  题型
+                </span>
                 <CustomSelect
-                  value={
-                    bulkParsedQuestions[bulkEditingIndex].questionType
-                  }
-                  onChange={e =>
+                  value={currentQuestion.questionType}
+                  onChange={event =>
                     handleBulkQuestionTypeChange(
                       bulkEditingIndex,
-                      e.target.value as ParsedQuizDraft['questionType'],
+                      event.target.value as ParsedQuizDraft['questionType'],
                     )
                   }
-                  className='h-10 border border-blue-200 bg-white px-3 text-sm font-semibold text-gray-700 outline-none focus:ring-2 focus:ring-blue-400'>
-                  <option value='PRONUNCIATION'>漢字読み</option>
-                  <option value='SYNONYM_REPLACEMENT'>
-                    言い換え類義
-                  </option>
-                  <option value='WORD_DISTINCTION'>用法</option>
-                  <option value='GRAMMAR'>文脈・文法選択</option>
-                  <option value='SORTING'>文の組み立て</option>
+                  className='h-11 w-full border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-slate-200'>
+                  {IMPORT_QUESTION_TYPES.map(type => (
+                    <option key={type.value} value={type.value}>
+                      問題 {type.number}｜{type.label}
+                    </option>
+                  ))}
                 </CustomSelect>
-                <input
-                  value={bulkParsedQuestions[bulkEditingIndex].prompt}
-                  onChange={e =>
-                    handleBulkPromptChange(
-                      bulkEditingIndex,
-                      e.target.value,
-                    )
-                  }
-                  placeholder='题干'
-                  className='h-10 border border-blue-200 bg-white px-3 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-blue-400'
-                />
-              </div>
-
-              <div className='mt-2'>
-                <textarea
-                  ref={bulkContextTextareaRef}
-                  value={
-                    bulkParsedQuestions[bulkEditingIndex]
-                      .contextSentence
-                  }
-                  onChange={e =>
-                    handleBulkContextSentenceChange(
-                      bulkEditingIndex,
-                      e.target.value,
-                    )
-                  }
-                  rows={2}
-                  className='w-full border border-blue-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400'
-                  placeholder='语境句（建议完整句子）'
-                />
-              </div>
-
-              {(bulkParsedQuestions[bulkEditingIndex].questionType ===
-                'PRONUNCIATION' ||
-                bulkParsedQuestions[bulkEditingIndex].questionType ===
-                  'SYNONYM_REPLACEMENT' ||
-                bulkParsedQuestions[bulkEditingIndex].questionType ===
-                  'WORD_DISTINCTION') && (
-                <div className='mt-2 flex flex-wrap items-center gap-2'>
-                  <button
-                    type='button'
-                    onClick={handleBulkPickTargetWordFromSelection}
-                    className='h-9 border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 transition-colors hover:bg-blue-100'>
-                    划词设目标词
-                  </button>
-                  <input
-                    value={
-                      bulkParsedQuestions[bulkEditingIndex]
-                        .targetWord || ''
-                    }
-                    onChange={e =>
-                      handleBulkTargetWordChange(
-                        bulkEditingIndex,
-                        e.target.value,
-                      )
-                    }
-                    placeholder='目标词（前台下划线显示）'
-                    className='h-9 min-w-0 flex-1 border border-blue-200 px-3 text-sm outline-none focus:ring-2 focus:ring-blue-400'
-                  />
-                </div>
+              </label>
               )}
-
-              <div className='mt-3 flex items-center justify-between gap-2'>
-                <span className='text-xs font-bold text-blue-800'>
-                  {bulkParsedQuestions[bulkEditingIndex].options.length} 个选项（最少 {MIN_QUESTION_OPTION_COUNT} 个）
+              <label className='block'>
+                <span className='mb-2 block text-xs font-bold text-slate-500'>
+                  题干
                 </span>
+                <input
+                  value={currentQuestion.prompt}
+                  onChange={event =>
+                    handleBulkPromptChange(bulkEditingIndex, event.target.value)
+                  }
+                  className='h-11 w-full border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+                />
+              </label>
+            </div>
+
+            {canUseSeparateContext ? (
+            <label className='mt-5 block'>
+              <span className='block text-xs font-bold text-slate-700'>
+                题目原句（可选）
+              </span>
+              <span className='mt-1 block text-xs leading-5 text-slate-500'>
+                题干不是完整句子时填写；题干已包含原句则留空。
+              </span>
+              <textarea
+                ref={bulkContextTextareaRef}
+                value={currentQuestion.contextSentence}
+                onChange={event =>
+                  handleBulkContextSentenceChange(
+                    bulkEditingIndex,
+                    event.target.value,
+                  )
+                }
+                rows={2}
+                className='mt-3 w-full !resize-none !rounded-none border-0 border-b border-slate-300 bg-transparent px-0 py-3 text-sm outline-none transition-colors focus:border-slate-950 focus:ring-0'
+                placeholder='填写题目实际出现的完整句子'
+              />
+            </label>
+            ) : null}
+
+            {canPickTargetWord ? (
+              <div className='mt-3 flex flex-wrap items-center gap-2'>
+                {canUseSeparateContext ? (
                 <button
                   type='button'
-                  onClick={() => handleBulkAddOption(bulkEditingIndex)}
-                  className='border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100'>
-                  + 添加选项
+                  onClick={handleBulkPickTargetWordFromSelection}
+                  className='h-9 border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 hover:border-slate-500'>
+                  设为目标词
                 </button>
+                ) : null}
+                <input
+                  value={currentQuestion.targetWord || ''}
+                  onChange={event =>
+                    handleBulkTargetWordChange(
+                      bulkEditingIndex,
+                      event.target.value,
+                    )
+                  }
+                  placeholder={
+                    currentQuestion.questionType === 'PRONUNCIATION'
+                      ? '填写题干中需要标注的汉字'
+                      : '填写题干中需要替换的词'
+                  }
+                  className='h-9 min-w-48 flex-1 border border-slate-300 px-3 text-sm outline-none focus:ring-2 focus:ring-slate-200'
+                />
               </div>
-              <div className='mt-2 grid grid-cols-1 gap-2 md:grid-cols-2'>
-                {bulkParsedQuestions[bulkEditingIndex].options.map(
-                  (opt, optIndex) => (
-                    <label
-                      key={`bulk-q-${bulkEditingIndex}-opt-${optIndex}`}
-                      className='flex items-center gap-2 border border-gray-200 px-2.5 py-2'>
-                      <input
-                        type='radio'
-                        checked={opt.isCorrect}
-                        onChange={() =>
-                          setBulkCorrectOption(
-                            bulkEditingIndex,
-                            optIndex,
-                          )
-                        }
-                        className='shrink-0'
-                      />
-                      <input
-                        value={opt.text}
-                        onChange={e =>
-                          handleBulkOptionTextChange(
-                            bulkEditingIndex,
-                            optIndex,
-                            e.target.value,
-                          )
-                        }
-                        placeholder={`选项 ${optIndex + 1}`}
-                        className='min-w-0 flex-1 border border-gray-200 px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-400'
-                      />
+            ) : null}
+
+            {currentQuestion.questionType === 'SORTING' ? (
+              <div className='mt-5 border-y border-slate-200 py-4'>
+                <div className='mb-3 flex items-center justify-between gap-3'>
+                  <span className='text-xs font-bold text-slate-700'>
+                    按正确语序点击选项
+                  </span>
+                  {(currentQuestion.sortingOrder?.length || 0) > 0 ? (
+                    <button
+                      type='button'
+                      onClick={() => handleBulkSortingReset(bulkEditingIndex)}
+                      className='text-xs font-semibold text-slate-500 hover:text-slate-900'>
+                      重置
+                    </button>
+                  ) : null}
+                </div>
+                <div className='flex flex-wrap gap-2'>
+                  {currentQuestion.options.map((option, optionIndex) => {
+                    const position =
+                      (currentQuestion.sortingOrder || []).indexOf(optionIndex)
+                    return (
                       <button
+                        key={`sorting-order-${bulkEditingIndex}-${optionIndex}`}
                         type='button'
-                        disabled={bulkParsedQuestions[bulkEditingIndex].options.length <= MIN_QUESTION_OPTION_COUNT}
+                        disabled={position >= 0 || !option.text.trim()}
                         onClick={() =>
-                          handleBulkRemoveOption(
+                          handleBulkSortingOptionClick(
                             bulkEditingIndex,
-                            optIndex,
+                            optionIndex,
                           )
                         }
-                        aria-label={`删除选项 ${optIndex + 1}`}
-                        className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
-                        删除
+                        className='border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:bg-slate-100 disabled:text-slate-400'>
+                        {position >= 0 ? `${position + 1}. ` : ''}
+                        {option.text || `选项 ${optionIndex + 1}`}
                       </button>
-                    </label>
-                  ),
-                )}
+                    )
+                  })}
+                </div>
               </div>
+            ) : null}
+
+            <div className='mt-6 flex justify-end border-t border-slate-200 pt-5'>
+              <button
+                type='button'
+                onClick={() => handleBulkAddOption(bulkEditingIndex)}
+                className='px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100'>
+                ＋ 添加选项
+              </button>
             </div>
-          )}
+            <div className='mt-2 divide-y divide-slate-200 border-y border-slate-200'>
+              {currentQuestion.options.map((option, optionIndex) => (
+                <div
+                  key={`bulk-option-${bulkEditingIndex}-${optionIndex}`}
+                  className='flex items-center gap-3 py-3'>
+                  <input
+                    type='radio'
+                    checked={option.isCorrect}
+                    onChange={() =>
+                      setBulkCorrectOption(bulkEditingIndex, optionIndex)
+                    }
+                    aria-label={`将选项 ${optionIndex + 1} 设为正确答案`}
+                    className='shrink-0 accent-slate-900'
+                  />
+                  <span className='w-5 shrink-0 text-xs font-black text-slate-400'>
+                    {optionIndex + 1}
+                  </span>
+                  <input
+                    value={option.text}
+                    onChange={event =>
+                      handleBulkOptionTextChange(
+                        bulkEditingIndex,
+                        optionIndex,
+                        event.target.value,
+                      )
+                    }
+                    placeholder='选项内容'
+                    className='min-w-0 flex-1 border-0 bg-transparent px-0 py-2 text-sm outline-none focus:ring-0'
+                  />
+                  <button
+                    type='button'
+                    disabled={
+                      currentQuestion.options.length <=
+                      MIN_QUESTION_OPTION_COUNT
+                    }
+                    onClick={() =>
+                      handleBulkRemoveOption(bulkEditingIndex, optionIndex)
+                    }
+                    aria-label={`删除选项 ${optionIndex + 1}`}
+                    className='shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-      )}
+      ) : null}
     </section>
   )
 }

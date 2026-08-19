@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma'
+import { CollectionType } from '@prisma/client'
 import { normalizeQuestionOptions } from '@/lib/repositories/materials'
 import { evaluateSelectedOption } from '@/modules/practice/domain/evaluate-attempt'
 
@@ -15,6 +16,11 @@ export type QuizAttemptResult = {
   isCorrect: boolean
 }
 
+export type QuizAttemptResetScope =
+  | { type: 'all' }
+  | { type: 'language'; language: string }
+  | { type: 'paper'; paperId: string }
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000
 
 const normalizeAttempt = (input: QuizAttemptInput): QuizAttemptInput => ({
@@ -28,6 +34,7 @@ const normalizeAttempt = (input: QuizAttemptInput): QuizAttemptInput => ({
 
 export async function recordQuizAttempts(
   inputs: QuizAttemptInput[],
+  options: { completedPaperId?: string } = {},
 ): Promise<QuizAttemptResult[]> {
   const normalized = inputs
     .map(normalizeAttempt)
@@ -66,6 +73,39 @@ export async function recordQuizAttempts(
     }
   })
 
+  const completedPaperId = String(options.completedPaperId || '').trim()
+  if (completedPaperId) {
+    const paper = await prisma.collection.findFirst({
+      where: {
+        id: completedPaperId,
+        collectionType: CollectionType.PAPER,
+      },
+      select: {
+        materials: {
+          select: {
+            material: {
+              select: {
+                questions: { select: { id: true } },
+              },
+            },
+          },
+        },
+      },
+    })
+    const paperQuestionIds = new Set(
+      paper?.materials.flatMap(item =>
+        item.material.questions.map(question => question.id),
+      ) || [],
+    )
+    if (
+      paperQuestionIds.size === 0 ||
+      paperQuestionIds.size !== uniqueQuestionIds.length ||
+      uniqueQuestionIds.some(questionId => !paperQuestionIds.has(questionId))
+    ) {
+      throw new Error('整套练习记录与试卷题目不一致')
+    }
+  }
+
   await prisma.$transaction(async tx => {
     await tx.questionAttempt.createMany({
       data: results.map(result => ({
@@ -93,6 +133,16 @@ export async function recordQuizAttempts(
         },
       })
     }
+
+    if (completedPaperId) {
+      await tx.practicePaperSubmission.create({
+        data: {
+          collectionId: completedPaperId,
+          questionCount: results.length,
+          correctCount: results.filter(result => result.isCorrect).length,
+        },
+      })
+    }
   })
 
   return results.map(
@@ -103,4 +153,58 @@ export async function recordQuizAttempts(
       isCorrect: result.isCorrect,
     }),
   )
+}
+
+export async function resetQuizAttemptHistory(
+  scope: QuizAttemptResetScope = { type: 'all' },
+) {
+  return prisma.$transaction(async tx => {
+    if (scope.type === 'all') {
+      const attempts = await tx.questionAttempt.deleteMany()
+      const submissions = await tx.practicePaperSubmission.deleteMany()
+      return {
+        deletedAttemptCount: attempts.count,
+        deletedSubmissionCount: submissions.count,
+      }
+    }
+
+    const collectionWhere =
+      scope.type === 'paper'
+        ? { id: scope.paperId, collectionType: CollectionType.PAPER }
+        : { language: scope.language, collectionType: CollectionType.PAPER }
+    const papers = await tx.collection.findMany({
+      where: collectionWhere,
+      select: {
+        id: true,
+        materials: {
+          select: {
+            material: {
+              select: { questions: { select: { id: true } } },
+            },
+          },
+        },
+      },
+    })
+    const questionIds = Array.from(
+      new Set(
+        papers.flatMap(paper =>
+          paper.materials.flatMap(item =>
+            item.material.questions.map(question => question.id),
+          ),
+        ),
+      ),
+    )
+    const attempts = questionIds.length
+      ? await tx.questionAttempt.deleteMany({
+          where: { questionId: { in: questionIds } },
+        })
+      : { count: 0 }
+    const submissions = await tx.practicePaperSubmission.deleteMany({
+      where: { collectionId: { in: papers.map(paper => paper.id) } },
+    })
+    return {
+      deletedAttemptCount: attempts.count,
+      deletedSubmissionCount: submissions.count,
+    }
+  })
 }

@@ -188,7 +188,10 @@ export const buildArticleQuestionsFromQuickInput = (
       normalizeAsciiDigit(normalizedPrompt).match(
         /[\[［(（【「『]\s*(\d+)\s*[\]］)）】」』]/,
       )?.[1] || ''
-    const serialNumber = promptPlaceholder || extractSerialNumber(promptText)
+    const serialNumber =
+      promptPlaceholder ||
+      (item.sourceSerial ? String(item.sourceSerial) : '') ||
+      extractSerialNumber(promptText)
     const placeholderHit = findPlaceholderTokenBySerial(
       articleContent || '',
       serialNumber,
@@ -212,7 +215,7 @@ export const buildArticleQuestionsFromQuickInput = (
     const resolvedContextSentence =
       detectedType === 'FILL_BLANK'
         ? matchedSentence || normalizedPrompt
-        : normalizedPrompt
+        : ''
 
     // 填空题题干统一存“已填入正确答案的完整句”，避免前台出现系统自动题干。
     const resolvedPrompt =

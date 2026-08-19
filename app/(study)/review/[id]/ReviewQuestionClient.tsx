@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import type { RetryQueueItem } from '@/modules/review/actions/mistakes'
 import {
   resetRetryQuestionAccuracy,
-  submitRetryAnswer,
+  submitRetryAnswers,
 } from '@/modules/review/actions/mistakes'
 import { QuestionRenderer } from '@/components/exam/QuestionRenderer'
 import CustomSelect from '@/components/ui/CustomSelect'
@@ -59,25 +59,25 @@ function mapRetryItemToExamQuestion(item: RetryQueueItem): ExamQuestion {
 
 export default function ReviewQuestionClient({
   initialSummary,
-  currentItem,
+  currentItems,
   queue,
   currentIndex,
   activeQuestionType,
   questionTypes,
 }: {
   initialSummary: Summary
-  currentItem: RetryQueueItem
+  currentItems: RetryQueueItem[]
   queue: QueueItem[]
   currentIndex: number
   activeQuestionType: string | null
   questionTypes: QuestionTypeSummary[]
 }) {
   const router = useRouter()
-  const [item, setItem] = useState(currentItem)
+  const [items, setItems] = useState(currentItems)
   const [summary, setSummary] = useState(initialSummary)
-  const [selectedOptionId, setSelectedOptionId] = useState<string>('')
+  const [selectedOptions, setSelectedOptions] = useState<Record<string, string>>({})
   const [feedback, setFeedback] = useState<string>('')
-  const [isSubmitted, setIsSubmitted] = useState(false)
+  const [submittedRetryIds, setSubmittedRetryIds] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
   const [resettingId, setResettingId] = useState<string | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'error'>(
@@ -92,6 +92,9 @@ export default function ReviewQuestionClient({
     Record<string, VocabularyMeta>
   >({})
   const { selection, closeSelection } = useTextSelection()
+  const item = items[0]!
+  const isSubmitted =
+    items.length > 0 && items.every(entry => submittedRetryIds.includes(entry.retryId))
 
   const prevRetryId = currentIndex > 0 ? queue[currentIndex - 1]?.retryId : null
   const nextRetryId =
@@ -99,18 +102,38 @@ export default function ReviewQuestionClient({
   const activeTypeQuery = activeQuestionType
     ? `?type=${encodeURIComponent(activeQuestionType)}`
     : ''
-  const examQuestion = useMemo(() => mapRetryItemToExamQuestion(item), [item])
+  const examQuestions = useMemo(
+    () => items.map(mapRetryItemToExamQuestion),
+    [items],
+  )
+  const examQuestion = examQuestions[0]!
   const reviewAnswerMap = useMemo(
-    () => (selectedOptionId ? { [examQuestion.id]: selectedOptionId } : {}),
-    [examQuestion.id, selectedOptionId],
-  )
-  const reviewPassageQuestions = useMemo(
     () =>
-      examQuestion.passageId && examQuestion.questionType === 'FILL_BLANK'
-        ? [examQuestion]
-        : [],
-    [examQuestion],
+      items.reduce<Record<string, string>>((answers, entry) => {
+        const selectedOptionId = selectedOptions[entry.retryId]
+        if (selectedOptionId) answers[entry.questionId] = selectedOptionId
+        return answers
+      }, {}),
+    [items, selectedOptions],
   )
+  const reviewQuestions = useMemo(() => {
+    if (examQuestion.lessonId) return examQuestions
+    if (examQuestion.passageId && examQuestion.questionType === 'FILL_BLANK') {
+      return [examQuestion]
+    }
+    return []
+  }, [examQuestion, examQuestions])
+  const submittedQuestionIds = useMemo(
+    () =>
+      items
+        .filter(entry => submittedRetryIds.includes(entry.retryId))
+        .map(entry => entry.questionId),
+    [items, submittedRetryIds],
+  )
+  const answeredCount = items.filter(
+    entry => selectedOptions[entry.retryId],
+  ).length
+  const allAnswered = items.length > 0 && answeredCount === items.length
 
   useEffect(() => {
     setSummary(initialSummary)
@@ -119,45 +142,62 @@ export default function ReviewQuestionClient({
   useEffect(() => {
     // Revalidation can refresh props for the same retry item after submission.
     // Preserve the submitted result unless navigation actually changes the item.
-    if (item.retryId === currentItem.retryId) return
-    setItem(currentItem)
-    setSelectedOptionId('')
+    if (item.retryId === currentItems[0]?.retryId) return
+    setItems(currentItems)
+    setSelectedOptions({})
     setFeedback('')
-    setIsSubmitted(false)
+    setSubmittedRetryIds([])
     setResettingId(null)
-  }, [currentItem, item.retryId])
+  }, [currentItems, item.retryId])
 
   const handleSubmit = () => {
-    if (!selectedOptionId) {
-      setFeedback('请先选择一个选项。')
+    if (!allAnswered) {
+      setFeedback(items.length > 1 ? '请完成本页全部题目。' : '请先选择一个选项。')
       return
     }
     if (isSubmitted) return
 
     startTransition(async () => {
-      const result = await submitRetryAnswer(item.retryId, selectedOptionId)
+      const result = await submitRetryAnswers(
+        items.map(entry => ({
+          retryId: entry.retryId,
+          selectedOptionId: selectedOptions[entry.retryId]!,
+        })),
+      )
       if (!result.success) {
         setFeedback(result.message || '提交失败。')
         return
       }
 
-      setIsSubmitted(true)
+      const results = result.results || []
+      setSubmittedRetryIds(results.map(entry => entry.retryId))
+      const completedCount = results.filter(
+        entry => entry.done && entry.isCorrect,
+      ).length
+      const correctCount = results.filter(entry => entry.isCorrect).length
       setSummary(prev => ({
         ...prev,
-        dueCount: Math.max(0, prev.dueCount - 1),
-        totalCount:
-          result.done && result.isCorrect
-            ? Math.max(0, prev.totalCount - 1)
-            : prev.totalCount,
+        dueCount: Math.max(0, prev.dueCount - results.length),
+        totalCount: Math.max(0, prev.totalCount - completedCount),
       }))
 
-      const message = result.isCorrect
-        ? result.done
-          ? '阶段反馈：答对，已完成该错题回流。'
-          : `阶段反馈：答对，已进入下一阶段（${result.nextInHours || 0}h 后）。`
-        : `阶段反馈：答错，已重置阶段（${result.nextInHours || 24}h 后再试）。`
+      const firstResult = results[0]
+      const message =
+        items.length > 1
+          ? `本页已提交：答对 ${correctCount} / ${results.length} 题。`
+          : firstResult?.isCorrect
+            ? firstResult.done
+              ? '答对，已完成该错题回流。'
+              : `答对，${firstResult.nextInHours || 0}h 后进入下一阶段。`
+            : `答错，${firstResult?.nextInHours || 24}h 后再试。`
       setFeedback(message)
     })
+  }
+
+  const handleSelectQuestion = (questionId: string, optionId: string) => {
+    const target = items.find(entry => entry.questionId === questionId)
+    if (!target || submittedRetryIds.includes(target.retryId)) return
+    setSelectedOptions(prev => ({ ...prev, [target.retryId]: optionId }))
   }
 
   const handleSoftReset = () => {
@@ -172,10 +212,18 @@ export default function ReviewQuestionClient({
         return
       }
 
-      setItem(prev => ({
-        ...prev,
-        stats: result.stats ? { ...prev.stats, ...result.stats } : prev.stats,
-      }))
+      setItems(prev =>
+        prev.map(entry =>
+          entry.retryId === item.retryId
+            ? {
+                ...entry,
+                stats: result.stats
+                  ? { ...entry.stats, ...result.stats }
+                  : entry.stats,
+              }
+            : entry,
+        ),
+      )
       setFeedback(result.message || '已完成轻度重置。')
       setResettingId(null)
     })
@@ -187,10 +235,8 @@ export default function ReviewQuestionClient({
 
     const context = (question.contextSentence || '').trim()
     const prompt = (question.prompt || '').trim()
-    const shouldIncludePrompt = prompt && prompt !== context
-    if (context) sections.push(`题目：${context}`)
-    else if (prompt) sections.push(`题目：${prompt}`)
-    if (shouldIncludePrompt) sections.push(`补充：${prompt}`)
+    if (prompt) sections.push(`题目：${prompt}`)
+    else if (context) sections.push(`题目：${context}`)
 
     if (question.passageId) {
       const passage = (question.passage?.content || '').trim()
@@ -232,7 +278,11 @@ export default function ReviewQuestionClient({
   }
 
   const handleCopyCurrentQuestion = async () => {
-    const payload = buildCopyPayload(examQuestion, currentIndex)
+    const payload = examQuestions
+      .map((question, index) =>
+        buildCopyPayload(question, currentIndex + index),
+      )
+      .join('\n\n---\n\n')
     if (!payload) return
     try {
       await writeClipboard(payload)
@@ -268,7 +318,9 @@ export default function ReviewQuestionClient({
               错题回看
             </h1>
             <p className='truncate text-xs text-slate-500'>
-              第 {currentIndex + 1} / {queue.length} 题，到期 {summary.dueCount} 题
+              第 {currentIndex + 1} / {queue.length} 页
+              {items.length > 1 ? ` · 本页 ${items.length} 题` : ''} · 到期{' '}
+              {summary.dueCount} 题
             </p>
           </div>
           <div className='flex shrink-0 items-center gap-2'>
@@ -297,7 +349,7 @@ export default function ReviewQuestionClient({
         <div
           className='h-1 bg-slate-100'
           role='progressbar'
-          aria-label={`错题复习进度 ${currentIndex + 1} / ${queue.length}`}
+          aria-label={`错题复习进度 ${currentIndex + 1} / ${queue.length} 页`}
           aria-valuemin={1}
           aria-valuemax={queue.length}
           aria-valuenow={currentIndex + 1}>
@@ -311,12 +363,20 @@ export default function ReviewQuestionClient({
       <div className='mx-auto w-full max-w-7xl space-y-4 px-4 py-4 md:px-8 md:py-6'>
         <section className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4'>
           <div className='flex flex-wrap items-center gap-2 text-xs'>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              复习阶段 {item.stage + 1} / 3
-            </span>
-            <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
-              历史正确率 {formatPercent(item.stats.accuracy)}
-            </span>
+            {items.length > 1 ? (
+              <span className='font-semibold text-slate-600'>
+                同一听力材料 · {items.length} 题
+              </span>
+            ) : (
+              <>
+                <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
+                  复习阶段 {item.stage + 1} / 3
+                </span>
+                <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-semibold text-slate-600'>
+                  历史正确率 {formatPercent(item.stats.accuracy)}
+                </span>
+              </>
+            )}
           </div>
 
           <div className='flex flex-wrap gap-2'>
@@ -346,7 +406,7 @@ export default function ReviewQuestionClient({
               checked={showMeaning}
               onChange={setShowMeaning}
             />
-            {item.stats.resetEligible ? (
+            {items.length === 1 && item.stats.resetEligible ? (
               <button
                 type='button'
                 disabled={isPending || resettingId === item.retryId}
@@ -361,7 +421,7 @@ export default function ReviewQuestionClient({
             <p
               role='status'
               className={`basis-full rounded-lg px-3 py-2 text-xs font-medium ${
-                feedback.includes('失败') || feedback.includes('请先')
+                feedback.includes('失败') || feedback.includes('请')
                   ? 'bg-rose-50 text-rose-700'
                   : 'bg-slate-100 text-slate-700'
               }`}>
@@ -371,13 +431,16 @@ export default function ReviewQuestionClient({
         </section>
 
         <QuestionRenderer
-          key={examQuestion.id}
+          key={items.map(entry => entry.retryId).join(':')}
           question={examQuestion}
-          allQuestions={reviewPassageQuestions}
-          onSelect={optionId => setSelectedOptionId(optionId)}
-          currentAnswer={selectedOptionId}
+          allQuestions={reviewQuestions}
+          onSelect={optionId => handleSelectQuestion(examQuestion.id, optionId)}
+          onSelectQuestion={handleSelectQuestion}
+          currentAnswer={reviewAnswerMap[examQuestion.id]}
           answerMap={reviewAnswerMap}
           isSubmitted={isSubmitted}
+          isInteractionLocked={isSubmitted}
+          submittedQuestionIds={submittedQuestionIds}
           annotation={{
             showPronunciation,
             showMeaning,
@@ -397,21 +460,12 @@ export default function ReviewQuestionClient({
             sourceId={selection.sourceId}
             initialMeta={localVocabularyMetaMap[selection.text]}
             onSaved={({ word, meta }) => {
-              setLocalVocabularyMetaMap(prev => {
-                const next = { ...prev, [word]: meta }
-                if (selection.text && selection.text !== word) {
-                  next[selection.text] = meta
-                }
-                return next
-              })
+              setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))
               if (meta.pronunciations[0]) {
-                setLocalPronunciationMap(prev => {
-                  const next = { ...prev, [word]: meta.pronunciations[0] }
-                  if (selection.text && selection.text !== word) {
-                    next[selection.text] = meta.pronunciations[0]
-                  }
-                  return next
-                })
+                setLocalPronunciationMap(prev => ({
+                  ...prev,
+                  [word]: meta.pronunciations[0],
+                }))
               }
             }}
             onClose={closeSelection}
@@ -429,7 +483,7 @@ export default function ReviewQuestionClient({
               router.push(`/review/${prevRetryId}${activeTypeQuery}`)
             }
             className='rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 md:px-4 md:text-sm'>
-            上一题
+            上一页
           </button>
 
           <Link
@@ -442,10 +496,14 @@ export default function ReviewQuestionClient({
           {!isSubmitted ? (
             <button
               type='button'
-              disabled={!selectedOptionId || isPending}
+              disabled={!allAnswered || isPending}
               onClick={handleSubmit}
               className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 md:px-4 md:text-sm'>
-              {isPending ? '提交中…' : '提交复盘'}
+              {isPending
+                ? '提交中…'
+                : items.length > 1
+                  ? '提交本页'
+                  : '提交复盘'}
             </button>
           ) : nextRetryId ? (
             <button
@@ -455,7 +513,7 @@ export default function ReviewQuestionClient({
                 router.push(`/review/${nextRetryId}${activeTypeQuery}`)
               }
               className='rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white hover:bg-slate-800 disabled:opacity-40 md:px-4 md:text-sm'>
-              下一题
+              下一页
             </button>
           ) : (
             <Link

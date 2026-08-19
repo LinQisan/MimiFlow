@@ -17,7 +17,6 @@ export default function ListeningPlayerHeader({
   isTrackLoop,
   playbackRate,
   showPronunciation,
-  showMeaning,
   isBlindMode,
   sessionPlaySeconds,
   totalPlaySeconds,
@@ -29,7 +28,6 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop,
   onTogglePlaybackRate,
   onShowPronunciationChange,
-  onShowMeaningChange,
   onBlindModeChange,
 }: {
   title: string
@@ -41,7 +39,6 @@ export default function ListeningPlayerHeader({
   isTrackLoop: boolean
   playbackRate: number
   showPronunciation: boolean
-  showMeaning: boolean
   isBlindMode: boolean
   sessionPlaySeconds: number
   totalPlaySeconds: number
@@ -53,24 +50,23 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop: () => void
   onTogglePlaybackRate: () => void
   onShowPronunciationChange: (value: boolean) => void
-  onShowMeaningChange: (value: boolean) => void
   onBlindModeChange: (value: boolean) => void
 }) {
   const displayedDays = Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)
 
   return (
     <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95'>
-      <div className='mx-auto w-full max-w-6xl px-3 py-2.5 md:px-5'>
+      <div className='mx-auto w-full max-w-5xl px-3 py-2.5 md:px-5'>
         <div className='flex items-center gap-2'>
           <button
             type='button'
             onClick={onBack}
             aria-label='返回听力列表'
-            className='inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'>
+            title='返回听力列表'
+            className='inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'>
             <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24' aria-hidden='true'>
               <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 19l-7-7 7-7' />
             </svg>
-            <span className='hidden sm:inline'>返回</span>
           </button>
 
           <div className='min-w-0 flex-1'>
@@ -82,26 +78,12 @@ export default function ListeningPlayerHeader({
             </p>
           </div>
 
-          <button
-            type='button'
-            onClick={onCopy}
-            aria-label='复制原文'
-            className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold ${
-              copyStatus === 'success'
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : copyStatus === 'error'
-                  ? 'border-rose-200 bg-rose-50 text-rose-700'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'
-            }`}>
-            {copyStatus === 'success' ? '已复制' : copyStatus === 'error' ? '失败' : '复制'}
-          </button>
-
-          <nav className='flex shrink-0 gap-1' aria-label='切换听力材料'>
+          <nav className='flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900' aria-label='切换听力材料'>
             {prevId ? (
               <Link
                 href={`/listening/${prevId}`}
                 aria-label='上一篇'
-                className='inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'>
+                className='inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
                 <span aria-hidden='true'>←</span>
               </Link>
             ) : null}
@@ -109,14 +91,14 @@ export default function ListeningPlayerHeader({
               <Link
                 href={`/listening/${nextId}`}
                 aria-label='下一篇'
-                className='inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'>
+                className='inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
                 <span aria-hidden='true'>→</span>
               </Link>
             ) : null}
           </nav>
         </div>
 
-        <div className='mt-2 flex flex-wrap items-center gap-2'>
+        <div className='mt-2 flex flex-wrap items-center gap-1.5'>
           <button
             type='button'
             onClick={onTogglePlayback}
@@ -143,11 +125,24 @@ export default function ListeningPlayerHeader({
             {playbackRate}x
           </button>
 
-          <div className='flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-slate-700 dark:bg-slate-900'>
+          <div className='ml-1 flex items-center gap-3 border-l border-slate-200 pl-2 dark:border-slate-700'>
             <ToggleSwitch label='注音' checked={showPronunciation} onChange={onShowPronunciationChange} />
-            <ToggleSwitch label='释义' checked={showMeaning} onChange={onShowMeaningChange} />
             <ToggleSwitch label='盲听' checked={isBlindMode} onChange={onBlindModeChange} />
           </div>
+
+          <button
+            type='button'
+            onClick={onCopy}
+            aria-label='复制原文'
+            className={`ml-1 h-8 rounded-lg px-2.5 text-xs font-semibold ${
+              copyStatus === 'success'
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
+                : copyStatus === 'error'
+                  ? 'bg-rose-50 text-rose-700'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800'
+            }`}>
+            {copyStatus === 'success' ? '已复制' : copyStatus === 'error' ? '复制失败' : '复制原文'}
+          </button>
 
           <p className='ml-auto hidden text-[11px] tabular-nums text-slate-500 sm:block'>
             本次 {formatMediaTime(sessionPlaySeconds)} · 累计 {formatDurationCompact(totalPlaySeconds)} · {displayedDays} 天

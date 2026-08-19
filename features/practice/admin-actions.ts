@@ -16,7 +16,13 @@ import {
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
 import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
-import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
+import {
+  normalizeQuestionTextFields,
+  normalizeSortingPrompt,
+  parseSortingPrompt,
+  supportsSeparateQuestionContext,
+  usesExplicitQuestionTargetWord,
+} from '@/modules/practice/domain/question-text'
 
 const updatePaperQuestionSchema = z.object({
   questionId: z.string().trim().min(1, '题目 ID 缺失。'),
@@ -27,6 +33,8 @@ const updatePaperQuestionSchema = z.object({
   listeningSectionNumber: z.string().optional(),
   optionLabelFormat: z.string().optional(),
   customOptionLabels: z.union([z.string(), z.array(z.string())]).optional(),
+  shuffleOptions: z.boolean().optional(),
+  sortingOrder: z.array(z.number().int().nonnegative()).optional(),
   options: z
     .array(
       z.object({
@@ -43,6 +51,217 @@ const updatePaperQuestionSchema = z.object({
 })
 
 type UpdatePaperQuestionPayload = z.input<typeof updatePaperQuestionSchema>
+
+const paperQuestionSelectionSchema = z.object({
+  paperId: z.string().trim().min(1, '试卷 ID 缺失。'),
+  questionIds: z
+    .array(z.string().trim().min(1))
+    .min(1, '请至少选择一道题。')
+    .max(500, '一次最多操作 500 道题。')
+    .transform(ids => Array.from(new Set(ids))),
+})
+
+const movePaperQuestionsSchema = paperQuestionSelectionSchema.extend({
+  targetPaperId: z.string().trim().min(1, '请选择目标试卷。'),
+})
+
+const revalidatePaperQuestionRoutes = (paperId: string) => {
+  revalidatePath('/manage/practice')
+  revalidatePath(`/manage/practice/${paperId}`)
+  revalidatePath(`/practice/${paperId}`)
+  revalidatePath(`/practice/${paperId}/do`)
+}
+
+async function resequenceMaterialQuestions(
+  tx: Prisma.TransactionClient,
+  materialId: string,
+) {
+  const questions = await tx.question.findMany({
+    where: { materialId },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true },
+  })
+  await Promise.all(
+    questions.map((question, index) =>
+      tx.question.update({
+        where: { id: question.id },
+        data: { sortOrder: index + 1 },
+      }),
+    ),
+  )
+}
+
+export async function deletePaperQuestions(payload: unknown) {
+  try {
+    const input = parseInput(paperQuestionSelectionSchema, payload)
+    const questions = await prisma.question.findMany({
+      where: {
+        id: { in: input.questionIds },
+        material: {
+          collectionMaterials: { some: { collectionId: input.paperId } },
+        },
+      },
+      select: { id: true, materialId: true },
+    })
+    if (questions.length !== input.questionIds.length) {
+      throw new DomainError('NOT_FOUND', '部分题目已不存在或不属于当前试卷。')
+    }
+
+    const affectedMaterialIds = Array.from(
+      new Set(questions.map(question => question.materialId)),
+    )
+    await prisma.$transaction(async tx => {
+      await tx.question.deleteMany({ where: { id: { in: input.questionIds } } })
+      for (const materialId of affectedMaterialIds) {
+        await resequenceMaterialQuestions(tx, materialId)
+      }
+    })
+
+    revalidatePaperQuestionRoutes(input.paperId)
+    return actionSuccess(
+      { deletedCount: questions.length },
+      `已删除 ${questions.length} 道题。`,
+    )
+  } catch (error) {
+    return actionFailure(error, '删除题目失败。')
+  }
+}
+
+export async function movePaperQuestions(payload: unknown) {
+  try {
+    const input = parseInput(movePaperQuestionsSchema, payload)
+    if (input.paperId === input.targetPaperId) {
+      throw new DomainError('VALIDATION_ERROR', '目标试卷不能是当前试卷。')
+    }
+
+    const [targetPaper, questions] = await Promise.all([
+      prisma.collection.findFirst({
+        where: {
+          id: input.targetPaperId,
+          collectionType: 'PAPER',
+        },
+        select: { id: true },
+      }),
+      prisma.question.findMany({
+        where: {
+          id: { in: input.questionIds },
+          material: {
+            collectionMaterials: { some: { collectionId: input.paperId } },
+          },
+        },
+        select: {
+          id: true,
+          materialId: true,
+          material: {
+            select: {
+              type: true,
+              title: true,
+              chapterName: true,
+              contentPayload: true,
+              metadata: true,
+              _count: { select: { questions: true } },
+              collectionMaterials: {
+                select: { collectionId: true },
+              },
+            },
+          },
+        },
+      }),
+    ])
+    if (!targetPaper) throw new DomainError('NOT_FOUND', '目标试卷不存在。')
+    if (questions.length !== input.questionIds.length) {
+      throw new DomainError('NOT_FOUND', '部分题目已不存在或不属于当前试卷。')
+    }
+
+    const grouped = new Map<string, typeof questions>()
+    for (const question of questions) {
+      const bucket = grouped.get(question.materialId) || []
+      bucket.push(question)
+      grouped.set(question.materialId, bucket)
+    }
+
+    await prisma.$transaction(async tx => {
+      const targetLastMaterial = await tx.collectionMaterial.aggregate({
+        where: { collectionId: input.targetPaperId },
+        _max: { sortOrder: true },
+      })
+      let nextMaterialOrder = (targetLastMaterial._max.sortOrder || 0) + 1
+
+      for (const [materialId, selectedQuestions] of grouped) {
+        const source = selectedQuestions[0].material
+        const movesWholeMaterial =
+          selectedQuestions.length === source._count.questions
+        const targetAlreadyContainsMaterial = source.collectionMaterials.some(
+          relation => relation.collectionId === input.targetPaperId,
+        )
+
+        if (movesWholeMaterial) {
+          if (targetAlreadyContainsMaterial) {
+            await tx.collectionMaterial.delete({
+              where: {
+                collectionId_materialId: {
+                  collectionId: input.paperId,
+                  materialId,
+                },
+              },
+            })
+          } else {
+            await tx.collectionMaterial.update({
+              where: {
+                collectionId_materialId: {
+                  collectionId: input.paperId,
+                  materialId,
+                },
+              },
+              data: {
+                collectionId: input.targetPaperId,
+                sortOrder: nextMaterialOrder,
+              },
+            })
+            nextMaterialOrder += 1
+          }
+          continue
+        }
+
+        const clonedMaterial = await tx.material.create({
+          data: {
+            type: source.type,
+            title: source.title,
+            chapterName: source.chapterName,
+            contentPayload: source.contentPayload as Prisma.InputJsonValue,
+            metadata:
+              source.metadata === null
+                ? undefined
+                : (source.metadata as Prisma.InputJsonValue),
+            collectionMaterials: {
+              create: {
+                collectionId: input.targetPaperId,
+                sortOrder: nextMaterialOrder,
+              },
+            },
+          },
+          select: { id: true },
+        })
+        nextMaterialOrder += 1
+        await tx.question.updateMany({
+          where: { id: { in: selectedQuestions.map(question => question.id) } },
+          data: { materialId: clonedMaterial.id },
+        })
+        await resequenceMaterialQuestions(tx, materialId)
+        await resequenceMaterialQuestions(tx, clonedMaterial.id)
+      }
+    })
+
+    revalidatePaperQuestionRoutes(input.paperId)
+    revalidatePaperQuestionRoutes(input.targetPaperId)
+    return actionSuccess(
+      { movedCount: questions.length },
+      `已移动 ${questions.length} 道题。`,
+    )
+  } catch (error) {
+    return actionFailure(error, '移动题目失败。')
+  }
+}
 
 const toJsonValue = (
   value: unknown,
@@ -94,6 +313,7 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
     where: { id: questionId },
     select: {
       id: true,
+      questionType: true,
       content: true,
       options: true,
       answer: true,
@@ -113,12 +333,47 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   }
 
   const currentContent = decodeQuestionContent(current.content)
+  if (!usesExplicitQuestionTargetWord(current.questionType)) {
+    delete currentContent.targetWord
+  }
+  const sortingOrder = input.sortingOrder || []
+  if (current.questionType === 'SORTING') {
+    const expected = normalizedOptions.map((_, index) => index)
+    const normalized = [...new Set(sortingOrder)].sort((a, b) => a - b)
+    if (
+      normalized.length !== expected.length ||
+      !normalized.every((index, position) => index === expected[position])
+    ) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        '请按正确语序依次点击全部选项。',
+      )
+    }
+    currentContent.sortingOrder = sortingOrder
+  } else {
+    delete currentContent.sortingOrder
+  }
+  const persistedPrompt =
+    current.questionType === 'SORTING'
+      ? normalizeSortingPrompt(promptText)
+      : promptText
+  const parsedSortingPrompt = parseSortingPrompt(persistedPrompt)
+  if (
+    current.questionType === 'SORTING' &&
+    (parsedSortingPrompt.slotCount !== normalizedOptions.length ||
+      parsedSortingPrompt.starCount !== 1)
+  ) {
+    throw new DomainError(
+      'VALIDATION_ERROR',
+      `问题6题干需要 ${normalizedOptions.length} 个排序位，并标出一个★位。`,
+    )
+  }
   const currentListeningSectionTitle = String(
     currentContent.listeningSectionTitle || currentContent.sectionTitle || '听力',
   ).trim()
   const optionLabelFormat = normalizeOptionLabelFormat(
     input.optionLabelFormat,
-    current.material.type === 'LISTENING' ? 'numeric' : 'upper-alpha',
+    'numeric',
   )
   const customOptionLabels = parseCustomOptionLabels(input.customOptionLabels)
   if (
@@ -132,14 +387,22 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
   }
 
   const data: Prisma.QuestionUpdateInput = {
-    prompt: promptText || null,
-    context: questionText.context,
+    prompt: persistedPrompt || null,
+    context: supportsSeparateQuestionContext(current.questionType)
+      ? questionText.context
+      : null,
     analysis: explanationText || null,
     content: encodeQuestionContent(
       {
         ...currentContent,
         optionLabelFormat,
         customOptionLabels,
+        shuffleOptions:
+          input.shuffleOptions !== false &&
+          !(
+            current.material.type === 'LISTENING' &&
+            listeningSectionNumber === 3
+          ),
         ...(current.material.type === 'LISTENING'
           ? {
               listeningSectionNumber: listeningSectionNumber

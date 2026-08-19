@@ -10,6 +10,7 @@ type LessonEditorPageState = {
   bulkText: string
   bulkParsed: ParsedQuizDraft[]
   quickOptionInputs: Record<string, string>
+  questionsPerMaterial: number
 }
 
 type LessonEditorAction = {
@@ -31,7 +32,10 @@ function lessonEditorReducer(
   return { ...state, [action.key]: next }
 }
 
-export function useLessonQuestionPageState(initialSectionNumber: string) {
+export function useLessonQuestionPageState(
+  initialSectionNumber: string,
+  initialQuestionsPerMaterial = 1,
+) {
   const [state, dispatch] = useReducer(lessonEditorReducer, {
     isDirty: false,
     listeningSectionNumber: initialSectionNumber,
@@ -39,6 +43,7 @@ export function useLessonQuestionPageState(initialSectionNumber: string) {
     bulkText: '',
     bulkParsed: [],
     quickOptionInputs: {},
+    questionsPerMaterial: initialQuestionsPerMaterial,
   })
   const setter = useCallback(
     <Key extends keyof LessonEditorPageState>(key: Key) =>
@@ -55,6 +60,7 @@ export function useLessonQuestionPageState(initialSectionNumber: string) {
     setBulkText: setter('bulkText'),
     setBulkParsed: setter('bulkParsed'),
     setQuickOptionInputs: setter('quickOptionInputs'),
+    setQuestionsPerMaterial: setter('questionsPerMaterial'),
   }
 }
 

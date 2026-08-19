@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { annotateExamText } from './annotate'
 import type {
   ExamAnnotationSettings,
@@ -8,75 +8,51 @@ import type {
   ExamQuestionOption,
   OnSelectOption,
 } from './types'
-
-const SORT_SLOT_TOKEN =
-  /([＿_]{2,}|[★＊]|[（(][\s　]*[）)]|[（(]\s*\d+\s*[）)]|\[\s*\d+\s*\]|［\s*\d+\s*］)/
-const SLOT_TOKEN_CHECK = new RegExp(`^${SORT_SLOT_TOKEN.source}$`)
-const STAR_TOKEN_CHECK = /[★＊]/
+import { parseSortingPrompt } from '@/modules/practice/domain/question-text'
 
 type SortingQuestionProps = {
   question: ExamQuestion
   currentAnswer?: string
+  currentOrder?: Array<string | null>
   onSelect: OnSelectOption
+  onClear?: () => void
+  onOrderChange?: (order: Array<string | null>) => void
   isSubmitted?: boolean
   isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
 
-const isSlotToken = (segment: string) => SLOT_TOKEN_CHECK.test(segment)
-
-const extractSegments = (sourceText: string) => {
-  if (!sourceText) return []
-
-  const segments = sourceText.split(SORT_SLOT_TOKEN).filter(Boolean)
-  return segments
-}
-
-const inferOptionOrderFromContext = (
-  contextText: string,
+const resolveSubmittedOptionOrder = (
+  sortingOrder: number[] | undefined,
   options: ExamQuestionOption[],
 ) => {
-  if (!contextText || options.length === 0) return null
-
-  const remaining = [...options]
-  const ordered: ExamQuestionOption[] = []
-  let cursor = 0
-
-  while (remaining.length > 0) {
-    let bestIndex = -1
-    let bestPos = Number.POSITIVE_INFINITY
-
-    remaining.forEach((option, index) => {
-      const token = (option.text || '').trim()
-      if (!token) return
-      const pos = contextText.indexOf(token, cursor)
-      if (pos >= 0 && pos < bestPos) {
-        bestPos = pos
-        bestIndex = index
-      }
-    })
-
-    if (bestIndex === -1) return null
-    const [picked] = remaining.splice(bestIndex, 1)
-    ordered.push(picked)
-    cursor = bestPos + (picked.text || '').length
-  }
-
-  return ordered
+  if (!sortingOrder || sortingOrder.length !== options.length) return options
+  const ordered = sortingOrder.map(index => options[index]).filter(Boolean)
+  return ordered.length === options.length ? ordered : options
 }
 
 const createSlotDraft = (
   slotCount: number,
   options: ExamQuestionOption[],
+  currentOrder?: Array<string | null>,
   currentAnswer?: string,
   starIndex?: number,
 ) => {
   const nextSlots = Array(slotCount).fill(null) as (ExamQuestionOption | null)[]
+  const seen = new Set<string>()
+  currentOrder?.slice(0, slotCount).forEach((optionId, index) => {
+    if (!optionId || seen.has(optionId)) return
+    const option = options.find(item => item.id === optionId)
+    if (!option) return
+    nextSlots[index] = option
+    seen.add(optionId)
+  })
   const chosen = options.find(option => option.id === currentAnswer)
 
   if (
     chosen &&
+    !seen.has(chosen.id) &&
     typeof starIndex === 'number' &&
     starIndex >= 0 &&
     starIndex < nextSlots.length
@@ -86,14 +62,19 @@ const createSlotDraft = (
 
   return {
     slots: nextSlots,
-    pool: options.filter(option => option.id !== chosen?.id),
+    pool: options.filter(
+      option => !seen.has(option.id) && option.id !== chosen?.id,
+    ),
   }
 }
 
 export function SortingQuestion({
   question,
   currentAnswer,
+  currentOrder,
   onSelect,
+  onClear,
+  onOrderChange,
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   isJapanesePaper = false,
@@ -102,64 +83,69 @@ export function SortingQuestion({
   const options = useMemo(() => question.options || [], [question.options])
   const correctOptionId = options.find(option => option.isCorrect)?.id
   const promptText = (question.prompt || '').trim()
-  const contextText = (question.contextSentence || '').trim()
-  const sourceText = promptText || contextText
-
-  const segments = useMemo(() => extractSegments(sourceText), [sourceText])
+  const parsedPrompt = useMemo(
+    () => parseSortingPrompt(promptText),
+    [promptText],
+  )
+  const segments = parsedPrompt.segments
 
   const slotCount = useMemo(() => {
-    const detectedSlots = segments.filter(isSlotToken).length
-    return Math.max(detectedSlots, options.length)
-  }, [options.length, segments])
+    return Math.max(parsedPrompt.slotCount, options.length)
+  }, [options.length, parsedPrompt.slotCount])
 
-  const starIndex = useMemo(() => {
-    let count = 0
-    let index = -1
-
-    segments.forEach(segment => {
-      if (!isSlotToken(segment)) return
-      if (STAR_TOKEN_CHECK.test(segment)) index = count
-      count += 1
-    })
-
-    return index
-  }, [segments])
+  const starIndex = parsedPrompt.starIndex
 
   const renderedSegments = useMemo(() => {
-    const detectedSlots = segments.filter(isSlotToken).length
+    const detectedSlots = parsedPrompt.slotCount
     if (detectedSlots >= slotCount) return segments
 
     const extra = Array.from(
       { length: slotCount - detectedSlots },
-      (_, idx) => `__AUTO_SLOT_${idx}__`,
+      (_, idx) => ({
+        text: `__AUTO_SLOT_${idx}__`,
+        slotIndex: detectedSlots + idx,
+        isStar: false,
+      }),
     )
-    return [...segments, ' ', ...extra]
-  }, [segments, slotCount])
+    return [
+      ...segments,
+      { text: ' ', slotIndex: null, isStar: false },
+      ...extra,
+    ]
+  }, [parsedPrompt.slotCount, segments, slotCount])
 
   const [slots, setSlots] = useState<(ExamQuestionOption | null)[]>([])
   const [pool, setPool] = useState<ExamQuestionOption[]>([])
   const submittedSlots = useMemo(() => {
     if (!isSubmitted) return slots
 
-    const inferredOrder = inferOptionOrderFromContext(contextText, options)
-    const baseOrder =
-      inferredOrder && inferredOrder.length > 0 ? inferredOrder : options
+    const baseOrder = resolveSubmittedOptionOrder(
+      question.sortingOrder,
+      options,
+    )
 
     const next = Array(slotCount).fill(null) as (ExamQuestionOption | null)[]
     for (let i = 0; i < slotCount; i += 1) {
       next[i] = baseOrder[i] || null
     }
     return next
-  }, [contextText, isSubmitted, options, slotCount, slots])
+  }, [isSubmitted, options, question.sortingOrder, slotCount, slots])
 
   useEffect(() => {
     const initialAnswerId = isSubmitted ? correctOptionId : currentAnswer
-    const draft = createSlotDraft(slotCount, options, initialAnswerId, starIndex)
+    const draft = createSlotDraft(
+      slotCount,
+      options,
+      currentOrder,
+      initialAnswerId,
+      starIndex,
+    )
     setSlots(draft.slots)
     setPool(draft.pool)
   }, [
     correctOptionId,
     currentAnswer,
+    currentOrder,
     isSubmitted,
     question.id,
     options,
@@ -167,24 +153,23 @@ export function SortingQuestion({
     starIndex,
   ])
 
-  useEffect(() => {
-    if (slots.length === 0) return
-
-    if (starIndex >= 0 && slots[starIndex]) {
-      const nextAnswer = slots[starIndex]!.id
-      if (currentAnswer !== nextAnswer) {
-        onSelect(nextAnswer)
+  const syncAnswer = useCallback(
+    (nextSlots: Array<ExamQuestionOption | null>) => {
+      if (starIndex >= 0) {
+        const starOption = nextSlots[starIndex]
+        if (starOption) onSelect(starOption.id)
+        else onClear?.()
+        return
       }
-      return
-    }
 
-    if (starIndex === -1 && slots.every(Boolean) && slots[0]) {
-      const nextAnswer = slots[0].id
-      if (currentAnswer !== nextAnswer) {
-        onSelect(nextAnswer)
+      if (nextSlots.every(Boolean) && nextSlots[0]) {
+        onSelect(nextSlots[0].id)
+      } else {
+        onClear?.()
       }
-    }
-  }, [currentAnswer, onSelect, slots, starIndex])
+    },
+    [onClear, onSelect, starIndex],
+  )
 
   const moveToSlot = (option: ExamQuestionOption, slotIndex?: number) => {
     if (isInteractionLocked) return
@@ -196,25 +181,74 @@ export function SortingQuestion({
     if (targetIndex < 0 || targetIndex >= slots.length) return
     if (slots[targetIndex] !== null) return
 
-    setSlots(prev => {
-      const next = [...prev]
-      next[targetIndex] = option
-      return next
-    })
+    const next = [...slots]
+    next[targetIndex] = option
+    setSlots(next)
+    onOrderChange?.(next.map(item => item?.id || null))
+    syncAnswer(next)
     setPool(prev => prev.filter(item => item.id !== option.id))
   }
 
   const moveBackToPool = (option: ExamQuestionOption, slotIndex: number) => {
     if (isInteractionLocked) return
-    setSlots(prev => {
-      const next = [...prev]
-      next[slotIndex] = null
-      return next
-    })
+    const next = [...slots]
+    next[slotIndex] = null
+    setSlots(next)
+    onOrderChange?.(next.map(item => item?.id || null))
+    syncAnswer(next)
     setPool(prev =>
       prev.some(item => item.id === option.id) ? prev : [...prev, option],
     )
   }
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target
+      if (
+        isInteractionLocked ||
+        event.defaultPrevented ||
+        event.repeat ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        (target instanceof HTMLElement &&
+          target.closest(
+            'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+          ))
+      ) {
+        return
+      }
+
+      const optionNumber =
+        /^Digit[1-4]$/.test(event.code) || /^Numpad[1-4]$/.test(event.code)
+          ? Number(event.code.at(-1))
+          : /^[1-4]$/.test(event.key)
+            ? Number(event.key)
+            : 0
+      if (!optionNumber) return
+
+      const option = options[optionNumber - 1]
+      const targetIndex = slots.findIndex(item => item === null)
+      if (
+        !option ||
+        targetIndex < 0 ||
+        !pool.some(item => item.id === option.id)
+      ) {
+        return
+      }
+
+      event.preventDefault()
+      const next = [...slots]
+      next[targetIndex] = option
+      setSlots(next)
+      onOrderChange?.(next.map(item => item?.id || null))
+      syncAnswer(next)
+      setPool(previous => previous.filter(item => item.id !== option.id))
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isInteractionLocked, onOrderChange, options, pool, slots, syncAnswer])
 
   return (
     <div className='mt-4'>
@@ -227,8 +261,7 @@ export function SortingQuestion({
           isJapanesePaper ? 'exam-japanese-text' : ''
         }`}>
         {renderedSegments.map((segment, index) => {
-          const isAutoSlot = segment.startsWith('__AUTO_SLOT_')
-          const shouldRenderSlot = isAutoSlot || isSlotToken(segment)
+          const shouldRenderSlot = segment.slotIndex !== null
 
           if (!shouldRenderSlot) {
             return (
@@ -236,19 +269,20 @@ export function SortingQuestion({
                 key={`sorting-text-${index}`}
                 className='align-middle'
                 dangerouslySetInnerHTML={{
-                  __html: annotateExamText({ text: segment, settings: annotation }),
+                  __html: annotateExamText({
+                    text: segment.text,
+                    settings: annotation,
+                  }),
                 }}
               />
             )
           }
 
-          const slotIndex =
-            renderedSegments
-              .slice(0, index + 1)
-              .filter(item => item.startsWith('__AUTO_SLOT_') || isSlotToken(item))
-              .length - 1
-          const filled = isSubmitted ? submittedSlots[slotIndex] : slots[slotIndex]
-          const isStar = slotIndex === starIndex
+          const slotIndex = segment.slotIndex!
+          const filled = isSubmitted
+            ? submittedSlots[slotIndex]
+            : slots[slotIndex]
+          const isStar = segment.isStar || slotIndex === starIndex
 
           return (
             <button
@@ -260,14 +294,15 @@ export function SortingQuestion({
               data-source-id={question.id}
               data-context-block='true'
               data-context-role='sorting-slot'
-              className={`relative mx-1 inline-flex h-12 min-w-20 items-center justify-center border-b-2 px-3 align-middle transition-colors duration-200 ${
+              aria-label={`${isStar ? '星号' : `第 ${slotIndex + 1}`}排序位${filled ? `：${filled.text}` : ''}`}
+              className={`relative mx-1 inline-flex min-h-12 min-w-24 items-center justify-center rounded-lg border px-3 align-middle shadow-sm transition-colors duration-200 ${
                 filled
-                  ? 'border-orange-400 bg-white text-gray-800'
-                  : 'border-dashed border-gray-300 bg-gray-100/50 text-transparent'
+                  ? 'border-orange-300 bg-orange-50 text-gray-800'
+                  : 'border-dashed border-slate-300 bg-slate-50 text-slate-400'
               }`}>
-              {isStar && !filled && (
-                <span className='absolute -top-5 text-sm text-orange-400'>★</span>
-              )}
+              <span className='absolute -top-2.5 left-2 rounded-full bg-white px-1.5 text-[10px] font-black leading-5 text-orange-500 shadow-sm'>
+                {isStar ? '★' : slotIndex + 1}
+              </span>
               {filled ? (
                 <span
                   dangerouslySetInnerHTML={{
@@ -278,7 +313,7 @@ export function SortingQuestion({
                   }}
                 />
               ) : (
-                '占位'
+                ' '
               )}
             </button>
           )
@@ -299,7 +334,8 @@ export function SortingQuestion({
             <span
               dangerouslySetInnerHTML={{
                 __html: annotateExamText({
-                  text: options.find(option => option.isCorrect)?.text || '未配置',
+                  text:
+                    options.find(option => option.isCorrect)?.text || '未配置',
                   settings: annotation,
                 }),
               }}
@@ -333,7 +369,9 @@ export function SortingQuestion({
             ))}
 
             {pool.length === 0 && (
-              <p className='text-sm text-gray-400'>全部已填入，点击上方词块可撤回。</p>
+              <p className='text-sm text-gray-400'>
+                全部已填入，点击上方词块可撤回。
+              </p>
             )}
           </div>
         )}

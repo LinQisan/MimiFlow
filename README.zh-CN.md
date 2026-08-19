@@ -16,16 +16,21 @@ Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL 和 ts-f
 
 ## 本地运行
 
-需要 Node.js 22–24 和 PostgreSQL。
+需要 Node.js 22–24、Python 3 和 PostgreSQL。
 
 ```bash
 npm install
+npm run sudachi:setup
 npm run db:generate
 npm run db:push
 npm run dev
 ```
 
 运行数据库命令前，请在 `.env.local` 中设置 `DATABASE_URL`。
+`sudachi:setup` 会在项目的 `.venv` 中安装 SudachiPy 与 full 日语词典，供文章注音、原形识别和词频统计使用；也可通过 `SUDACHI_PYTHON` 指定已有的 Python 环境。
+在 macOS 上通过 Homebrew 安装 PostgreSQL 时，`npm run dev` 会检查本地数据库，
+并在数据库未运行时自动启动对应的 Homebrew 服务。若安装了多个 PostgreSQL
+版本，可在 `.env.local` 中用 `POSTGRES_SERVICE` 指定服务名，例如 `postgresql@16`。
 
 ## 检查命令
 

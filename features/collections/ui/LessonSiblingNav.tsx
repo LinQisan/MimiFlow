@@ -20,11 +20,13 @@ export default function LessonSiblingNav({
   lessons,
   currentLessonId,
   hrefBase = '/manage/listening',
+  hrefQuery = '',
   appearance = 'default',
 }: {
   lessons: SiblingLesson[]
   currentLessonId: string
   hrefBase?: string
+  hrefQuery?: string
   appearance?: 'default' | 'practice'
 }) {
   const dialog = useDialog()
@@ -85,7 +87,7 @@ export default function LessonSiblingNav({
                       <span className={`truncate font-bold ${practiceAppearance ? 'text-slate-950' : 'text-indigo-700'}`}>{lesson.title}</span>
                     ) : (
                       <Link
-                        href={`${hrefBase}/${lesson.id}`}
+                        href={`${hrefBase}/${lesson.id}${hrefQuery}`}
                         className='font-medium text-gray-700 hover:text-indigo-600 transition-colors truncate'>
                         {lesson.title}
                       </Link>

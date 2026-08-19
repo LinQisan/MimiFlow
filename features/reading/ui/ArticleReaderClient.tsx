@@ -5,7 +5,12 @@ import { SourceType } from '@prisma/client'
 import WordTooltip from '@/components/exam/WordTooltip'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { saveReadingProgress } from '@/features/reading/progress-actions'
-import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
+import {
+  annotateJapaneseText,
+  annotateJapaneseTextWithSudachi,
+  formatJapaneseTextWithRubyNotation,
+  formatJapaneseTextWithSudachiRubyNotation,
+} from '@/utils/language/japaneseRuby'
 import {
   buildPronunciationMapForText,
   buildSurfaceAliasMapForText,
@@ -17,6 +22,12 @@ import {
   type ArticleContentBlock,
 } from '@/features/reading/domain/article-blocks'
 import MathExpression from '@/features/reading/ui/MathExpression'
+import ExtractVocabularyPanel from '@/features/reading/ui/ExtractVocabularyPanel'
+import { copyText } from '@/features/reading/ui/copy-text'
+import type {
+  SudachiLexeme,
+  VocabularyCandidate,
+} from '@/features/reading/domain/sudachi'
 
 type ReaderChapter = {
   id: string
@@ -24,6 +35,10 @@ type ReaderChapter = {
   text: string
   href: string
 }
+
+type PronunciationSource = 'sudachi' | 'personal'
+
+const PRONUNCIATION_SOURCE_KEY = 'mimiflow_article_pronunciation_source'
 
 const splitParagraphs = (text: string) =>
   text
@@ -36,6 +51,10 @@ export default function ArticleReaderClient({
   content,
   chapters,
   initialVocabularyMetaMap,
+  initialSudachiPronunciationMap = {},
+  initialSudachiLexicon = {},
+  initialVocabularyCandidates = [],
+  sudachiAvailable = false,
   initialProgressPercent = 0,
   mode = 'article',
   documentTitle = '',
@@ -44,6 +63,10 @@ export default function ArticleReaderClient({
   content: string
   chapters: ReaderChapter[]
   initialVocabularyMetaMap: Record<string, VocabularyMeta>
+  initialSudachiPronunciationMap?: Record<string, string>
+  initialSudachiLexicon?: Record<string, SudachiLexeme>
+  initialVocabularyCandidates?: VocabularyCandidate[]
+  sudachiAvailable?: boolean
   initialProgressPercent?: number
   mode?: 'article' | 'ebook'
   documentTitle?: string
@@ -59,7 +82,11 @@ export default function ArticleReaderClient({
     useState(initialChapterIndex)
   const [selectionEnabled, setSelectionEnabled] = useState(true)
   const [rubyEnabled, setRubyEnabled] = useState(true)
+  const [pronunciationSource, setPronunciationSourceState] =
+    useState<PronunciationSource>(sudachiAvailable ? 'sudachi' : 'personal')
   const [noteEnabled, setNoteEnabled] = useState(true)
+  const [extractPanelOpen, setExtractPanelOpen] = useState(false)
+  const [copyLabel, setCopyLabel] = useState('复制正文')
   const [readingProgress, setReadingProgress] = useState(
     Math.max(0, Math.min(100, initialProgressPercent)),
   )
@@ -79,7 +106,46 @@ export default function ArticleReaderClient({
     readerChapters[activeChapterIndex] || readerChapters[0]
 
   useEffect(() => {
-    if (readerChapters.length > 1 || restoredRef.current) return
+    if (mode !== 'article') return
+    const stored = window.localStorage.getItem(PRONUNCIATION_SOURCE_KEY)
+    if (stored === 'personal' || (stored === 'sudachi' && sudachiAvailable)) {
+      setPronunciationSourceState(stored)
+    }
+  }, [mode, sudachiAvailable])
+
+  const setPronunciationSource = (source: PronunciationSource) => {
+    if (source === 'sudachi' && !sudachiAvailable) return
+    setPronunciationSourceState(source)
+    window.localStorage.setItem(PRONUNCIATION_SOURCE_KEY, source)
+  }
+
+  const handleCopyContent = async () => {
+    const text = activeChapter?.text || content
+    if (!text.trim()) return
+    try {
+      const textToCopy = !rubyEnabled
+        ? text
+        : pronunciationSource === 'sudachi'
+          ? formatJapaneseTextWithSudachiRubyNotation(
+              text,
+              initialSudachiLexicon,
+            )
+          : formatJapaneseTextWithRubyNotation(
+              text,
+              buildPronunciationMapForText(text, basePronMap),
+            )
+      await copyText(textToCopy)
+      setCopyLabel('已复制')
+      window.setTimeout(() => setCopyLabel('复制正文'), 1400)
+    } catch {
+      setCopyLabel('复制失败')
+      window.setTimeout(() => setCopyLabel('复制正文'), 1400)
+    }
+  }
+
+  useEffect(() => {
+    if (mode !== 'ebook' || readerChapters.length > 1 || restoredRef.current)
+      return
     restoredRef.current = true
     if (initialProgressPercent <= 1 || initialProgressPercent >= 98) return
 
@@ -94,10 +160,10 @@ export default function ArticleReaderClient({
       })
     }, 120)
     return () => window.clearTimeout(timer)
-  }, [initialProgressPercent, readerChapters.length])
+  }, [initialProgressPercent, mode, readerChapters.length])
 
   useEffect(() => {
-    if (readerChapters.length > 1) return
+    if (mode !== 'ebook' || readerChapters.length > 1) return
 
     const onScroll = () => {
       const reader = readerRef.current
@@ -124,7 +190,7 @@ export default function ArticleReaderClient({
       window.removeEventListener('scroll', onScroll)
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
     }
-  }, [articleId, readerChapters.length])
+  }, [articleId, mode, readerChapters.length])
 
   useEffect(() => {
     if (readerChapters.length <= 1) return
@@ -156,6 +222,11 @@ export default function ArticleReaderClient({
       ),
     [localVocabularyMetaMap],
   )
+
+  const selectedPronunciationMap =
+    pronunciationSource === 'sudachi'
+      ? initialSudachiPronunciationMap
+      : basePronMap
 
   const contentBlocks = useMemo(() => {
     const items = splitParagraphs(activeChapter?.text || '')
@@ -189,25 +260,84 @@ export default function ArticleReaderClient({
     let cursor = 0
     let match: RegExpExecArray | null
 
-    const pushText = (value: string, key: string) => {
+    const pushTextSegment = (
+      value: string,
+      key: string,
+      underlined = false,
+    ) => {
       if (!value) return
-      if (!rubyEnabled) {
-        parts.push(<span key={key}>{value}</span>)
+      if (mode === 'article' && Object.keys(initialSudachiLexicon).length > 0) {
+        const personalPronunciationMap = buildPronunciationMapForText(
+          value,
+          basePronMap,
+        )
+        parts.push(
+          <span
+            key={key}
+            className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
+            dangerouslySetInnerHTML={{
+              __html: annotateJapaneseTextWithSudachi(
+                value,
+                initialSudachiLexicon,
+                {
+                  pronunciationMap: personalPronunciationMap,
+                  useSudachiReading: pronunciationSource === 'sudachi',
+                  rubyEnabled,
+                  rubyClassName: 'text-slate-900',
+                  rtClassName: 'text-slate-500',
+                },
+              ),
+            }}
+          />,
+        )
         return
       }
-      const pronMap = buildPronunciationMapForText(value, basePronMap)
+      if (!rubyEnabled) {
+        parts.push(
+          <span key={key} className={underlined ? 'exam-text-underline' : ''}>
+            {value}
+          </span>,
+        )
+        return
+      }
+      const pronMap =
+        pronunciationSource === 'sudachi'
+          ? initialSudachiPronunciationMap
+          : buildPronunciationMapForText(value, selectedPronunciationMap)
       parts.push(
         <span
           key={key}
-          className='[&_rt]:text-[0.6em] [&_ruby]:mx-0.5'
+          className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
           dangerouslySetInnerHTML={{
             __html: annotateJapaneseText(value, pronMap, {
               rubyClassName: 'text-slate-900',
               rtClassName: 'text-slate-500',
+              groupKanji: pronunciationSource === 'sudachi',
             }),
           }}
         />,
       )
+    }
+    const pushText = (value: string, key: string) => {
+      if (!value) return
+      const markerPattern = /\+\+([\s\S]+?)\+\+/g
+      let markerCursor = 0
+      let markerMatch: RegExpExecArray | null
+      let markerIndex = 0
+      while ((markerMatch = markerPattern.exec(value)) !== null) {
+        pushTextSegment(
+          value.slice(markerCursor, markerMatch.index),
+          `${key}-plain-${markerIndex}`,
+        )
+        pushTextSegment(
+          markerMatch[1] || '',
+          `${key}-underline-${markerIndex}`,
+          true,
+        )
+        markerCursor = markerMatch.index + markerMatch[0].length
+        markerIndex += 1
+      }
+      pushTextSegment(value.slice(markerCursor), `${key}-plain-${markerIndex}`)
     }
 
     while ((match = pattern.exec(text)) !== null) {
@@ -245,7 +375,7 @@ export default function ArticleReaderClient({
                 <tr>
                   {block.rows[0].map((cell, cellIndex) => (
                     <th key={cellIndex} scope='col' className='border-b border-r border-slate-200 px-4 py-3 font-semibold last:border-r-0'>
-                      {cell || '会員種別'}
+                      {cell || '\u00a0'}
                     </th>
                   ))}
                 </tr>
@@ -276,7 +406,7 @@ export default function ArticleReaderClient({
     return (
       <p
         key={`text-${index}`}
-        className='whitespace-pre-line text-[1.05rem] leading-[2.15] text-slate-800 md:text-[1.15rem] md:leading-[2.25]'>
+        className='whitespace-pre-line text-justify [text-justify:inter-ideograph] text-[1.05rem] leading-[2.15] text-slate-800 md:text-[1.15rem] md:leading-[2.25]'>
         {renderInlineText(block.text)}
       </p>
     )
@@ -284,20 +414,30 @@ export default function ArticleReaderClient({
 
   return (
     <section className='relative'>
-      <div className='sticky top-3 z-30 mx-auto mb-10 max-w-4xl rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 shadow-sm backdrop-blur md:mb-14 md:px-5'>
-        <div className='flex flex-wrap items-center gap-x-5 gap-y-3'>
-          <span className='shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] tabular-nums text-slate-500'>
-            阅读进度
-          </span>
-          <div className='h-px min-w-24 flex-1 overflow-hidden bg-slate-300'>
-            <div
-              className='h-full bg-slate-900 transition-[width] duration-200'
-              style={{ width: `${readingProgress}%` }}
-            />
-          </div>
-          <span className='w-9 text-right text-xs tabular-nums text-slate-500'>
-            {Math.round(readingProgress)}%
-          </span>
+      <div
+        className={
+          mode === 'ebook'
+            ? 'sticky top-3 z-30 mx-auto mb-10 max-w-4xl rounded-2xl border border-slate-200 bg-white/92 px-4 py-3 shadow-sm backdrop-blur md:mb-14 md:px-5'
+            : 'mx-auto mb-6 max-w-[44rem]'
+        }>
+        <div
+          className={`flex flex-wrap items-center gap-x-5 gap-y-3 ${mode === 'article' ? 'justify-end' : ''}`}>
+          {mode === 'ebook' ? (
+            <>
+              <span className='shrink-0 text-[11px] font-medium uppercase tracking-[0.14em] tabular-nums text-slate-500'>
+                阅读进度
+              </span>
+              <div className='h-px min-w-24 flex-1 overflow-hidden bg-slate-300'>
+                <div
+                  className='h-full bg-slate-900 transition-[width] duration-200'
+                  style={{ width: `${readingProgress}%` }}
+                />
+              </div>
+              <span className='w-9 text-right text-xs tabular-nums text-slate-500'>
+                {Math.round(readingProgress)}%
+              </span>
+            </>
+          ) : null}
           <div className='flex w-full shrink-0 items-center justify-end divide-x divide-slate-300 sm:w-auto'>
           <button
             type='button'
@@ -321,6 +461,60 @@ export default function ArticleReaderClient({
             }`}>
             注音
           </button>
+          {mode === 'article' && rubyEnabled ? (
+            <div
+              role='radiogroup'
+              aria-label='注音来源'
+              className='flex items-center gap-1 px-2'>
+              <button
+                type='button'
+                role='radio'
+                aria-checked={pronunciationSource === 'sudachi'}
+                disabled={!sudachiAvailable}
+                title={sudachiAvailable ? '显示 SudachiPy 自动注音' : 'SudachiPy 当前不可用'}
+                onClick={() => setPronunciationSource('sudachi')}
+                className={`rounded-full px-2 py-1 text-[11px] font-medium transition ${
+                  pronunciationSource === 'sudachi'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                } disabled:cursor-not-allowed disabled:opacity-40`}>
+                SudachiPy
+              </button>
+              <button
+                type='button'
+                role='radio'
+                aria-checked={pronunciationSource === 'personal'}
+                onClick={() => setPronunciationSource('personal')}
+                className={`rounded-full px-2 py-1 text-[11px] font-medium transition ${
+                  pronunciationSource === 'personal'
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                }`}>
+                我的
+              </button>
+            </div>
+          ) : null}
+          {mode === 'article' ? (
+            <button
+              type='button'
+              onClick={() => setExtractPanelOpen(value => !value)}
+              aria-pressed={extractPanelOpen}
+              className={`h-7 border-0 px-3 text-xs font-medium transition ${
+                extractPanelOpen
+                  ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
+                  : 'text-slate-500 hover:text-slate-900'
+              }`}>
+              提取生词
+            </button>
+          ) : null}
+          {mode === 'article' ? (
+            <button
+              type='button'
+              onClick={() => void handleCopyContent()}
+              className='h-7 border-0 px-3 text-xs font-medium text-slate-950 underline decoration-slate-400 underline-offset-4 transition hover:text-slate-700'>
+              <span aria-live='polite'>{copyLabel}</span>
+            </button>
+          ) : null}
           <button
             type='button'
             onClick={() => setNoteEnabled(value => !value)}
@@ -335,6 +529,24 @@ export default function ArticleReaderClient({
           </div>
         </div>
       </div>
+
+      {mode === 'article' && extractPanelOpen ? (
+        <ExtractVocabularyPanel
+          articleId={articleId}
+          initialCandidates={initialVocabularyCandidates.filter(
+            item => !localVocabularyMetaMap[item.word],
+          )}
+          onSaved={items =>
+            setLocalVocabularyMetaMap(current => {
+              const next = { ...current }
+              items.forEach(item => {
+                next[item.word] = item.meta
+              })
+              return next
+            })
+          }
+        />
+      ) : null}
 
       <div
         className={`mx-auto grid max-w-5xl gap-8 ${
@@ -449,22 +661,26 @@ export default function ArticleReaderClient({
             ))}
           </div>
           <WordTooltip
-            word={selection.text}
+            word={selection.detectedWord?.surface || selection.text}
             x={selection.x}
             y={selection.y}
             isTop={selection.isTop}
             contextSentence={selection.contextSentence}
             sourceType={selection.sourceType}
             sourceId={selection.sourceId}
-            initialMeta={localVocabularyMetaMap[selection.text]}
+            initialMeta={
+              localVocabularyMetaMap[
+                selection.detectedWord?.dictionaryForm || selection.text
+              ] ||
+              localVocabularyMetaMap[selection.detectedWord?.surface || ''] ||
+              localVocabularyMetaMap[selection.text]
+            }
+            detectedWord={selection.detectedWord}
             onClose={closeSelection}
             onSaved={({ word, meta }) =>
               setLocalVocabularyMetaMap(prev => ({
                 ...prev,
                 [word]: meta,
-                ...(selection.text && selection.text !== word
-                  ? { [selection.text]: meta }
-                  : {}),
               }))
             }
           />

@@ -31,15 +31,20 @@ export const toQuestionRecordPayload = (
   void _prompt
   void _context
   void _explanation
-  return { targetWord }
+  return targetWord ? { targetWord } : {}
 }
 
 export const toQuestionOptionsAndAnswer = (
-  options: Array<{ text: string; isCorrect: boolean }>,
+  options: Array<{
+    text: string
+    imageUrl?: string | null
+    isCorrect: boolean
+  }>,
 ) => {
   const rows = options.map((option, index) => ({
     id: `opt_${index + 1}`,
     text: option.text,
+    ...(option.imageUrl ? { imageUrl: option.imageUrl } : {}),
   }))
   const answer = rows
     .filter((_, index) => options[index]?.isCorrect)

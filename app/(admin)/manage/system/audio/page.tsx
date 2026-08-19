@@ -23,9 +23,10 @@ type AudioItem = {
   updatedAt: string
   linkedLessons: number
   linkedListeningMaterials: number
+  linkedReadingMaterials: number
   linkedSpeakingMaterials: number
   linkedSubtitleMaterials: number
-  linkedVocabularySentences: number
+  linkedVocabularyAudio: number
 }
 
 type AudioFolderSummary = {
@@ -138,7 +139,7 @@ export default function ManageAudioPage() {
   const [search, setSearch] = useState('')
   const [folder, setFolder] = useState('')
   const [usage, setUsage] = useState<
-    'all' | 'listening' | 'speaking' | 'vocabulary' | 'unlinked'
+    'all' | 'listening' | 'reading' | 'speaking' | 'vocabulary' | 'unlinked'
   >('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [folderOptions, setFolderOptions] = useState<string[]>([])
@@ -243,8 +244,9 @@ export default function ManageAudioPage() {
   const usageOptions: SelectOption[] = [
     { value: 'all', label: '全部用途' },
     { value: 'listening', label: '听力材料使用中' },
+    { value: 'reading', label: '阅读材料使用中' },
     { value: 'speaking', label: '跟读材料使用中' },
-    { value: 'vocabulary', label: '词汇例句使用中' },
+    { value: 'vocabulary', label: '词汇使用中' },
     { value: 'unlinked', label: '未关联材料' },
   ]
   const allVisibleSelected =
@@ -328,13 +330,15 @@ export default function ManageAudioPage() {
     const details: string[] = []
     if (typeof res.listeningRefUpdated === 'number' && res.listeningRefUpdated > 0)
       details.push(`听力引用更新 ${res.listeningRefUpdated} 条`)
+    if (typeof res.readingRefUpdated === 'number' && res.readingRefUpdated > 0)
+      details.push(`阅读引用更新 ${res.readingRefUpdated} 条`)
     if (typeof res.speakingRefUpdated === 'number' && res.speakingRefUpdated > 0)
       details.push(`跟读引用更新 ${res.speakingRefUpdated} 条`)
     if (typeof res.subtitleRefUpdated === 'number' && res.subtitleRefUpdated > 0) {
       details.push(`影视字幕引用更新 ${res.subtitleRefUpdated} 条`)
     }
     if (typeof res.vocabularyRefUpdated === 'number' && res.vocabularyRefUpdated > 0)
-      details.push(`词汇例句引用更新 ${res.vocabularyRefUpdated} 条`)
+      details.push(`词汇引用更新 ${res.vocabularyRefUpdated} 条`)
     if (res.sourceRemoved === false) details.push('旧文件需稍后清理')
     dialog.toast(
       details.length > 0 ? `${res.message}（${details.join('，')}）` : res.message,
@@ -404,6 +408,8 @@ export default function ManageAudioPage() {
     const extra = []
     if (typeof res.listeningRefUpdated === 'number' && res.listeningRefUpdated > 0)
       extra.push(`听力引用 ${res.listeningRefUpdated}`)
+    if (typeof res.readingRefUpdated === 'number' && res.readingRefUpdated > 0)
+      extra.push(`阅读引用 ${res.readingRefUpdated}`)
     if (typeof res.speakingRefUpdated === 'number' && res.speakingRefUpdated > 0)
       extra.push(`跟读引用 ${res.speakingRefUpdated}`)
     if (typeof res.subtitleRefUpdated === 'number') extra.push(`字幕引用 ${res.subtitleRefUpdated}`)
@@ -450,7 +456,7 @@ export default function ManageAudioPage() {
             <div>
               <h1 className='text-2xl font-bold text-slate-950 md:text-3xl'>录音文件</h1>
               <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
-                按目录管理听力与跟读音频。移动或重命名文件时，系统会同步更新材料引用。
+                按目录管理听力、阅读与跟读音频。移动或重命名文件时，系统会同步更新材料引用。
               </p>
             </div>
             <p className='text-xs text-slate-400'>存储位置：public/audios</p>
@@ -668,9 +674,9 @@ export default function ManageAudioPage() {
                               </span>
                               {item.linkedLessons > 0 ? (
                                 <span>
-                                  听力 {item.linkedListeningMaterials} · 跟读 {item.linkedSpeakingMaterials}
-                                  {item.linkedVocabularySentences > 0
-                                    ? ` · 词汇 ${item.linkedVocabularySentences}`
+                                  听力 {item.linkedListeningMaterials} · 阅读 {item.linkedReadingMaterials} · 跟读 {item.linkedSpeakingMaterials}
+                                  {item.linkedVocabularyAudio > 0
+                                    ? ` · 词汇 ${item.linkedVocabularyAudio}`
                                     : ''}
                                   {item.linkedSubtitleMaterials > 0
                                     ? ` · 字幕 ${item.linkedSubtitleMaterials}`

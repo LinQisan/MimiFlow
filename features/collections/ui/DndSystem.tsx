@@ -1,6 +1,12 @@
 'use client'
 
-import React, { useState, useEffect, createContext, useContext } from 'react'
+import React, {
+  useState,
+  useEffect,
+  createContext,
+  useContext,
+  useId,
+} from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DndContext,
@@ -50,6 +56,7 @@ export function SortableList({
   className?: string
 }) {
   const router = useRouter()
+  const dndContextId = useId()
   const [orderedIds, setOrderedIds] = useState(items.map(i => i.id))
 
   // 监听服务器数据的变化
@@ -98,6 +105,7 @@ export function SortableList({
 
   return (
     <DndContext
+      id={dndContextId}
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragEnd={handleDragEnd}>

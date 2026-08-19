@@ -1,7 +1,10 @@
 // Practice paper editor route.
 import { notFound } from 'next/navigation'
 import PaperQuestionEditor from '@/features/practice/ui/PaperQuestionEditor'
-import { getManagePaperEditData } from '@/lib/repositories/exam'
+import {
+  getManagePaperEditData,
+  getManagePaperMoveTargets,
+} from '@/lib/repositories/exam'
 
 export default async function ManageExamPaperDetailPage({
   params,
@@ -15,8 +18,17 @@ export default async function ManageExamPaperDetailPage({
   const rawSection = Array.isArray(resolvedSearchParams.section)
     ? resolvedSearchParams.section[0]
     : resolvedSearchParams.section
-  const paper = await getManagePaperEditData(id)
+  const [paper, moveTargets] = await Promise.all([
+    getManagePaperEditData(id),
+    getManagePaperMoveTargets(id),
+  ])
   if (!paper) return notFound()
 
-  return <PaperQuestionEditor paper={paper} activeSectionKey={rawSection || null} />
+  return (
+    <PaperQuestionEditor
+      paper={paper}
+      moveTargets={moveTargets}
+      activeSectionKey={rawSection || null}
+    />
+  )
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useRef } from 'react'
+import Image from 'next/image'
 import { StandardQuestion } from './question-renderer/StandardQuestion'
 import { OptionsList } from './question-renderer/OptionsList'
 import { annotateExamText } from './question-renderer/annotate'
@@ -18,8 +19,12 @@ type QuestionRendererProps = {
   question: ExamQuestion
   allQuestions?: ExamQuestion[]
   currentAnswer?: string
+  currentSortingOrder?: Array<string | null>
   answerMap?: Record<string, string>
   onSelect: OnSelectOption
+  onClear?: () => void
+  onSortingOrderChange?: (order: Array<string | null>) => void
+  onSelectQuestion?: (questionId: string, optionId: string) => void
   isSubmitted?: boolean
   isInteractionLocked?: boolean
   submittedQuestionIds?: string[]
@@ -43,13 +48,14 @@ function ReadingQuestion({
     .filter(
       item =>
         item.passageId === question.passageId &&
-        item.questionType === 'FILL_BLANK',
+        (item.questionType === 'FILL_BLANK' ||
+          item.questionType === 'TOEIC_TEXT_COMPLETION'),
     )
     .sort((a, b) => (a.order || 0) - (b.order || 0))
 
   return (
     <div className='mx-auto flex w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] lg:items-start'>
-      <section className='custom-scrollbar relative w-full overflow-y-auto rounded-[20px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-8 lg:max-h-[78vh]'>
+      <section className='custom-scrollbar relative w-full overflow-y-auto border-y border-slate-200 py-6 md:py-8 lg:max-h-[78vh]'>
         <article
           data-source-type='ARTICLE_TEXT'
           data-source-id={question.passage?.id || ''}
@@ -91,9 +97,12 @@ function ListeningQuestion({
   question,
   allQuestions = [],
   currentAnswer,
+  answerMap = {},
   onSelect,
+  onSelectQuestion,
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
+  submittedQuestionIds = [],
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -104,19 +113,13 @@ function ListeningQuestion({
   const [duration, setDuration] = React.useState(0)
   const [autoPlayAttempted, setAutoPlayAttempted] = React.useState(false)
   const dialogues = question.lesson?.dialogues || []
-  const promptText = normalizeQuestionDisplayText(question.prompt)
-  const contextText = normalizeQuestionDisplayText(question.contextSentence)
-  const distinctContextText = contextText === promptText ? null : contextText
   const lessonId = question.lesson?.id || question.lessonId || question.id
-  const sectionKey = question.lesson?.sectionKey || ''
-  const sectionQuestions = sectionKey
-    ? allQuestions.filter(item => item.lesson?.sectionKey === sectionKey)
-    : []
-  const sectionQuestionIndex = Math.max(
-    0,
-    sectionQuestions.findIndex(item => item.id === question.id),
+  const lessonQuestions = allQuestions.filter(
+    item => item.lessonId && item.lessonId === lessonId,
   )
-  const sectionTitle = question.lesson?.sectionTitle || '听力部分'
+  const displayedQuestions =
+    lessonQuestions.length > 0 ? lessonQuestions : [question]
+  const hasPhotograph = displayedQuestions.some(item => Boolean(item.imageUrl))
 
   React.useEffect(() => {
     setIsPlaying(false)
@@ -182,20 +185,11 @@ function ListeningQuestion({
   }
 
   return (
-    <div className='mx-auto w-full max-w-4xl rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-6'>
-      <div className='mb-4 flex items-center justify-between gap-3'>
-        <div className='inline-flex rounded-full bg-slate-100 px-3 py-1 text-sm font-semibold text-slate-700'>
-          {sectionTitle}
-        </div>
-        {sectionQuestions.length > 1 && (
-          <span className='text-xs font-medium text-slate-500'>
-            {sectionQuestionIndex + 1} / {sectionQuestions.length}
-          </span>
-        )}
-      </div>
-
+    <div
+      className={`mx-auto w-full max-w-4xl ${hasPhotograph ? 'py-1 md:py-2' : 'py-5 md:py-8'}`}>
       {question.lesson?.audioFile && (
-        <div className='mb-5 rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-[inset_0_1px_1px_rgba(15,23,42,0.06)] md:p-4'>
+        <div
+          className={hasPhotograph ? 'mb-3 py-2' : 'mb-5 py-3 md:py-4'}>
           <div className='flex items-center gap-3'>
             <button
               type='button'
@@ -224,6 +218,7 @@ function ListeningQuestion({
           </div>
           <audio
             ref={audioRef}
+            data-practice-audio='current'
             autoPlay
             playsInline
             preload='auto'
@@ -235,64 +230,111 @@ function ListeningQuestion({
         </div>
       )}
 
-      {promptText && (
-        <p
-          data-source-type='QUIZ_QUESTION'
-          data-source-id={question.id}
-          data-context-block='true'
-          data-context-role='question-prompt'
-          className={`mb-3 font-medium text-slate-500 ${
-            isJapanesePaper ? 'exam-japanese-text' : ''
-          }`}
-          dangerouslySetInnerHTML={{
-            __html: annotateExamText({
-              text: promptText,
-              settings: annotation,
-            }),
-          }}
-        />
-      )}
+      <div className={displayedQuestions.length > 1 ? 'divide-y divide-slate-200' : ''}>
+        {displayedQuestions.map((item, index) => {
+          const itemPrompt = normalizeQuestionDisplayText(item.prompt)
+          const itemContext = normalizeQuestionDisplayText(item.contextSentence)
+          const itemDistinctContext =
+            itemContext === itemPrompt ? null : itemContext
+          const itemSubmitted = submittedQuestionIds.includes(item.id)
+          return (
+            <section
+              key={item.id}
+              data-question-id={item.id}
+              className='py-5 first:pt-0 last:pb-0'>
+              {displayedQuestions.length > 1 ? (
+                <p className='mb-3 text-xs font-bold text-slate-400'>
+                  第 {index + 1} 题
+                </p>
+              ) : null}
+              {item.imageUrl ? (
+                <figure className='mb-2 overflow-hidden'>
+                  <Image
+                    src={item.imageUrl}
+                    alt={`第 ${index + 1} 题题目图片`}
+                    width={1200}
+                    height={800}
+                    unoptimized
+                    priority={index === 0}
+                    className='mx-auto h-auto max-h-[48vh] w-auto max-w-full object-contain'
+                  />
+                </figure>
+              ) : null}
+              {itemPrompt ? (
+                <p
+                  data-source-type='QUIZ_QUESTION'
+                  data-source-id={item.id}
+                  data-context-block='true'
+                  data-context-role='question-prompt'
+                  className={`mb-3 font-medium text-slate-500 ${
+                    isJapanesePaper ? 'exam-japanese-text' : ''
+                  }`}
+                  dangerouslySetInnerHTML={{
+                    __html: annotateExamText({
+                      text: itemPrompt,
+                      settings: annotation,
+                    }),
+                  }}
+                />
+              ) : null}
+              {itemDistinctContext ? (
+                <div
+                  data-source-type='AUDIO_DIALOGUE'
+                  data-source-id={item.lessonId || dialogueSourceId}
+                  data-context-block='true'
+                  data-context-role='listening-dialogue'
+                  className={`mb-6 text-xl font-medium leading-relaxed text-slate-900 ${
+                    isJapanesePaper ? 'exam-japanese-text' : ''
+                  }`}
+                  dangerouslySetInnerHTML={{
+                    __html: annotateExamText({
+                      text: itemDistinctContext,
+                      settings: annotation,
+                    }),
+                  }}
+                />
+              ) : null}
+              <OptionsList
+                options={item.options || []}
+                currentAnswer={
+                  answerMap[item.id] ||
+                  (item.id === question.id ? currentAnswer : undefined)
+                }
+                onSelect={optionId =>
+                  onSelectQuestion
+                    ? onSelectQuestion(item.id, optionId)
+                    : onSelect(optionId)
+                }
+                sourceId={item.id}
+                isSubmitted={
+                  itemSubmitted ||
+                  (displayedQuestions.length === 1 && isSubmitted)
+                }
+                isInteractionLocked={isInteractionLocked}
+                isJapanesePaper={isJapanesePaper}
+                optionLabelFormat={item.optionLabelFormat}
+                customOptionLabels={item.customOptionLabels}
+                compact={Boolean(item.imageUrl)}
+                annotation={annotation}
+              />
+            </section>
+          )
+        })}
+      </div>
 
-      {distinctContextText && (
-        <div
-          data-source-type='AUDIO_DIALOGUE'
-          data-source-id={dialogueSourceId}
-          data-context-block='true'
-          data-context-role='listening-dialogue'
-          className={`mb-6 text-xl font-medium leading-relaxed text-slate-900 ${
-            isJapanesePaper ? 'exam-japanese-text' : ''
-          }`}
-          dangerouslySetInnerHTML={{
-            __html: annotateExamText({
-              text: distinctContextText,
-              settings: annotation,
-            }),
-          }}
-        />
-      )}
-
-      <OptionsList
-        options={question.options || []}
-        currentAnswer={currentAnswer}
-        onSelect={onSelect}
-        sourceId={question.id}
-        isSubmitted={isSubmitted}
-        isInteractionLocked={isInteractionLocked}
-        isJapanesePaper={isJapanesePaper}
-        optionLabelFormat={question.optionLabelFormat}
-        customOptionLabels={question.customOptionLabels}
-        annotation={annotation}
-      />
-
-      {isSubmitted && dialogues.length > 0 && (
-        <ListeningTranscript
-          lessonId={lessonId}
-          dialogues={dialogues}
-          options={question.options || []}
-          audioRef={audioRef}
-          annotation={annotation}
-        />
-      )}
+      {(isSubmitted ||
+        displayedQuestions.some(item =>
+          submittedQuestionIds.includes(item.id),
+        )) &&
+        dialogues.length > 0 && (
+          <ListeningTranscript
+            lessonId={lessonId}
+            dialogues={dialogues}
+            options={displayedQuestions.flatMap(item => item.options || [])}
+            audioRef={audioRef}
+            annotation={annotation}
+          />
+        )}
     </div>
   )
 }
@@ -301,8 +343,12 @@ export function QuestionRenderer({
   question,
   allQuestions,
   currentAnswer,
+  currentSortingOrder,
   answerMap,
   onSelect,
+  onClear,
+  onSortingOrderChange,
+  onSelectQuestion,
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   submittedQuestionIds = [],
@@ -321,6 +367,7 @@ export function QuestionRenderer({
         currentAnswer={currentAnswer}
         answerMap={answerMap}
         onSelect={onSelect}
+        onSelectQuestion={onSelectQuestion}
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
         submittedQuestionIds={submittedQuestionIds}
@@ -338,8 +385,10 @@ export function QuestionRenderer({
         currentAnswer={currentAnswer}
         answerMap={answerMap}
         onSelect={onSelect}
+        onSelectQuestion={onSelectQuestion}
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
+        submittedQuestionIds={submittedQuestionIds}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -350,7 +399,10 @@ export function QuestionRenderer({
     <StandardQuestion
       question={question}
       currentAnswer={currentAnswer}
+      currentSortingOrder={currentSortingOrder}
       onSelect={onSelect}
+      onClear={onClear}
+      onSortingOrderChange={onSortingOrderChange}
       isSubmitted={isSubmitted}
       isInteractionLocked={isInteractionLocked}
       isJapanesePaper={isJapanesePaper}

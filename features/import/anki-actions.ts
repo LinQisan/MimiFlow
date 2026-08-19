@@ -39,6 +39,7 @@ type PreviewRow = {
 const MAX_PREVIEW_ROWS = 24
 const MAX_IMPORT_ROWS = 5000
 const AUDIO_ROOT = path.join(process.cwd(), 'public', 'audios')
+const DEFAULT_ANKI_AUDIO_FOLDER = 'vocabulary/anki'
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
   '.m4a',
@@ -494,7 +495,7 @@ async function uploadAudioFiles(files: File[], folderInput: string) {
     .filter(segment => segment && segment !== '.' && segment !== '..')
     .join('/')
 
-  const resolvedFolder = folder || 'imports/anki'
+  const resolvedFolder = folder || DEFAULT_ANKI_AUDIO_FOLDER
   const targetDir = resolvePathInsideRoot(AUDIO_ROOT, resolvedFolder)
   if (!targetDir) {
     throw new Error('音频目录无效。')
@@ -605,7 +606,9 @@ export async function previewAnkiImport(formData: FormData) {
 
 export async function runAnkiImport(formData: FormData) {
   const rowsJson = String(formData.get('rowsJson') || '')
-  const audioFolder = String(formData.get('audioFolder') || 'imports/anki').trim() || 'imports/anki'
+  const audioFolder =
+    String(formData.get('audioFolder') || DEFAULT_ANKI_AUDIO_FOLDER).trim() ||
+    DEFAULT_ANKI_AUDIO_FOLDER
   const notebookName = String(formData.get('notebookName') || '').trim()
   const selectedWordbookId = String(formData.get('wordbookId') || '').trim()
   const selectedWordbookTitle = String(formData.get('wordbookTitle') || '').trim()

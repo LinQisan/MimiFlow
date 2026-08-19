@@ -34,8 +34,10 @@ const initialActionState = { success: false, message: '' }
 
 export default function EpubImportForm({
   collections,
+  defaultLanguage = 'ja',
 }: {
   collections: UploadCollectionLite[]
+  defaultLanguage?: string
 }) {
   const [sourceMode, setSourceMode] = useState<'paste' | 'epub'>('paste')
   const [bookTitle, setBookTitle] = useState('')
@@ -63,8 +65,8 @@ export default function EpubImportForm({
   return (
     <div className='mx-auto max-w-4xl space-y-6'>
       <header className='border-b border-slate-200 pb-5'>
-        <h2 className='text-xl font-black text-slate-950'>导入电子书</h2>
-        <p className='mt-1 text-sm leading-6 text-slate-500'>
+        <h2 className='sr-only'>导入电子书</h2>
+        <p className='text-sm leading-6 text-slate-500'>
           粘贴专业书籍正文，或导入已有 EPUB。章节、表格与数学公式会保留在阅读器中。
         </p>
       </header>
@@ -72,16 +74,16 @@ export default function EpubImportForm({
       <div
         role='tablist'
         aria-label='电子书来源'
-        className='grid grid-cols-2 gap-1 rounded-xl bg-slate-200/70 p-1'>
+        className='flex border-b border-slate-200'>
         <button
           type='button'
           role='tab'
           aria-selected={sourceMode === 'paste'}
           onClick={() => setSourceMode('paste')}
-          className={`rounded-lg px-4 py-3 text-sm font-bold transition ${
-            sourceMode === 'paste'
-              ? 'bg-white text-slate-950 shadow-sm'
-              : 'text-slate-500 hover:text-slate-800'
+            className={`!rounded-none border-b-2 px-4 py-3 text-sm font-bold transition ${
+              sourceMode === 'paste'
+              ? 'border-slate-950 text-slate-950'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}>
           粘贴书籍正文
         </button>
@@ -90,10 +92,10 @@ export default function EpubImportForm({
           role='tab'
           aria-selected={sourceMode === 'epub'}
           onClick={() => setSourceMode('epub')}
-          className={`rounded-lg px-4 py-3 text-sm font-bold transition ${
-            sourceMode === 'epub'
-              ? 'bg-white text-slate-950 shadow-sm'
-              : 'text-slate-500 hover:text-slate-800'
+            className={`!rounded-none border-b-2 px-4 py-3 text-sm font-bold transition ${
+              sourceMode === 'epub'
+              ? 'border-slate-950 text-slate-950'
+              : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}>
           上传 EPUB
         </button>
@@ -102,7 +104,7 @@ export default function EpubImportForm({
       <form
         action={sourceMode === 'paste' ? pasteAction : epubAction}
         className='space-y-6'>
-        <section className='grid gap-4 rounded-2xl border border-slate-200 bg-white p-5 md:grid-cols-2 md:p-6'>
+        <section className='grid gap-4 border-y border-slate-200 py-5 md:grid-cols-2 md:py-6'>
           <label className='space-y-2'>
             <span className='text-sm font-bold text-slate-800'>书名</span>
             <input
@@ -127,7 +129,7 @@ export default function EpubImportForm({
             <span className='text-sm font-bold text-slate-800'>语言</span>
             <input
               name='language'
-              defaultValue='ja'
+              defaultValue={defaultLanguage}
               disabled={sourceMode === 'epub'}
               className='h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100 disabled:bg-slate-50 disabled:text-slate-400'
             />
@@ -146,7 +148,7 @@ export default function EpubImportForm({
         </section>
 
         {sourceMode === 'paste' ? (
-          <section className='overflow-hidden rounded-2xl border border-slate-200 bg-white'>
+          <section className='overflow-hidden border-y border-slate-200 bg-white'>
             <div className='border-b border-slate-200 bg-slate-50/80 px-5 py-4 md:flex md:items-start md:justify-between md:gap-6'>
               <div>
                 <h3 className='text-sm font-black text-slate-900'>书籍正文</h3>
@@ -176,7 +178,7 @@ export default function EpubImportForm({
             </div>
           </section>
         ) : (
-          <section className='rounded-2xl border border-dashed border-slate-300 bg-white p-6'>
+          <section className='border-y border-dashed border-slate-300 bg-white p-6'>
             <label className='block cursor-pointer text-center'>
               <span className='block text-sm font-black text-slate-900'>选择 EPUB 文件</span>
               <span className='mt-1 block text-xs text-slate-500'>最大 80MB，自动读取书名、作者和章节</span>

@@ -209,11 +209,15 @@ test('review workflows preserve submitted state and keep clear exits', async () 
     path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
     'utf8',
   )
-
-  assert.match(questionReview, /if \(item\.retryId === currentItem\.retryId\) return/)
+  assert.match(
+    questionReview,
+    /if \(item\.retryId === currentItems\[0\]\?\.retryId\) return/,
+  )
   assert.match(questionReview, /href='\/review'/)
   assert.match(questionReview, /href=\{item\.sourceUrl\}/)
-  assert.match(questionReview, /disabled=\{!selectedOptionId \|\| isPending\}/)
+  assert.match(questionReview, /disabled=\{!allAnswered \|\| isPending\}/)
+  assert.match(questionReview, /submitRetryAnswers/)
+  assert.match(questionReview, /同一听力材料/)
   assert.match(questionReview, /aria-label='选择复习题型'/)
   assert.match(questionReview, /activeTypeQuery/)
   assert.match(mistakeActions, /getDueRetryQuestionTypeSummaries/)
@@ -320,6 +324,10 @@ test('content import keeps one task visible at a time', async () => {
     path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
     'utf8',
   )
+  const importNavigation = await readFile(
+    path.join(ROOT, 'app/(admin)/manage/import/ImportNavigation.tsx'),
+    'utf8',
+  )
   const uploadCenter = await readFile(
     path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
     'utf8',
@@ -328,9 +336,50 @@ test('content import keeps one task visible at a time', async () => {
     path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
     'utf8',
   )
+  const listeningQuestionEditor = await readFile(
+    path.join(ROOT, 'features/collections/ui/LessonQuestionsPanel.tsx'),
+    'utf8',
+  )
+  const importActions = await readFile(
+    path.join(ROOT, 'features/import/actions.ts'),
+    'utf8',
+  )
+  const questionRenderer = await readFile(
+    path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
+    'utf8',
+  )
+  const optionsList = await readFile(
+    path.join(ROOT, 'components/exam/question-renderer/OptionsList.tsx'),
+    'utf8',
+  )
+  const toeicTypes = await readFile(
+    path.join(ROOT, 'features/questions/domain/toeic.ts'),
+    'utf8',
+  )
+  const answerCardSections = await readFile(
+    path.join(ROOT, 'modules/practice/domain/answer-card-sections.ts'),
+    'utf8',
+  )
+  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
 
-  assert.match(importPage, /练习内容/)
-  assert.match(importPage, /学习资料/)
+  assert.match(importPage, /ImportNavigation/)
+  assert.match(importNavigation, /选择导入语言/)
+  assert.match(importNavigation, /选择导入分类/)
+  assert.match(importNavigation, /选择导入类型/)
+  assert.match(importNavigation, /CustomSelect/)
+  assert.match(importPage, /label: '试卷'/)
+  assert.match(importPage, /label: '学习材料'/)
+  assert.match(importPage, /文字·词汇·语法/)
+  assert.match(importPage, /TOEIC_PARTS/)
+  assert.match(importPage, /label: '听力题'/)
+  assert.match(importPage, /label: '阅读题'/)
+  assert.match(importPage, /label: language === 'ja' \? '文字·词汇·语法' : '文法题'/)
+  assert.match(importPage, /aria-label='选择 TOEIC Part'/)
+  assert.match(importPage, /part=\$\{part\.part\}/)
+  assert.match(importPage, /legacyToeicPart/)
+  assert.match(importPage, /collectionTypesByScope/)
+  assert.match(uploadCenter, /collectionScope/)
+  assert.match(uploadForm, /name='collectionLanguage'/)
   assert.equal(uploadCenter.includes('Step 2-4'), false)
   assert.match(uploadCenter, /quizEntryMode === 'bulk'/)
   assert.match(uploadCenter, /题目录入方式/)
@@ -344,6 +393,41 @@ test('content import keeps one task visible at a time', async () => {
   assert.equal(uploadForm.includes('paper.materialType === materialType'), false)
   assert.match(uploadForm, /name='collectionIds'/)
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
+  assert.match(schema, /TOEIC_PHOTOGRAPH/)
+  assert.match(listeningQuestionEditor, /listeningQuestionImage_/)
+  assert.match(listeningQuestionEditor, /Part 1 · Photographs/)
+  assert.match(listeningQuestionEditor, /event\.clipboardData\.items/)
+  assert.match(listeningQuestionEditor, /已读取剪贴板图片/)
+  assert.match(listeningQuestionEditor, /图片选项/)
+  assert.match(listeningQuestionEditor, /listeningQuestionOptionImage_/)
+  assert.equal(/分割线|自动切割|自动裁切/.test(listeningQuestionEditor), false)
+  assert.equal(
+    listeningQuestionEditor.includes(
+      "<ActionInterceptor className='space-y-5 p-4 md:p-5'>",
+    ),
+    false,
+  )
+  assert.match(uploadForm, /collectionScope/)
+  assert.match(uploadForm, /所属试卷/)
+  assert.match(uploadForm, /新建试卷/)
+  assert.match(importActions, /saveUploadedQuestionImage/)
+  assert.match(importActions, /toSafeFilename\(questionTitle\)/)
+  assert.match(importActions, /-option-/)
+  assert.match(questionRenderer, /\{item\.imageUrl \? \(/)
+  assert.match(optionsList, /option\.imageUrl/)
+  assert.match(optionsList, /grid-cols-2 gap-3 md:grid-cols-4/)
+  for (const title of [
+    'Photographs',
+    'Question-Response',
+    'Conversations',
+    'Talks',
+    'Incomplete Sentences',
+    'Text Completion',
+    'Reading Comprehension',
+  ]) {
+    assert.match(toeicTypes, new RegExp(title))
+  }
+  assert.match(answerCardSections, /getToeicPartByQuestionType/)
 })
 
 test('content import loads the audio catalogue on demand without effect loops', async () => {
@@ -428,6 +512,10 @@ test('management pages keep classification, exams, and audio responsibilities se
     ),
     'utf8',
   )
+  const paperQuestionActions = await readFile(
+    path.join(ROOT, 'features/practice/admin-actions.ts'),
+    'utf8',
+  )
 
   assert.match(shadowingLibraryManager, /教材与章节/)
   assert.match(shadowingLibraryManager, /createShadowingChapter/)
@@ -443,7 +531,10 @@ test('management pages keep classification, exams, and audio responsibilities se
   assert.match(listeningPage, /跟读材料/)
   assert.match(listeningPage, /ShadowingLibraryManager/)
   assert.match(listeningPage, /添加题目/)
-  assert.match(listeningPage, /`\/manage\/listening\/\$\{item\.id\}#questions`/)
+  assert.match(
+    listeningPage,
+    /`\/manage\/listening\/\$\{item\.id\}\?returnPage=\$\{normalizedManagePage\}#questions`/,
+  )
   assert.match(listeningPage, /`\/manage\/shadowing\/\$\{item\.id\}`/)
   assert.equal(listeningPage.includes('groupedByChapterRows'), false)
   assert.match(listeningEditor, /getListeningEditData/)
@@ -460,6 +551,17 @@ test('management pages keep classification, exams, and audio responsibilities se
   assert.match(paperQuestionEditor, /\{isSaving \? '保存中…' : '保存题目'\}/)
   assert.match(paperQuestionEditor, /题目内容/)
   assert.match(paperQuestionEditor, /选项与答案/)
+  assert.match(paperQuestionEditor, /getVocabGrammarQuestionSection/)
+  assert.match(paperQuestionEditor, /問題\$\{vocabGrammarNumber\.sectionNumber\}/)
+  assert.match(paperQuestionEditor, /aria-label='题目分区'/)
+  assert.match(paperQuestionEditor, /fixed inset-x-0 bottom-0/)
+  assert.match(paperQuestionEditor, /paper-question-row/)
+  assert.match(paperQuestionEditor, /全选 \{visibleQuestionCount\}/)
+  assert.match(paperQuestionEditor, /移动到其他试卷/)
+  assert.match(paperQuestionEditor, /handleDeleteSelected/)
+  assert.match(paperQuestionActions, /deletePaperQuestions/)
+  assert.match(paperQuestionActions, /movePaperQuestions/)
+  assert.match(paperQuestionActions, /resequenceMaterialQuestions/)
 })
 
 test('schema keeps one vocabulary organization model and a typed question', async () => {

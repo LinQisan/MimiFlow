@@ -18,9 +18,13 @@ function shuffleArray<T>(input: T[]): T[] {
 export function reorderExamOptionsForSession(
   options: ExamQuestionOptionView[],
   questionType: string,
+  shuffleOptions = true,
+  listeningSectionNumber: number | null = null,
 ): ExamQuestionOptionView[] {
   if (options.length <= 1) return options
+  if (!shuffleOptions) return options
   if (NON_SHUFFLE_TYPES.has(questionType)) return options
+  if (questionType === 'LISTENING' && listeningSectionNumber === 3) return options
   if (options.every(option => !option.text.trim())) return options
   return shuffleArray(options)
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import type { CollectionType, MaterialType } from '@prisma/client'
+import type { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import CollectionBrowserSelect, {
   type CollectionBrowserOption,
 } from '@/components/manage/import/CollectionBrowserSelect'
@@ -29,7 +29,6 @@ import type {
 import { useUploadFormMutations } from '@/features/import/hooks/useUploadMutations'
 import LessonQuestionsPanel from '@/features/collections/ui/LessonQuestionsPanel'
 
-
 type Props = {
   levels: { id: string; title: string }[]
   papers: {
@@ -49,21 +48,30 @@ type Props = {
   }[]
   variant?: 'default' | 'media-subtitle'
   defaultMaterialType?: MaterialType
+  defaultLanguage?: string
+  collectionScope?: 'paper' | 'material'
+  defaultQuestionType?: QuestionType | string
+  toeicPartLabel?: string
+  defaultListeningSectionNumber?: string
+  listeningSectionLabel?: string
 }
-
-
-
 
 export default function UploadForm({
   levels,
   papers,
   variant = 'default',
   defaultMaterialType = 'LISTENING',
+  defaultLanguage = 'ja',
+  collectionScope = 'material',
+  defaultQuestionType,
+  toeicPartLabel,
+  defaultListeningSectionNumber,
+  listeningSectionLabel,
 }: Props) {
   const dialog = useDialog()
   const router = useRouter()
-  const inlineQuestionEditorRef = useRef<HTMLDivElement | null>(null)
-  const { listPublicAudioFiles, uploadAssAndSaveData } = useUploadFormMutations()
+  const { listPublicAudioFiles, uploadAssAndSaveData } =
+    useUploadFormMutations()
 
   const {
     mode,
@@ -128,9 +136,21 @@ export default function UploadForm({
     setSelectedPaperIds,
     fileInputRef,
     audioInputRef,
-  } = useAudioUploadState(papers.length > 0, defaultMaterialType)
+  } = useAudioUploadState(
+    papers.length > 0,
+    defaultMaterialType,
+    defaultLanguage,
+  )
   const isMediaSubtitleVariant = variant === 'media-subtitle'
+  const usesPracticeMaterialLayout =
+    !isMediaSubtitleVariant &&
+    (materialType === 'SPEAKING' || materialType === 'LISTENING')
+  const usesCombinedListeningUpload =
+    materialType === 'LISTENING' && audioSourceType === 'upload'
+  const usesPaperDestination = collectionScope === 'paper'
+  const destinationName = usesPaperDestination ? '试卷' : '学习内容'
   const isBatchAss = selectedFileNames.length > 1
+  const autoSuggestedTitleRef = useRef<string | null>(null)
   const pastedSubtitleText = useMemo(
     () => extractAssDialoguePlainText(pastedAssSubtitle),
     [pastedAssSubtitle],
@@ -138,22 +158,11 @@ export default function UploadForm({
   const pastedSubtitleLineCount = pastedSubtitleText
     ? pastedSubtitleText.split('\n').filter(Boolean).length
     : 0
-  const inlineListeningLessonId =
+  const uploadedListeningLessonId =
     lastUpload?.materialType === 'LISTENING' &&
     lastUpload.lessonIds.length === 1
       ? lastUpload.lessonIds[0]
       : null
-
-  useEffect(() => {
-    if (!inlineListeningLessonId) return
-    const frame = window.requestAnimationFrame(() => {
-      inlineQuestionEditorRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
-    return () => window.cancelAnimationFrame(frame)
-  }, [inlineListeningLessonId])
 
   const findLatestLessonByMaterialType = (
     paper: Props['papers'][number] | undefined,
@@ -176,9 +185,11 @@ export default function UploadForm({
 
   useEffect(() => {
     if (mode !== 'new') return
-    if (isCollectionTypeAllowedForMaterial(materialType, selectedLevelId)) return
+    if (isCollectionTypeAllowedForMaterial(materialType, selectedLevelId))
+      return
     const fallbackType = getDefaultCollectionTypeForMaterial(materialType)
-    const fallback = levels.find(level => level.id === fallbackType) || levels[0]
+    const fallback =
+      levels.find(level => level.id === fallbackType) || levels[0]
     if (fallback) setSelectedLevelId(fallback.id)
   }, [levels, materialType, mode, selectedLevelId, setSelectedLevelId])
 
@@ -205,13 +216,16 @@ export default function UploadForm({
       const resolvedType = defaultMaterialType
       const latest = findLatestLessonByMaterialType(targetPaper, resolvedType)
       if (targetPaper && targetPaper.lessons.length > 0) {
-        setTitle(autoIncrementString(latest?.title || ''))
+        const suggestedTitle = autoIncrementString(latest?.title || '')
+        autoSuggestedTitleRef.current = suggestedTitle
+        setTitle(suggestedTitle)
         setAudioFile(
           normalizeListeningAudioPath(
             autoIncrementString(latest?.audioFile || ''),
           ),
         )
       } else {
+        autoSuggestedTitleRef.current = null
         setTitle('')
         setAudioFile('/audios/')
       }
@@ -232,7 +246,16 @@ export default function UploadForm({
   ])
 
   useEffect(() => {
-    if (mode !== 'existing' || !selectedPaperId || materialType !== 'SPEAKING') return
+    const suggestedTitle = autoSuggestedTitleRef.current
+    if (!isBatchAss || !suggestedTitle || title !== suggestedTitle) return
+
+    autoSuggestedTitleRef.current = null
+    setTitle('')
+  }, [isBatchAss, setTitle, title])
+
+  useEffect(() => {
+    if (mode !== 'existing' || !selectedPaperId || materialType !== 'SPEAKING')
+      return
     const targetPaper = papers.find(paper => paper.id === selectedPaperId)
     const latest = findLatestLessonByMaterialType(targetPaper, 'SPEAKING')
     // 自动读取同收藏夹上一条跟读材料的章节名，仅在空值时预填，避免覆盖手动输入。
@@ -266,6 +289,10 @@ export default function UploadForm({
     setMaterialType,
     setSubtitleNoAudio,
   ])
+
+  useEffect(() => {
+    setMaterialLanguage(defaultLanguage)
+  }, [defaultLanguage, setMaterialLanguage])
 
   const {
     audioFolderMap,
@@ -412,12 +439,12 @@ export default function UploadForm({
       mode === 'existing' &&
       selectedPaperIds.length === 0
     ) {
-      setStatus({ type: 'error', message: '请选择要添加内容的集合。' })
+      setStatus({ type: 'error', message: `请选择要添加内容的${destinationName}。` })
       return
     }
 
     if (!isMediaSubtitleVariant && mode === 'new' && !selectedLevelId) {
-      setStatus({ type: 'error', message: '请选择集合类型。' })
+      setStatus({ type: 'error', message: `请选择${destinationName}类型。` })
       return
     }
 
@@ -471,8 +498,7 @@ export default function UploadForm({
       !subtitleNoAudio &&
       !isMediaSubtitleVariant &&
       audioSourceType === 'upload' &&
-      (!audioInputRef.current?.files ||
-        audioInputRef.current.files.length === 0)
+      audioUploadFileNames.length === 0
     ) {
       setStatus({
         type: 'error',
@@ -559,27 +585,54 @@ export default function UploadForm({
 
     const files = e.dataTransfer.files
     if (files && files.length > 0) {
-      const droppedFiles = Array.from(files).filter(file =>
+      const allFiles = Array.from(files)
+      const droppedFiles = allFiles.filter(file =>
         file.name.toLowerCase().endsWith('.ass'),
       )
+      const droppedAudioFiles = usesCombinedListeningUpload
+        ? allFiles.filter(isSupportedAudioFile)
+        : []
 
       if (droppedFiles.length === 0) {
-        void dialog.alert('只能上传 .ass 格式的字幕文件。')
+        void dialog.alert(
+          usesCombinedListeningUpload
+            ? '请至少选择一个 ASS 字幕文件，可同时选择同名 MP3。'
+            : '只能上传 .ass 格式的字幕文件。',
+        )
         return
       }
 
       setSelectedFileNames(droppedFiles.map(file => file.name))
+      if (usesCombinedListeningUpload) {
+        setAudioUploadFileNames(droppedAudioFiles.map(file => file.name))
+      }
       setPickedAssFiles(
         droppedFiles.map(file => ({ name: file.name, size: file.size })),
       )
-      syncFilesToInput(fileInputRef.current, droppedFiles)
+      syncFilesToInput(
+        fileInputRef.current,
+        usesCombinedListeningUpload
+          ? [...droppedFiles, ...droppedAudioFiles]
+          : droppedFiles,
+      )
     }
   }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : []
-    setSelectedFileNames(files.map(file => file.name))
-    setPickedAssFiles(files.map(file => ({ name: file.name, size: file.size })))
+    const subtitleFiles = files.filter(file =>
+      file.name.toLowerCase().endsWith('.ass'),
+    )
+    const audioFiles = usesCombinedListeningUpload
+      ? files.filter(isSupportedAudioFile)
+      : []
+    setSelectedFileNames(subtitleFiles.map(file => file.name))
+    setPickedAssFiles(
+      subtitleFiles.map(file => ({ name: file.name, size: file.size })),
+    )
+    if (usesCombinedListeningUpload) {
+      setAudioUploadFileNames(audioFiles.map(file => file.name))
+    }
   }
 
   const handleZoneClick = () => fileInputRef.current?.click()
@@ -642,8 +695,8 @@ export default function UploadForm({
     mode === 'existing'
       ? paperOptions.find(item => item.value === selectedPaperId)?.searchText ||
         paperOptions.find(item => item.value === selectedPaperId)?.label ||
-        '未选择集合'
-      : paperName || '新建集合'
+        `未选择${destinationName}`
+      : paperName || `新建${destinationName}`
 
   const addSelectedPaper = (paperId: string) => {
     if (!paperId) return
@@ -663,7 +716,11 @@ export default function UploadForm({
     <>
       <form
         onSubmit={handleSubmit}
-        className='animate-in fade-in mx-auto flex w-full max-w-5xl flex-col gap-4'>
+        className={`animate-in fade-in mx-auto flex w-full max-w-5xl flex-col ${
+          usesPracticeMaterialLayout
+            ? ''
+            : 'border-y border-slate-200 bg-white px-4 md:px-7'
+        }`}>
         <input
           type='hidden'
           name='uploadMode'
@@ -673,657 +730,793 @@ export default function UploadForm({
         <input
           type='hidden'
           name='addQuestions'
-          value={materialType === 'LISTENING' ? 'yes' : addQuestions ? 'yes' : 'no'}
+          value={
+            materialType === 'LISTENING' ? 'yes' : addQuestions ? 'yes' : 'no'
+          }
         />
-      <input
-        type='hidden'
-        name='materialType'
-        value={isMediaSubtitleVariant ? 'MEDIA_SUBTITLE' : materialType}
-      />
-      <input
-        type='hidden'
-        name='subtitleNoAudio'
-        value={isMediaSubtitleVariant ? 'yes' : 'no'}
-      />
-      <input type='hidden' name='subtitleSourceType' value={subtitleSourceType} />
-      <input type='hidden' name='subtitleWorkTitle' value={subtitleWorkTitle} />
-      <input type='hidden' name='subtitleSeason' value={subtitleSeason} />
-      <input type='hidden' name='subtitleEpisode' value={subtitleEpisode} />
-      <input
-        type='hidden'
-        name='assAudioOverrides'
-        value={JSON.stringify(assAudioOverrides)}
-      />
+        <input
+          type='hidden'
+          name='materialType'
+          value={isMediaSubtitleVariant ? 'MEDIA_SUBTITLE' : materialType}
+        />
+        <input type='hidden' name='collectionLanguage' value={defaultLanguage} />
+        <input
+          type='hidden'
+          name='subtitleNoAudio'
+          value={isMediaSubtitleVariant ? 'yes' : 'no'}
+        />
+        <input
+          type='hidden'
+          name='subtitleSourceType'
+          value={subtitleSourceType}
+        />
+        <input
+          type='hidden'
+          name='subtitleWorkTitle'
+          value={subtitleWorkTitle}
+        />
+        <input type='hidden' name='subtitleSeason' value={subtitleSeason} />
+        <input type='hidden' name='subtitleEpisode' value={subtitleEpisode} />
+        <input
+          type='hidden'
+          name='assAudioOverrides'
+          value={JSON.stringify(assAudioOverrides)}
+        />
 
-      {!isMediaSubtitleVariant && (
-        <fieldset className='relative overflow-visible rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
-        <legend className='px-1 text-base font-bold text-slate-900 md:text-lg'>
-          <span className='mr-2 text-blue-600'>1</span>
-          选择归属
-        </legend>
+        {!isMediaSubtitleVariant && (
+          <fieldset className='relative overflow-visible rounded-none border-b border-slate-200 py-6 md:py-8'>
+            <legend className='text-sm font-bold text-slate-900'>
+              {usesPaperDestination ? '所属试卷' : '保存位置'}
+            </legend>
 
-        <div className='mb-4 mt-3 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1'>
-          <label
-            className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors
+            <div
+              className={
+                usesPracticeMaterialLayout
+                  ? 'mb-4 mt-3 flex border-b border-slate-200'
+                  : 'mb-4 mt-3 grid grid-cols-2 gap-1 bg-slate-100 p-1'
+              }>
+              <label
+                className={`flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  usesPracticeMaterialLayout ? '!rounded-none border-b-2' : ''
+                }
               ${
                 mode === 'existing'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-gray-500 hover:bg-gray-100'
+                  ? usesPracticeMaterialLayout
+                    ? 'border-slate-950 text-slate-950'
+                    : 'bg-white text-slate-900'
+                  : usesPracticeMaterialLayout
+                    ? 'border-transparent text-slate-400 hover:text-slate-700'
+                    : 'text-gray-500 hover:bg-gray-100'
               }
               ${papers.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-            <input
-              type='radio'
-              className='hidden'
-              checked={mode === 'existing'}
-              onChange={() => setMode('existing')}
-              disabled={papers.length === 0}
-            />
-            添加到已有集合
-          </label>
-
-          <label
-            className={`flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors
-              ${
-                mode === 'new'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-gray-500 hover:bg-gray-100'
-              }`}>
-            <input
-              type='radio'
-              className='hidden'
-              checked={mode === 'new'}
-              onChange={() => setMode('new')}
-            />
-            新建集合并录入
-          </label>
-        </div>
-
-        {mode === 'existing' ? (
-          <div className='space-y-3'>
-            <input type='hidden' name='paperId' value={selectedPaperId} />
-            {selectedPaperIds.map(paperId => (
-              <input
-                key={paperId}
-                type='hidden'
-                name='collectionIds'
-                value={paperId}
-              />
-            ))}
-            <CollectionBrowserSelect
-              options={paperOptions.filter(
-                option => !selectedPaperIds.includes(option.value),
-              )}
-              value=''
-              onChange={addSelectedPaper}
-              placeholder={
-                selectedPaperIds.length > 0
-                  ? '继续添加其他集合'
-                  : '请选择要追加内容的集合'
-              }
-              recentKey='manage.upload.paper.recent'
-            />
-            {selectedPaperIds.length > 0 && (
-              <div>
-                <div className='flex flex-wrap gap-2'>
-                  {selectedPaperIds.map((paperId, index) => {
-                    const option = paperOptions.find(
-                      item => item.value === paperId,
-                    )
-                    return (
-                      <span
-                        key={paperId}
-                        className='inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800'>
-                        {index === 0 ? '主要 · ' : ''}
-                        {option?.searchText || option?.label || '未知集合'}
-                        <button
-                          type='button'
-                          onClick={() => removeSelectedPaper(paperId)}
-                          aria-label={`移除 ${option?.label || '集合'}`}
-                          className='text-blue-500 transition hover:text-red-600'>
-                          ×
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className='flex flex-col gap-4 md:gap-5'>
-            <div className='z-20 flex flex-col gap-4 md:flex-row md:gap-5'>
-              <input
-                required
-                name='collectionName'
-                value={paperName}
-                onChange={e => setPaperName(e.target.value)}
-                placeholder={
-                  materialType === 'SPEAKING'
-                    ? '集合名称（例：教材名称 / Unit）'
-                    : '集合名称（例：2025-07 N1 真题）'
-                }
-                className='flex-[2] border border-gray-200 bg-gray-50 p-4 text-sm font-bold outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              />
-
-              <div className='flex-[1]'>
-                <input type='hidden' name='collectionType' value={selectedLevelId} />
-                <SearchableDropdown
-                  options={levelOptions}
-                  value={selectedLevelId}
-                  onChange={setSelectedLevelId}
-                  placeholder='选择集合用途'
-                />
-              </div>
-            </div>
-          </div>
-        )}
-        </fieldset>
-      )}
-
-      <fieldset className='relative overflow-visible rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
-
-        <div className='mb-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-          <legend className='text-base font-bold text-slate-900 md:text-lg'>
-            <span className='mr-2 text-blue-600'>
-              {isMediaSubtitleVariant ? '1' : '2'}
-            </span>
-            {isMediaSubtitleVariant ? '设置字幕归属' : '准备材料'}
-          </legend>
-          {mode === 'existing' && selectedPaperId && (
-            <span className='rounded-md bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700'>
-              已沿用集合上一条记录
-            </span>
-          )}
-        </div>
-
-        <div className='mb-4'>
-          <label className='mb-1.5 block text-sm font-semibold text-slate-700'>
-            {isBatchAss
-              ? '标题前缀（可选）'
-              : isMediaSubtitleVariant
-                ? '字幕标题（可选）'
-                : '标题'}
-          </label>
-          <input
-            name='title'
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-            placeholder={
-              isBatchAss
-                ? '例：N1 听力（留空则直接用字幕文件名）'
-                : isMediaSubtitleVariant
-                  ? '留空则使用字幕文件名'
-                  : materialType === 'SPEAKING'
-                    ? '例：会話 01（可留空，不填则用字幕文件名）'
-                    : '例：问题 1-01（可留空，不填则用字幕文件名）'
-            }
-            className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-          />
-          {isBatchAss && !title.trim() && (
-            <p className='mt-1 text-xs font-semibold text-amber-600'>
-              未填写标题前缀：将直接使用每个字幕文件名作为标题。
-            </p>
-          )}
-        </div>
-
-        <div>
-          {isMediaSubtitleVariant && (
-            <div className='mb-4 border border-slate-200 bg-slate-50 p-3 md:p-4'>
-              <p className='mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500'>
-                字幕归属
-              </p>
-              <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
-                <CustomSelect
-                  value={subtitleSourceType}
-                  onChange={e =>
-                    setSubtitleSourceType(e.currentTarget.value as 'MOVIE' | 'TV')
-                  }
-                  className='w-full border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'>
-                  <option value='MOVIE'>电影</option>
-                  <option value='TV'>电视剧</option>
-                </CustomSelect>
                 <input
-                  value={subtitleWorkTitle}
-                  onChange={e => setSubtitleWorkTitle(e.target.value)}
-                  placeholder='作品名（电影名 / 剧名）'
-                  className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                  type='radio'
+                  className='hidden'
+                  checked={mode === 'existing'}
+                  onChange={() => setMode('existing')}
+                  disabled={papers.length === 0}
                 />
-                {subtitleSourceType === 'TV' && (
-                  <>
-                    <input
-                      value={subtitleSeason}
-                      onChange={e => setSubtitleSeason(e.target.value)}
-                      placeholder='季（例：1）'
-                      className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-                    />
-                    <input
-                      value={subtitleEpisode}
-                      onChange={e => setSubtitleEpisode(e.target.value)}
-                      placeholder='集（例：3）'
-                      className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-                    />
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {isMediaSubtitleVariant && (
-            <details className='group mb-4 rounded-lg border border-slate-200 bg-white'>
-              <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
-                从 ASS 文本提取台词
-                <span className='text-xs font-normal text-slate-400 group-open:hidden'>
-                  辅助工具
-                </span>
-                <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
-                  收起
-                </span>
-              </summary>
-              <div className='border-t border-slate-200 p-3 md:p-4'>
-              <div className='mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-                <div>
-                  <p className='text-[11px] font-black uppercase tracking-wider text-emerald-700'>
-                    粘贴字幕提取文本
-                  </p>
-                  <p className='mt-1 text-xs font-semibold text-slate-500'>
-                    可粘贴 ASS 的 Dialogue 行，自动提取可复制的纯文本。
-                  </p>
-                </div>
-                <button
-                  type='button'
-                  onClick={handleCopyPastedSubtitleText}
-                  disabled={!pastedSubtitleText}
-                  className={`border px-3 py-2 text-xs font-black transition ${
-                    pastedSubtitleText
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                      : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
-                  }`}>
-                  {subtitleCopyState === 'copied'
-                    ? '已复制'
-                    : subtitleCopyState === 'error'
-                      ? '复制失败'
-                      : '复制文本'}
-                </button>
-              </div>
-
-              <textarea
-                value={pastedAssSubtitle}
-                onChange={e => setPastedAssSubtitle(e.target.value)}
-                placeholder={'Dialogue: 0,0:01:52.66,0:01:55.24,Default,,0,0,0,,(鹿谷門実) コナンくん 紅茶でいいかい？\nDialogue: 0,0:01:55.32,0:01:58.33,Default,,0,0,0,,(江南孝明) あっ すいません ありがとうございます'}
-                className='custom-scrollbar min-h-[120px] w-full resize-y border border-gray-200 bg-slate-50 p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
-              />
-
-              <div className='mt-3 border border-slate-200 bg-slate-50 p-3'>
-                <div className='mb-2 flex items-center justify-between gap-2'>
-                  <p className='text-xs font-black text-slate-700'>提取结果</p>
-                  <span className='text-xs font-bold text-slate-500'>
-                    {pastedSubtitleLineCount} 行
-                  </span>
-                </div>
-                <pre className='custom-scrollbar min-h-[84px] max-h-56 w-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words border border-slate-200 bg-white p-3 text-sm leading-7 text-slate-800 [overflow-wrap:anywhere]'>
-                  {pastedSubtitleText || '粘贴字幕后，这里会显示可复制的文本内容。'}
-                </pre>
-              </div>
-              </div>
-            </details>
-          )}
-
-          {!isMediaSubtitleVariant && (
-            <>
-              <label className='mb-1.5 block text-sm font-semibold text-slate-700'>
-                音频来源
+                {usesPaperDestination ? '选择已有试卷' : '选择已有内容'}
               </label>
 
-              <div className='mb-3 grid grid-cols-1 gap-2 md:grid-cols-3'>
-            <button
-              type='button'
-              onClick={() => setAudioSourceType('manual')}
-              disabled={subtitleNoAudio}
-              className={`border px-3 py-2.5 text-sm font-bold transition ${
-                audioSourceType === 'manual'
-                  ? 'border-blue-300 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-              } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
-              手动填写路径
-            </button>
-
-            <button
-              type='button'
-              onClick={() => setAudioSourceType('existing')}
-              disabled={subtitleNoAudio}
-              className={`border px-3 py-2.5 text-sm font-bold transition ${
-                audioSourceType === 'existing'
-                  ? 'border-blue-300 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-              } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
-              浏览站内录音
-            </button>
-
-            <button
-              type='button'
-              onClick={() => setAudioSourceType('upload')}
-              disabled={subtitleNoAudio}
-              className={`border px-3 py-2.5 text-sm font-bold transition ${
-                audioSourceType === 'upload'
-                  ? 'border-blue-300 bg-blue-50 text-blue-700'
-                  : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-              } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
-              上传并保存录音
-            </button>
-              </div>
-            </>
-          )}
-
-          {!isMediaSubtitleVariant && subtitleNoAudio && (
-            <p className='mb-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700'>
-              已启用无音频模式：本次将仅导入 ASS 字幕，音频字段留空。
-            </p>
-          )}
-
-          {!isMediaSubtitleVariant &&
-            !subtitleNoAudio &&
-            (audioSourceType === 'manual' || audioSourceType === 'existing') && (
-            <>
-              {audioSourceType === 'manual' ? (
+              <label
+                className={`flex cursor-pointer items-center justify-center gap-2 px-3 py-2.5 text-sm font-semibold transition-colors ${
+                  usesPracticeMaterialLayout ? '!rounded-none border-b-2' : ''
+                }
+              ${
+                mode === 'new'
+                  ? usesPracticeMaterialLayout
+                    ? 'border-slate-950 text-slate-950'
+                    : 'bg-white text-slate-900'
+                  : usesPracticeMaterialLayout
+                    ? 'border-transparent text-slate-400 hover:text-slate-700'
+                    : 'text-gray-500 hover:bg-gray-100'
+              }`}>
                 <input
-                  name='audioFile'
-                  value={audioFile}
-                  onChange={e => setAudioFile(e.target.value)}
-                  placeholder='例：/audios/Shadowing/N2-01.mp3'
-                  className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                  type='radio'
+                  className='hidden'
+                  checked={mode === 'new'}
+                  onChange={() => setMode('new')}
                 />
-              ) : (
-                <div className='space-y-2'>
+                {usesPaperDestination ? '新建试卷' : '新建学习内容'}
+              </label>
+            </div>
+
+            {mode === 'existing' ? (
+              <div className='space-y-3'>
+                <input type='hidden' name='paperId' value={selectedPaperId} />
+                {selectedPaperIds.map(paperId => (
                   <input
+                    key={paperId}
                     type='hidden'
-                    name='audioMatchFolder'
-                    value={selectedAudioFolder}
+                    name='collectionIds'
+                    value={paperId}
+                  />
+                ))}
+                <CollectionBrowserSelect
+                  options={paperOptions.filter(
+                    option => !selectedPaperIds.includes(option.value),
+                  )}
+                  value=''
+                  onChange={addSelectedPaper}
+                  placeholder={
+                    selectedPaperIds.length > 0
+                      ? `继续添加其他${destinationName}`
+                      : `请选择${destinationName}`
+                  }
+                  recentKey='manage.upload.paper.recent'
+                />
+                {selectedPaperIds.length > 0 && (
+                  <div>
+                    <div className='flex flex-wrap gap-2'>
+                      {selectedPaperIds.map((paperId, index) => {
+                        const option = paperOptions.find(
+                          item => item.value === paperId,
+                        )
+                        return (
+                          <span
+                            key={paperId}
+                            className='inline-flex items-center gap-2 border-b border-slate-200 px-1 py-2 text-xs font-semibold text-slate-700'>
+                            {index === 0 ? '主要 · ' : ''}
+                            {option?.searchText || option?.label || `未知${destinationName}`}
+                            <button
+                              type='button'
+                              onClick={() => removeSelectedPaper(paperId)}
+                              aria-label={`移除 ${option?.label || destinationName}`}
+                              className='text-blue-500 transition hover:text-red-600'>
+                              ×
+                            </button>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className='flex flex-col gap-4 md:gap-5'>
+                <div className='z-20 flex flex-col gap-4 md:flex-row md:gap-5'>
+                  <input
+                    required
+                    name='collectionName'
+                    value={paperName}
+                    onChange={e => setPaperName(e.target.value)}
+                    placeholder={
+                      usesPaperDestination
+                        ? defaultLanguage === 'en'
+                          ? '试卷名称，例如：TOEIC 模拟题 01'
+                          : '试卷名称，例如：2025-07 N1 真题'
+                        : materialType === 'SPEAKING'
+                          ? '教材或单元名称'
+                          : '学习内容名称'
+                    }
+                    className='flex-[2] border border-gray-200 bg-gray-50 p-4 text-sm font-bold outline-none transition-colors focus:ring-2 focus:ring-blue-400'
                   />
 
-                  <div className='grid grid-cols-1 gap-2 md:grid-cols-5'>
-                    <div className='md:col-span-2'>
-                      <SearchableDropdown
-                        value={selectedAudioFolder}
-                        onChange={setSelectedAudioFolder}
-                        options={audioFolders.map(folder => ({
-                          value: folder,
-                          label:
-                            folder === '(根目录)'
-                              ? `根目录 (${audioFolderMap.get(folder)?.length || 0})`
-                              : `${folder} (${audioFolderMap.get(folder)?.length || 0})`,
-                        }))}
-                        placeholder={
-                          audioListLoading ? '加载文件夹中...' : '选择文件夹'
-                        }
-                      />
-                    </div>
-
-                    {isBatchAss ? (
-                      <div className='md:col-span-3 border border-blue-100 bg-blue-50/60 p-3 text-xs font-medium text-blue-700'>
-                        将按字幕文件名优先在当前文件夹匹配同名音频，匹配不到时自动回退到全站同名音频。
-                        <input
-                          type='hidden'
-                          name='audioFile'
-                          value={
-                            selectedAudioFolder === '(根目录)'
-                              ? '/audios/'
-                              : `/audios/${selectedAudioFolder}/`
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div className='md:col-span-3'>
-                        <SearchableDropdown
-                          value={audioFile}
-                          onChange={setAudioFile}
-                          options={filesInSelectedFolder.map(item => ({
-                            value: item,
-                            label: item.split('/').pop() || item,
-                          }))}
-                          placeholder={
-                            audioListLoading ? '读取录音中...' : '选择录音文件'
-                          }
-                        />
-                        <input
-                          type='hidden'
-                          name='audioFile'
-                          value={audioFile}
-                        />
-                      </div>
-                    )}
+                  <div className={usesPaperDestination ? 'hidden' : 'flex-[1]'}>
+                    <input
+                      type='hidden'
+                      name='collectionType'
+                      value={selectedLevelId}
+                    />
+                    <SearchableDropdown
+                      options={levelOptions}
+                      value={selectedLevelId}
+                      onChange={setSelectedLevelId}
+                      placeholder='选择内容类型'
+                    />
                   </div>
-
                 </div>
+              </div>
+            )}
+          </fieldset>
+        )}
+
+        <fieldset className='relative overflow-visible rounded-none border-b border-slate-200 py-6 md:py-8'>
+          <div
+            className={`flex flex-col gap-2 md:flex-row md:items-center md:justify-between ${usesPracticeMaterialLayout ? 'mb-3' : 'mb-4'}`}>
+            <legend
+              className={
+                usesPracticeMaterialLayout
+                  ? 'sr-only'
+                  : 'text-base font-bold text-slate-900 md:text-lg'
+              }>
+              {usesPracticeMaterialLayout ? (
+                '材料信息'
+              ) : (
+                isMediaSubtitleVariant ? '字幕归属' : '材料信息'
               )}
-            </>
+            </legend>
+            {!usesPracticeMaterialLayout && mode === 'existing' && selectedPaperId && (
+              <span className='text-xs font-semibold text-slate-400'>
+                已沿用上一条记录
+              </span>
+            )}
+          </div>
+
+          <div className='mb-4'>
+            <label
+              className={
+                usesPracticeMaterialLayout
+                  ? 'sr-only'
+                  : 'mb-1.5 block text-sm font-semibold text-slate-700'
+              }>
+              {isBatchAss
+                ? '标题前缀（可选）'
+                : isMediaSubtitleVariant
+                  ? '字幕标题（可选）'
+                  : '标题'}
+            </label>
+            <input
+              name='title'
+              value={title}
+              onChange={e => {
+                autoSuggestedTitleRef.current = null
+                setTitle(e.target.value)
+              }}
+              placeholder={
+                isBatchAss
+                  ? '例：N1 听力（留空则直接用字幕文件名）'
+                  : isMediaSubtitleVariant
+                    ? '留空则使用字幕文件名'
+                    : materialType === 'SPEAKING'
+                      ? '例：会話 01（可留空，不填则用字幕文件名）'
+                      : '例：问题 1-01（可留空，不填则用字幕文件名）'
+              }
+              className={
+                usesPracticeMaterialLayout
+                  ? 'w-full border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+                  : 'w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+              }
+            />
+            {isBatchAss && !title.trim() && (
+              <p className='mt-1 text-xs font-semibold text-amber-600'>
+                未填写标题前缀：将直接使用每个字幕文件名作为标题。
+              </p>
+            )}
+          </div>
+
+          <div>
+            {isMediaSubtitleVariant && (
+              <div className='mb-4 border border-slate-200 bg-slate-50 p-3 md:p-4'>
+                <p className='mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500'>
+                  字幕归属
+                </p>
+                <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
+                  <CustomSelect
+                    value={subtitleSourceType}
+                    onChange={e =>
+                      setSubtitleSourceType(
+                        e.currentTarget.value as 'MOVIE' | 'TV',
+                      )
+                    }
+                    className='w-full border border-gray-200 bg-white p-3 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'>
+                    <option value='MOVIE'>电影</option>
+                    <option value='TV'>电视剧</option>
+                  </CustomSelect>
+                  <input
+                    value={subtitleWorkTitle}
+                    onChange={e => setSubtitleWorkTitle(e.target.value)}
+                    placeholder='作品名（电影名 / 剧名）'
+                    className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                  />
+                  {subtitleSourceType === 'TV' && (
+                    <>
+                      <input
+                        value={subtitleSeason}
+                        onChange={e => setSubtitleSeason(e.target.value)}
+                        placeholder='季（例：1）'
+                        className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                      />
+                      <input
+                        value={subtitleEpisode}
+                        onChange={e => setSubtitleEpisode(e.target.value)}
+                        placeholder='集（例：3）'
+                        className='w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
             )}
 
-          {!isMediaSubtitleVariant &&
-            !subtitleNoAudio &&
-            audioSourceType === 'upload' && (
-            <div
-              onDragOver={handleAudioDragOver}
-              onDragLeave={handleAudioDragLeave}
-              onDrop={handleAudioDrop}
-              className={`border p-3 transition ${
-                isAudioDragging
-                  ? 'border-blue-300 bg-blue-50'
-                  : 'border-gray-200 bg-gray-50'
-              }`}>
-              <input
-                ref={audioInputRef}
-                type='file'
-                name='audioUploadFiles'
-                accept='.mp3,audio/mpeg'
-                multiple={isBatchAss}
-                onChange={e => {
-                  const list = e.target.files ? Array.from(e.target.files) : []
-                  if (list.length === 0) {
-                    setAudioUploadFileNames([])
-                    return
-                  }
-
-                  if (!list.every(isSupportedAudioFile)) {
-                    void dialog.alert('听力录音仅支持 MP3 文件。')
-                    e.currentTarget.value = ''
-                    setAudioUploadFileNames([])
-                    return
-                  }
-
-                  setAudioUploadFileNames(list.map(file => file.name))
-                }}
-                className='hidden'
-              />
-
-              <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
-                <button
-                  type='button'
-                  onClick={handleAudioPick}
-                  className='border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50'>
-                  选择录音文件
-                </button>
-
-                <span className='text-xs font-medium text-gray-500'>
-                  {audioUploadFileNames.length > 0
-                    ? `已选择 ${audioUploadFileNames.length} 个录音文件`
-                    : isAudioDragging
-                      ? '松开即可上传录音'
-                      : isBatchAss
-                        ? '点击选择或拖拽多个 MP3（将按同名优先配对）'
-                        : '点击选择或拖拽 MP3 录音文件'}
-                </span>
-              </div>
-
-              {audioUploadFileNames.length > 1 && (
-                <div className='mt-2 max-h-24 overflow-y-auto border border-blue-100 bg-white/70 p-2 text-xs text-blue-700'>
-                  {audioUploadFileNames.slice(0, 10).map((name, index) => (
-                    <div key={`${name}-${index}`} className='truncate'>
-                      {name}
+            {isMediaSubtitleVariant && (
+              <details className='group mb-4 rounded-lg border border-slate-200 bg-white'>
+                <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-semibold text-slate-700 marker:content-none'>
+                  从 ASS 文本提取台词
+                  <span className='text-xs font-normal text-slate-400 group-open:hidden'>
+                    辅助工具
+                  </span>
+                  <span className='hidden text-xs font-normal text-slate-400 group-open:inline'>
+                    收起
+                  </span>
+                </summary>
+                <div className='border-t border-slate-200 p-3 md:p-4'>
+                  <div className='mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
+                    <div>
+                      <p className='text-[11px] font-black uppercase tracking-wider text-emerald-700'>
+                        粘贴字幕提取文本
+                      </p>
+                      <p className='mt-1 text-xs font-semibold text-slate-500'>
+                        可粘贴 ASS 的 Dialogue 行，自动提取可复制的纯文本。
+                      </p>
                     </div>
-                  ))}
-                  {audioUploadFileNames.length > 10 && (
-                    <div className='mt-1 text-[11px] text-blue-600'>
-                      还有 {audioUploadFileNames.length - 10} 个文件...
+                    <button
+                      type='button'
+                      onClick={handleCopyPastedSubtitleText}
+                      disabled={!pastedSubtitleText}
+                      className={`border px-3 py-2 text-xs font-black transition ${
+                        pastedSubtitleText
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                          : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                      }`}>
+                      {subtitleCopyState === 'copied'
+                        ? '已复制'
+                        : subtitleCopyState === 'error'
+                          ? '复制失败'
+                          : '复制文本'}
+                    </button>
+                  </div>
+
+                  <textarea
+                    value={pastedAssSubtitle}
+                    onChange={e => setPastedAssSubtitle(e.target.value)}
+                    placeholder={
+                      'Dialogue: 0,0:01:52.66,0:01:55.24,Default,,0,0,0,,(鹿谷門実) コナンくん 紅茶でいいかい？\nDialogue: 0,0:01:55.32,0:01:58.33,Default,,0,0,0,,(江南孝明) あっ すいません ありがとうございます'
+                    }
+                    className='custom-scrollbar min-h-[120px] w-full resize-y border border-gray-200 bg-slate-50 p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
+                  />
+
+                  <div className='mt-3 border border-slate-200 bg-slate-50 p-3'>
+                    <div className='mb-2 flex items-center justify-between gap-2'>
+                      <p className='text-xs font-black text-slate-700'>
+                        提取结果
+                      </p>
+                      <span className='text-xs font-bold text-slate-500'>
+                        {pastedSubtitleLineCount} 行
+                      </span>
+                    </div>
+                    <pre className='custom-scrollbar min-h-[84px] max-h-56 w-full overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words border border-slate-200 bg-white p-3 text-sm leading-7 text-slate-800 [overflow-wrap:anywhere]'>
+                      {pastedSubtitleText ||
+                        '粘贴字幕后，这里会显示可复制的文本内容。'}
+                    </pre>
+                  </div>
+                </div>
+              </details>
+            )}
+
+            {!isMediaSubtitleVariant && (
+              <>
+                <label
+                  className={
+                    usesPracticeMaterialLayout
+                      ? 'sr-only'
+                      : 'mb-1.5 block text-sm font-semibold text-slate-700'
+                  }>
+                  音频来源
+                </label>
+
+                <div
+                  className={
+                    usesPracticeMaterialLayout
+                      ? 'mb-3 flex overflow-x-auto border-b border-slate-200'
+                      : 'mb-3 grid grid-cols-1 divide-y divide-slate-200 border-y border-slate-200 md:grid-cols-3 md:divide-x md:divide-y-0'
+                  }>
+                  <button
+                    type='button'
+                    onClick={() => setAudioSourceType('manual')}
+                    disabled={subtitleNoAudio}
+                    className={`shrink-0 rounded-none px-3 py-2.5 text-sm font-bold transition ${usesPracticeMaterialLayout ? 'border-b-2' : ''} ${
+                      audioSourceType === 'manual'
+                        ? usesPracticeMaterialLayout
+                          ? 'border-slate-950 text-slate-950'
+                          : 'bg-slate-900 text-white'
+                        : usesPracticeMaterialLayout
+                          ? 'border-transparent text-slate-400 hover:text-slate-700'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                    } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
+                    {usesPracticeMaterialLayout ? '填写路径' : '手动填写路径'}
+                  </button>
+
+                  <button
+                    type='button'
+                    onClick={() => setAudioSourceType('existing')}
+                    disabled={subtitleNoAudio}
+                    className={`shrink-0 rounded-none px-3 py-2.5 text-sm font-bold transition ${usesPracticeMaterialLayout ? 'border-b-2' : ''} ${
+                      audioSourceType === 'existing'
+                        ? usesPracticeMaterialLayout
+                          ? 'border-slate-950 text-slate-950'
+                          : 'bg-slate-900 text-white'
+                        : usesPracticeMaterialLayout
+                          ? 'border-transparent text-slate-400 hover:text-slate-700'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                    } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
+                    {usesPracticeMaterialLayout ? '站内录音' : '浏览站内录音'}
+                  </button>
+
+                  <button
+                    type='button'
+                    onClick={() => setAudioSourceType('upload')}
+                    disabled={subtitleNoAudio}
+                    className={`shrink-0 rounded-none px-3 py-2.5 text-sm font-bold transition ${usesPracticeMaterialLayout ? 'border-b-2' : ''} ${
+                      audioSourceType === 'upload'
+                        ? usesPracticeMaterialLayout
+                          ? 'border-slate-950 text-slate-950'
+                          : 'bg-slate-900 text-white'
+                        : usesPracticeMaterialLayout
+                          ? 'border-transparent text-slate-400 hover:text-slate-700'
+                          : 'bg-white text-slate-600 hover:bg-slate-50'
+                    } ${subtitleNoAudio ? 'cursor-not-allowed opacity-50' : ''}`}>
+                    {usesPracticeMaterialLayout ? '上传录音' : '上传并保存录音'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {!isMediaSubtitleVariant && subtitleNoAudio && (
+              <p className='mb-3 border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700'>
+                已启用无音频模式：本次将仅导入 ASS 字幕，音频字段留空。
+              </p>
+            )}
+
+            {!isMediaSubtitleVariant &&
+              !subtitleNoAudio &&
+              (audioSourceType === 'manual' ||
+                audioSourceType === 'existing') && (
+                <>
+                  {audioSourceType === 'manual' ? (
+                    <input
+                      name='audioFile'
+                      value={audioFile}
+                      onChange={e => setAudioFile(e.target.value)}
+                      placeholder='例：/audios/Shadowing/N2-01.mp3'
+                      className='w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                    />
+                  ) : (
+                    <div className='space-y-2'>
+                      <input
+                        type='hidden'
+                        name='audioMatchFolder'
+                        value={selectedAudioFolder}
+                      />
+
+                      <div className='grid grid-cols-1 gap-2 md:grid-cols-5'>
+                        <div className='md:col-span-2'>
+                          <SearchableDropdown
+                            value={selectedAudioFolder}
+                            onChange={setSelectedAudioFolder}
+                            options={audioFolders.map(folder => ({
+                              value: folder,
+                              label:
+                                folder === '(根目录)'
+                                  ? `根目录 (${audioFolderMap.get(folder)?.length || 0})`
+                                  : `${folder} (${audioFolderMap.get(folder)?.length || 0})`,
+                            }))}
+                            placeholder={
+                              audioListLoading
+                                ? '加载文件夹中...'
+                                : '选择文件夹'
+                            }
+                          />
+                        </div>
+
+                        {isBatchAss ? (
+                          <div className='md:col-span-3 border border-blue-100 bg-blue-50/60 p-3 text-xs font-medium text-blue-700'>
+                            将按字幕文件名优先在当前文件夹匹配同名音频，匹配不到时自动回退到全站同名音频。
+                            <input
+                              type='hidden'
+                              name='audioFile'
+                              value={
+                                selectedAudioFolder === '(根目录)'
+                                  ? '/audios/'
+                                  : `/audios/${selectedAudioFolder}/`
+                              }
+                            />
+                          </div>
+                        ) : (
+                          <div className='md:col-span-3'>
+                            <SearchableDropdown
+                              value={audioFile}
+                              onChange={setAudioFile}
+                              options={filesInSelectedFolder.map(item => ({
+                                value: item,
+                                label: item.split('/').pop() || item,
+                              }))}
+                              placeholder={
+                                audioListLoading
+                                  ? '读取录音中...'
+                                  : '选择录音文件'
+                              }
+                            />
+                            <input
+                              type='hidden'
+                              name='audioFile'
+                              value={audioFile}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+            {!isMediaSubtitleVariant &&
+              !subtitleNoAudio &&
+              audioSourceType === 'upload' &&
+              !usesCombinedListeningUpload && (
+                <div
+                  onDragOver={handleAudioDragOver}
+                  onDragLeave={handleAudioDragLeave}
+                  onDrop={handleAudioDrop}
+                  className={`border p-3 transition ${
+                    isAudioDragging
+                      ? 'border-blue-300 bg-blue-50'
+                      : 'border-gray-200 bg-gray-50'
+                  }`}>
+                  <input
+                    ref={audioInputRef}
+                    type='file'
+                    name='audioUploadFiles'
+                    accept='.mp3,audio/mpeg'
+                    multiple={isBatchAss}
+                    onChange={e => {
+                      const list = e.target.files
+                        ? Array.from(e.target.files)
+                        : []
+                      if (list.length === 0) {
+                        setAudioUploadFileNames([])
+                        return
+                      }
+
+                      if (!list.every(isSupportedAudioFile)) {
+                        void dialog.alert('听力录音仅支持 MP3 文件。')
+                        e.currentTarget.value = ''
+                        setAudioUploadFileNames([])
+                        return
+                      }
+
+                      setAudioUploadFileNames(list.map(file => file.name))
+                    }}
+                    className='hidden'
+                  />
+
+                  <div className='flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
+                    <button
+                      type='button'
+                      onClick={handleAudioPick}
+                      className='border border-blue-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-50'>
+                      选择录音文件
+                    </button>
+
+                    <span className='text-xs font-medium text-gray-500'>
+                      {audioUploadFileNames.length > 0
+                        ? `已选择 ${audioUploadFileNames.length} 个录音文件`
+                        : isAudioDragging
+                          ? '松开即可上传录音'
+                          : isBatchAss
+                            ? '点击选择或拖拽多个 MP3（将按同名优先配对）'
+                            : '点击选择或拖拽 MP3 录音文件'}
+                    </span>
+                  </div>
+
+                  {audioUploadFileNames.length > 1 && (
+                    <div className='mt-2 max-h-24 overflow-y-auto border border-blue-100 bg-white/70 p-2 text-xs text-blue-700'>
+                      {audioUploadFileNames.slice(0, 10).map((name, index) => (
+                        <div key={`${name}-${index}`} className='truncate'>
+                          {name}
+                        </div>
+                      ))}
+                      {audioUploadFileNames.length > 10 && (
+                        <div className='mt-1 text-[11px] text-blue-600'>
+                          还有 {audioUploadFileNames.length - 10} 个文件...
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               )}
+          </div>
 
-            </div>
-          )}
-        </div>
+          {isMediaSubtitleVariant ? (
+            <label className='mt-4 block text-sm font-semibold text-slate-700'>
+              字幕语言
+              <input
+                name='materialLanguage'
+                value={materialLanguage}
+                onChange={e => setMaterialLanguage(e.target.value)}
+                placeholder='例如：ja / en / zh'
+                className='mt-2 w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
+              />
+            </label>
+          ) : materialType === 'SPEAKING' ? (
+            <label className='mt-4 block'>
+              <span className='sr-only'>章节名称</span>
+              <input
+                name='materialChapterName'
+                value={materialChapterName}
+                onChange={e => setMaterialChapterName(e.target.value)}
+                placeholder='例如：Section 01 / 会話 1'
+                className='w-full border border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-800 outline-none transition-colors focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+              />
+            </label>
+          ) : null}
+        </fieldset>
 
-        {isMediaSubtitleVariant ? (
-          <label className='mt-4 block text-sm font-semibold text-slate-700'>
-            字幕语言
-            <input
-              name='materialLanguage'
-              value={materialLanguage}
-              onChange={e => setMaterialLanguage(e.target.value)}
-              placeholder='例如：ja / en / zh'
-              className='mt-2 w-full border border-gray-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-emerald-300'
-            />
-          </label>
-        ) : materialType === 'SPEAKING' ? (
-          <label className='mt-4 block text-sm font-semibold text-slate-700'>
-            章节名称
-            <input
-              name='materialChapterName'
-              value={materialChapterName}
-              onChange={e => setMaterialChapterName(e.target.value)}
-              placeholder='例如：Section 01 / 会話 1'
-              className='mt-2 w-full border border-indigo-200 bg-white p-3 text-sm font-medium text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-indigo-400'
-            />
-          </label>
-        ) : null}
-      </fieldset>
-
-      <section className='rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
-        <h3 className='text-base font-bold text-slate-900 md:text-lg'>
-          <span className='mr-2 text-blue-600'>
-            {isMediaSubtitleVariant ? '2' : '3'}
-          </span>
-          上传字幕并确认
-        </h3>
-        <div
-          role='button'
-          tabIndex={0}
-          aria-label='选择 ASS 字幕文件'
-          onClick={handleZoneClick}
-          onKeyDown={event => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              handleZoneClick()
+        <section className='border-b border-slate-200 py-6 md:py-8'>
+          <h3
+            className={
+              usesPracticeMaterialLayout
+                ? 'text-sm font-bold text-slate-900'
+                : 'text-base font-bold text-slate-900 md:text-lg'
+            }>
+            {usesCombinedListeningUpload ? '录音与字幕' : '字幕文件'}
+          </h3>
+          <div
+            role='button'
+            tabIndex={0}
+            aria-label={
+              usesCombinedListeningUpload
+                ? '选择 MP3 录音和 ASS 字幕文件'
+                : '选择 ASS 字幕文件'
             }
-          }}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 p-7 outline-none transition-[background-color,border-color,color,transform] focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 md:p-10
+            onClick={handleZoneClick}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                handleZoneClick()
+              }
+            }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`relative mt-4 flex cursor-pointer flex-col items-center justify-center overflow-hidden border border-dashed px-5 py-7 outline-none transition-[background-color,border-color,color] focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2
           ${
             isDragging
-              ? 'scale-[1.02] border-blue-400 bg-blue-50/80'
+              ? 'border-slate-500 bg-slate-50'
               : selectedFileNames.length > 0
-                ? 'border-blue-400 bg-blue-50/80'
-                : 'border-dashed border-gray-300 bg-white hover:border-blue-300 hover:bg-gray-50'
+                ? 'border-slate-400 bg-slate-50'
+                : 'border-slate-300 bg-white hover:border-slate-500 hover:bg-slate-50'
           }`}>
-        <input
-          required
-          type='file'
-          name='assFiles'
-          accept='.ass'
-          multiple
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className='hidden'
-        />
+            <input
+              required
+              type='file'
+              name={usesCombinedListeningUpload ? 'mediaFiles' : 'assFiles'}
+              accept={
+                usesCombinedListeningUpload ? '.mp3,audio/mpeg,.ass' : '.ass'
+              }
+              multiple
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className='hidden'
+            />
 
-        {selectedFileNames.length > 0 ? (
-          <div className='animate-in zoom-in-95 text-center duration-300'>
-            <div className='mb-1.5 text-lg font-black text-blue-700 md:text-xl'>
-              字幕文件已就绪（{selectedFileNames.length}）
-            </div>
-            <div className='mb-4 max-h-28 overflow-y-auto border border-blue-200 bg-white/70 p-2 text-left text-xs font-bold text-blue-700/80 md:text-sm'>
-              {selectedFileNames.slice(0, 8).map((name, index) => (
-                <div key={`${name}-${index}`} className='truncate'>
-                  {name}
+            {selectedFileNames.length > 0 ? (
+              <div className='animate-in zoom-in-95 text-center duration-300'>
+                <div className='mb-1.5 text-base font-bold text-slate-900'>
+                  {usesCombinedListeningUpload
+                    ? `已选择 ${selectedFileNames.length} 个字幕、${audioUploadFileNames.length} 个录音`
+                    : `字幕文件已就绪（${selectedFileNames.length}）`}
                 </div>
-              ))}
-              {selectedFileNames.length > 8 && (
-                <div className='mt-1 text-[11px] text-blue-600/70'>
-                  还有 {selectedFileNames.length - 8} 个文件...
+                <div className='mb-3 max-h-28 overflow-y-auto text-left text-xs font-semibold text-slate-600 md:text-sm'>
+                  {selectedFileNames.slice(0, 8).map((name, index) => (
+                    <div key={`${name}-${index}`} className='truncate'>
+                      字幕 · {name}
+                    </div>
+                  ))}
+                  {usesCombinedListeningUpload &&
+                    audioUploadFileNames.slice(0, 8).map((name, index) => (
+                      <div key={`audio-${name}-${index}`} className='truncate'>
+                        录音 · {name}
+                      </div>
+                    ))}
+                  {selectedFileNames.length > 8 && (
+                    <div className='mt-1 text-[11px] text-blue-600/70'>
+                      还有 {selectedFileNames.length - 8} 个文件...
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            <div className='inline-block rounded-full bg-blue-100/50 px-3 py-1 text-xs font-bold text-blue-500/60'>
-              点击或拖拽可重新选择（支持批量）
-            </div>
+                <div className='text-xs font-medium text-slate-400'>
+                  点击或拖拽可重新选择（支持批量）
+                </div>
+              </div>
+            ) : (
+              <div className='text-center'>
+                <div
+                  className={`mb-1 text-base font-bold transition-colors ${
+                    isDragging ? 'text-slate-950' : 'text-slate-800'
+                  }`}>
+                  {isDragging
+                    ? '松开即可加入文件'
+                    : usesCombinedListeningUpload
+                      ? '一次选择 MP3 和 ASS，系统按同名自动配对'
+                      : '点击选择，或拖拽一个或多个 .ass 文件到这里'}
+                </div>
+                {usesCombinedListeningUpload ? (
+                  <div className='text-xs font-bold text-gray-400 md:text-sm'>
+                    支持同时选择多组文件并批量上传
+                  </div>
+                ) : !usesPracticeMaterialLayout ? (
+                  <div className='text-xs font-bold text-gray-400 md:text-sm'>
+                    支持批量导入 Aegisub 标准 .ass 字幕
+                  </div>
+                ) : null}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className='text-center'>
-            <div
-              className={`mb-2 text-base font-black transition-colors md:text-xl ${
-                isDragging ? 'text-blue-600' : 'text-gray-800'
-              }`}>
-              {isDragging
-                ? '松开即可放入字幕文件'
-                : '点击选择，或拖拽一个或多个 .ass 文件到这里'}
-            </div>
-            <div className='text-xs font-bold text-gray-400 md:text-sm'>
-              支持批量导入 Aegisub 标准 .ass 字幕
-            </div>
-          </div>
-        )}
-        </div>
 
-        {isBatchAss && (
-          <details className='mt-3 text-xs text-slate-500'>
-            <summary className='cursor-pointer font-semibold text-slate-600'>
-              查看批量匹配规则
-            </summary>
-            <p className='mt-2 leading-5'>
-              {isMediaSubtitleVariant
-                ? '系统会按文件逐个创建字幕材料，只保存字幕文本。'
-                : '系统会按字幕文件名匹配同名录音，并自动续接排序；找不到匹配时可在下方预览中手动调整。'}
-            </p>
-          </details>
-        )}
-      </section>
+          {isBatchAss && (
+            <details className='mt-3 text-xs text-slate-500'>
+              <summary className='cursor-pointer font-semibold text-slate-600'>
+                查看批量匹配规则
+              </summary>
+              <p className='mt-2 leading-5'>
+                {isMediaSubtitleVariant
+                  ? '系统会按文件逐个创建字幕材料，只保存字幕文本。'
+                  : '系统会按字幕文件名匹配同名录音，并自动续接排序。'}
+              </p>
+            </details>
+          )}
+        </section>
 
-      {!isMediaSubtitleVariant && !subtitleNoAudio && previewRows.length > 0 && (
-        <AudioMatchPreview
-          rows={previewRows}
-          isBatch={isBatchAss}
-          collectionLabel={selectedPaperLabel}
-          overrides={assAudioOverrides}
-          onOverride={(rowKey, value) =>
-            setAssAudioOverrides(previous => ({
-              ...previous,
-              [rowKey]: value,
-            }))
-          }
-        />
-      )}
+        {!isMediaSubtitleVariant &&
+          !subtitleNoAudio &&
+          !isBatchAss &&
+          previewRows.length > 0 && (
+            <AudioMatchPreview
+              rows={previewRows}
+              isBatch={isBatchAss}
+              collectionLabel={selectedPaperLabel}
+              destinationLabel={destinationName}
+              overrides={assAudioOverrides}
+              onOverride={(rowKey, value) =>
+                setAssAudioOverrides(previous => ({
+                  ...previous,
+                  [rowKey]: value,
+                }))
+              }
+            />
+          )}
 
-      <button
-        type='submit'
-        disabled={status.type === 'loading'}
-        className={`flex min-h-12 w-full items-center justify-center gap-3 rounded-xl px-4 py-3 text-base font-bold transition-[background-color,border-color,color,transform,opacity] active:scale-[0.99]
+        {materialType === 'LISTENING' && selectedFileNames.length > 0 ? (
+          <LessonQuestionsPanel
+            key={selectedFileNames.join('|')}
+            lessonId=''
+            initialQuestions={[]}
+            defaultListeningSectionNumber={defaultListeningSectionNumber || ''}
+            appearance='import'
+            draftMode
+            language={defaultLanguage}
+            defaultQuestionType={defaultQuestionType}
+            toeicPartLabel={toeicPartLabel}
+            listeningSectionLabel={listeningSectionLabel}
+            batchFileNames={selectedFileNames}
+          />
+        ) : null}
+
+        <button
+          type='submit'
+          disabled={status.type === 'loading'}
+          className={`my-6 flex min-h-11 w-full items-center justify-center gap-3 px-5 py-2.5 text-sm font-bold transition-[background-color,color,opacity] md:ml-auto md:w-auto md:min-w-44
           ${
             status.type === 'loading'
               ? 'bg-gray-200 text-gray-500'
               : 'bg-blue-600 text-white hover:bg-blue-700'
           }`}>
-        {status.type === 'loading'
-          ? '正在导入...'
-          : selectedFileNames.length > 1
-            ? `导入 ${selectedFileNames.length} 条材料`
-            : '确认导入'}
-      </button>
+          {status.type === 'loading'
+            ? '正在导入...'
+            : selectedFileNames.length > 1
+              ? `导入 ${selectedFileNames.length} 条材料`
+              : '确认导入'}
+        </button>
 
-      {status.message && (
-        <div
-          className={`border px-4 py-3 text-sm font-semibold
+        {status.message && (
+          <div
+            className={`border px-4 py-3 text-sm font-semibold ${
+              uploadedListeningLessonId
+                ? 'flex items-center justify-between gap-3'
+                : ''
+            }
             ${
               status.type === 'success'
                 ? 'border-blue-200 bg-blue-50 text-blue-700'
@@ -1331,78 +1524,64 @@ export default function UploadForm({
                   ? 'border-red-200 bg-red-50 text-red-700'
                   : 'border-gray-200 bg-gray-50 text-gray-600'
             }`}>
-          {status.message}
-          {status.type === 'success' &&
-            lastUpload &&
-            lastUpload.lessonIds.length > 0 &&
-            (isMediaSubtitleVariant ||
-              !lastUpload.materialType ||
-              lastUpload.materialType === 'LISTENING' ||
-              lastUpload.materialType === 'SPEAKING') && (
-            <div className='mt-2 flex flex-wrap gap-2'>
-              {inlineListeningLessonId ? (
-                <span className='inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700'>
-                  材料已创建，请在下方直接添加题目
-                </span>
-              ) : lastUpload.lessonIds.map((id, i) => (
-                <a
-                  key={id}
-                  href={
-                    isMediaSubtitleVariant
-                      ? `/subtitles/${id}`
-                      : lastUpload.materialType === 'SPEAKING'
-                        ? `/manage/shadowing/${id}`
-                        : `/manage/listening/${id}#questions`
-                  }
-                  className='inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors'>
-                  {isMediaSubtitleVariant
-                    ? lastUpload.lessonIds.length > 1
-                      ? `查看字幕 ${i + 1}`
-                      : '查看字幕详情'
-                    : lastUpload.materialType === 'SPEAKING'
-                      ? lastUpload.lessonIds.length > 1
-                        ? `编辑跟读 ${i + 1}`
-                        : '编辑跟读材料'
-                      : lastUpload.lessonIds.length > 1
-                        ? `编辑题目 ${i + 1}`
-                        : '前往添加题目'}
-                  <svg className='w-3.5 h-3.5' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
-                    <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2.5} d='M13 7l5 5m0 0l-5 5m5-5H6' />
-                  </svg>
-                </a>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      </form>
-      {inlineListeningLessonId ? (
-        <div
-          ref={inlineQuestionEditorRef}
-          className='mx-auto mt-6 w-full max-w-5xl scroll-mt-20 rounded-2xl border border-emerald-200 bg-emerald-50/40 p-3 md:p-5'>
-          <div className='mb-3 flex flex-wrap items-center justify-between gap-2 px-1'>
-            <div>
-              <p className='text-sm font-black text-emerald-900'>继续添加题目</p>
-              <p className='mt-1 text-xs font-semibold text-emerald-700'>
-                无需离开上传页；保存题目后可继续上传下一条材料。
-              </p>
-            </div>
-            <a
-              href={`/manage/listening/${inlineListeningLessonId}`}
-              className='rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-50'>
-              查看材料详情
-            </a>
-          </div>
-          <LessonQuestionsPanel
-            key={inlineListeningLessonId}
-            lessonId={inlineListeningLessonId}
-            initialQuestions={[]}
-            defaultListeningSectionNumber={String(
-              lastUpload?.listeningSectionNumber || '',
+            <span>{status.message}</span>
+            {uploadedListeningLessonId ? (
+              <a
+                href={`/manage/listening/${uploadedListeningLessonId}`}
+                className='shrink-0 text-xs font-bold text-blue-700 hover:text-blue-950'>
+                材料详情 →
+              </a>
+            ) : (
+              status.type === 'success' &&
+              lastUpload &&
+              lastUpload.lessonIds.length > 0 &&
+              (isMediaSubtitleVariant ||
+                !lastUpload.materialType ||
+                lastUpload.materialType === 'LISTENING' ||
+                lastUpload.materialType === 'SPEAKING') && (
+                <div className='mt-2 flex flex-wrap gap-2'>
+                  {lastUpload.lessonIds.map((id, i) => (
+                    <a
+                      key={id}
+                      href={
+                        isMediaSubtitleVariant
+                          ? `/subtitles/${id}`
+                          : lastUpload.materialType === 'SPEAKING'
+                            ? `/manage/shadowing/${id}`
+                            : `/manage/listening/${id}#questions`
+                      }
+                      className='inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-100 transition-colors'>
+                      {isMediaSubtitleVariant
+                        ? lastUpload.lessonIds.length > 1
+                          ? `查看字幕 ${i + 1}`
+                          : '查看字幕详情'
+                        : lastUpload.materialType === 'SPEAKING'
+                          ? lastUpload.lessonIds.length > 1
+                            ? `编辑跟读 ${i + 1}`
+                            : '编辑跟读材料'
+                          : lastUpload.lessonIds.length > 1
+                            ? `编辑题目 ${i + 1}`
+                            : '前往添加题目'}
+                      <svg
+                        className='w-3.5 h-3.5'
+                        fill='none'
+                        stroke='currentColor'
+                        viewBox='0 0 24 24'>
+                        <path
+                          strokeLinecap='round'
+                          strokeLinejoin='round'
+                          strokeWidth={2.5}
+                          d='M13 7l5 5m0 0l-5 5m5-5H6'
+                        />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              )
             )}
-          />
-        </div>
-      ) : null}
+          </div>
+        )}
+      </form>
     </>
   )
 }

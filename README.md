@@ -26,6 +26,9 @@ npm run dev
 ```
 
 Set `DATABASE_URL` in `.env.local` before running database commands.
+On macOS with Homebrew PostgreSQL, `npm run dev` checks the local database and
+starts its Homebrew service when needed. If multiple PostgreSQL versions are
+installed, set `POSTGRES_SERVICE` in `.env.local` (for example, `postgresql@16`).
 
 ## Checks
 

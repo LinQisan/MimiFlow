@@ -1,10 +1,20 @@
-import { MaterialType, Prisma, SourceType } from '@prisma/client'
+import {
+  CollectionType,
+  MaterialType,
+  Prisma,
+  SourceType,
+} from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
-import { parseAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+import {
+  findAudioDialogueTiming,
+  parseAudioDialogueSourceId,
+} from '@/utils/audioDialogue/sourceId'
+import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
+import { getReadingCardTitle } from '@/lib/repositories/materials/material-title'
 
 const VOCABULARY_DETAIL_INCLUDE = {
   wordbooks: {
@@ -68,6 +78,233 @@ export function listVocabularySentenceLinks(vocabularyIds: string[]) {
     include: { sentence: true },
     orderBy: { createdAt: 'asc' },
   })
+}
+
+export type VocabularySentenceAudioClip = {
+  audioFile: string
+  start: number
+  end: number
+}
+
+export async function resolveAudioDialogueClips(sourceIds: string[]) {
+  const parsedSources = Array.from(new Set(sourceIds))
+    .map(sourceId => ({ sourceId, parsed: parseAudioDialogueSourceId(sourceId) }))
+    .filter(
+      (item): item is {
+        sourceId: string
+        parsed: { materialId: string; stableId: string }
+      } => Boolean(item.parsed),
+    )
+  if (parsedSources.length === 0) {
+    return {} as Record<string, VocabularySentenceAudioClip>
+  }
+
+  const materials = await prisma.material.findMany({
+    where: {
+      id: { in: Array.from(new Set(parsedSources.map(item => item.parsed.materialId))) },
+      type: { in: [MaterialType.LISTENING, MaterialType.SPEAKING] },
+    },
+    select: { id: true, type: true, contentPayload: true },
+  })
+  const materialMap = new Map(materials.map(material => [material.id, material]))
+  const result: Record<string, VocabularySentenceAudioClip> = {}
+
+  parsedSources.forEach(({ sourceId, parsed }) => {
+    const material = materialMap.get(parsed.materialId)
+    if (!material) return
+    if (
+      material.type !== MaterialType.LISTENING &&
+      material.type !== MaterialType.SPEAKING
+    ) {
+      return
+    }
+    const payload = decodeMaterialPayload(material.type, material.contentPayload)
+    const audioFile = (payload.audioFile || payload.audioUrl || '').trim()
+    if (!audioFile) return
+    const timing = findAudioDialogueTiming(payload.dialogues, parsed.stableId)
+    if (!timing) return
+    result[sourceId] = {
+      audioFile,
+      start: timing.start,
+      end: timing.end,
+    }
+  })
+
+  return result
+}
+
+export async function resolveAudioDialogueSentenceText(sourceId: string) {
+  const parsed = parseAudioDialogueSourceId(sourceId)
+  if (!parsed) return ''
+
+  const material = await prisma.material.findUnique({
+    where: { id: parsed.materialId },
+    select: { type: true, contentPayload: true },
+  })
+  if (
+    !material ||
+    (material.type !== MaterialType.LISTENING &&
+      material.type !== MaterialType.SPEAKING)
+  ) {
+    return ''
+  }
+
+  const payload = decodeMaterialPayload(material.type, material.contentPayload)
+  const dialogue = payload.dialogues.find(item =>
+    [item.stableId, item.sequenceId, item.id]
+      .map(value => String(value ?? '').trim())
+      .filter(Boolean)
+      .includes(parsed.stableId),
+  )
+  return dialogue?.text.trim() || ''
+}
+
+export type ResolvedVocabularySentenceSource = {
+  source: string
+  sourceUrl: string
+}
+
+const sentenceSourceKey = (
+  sourceType?: SourceType | null,
+  sourceId?: string | null,
+) => `${sourceType || ''}:${(sourceId || '').trim()}`
+
+export async function resolveVocabularySentenceSources(
+  references: Array<{
+    sourceType?: SourceType | null
+    sourceId?: string | null
+  }>,
+) {
+  const normalized = references.filter(
+    reference => reference.sourceType && reference.sourceId?.trim(),
+  )
+  const questionIds = Array.from(
+    new Set(
+      normalized
+        .filter(reference => reference.sourceType === SourceType.QUIZ_QUESTION)
+        .map(reference => reference.sourceId!.trim()),
+    ),
+  )
+  const parsedMaterialReferences = normalized
+    .filter(reference => reference.sourceType !== SourceType.QUIZ_QUESTION)
+    .map(reference => ({
+      ...reference,
+      parsed:
+        reference.sourceType === SourceType.ARTICLE_TEXT
+          ? {
+              materialId: reference.sourceId!.trim(),
+              stableId: '',
+            }
+          : parseAudioDialogueSourceId(reference.sourceId!),
+    }))
+    .filter(
+      (reference): reference is typeof reference & {
+        parsed: { materialId: string; stableId: string }
+      } => Boolean(reference.parsed),
+    )
+
+  const questions = questionIds.length
+    ? await prisma.question.findMany({
+        where: { id: { in: questionIds } },
+        select: { id: true, materialId: true },
+      })
+    : []
+  const materialIds = Array.from(
+    new Set([
+      ...parsedMaterialReferences.map(reference => reference.parsed.materialId),
+      ...questions.map(question => question.materialId),
+    ]),
+  )
+  if (materialIds.length === 0) {
+    return {} as Record<string, ResolvedVocabularySentenceSource>
+  }
+
+  const materials = await prisma.material.findMany({
+    where: { id: { in: materialIds } },
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      contentPayload: true,
+      collectionMaterials: {
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          collection: {
+            select: { id: true, title: true, collectionType: true },
+          },
+        },
+      },
+    },
+  })
+  const materialMap = new Map(materials.map(material => [material.id, material]))
+  const result: Record<string, ResolvedVocabularySentenceSource> = {}
+
+  const materialSource = (materialId: string) => {
+    const material = materialMap.get(materialId)
+    if (!material) return null
+    const paper = material.collectionMaterials.find(
+      item => item.collection.collectionType === CollectionType.PAPER,
+    )?.collection
+    const paperTitle = paper?.title.trim() || ''
+
+    if (material.type === MaterialType.LISTENING) {
+      return {
+        source: `听力：${paperTitle || material.title}`,
+        sourceUrl: `/listening/${material.id}`,
+      }
+    }
+    if (material.type === MaterialType.SPEAKING) {
+      return {
+        source: `跟读：${material.title}`,
+        sourceUrl: `/listening/${material.id}`,
+      }
+    }
+    if (material.type === MaterialType.READING) {
+      return {
+        source: `阅读：${paperTitle || getReadingCardTitle(material.title)}`,
+        sourceUrl: `/reading/articles/${material.id}`,
+      }
+    }
+    if (material.type === MaterialType.MEDIA_SUBTITLE) {
+      const payload = decodeMaterialPayload(
+        MaterialType.MEDIA_SUBTITLE,
+        material.contentPayload,
+      )
+      const workTitle = payload.subtitleWorkTitle.trim() || material.title
+      const episode = [
+        payload.subtitleSeason ? `S${payload.subtitleSeason}` : '',
+        payload.subtitleEpisode ? `E${payload.subtitleEpisode}` : '',
+      ]
+        .filter(Boolean)
+        .join('')
+      return {
+        source: `影视：${workTitle}${episode ? ` · ${episode}` : ''}`,
+        sourceUrl: `/subtitles/${material.id}`,
+      }
+    }
+    if (material.type === MaterialType.VOCAB_GRAMMAR) {
+      return {
+        source: `题目：${paperTitle || material.title}`,
+        sourceUrl: paper ? `/practice/${paper.id}` : '/practice',
+      }
+    }
+    return null
+  }
+
+  parsedMaterialReferences.forEach(reference => {
+    const resolved = materialSource(reference.parsed.materialId)
+    if (!resolved) return
+    result[
+      sentenceSourceKey(reference.sourceType, reference.sourceId)
+    ] = resolved
+  })
+  questions.forEach(question => {
+    const resolved = materialSource(question.materialId)
+    if (!resolved) return
+    result[sentenceSourceKey(SourceType.QUIZ_QUESTION, question.id)] = resolved
+  })
+
+  return result
 }
 
 export const normalizeSentencePosTags = (list?: string[] | null) =>
@@ -280,6 +517,12 @@ export const resolveVocabularySourceMeta = async (
   sourceType: SourceType,
   sourceId: string,
 ): Promise<{ source: string; sourceUrl: string }> => {
+  const resolvedSources = await resolveVocabularySentenceSources([
+    { sourceType, sourceId },
+  ])
+  const resolvedSource = resolvedSources[sentenceSourceKey(sourceType, sourceId)]
+  if (resolvedSource) return resolvedSource
+
   if (sourceType === 'AUDIO_DIALOGUE') {
     const sentence = await prisma.vocabularySentence.findFirst({
       where: { sourceType, sourceId },

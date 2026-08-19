@@ -21,7 +21,7 @@ type SubmissionResult = {
   correctOptionId: string | null
 }
 
-const optionLabel = (index: number) => String.fromCharCode(65 + index)
+const optionLabel = (index: number) => String(index + 1)
 
 export default function ArticleQuestionsPanel({
   questions,
@@ -91,19 +91,19 @@ export default function ArticleQuestionsPanel({
   }
 
   return (
-    <section className='border-t border-slate-200 pt-8'>
-      <div className='border-b border-slate-100 pb-4'>
+    <section className='pt-8'>
+      <div className='pb-4'>
         <h2 className='text-lg font-black text-slate-900'>理解练习</h2>
       </div>
 
-      <div className='mt-5 space-y-5'>
+      <div className='mt-3 divide-y divide-slate-200 border-y border-slate-200'>
         {questions.map((question, index) => {
           const selectedId = answers[question.id]
           const result = results[question.id]
           return (
-            <article
+            <div
               key={question.id}
-              className='border-b border-slate-200 py-6 md:py-8'>
+              className='py-6 md:py-8'>
               <div className='flex flex-wrap items-center justify-between gap-2'>
                 <h3 className='text-sm font-bold text-slate-900'>
                   第 {index + 1} 题
@@ -114,7 +114,7 @@ export default function ArticleQuestionsPanel({
                       已作答 {question.attemptCount} 次
                     </span>
                   ) : null}
-                  <span className='rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                  <span className='text-[11px] font-semibold text-slate-500'>
                     {question.questionType}
                   </span>
                 </div>
@@ -126,12 +126,12 @@ export default function ArticleQuestionsPanel({
                 </p>
               ) : null}
               {question.contextSentence ? (
-                <p className='mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs leading-6 text-slate-500'>
+                <p className='mt-2 border-l-2 border-slate-200 py-1 pl-3 text-xs leading-6 text-slate-500'>
                   语境：{question.contextSentence}
                 </p>
               ) : null}
 
-              <div className='mt-4 grid gap-2'>
+              <div className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
                 {question.options.map((option, optionIndex) => {
                   const isSelected = selectedId === option.id
                   const showCorrect =
@@ -151,17 +151,17 @@ export default function ArticleQuestionsPanel({
                           [question.id]: option.id,
                         }))
                       }
-                      className={`flex items-start rounded-lg border px-3 py-3 text-left text-sm transition ${
+                      className={`flex w-full items-start px-3 py-3 text-left text-sm transition ${
                         showCorrect
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                          ? 'bg-emerald-50 text-emerald-900'
                           : showWrong
-                            ? 'border-rose-300 bg-rose-50 text-rose-900'
+                            ? 'bg-rose-50 text-rose-900'
                             : isSelected
-                              ? 'border-slate-900 bg-white text-slate-900 ring-1 ring-slate-300'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                              ? 'bg-slate-100 text-slate-950'
+                              : 'bg-transparent text-slate-700 hover:bg-slate-50'
                       }`}>
                       <span className='mr-3 font-semibold text-slate-400'>
-                        {optionLabel(optionIndex)}.
+                        {optionLabel(optionIndex)}
                       </span>
                       <span className='leading-6'>{option.text}</span>
                     </button>
@@ -188,14 +188,14 @@ export default function ArticleQuestionsPanel({
               </div>
 
               {result && question.analysis ? (
-                <div className='mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3'>
+                <div className='mt-4 border-y border-slate-200 bg-slate-50 py-3'>
                   <p className='text-xs font-bold text-slate-500'>解析</p>
                   <p className='mt-1 text-sm leading-6 text-slate-700'>
                     {question.analysis}
                   </p>
                 </div>
               ) : null}
-            </article>
+            </div>
           )
         })}
       </div>

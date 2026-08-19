@@ -4,8 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import {
   cleanInlineSelectionText,
   getCleanElementText,
+  getCleanRangeText,
   getCleanSelectionText,
 } from '@/utils/text/selection'
+import { extractSentenceAtOffset } from '@/utils/text/sentenceContext'
 
 export interface SelectionState {
   text: string
@@ -22,6 +24,13 @@ export interface SelectionState {
   contextSentence: string
   sourceType: SourceType | ''
   sourceId: string
+  detectedWord: {
+    surface: string
+    dictionaryForm: string
+    normalizedForm: string
+    reading: string
+    partOfSpeech: string
+  } | null
 }
 
 export function useTextSelection() {
@@ -40,6 +49,7 @@ export function useTextSelection() {
     contextSentence: '',
     sourceType: '',
     sourceId: '',
+    detectedWord: null,
   })
 
   useEffect(() => {
@@ -58,6 +68,24 @@ export function useTextSelection() {
       if (explicitText) return explicitText
       const cleaned = extractCleanTextFromElement(element)
       return cleaned || cleanInlineSelectionText(fallback)
+    }
+
+    const resolveSelectedSentence = (
+      contextElement: HTMLElement | null,
+      range: Range,
+      fallback: string,
+    ) => {
+      const contextText = resolveContextText(contextElement, fallback)
+      if (!contextElement || !contextText) return contextText
+      try {
+        const prefixRange = document.createRange()
+        prefixRange.selectNodeContents(contextElement)
+        prefixRange.setEnd(range.startContainer, range.startOffset)
+        const offset = getCleanRangeText(prefixRange).length
+        return extractSentenceAtOffset(contextText, offset) || contextText
+      } catch {
+        return contextText
+      }
     }
 
     const extractSelectedText = (windowSelection: Selection) => {
@@ -147,6 +175,34 @@ export function useTextSelection() {
         }
         selectedRangeRef.current = range.cloneRange()
 
+        const startElement =
+          range.startContainer.nodeType === Node.TEXT_NODE
+            ? range.startContainer.parentElement
+            : (range.startContainer as HTMLElement)
+        const sudachiNode = startElement?.closest<HTMLElement>(
+          '[data-sudachi-token="true"]',
+        )
+        const detectedSurface =
+          sudachiNode?.getAttribute('data-sudachi-surface')?.trim() || ''
+        const detectedWord =
+          detectedSurface &&
+          text.length <= detectedSurface.length &&
+          detectedSurface.includes(text)
+            ? {
+                surface: detectedSurface,
+                dictionaryForm:
+                  sudachiNode?.getAttribute('data-sudachi-lemma')?.trim() ||
+                  detectedSurface,
+                normalizedForm:
+                  sudachiNode?.getAttribute('data-sudachi-normalized')?.trim() ||
+                  detectedSurface,
+                reading:
+                  sudachiNode?.getAttribute('data-sudachi-reading')?.trim() || '',
+                partOfSpeech:
+                  sudachiNode?.getAttribute('data-sudachi-pos')?.trim() || '',
+              }
+            : null
+
         setSelection({
           text,
           x: rect.left + rect.width / 2,
@@ -156,8 +212,10 @@ export function useTextSelection() {
           isTop: rect.top > 250,
           sourceType,
           sourceId,
-          contextSentence: resolveContextText(
+          detectedWord,
+          contextSentence: resolveSelectedSentence(
             contextNode as HTMLElement | null,
+            range,
             text,
           ),
         })

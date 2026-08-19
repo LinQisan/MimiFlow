@@ -10,6 +10,10 @@ type State<Material> = {
   questionQuery: string
   questionTypeFilter: string
   dirtyIds: Set<string>
+  selectedQuestionIds: Set<string>
+  targetPaperId: string
+  bulkAction: 'delete' | 'move' | null
+  bulkMessage: string
 }
 
 type Action<Material> = {
@@ -37,6 +41,10 @@ export function usePaperQuestionEditorState<Material>(materials: Material[]) {
     questionQuery: '',
     questionTypeFilter: 'all',
     dirtyIds: new Set<string>(),
+    selectedQuestionIds: new Set<string>(),
+    targetPaperId: '',
+    bulkAction: null,
+    bulkMessage: '',
   })
   const setter = useCallback(
     <Key extends keyof State<Material>>(key: Key) =>
@@ -53,5 +61,9 @@ export function usePaperQuestionEditorState<Material>(materials: Material[]) {
     setQuestionQuery: setter('questionQuery'),
     setQuestionTypeFilter: setter('questionTypeFilter'),
     setDirtyIds: setter('dirtyIds'),
+    setSelectedQuestionIds: setter('selectedQuestionIds'),
+    setTargetPaperId: setter('targetPaperId'),
+    setBulkAction: setter('bulkAction'),
+    setBulkMessage: setter('bulkMessage'),
   }
 }

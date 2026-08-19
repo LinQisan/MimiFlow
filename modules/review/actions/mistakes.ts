@@ -183,31 +183,44 @@ export async function getRetryQuestionById(
   }
 }
 
-export async function submitRetryAnswer(
-  retryId: string,
-  selectedOptionId: string,
+export async function submitRetryAnswers(
+  attempts: Array<{ retryId: string; selectedOptionId: string }>,
 ) {
-  try {
-    const result = await submitRetryAnswerWithSchedule({
-      retryId,
-      selectedOptionId,
-      now: new Date(),
-      retryHours: RETRY_HOURS,
-    })
+  const normalized = attempts
+    .map(item => ({
+      retryId: item.retryId.trim(),
+      selectedOptionId: item.selectedOptionId.trim(),
+    }))
+    .filter(item => item.retryId && item.selectedOptionId)
+  if (normalized.length === 0) {
+    return { success: false, message: '请先完成本页题目。' }
+  }
 
-    if (!result.ok) {
-      return { success: false, message: result.message }
+  try {
+    const results = await Promise.all(
+      normalized.map(item =>
+        submitRetryAnswerWithSchedule({
+          ...item,
+          now: new Date(),
+          retryHours: RETRY_HOURS,
+        }),
+      ),
+    )
+    const failed = results.find(result => !result.ok)
+    if (failed && !failed.ok) {
+      return { success: false, message: failed.message }
     }
 
     revalidatePath('/review/mistakes')
     revalidatePath('/')
-
     return {
       success: true,
-      isCorrect: result.isCorrect,
-      correctOptionId: result.correctOptionId,
-      nextInHours: result.nextInHours,
-      done: result.done,
+      results: results.map((result, index) => ({
+        retryId: normalized[index].retryId,
+        isCorrect: result.ok ? result.isCorrect : false,
+        done: result.ok ? result.done : false,
+        nextInHours: result.ok ? result.nextInHours : null,
+      })),
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '提交失败'

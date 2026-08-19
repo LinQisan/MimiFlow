@@ -26,6 +26,10 @@ npm run dev
 ```
 
 データベースコマンドの実行前に、`.env.local` に `DATABASE_URL` を設定してください。
+macOS で Homebrew 版 PostgreSQL を使用する場合、`npm run dev` はローカル
+データベースを確認し、停止中なら Homebrew サービスを自動起動します。複数の
+PostgreSQL がある場合は `.env.local` の `POSTGRES_SERVICE` で指定できます
+（例: `postgresql@16`）。
 
 ## チェック
 

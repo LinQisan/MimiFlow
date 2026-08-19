@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useTransition } from 'react'
+import { useActionState, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 
 import CustomSelect from '@/components/ui/CustomSelect'
@@ -25,9 +25,21 @@ export default function ShadowingLibraryManager({
   collections: CollectionNode[]
 }) {
   const router = useRouter()
+  const [isOpen, setIsOpen] = useState(false)
   const roots = sortNodes(collections.filter(item => item.collectionType === 'LIBRARY_ROOT'))
   const books = sortNodes(collections.filter(item => item.collectionType === 'BOOK'))
   const chapters = sortNodes(collections.filter(item => item.collectionType === 'CHAPTER'))
+  const treeRows = roots.flatMap(root => [
+    { node: root, depth: 0 },
+    ...books
+      .filter(book => book.parentId === root.id)
+      .flatMap(book => [
+        { node: book, depth: 1 },
+        ...chapters
+          .filter(chapter => chapter.parentId === book.id)
+          .map(chapter => ({ node: chapter, depth: 2 })),
+      ]),
+  ])
   const [bookState, createBookAction, creatingBook] = useActionState(
     async (_previous: ActionState, formData: FormData) => {
       const result = await createShadowingBook(formData)
@@ -46,75 +58,57 @@ export default function ShadowingLibraryManager({
   )
 
   return (
-    <details className='group mb-4 overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm'>
-      <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:content-none'>
+    <div className='mb-6 border-y border-slate-200'>
+      <button
+        type='button'
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(value => !value)}
+        className='flex w-full items-center justify-between gap-3 py-3 text-left'>
         <span className='text-sm font-bold text-slate-800'>教材与章节</span>
         <span className='text-xs text-slate-400'>
           {books.length} 本 · {chapters.length} 章
-          <span className='ml-2 group-open:hidden'>展开</span>
-          <span className='ml-2 hidden group-open:inline'>收起</span>
+          <span className='ml-2'>{isOpen ? '收起' : '展开'}</span>
         </span>
-      </summary>
+      </button>
 
-      <div className='space-y-4 border-t border-slate-200 p-4'>
-        <div className='grid gap-2 lg:grid-cols-2'>
-          <CreateNodeForm
-            action={createBookAction}
-            pending={creatingBook}
-            state={bookState}
-            selectName='rootId'
-            selectLabel='所属教材库'
-            inputName='bookTitle'
-            inputPlaceholder='教材名称'
-            buttonLabel='新增教材'
-            options={roots}
-          />
-          <CreateNodeForm
-            action={createChapterAction}
-            pending={creatingChapter}
-            state={chapterState}
-            selectName='bookId'
-            selectLabel='所属教材'
-            inputName='chapterTitle'
-            inputPlaceholder='章节名称'
-            buttonLabel='新增章节'
-            options={books}
-          />
-        </div>
+      {isOpen ? (
+        <div className='border-t border-slate-200 py-4'>
+          <div className='grid gap-4 lg:grid-cols-2'>
+            <CreateNodeForm
+              action={createBookAction}
+              pending={creatingBook}
+              state={bookState}
+              selectName='rootId'
+              selectLabel='所属教材库'
+              inputName='bookTitle'
+              inputPlaceholder='教材名称'
+              buttonLabel='新增教材'
+              options={roots}
+            />
+            <CreateNodeForm
+              action={createChapterAction}
+              pending={creatingChapter}
+              state={chapterState}
+              selectName='bookId'
+              selectLabel='所属教材'
+              inputName='chapterTitle'
+              inputPlaceholder='章节名称'
+              buttonLabel='新增章节'
+              options={books}
+            />
+          </div>
 
-        <div className='space-y-3'>
-          {roots.map(root => {
-            const rootBooks = books.filter(book => book.parentId === root.id)
-            return (
-              <div key={root.id} className='rounded-xl border border-slate-200 bg-slate-50/70 p-3'>
-                <NodeEditor node={root} />
-                <div className='mt-2 space-y-2 border-l border-slate-200 pl-3'>
-                  {rootBooks.map(book => (
-                    <div key={book.id} className='rounded-xl border border-slate-200 bg-white p-3'>
-                      <NodeEditor node={book} />
-                      <div className='mt-2 space-y-2 border-l border-slate-200 pl-3'>
-                        {chapters
-                          .filter(chapter => chapter.parentId === book.id)
-                          .map(chapter => (
-                            <div key={chapter.id} className='rounded-lg bg-slate-50 px-3 py-2'>
-                              <NodeEditor node={chapter} />
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-          {roots.length === 0 ? (
-            <p className='rounded-xl bg-slate-50 px-3 py-4 text-center text-sm text-slate-500'>
-              新增教材时会自动创建教材库。
-            </p>
-          ) : null}
+          <div className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
+            {treeRows.map(({ node, depth }) => (
+              <NodeEditor key={node.id} node={node} depth={depth} />
+            ))}
+            {roots.length === 0 ? (
+              <p className='py-4 text-sm text-slate-500'>暂无教材</p>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </details>
+      ) : null}
+    </div>
   )
 }
 
@@ -140,7 +134,7 @@ function CreateNodeForm({
   options: CollectionNode[]
 }) {
   return (
-    <form action={action} className='rounded-xl border border-slate-200 p-3'>
+    <form action={action}>
       <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]'>
         <CustomSelect name={selectName} className='h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-sm'>
           <option value=''>{selectLabel}</option>
@@ -167,9 +161,10 @@ function CreateNodeForm({
   )
 }
 
-function NodeEditor({ node }: { node: CollectionNode }) {
+function NodeEditor({ node, depth }: { node: CollectionNode; depth: number }) {
   const router = useRouter()
   const dialog = useDialog()
+  const [isOpen, setIsOpen] = useState(false)
   const [isDeleting, startDeleteTransition] = useTransition()
   const [state, updateAction, pending] = useActionState(
     async (_previous: ActionState, formData: FormData) => {
@@ -191,15 +186,22 @@ function NodeEditor({ node }: { node: CollectionNode }) {
         : '章节'
 
   return (
-    <details className='group/node'>
-      <summary className='flex cursor-pointer list-none items-center gap-2 marker:content-none'>
+    <div
+      className={`py-3 ${
+        depth === 0 ? '' : depth === 1 ? 'pl-5' : 'pl-10'
+      }`}>
+      <button
+        type='button'
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen(value => !value)}
+        className='flex w-full items-center gap-2 text-left'>
         <span className='min-w-0 flex-1 truncate text-sm font-semibold text-slate-800'>{node.title}</span>
         <span className='text-xs text-slate-400'>
           {typeLabel} · {node._count.materials} 条
         </span>
-        <span className='text-xs text-slate-400 group-open/node:hidden'>编辑</span>
-        <span className='hidden text-xs text-slate-400 group-open/node:inline'>收起</span>
-      </summary>
+        <span className='text-xs text-slate-400'>{isOpen ? '收起' : '编辑'}</span>
+      </button>
+      {isOpen ? (
       <form action={updateAction} className='mt-3 grid gap-2 border-t border-slate-200 pt-3 md:grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)_6rem_auto]'>
         <input type='hidden' name='collectionId' value={node.id} />
         <input type='hidden' name='parentId' value={node.parentId || ''} />
@@ -251,7 +253,8 @@ function NodeEditor({ node }: { node: CollectionNode }) {
           </p>
         ) : null}
       </form>
-    </details>
+      ) : null}
+    </div>
   )
 }
 

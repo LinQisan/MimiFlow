@@ -1,10 +1,8 @@
 // app/vocabulary/page.tsx
-import Link from 'next/link'
 import VocabularyTabs from './VocabularyTabs'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
-import WordbooksBrowser from '@/features/vocabulary/ui/WordbooksBrowser'
 import {
   resolveVocabularyGroupName,
   resolveVocabularyLanguageCode,
@@ -14,11 +12,12 @@ import {
   listVocabularyDetails,
   listVocabularyGroups,
   listVocabularySentenceLinks,
+  resolveAudioDialogueClips,
+  resolveVocabularySentenceSources,
   type VocabularyDetailRow,
 } from '@/modules/knowledge/vocabulary/server/repository'
 import {
   listWordbookOptions,
-  listWordbookShelf,
 } from '@/modules/knowledge/wordbooks/repository'
 
 type SentenceSource = {
@@ -27,6 +26,7 @@ type SentenceSource = {
   sourceUrl: string
   translation?: string | null
   audioFile?: string | null
+  audioData?: AudioData | null
   sourceType?: string | null
   meaningIndex?: number | null
   posTags?: string[]
@@ -54,7 +54,6 @@ type GroupedVocabItem = {
   createdAt: Date
   sourceType: string
   sentences: SentenceSource[]
-  audioData: AudioData | null
   review?: {
     id: string
     due: Date
@@ -76,38 +75,6 @@ type FolderItem = {
   parentId: string | null
 }
 
-function VocabularyHeader({ activeView }: { activeView: 'workbench' | 'wordbooks' }) {
-  return (
-    <header className='mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between'>
-      <h1 className='text-2xl font-black tracking-tight text-slate-950'>词汇</h1>
-      <nav
-        aria-label='词汇页面'
-        className='inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1'>
-        <Link
-          href='/vocabulary'
-          aria-current={activeView === 'workbench' ? 'page' : undefined}
-          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
-            activeView === 'workbench'
-              ? 'bg-slate-900 text-white'
-              : 'text-slate-500 hover:text-slate-900'
-          }`}>
-          词汇
-        </Link>
-        <Link
-          href='/vocabulary?view=wordbooks'
-          aria-current={activeView === 'wordbooks' ? 'page' : undefined}
-          className={`rounded-lg px-4 py-2 text-sm font-bold transition ${
-            activeView === 'wordbooks'
-              ? 'bg-slate-900 text-white'
-              : 'text-slate-500 hover:text-slate-900'
-          }`}>
-          单词书
-        </Link>
-      </nav>
-    </header>
-  )
-}
-
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
@@ -116,12 +83,10 @@ const normalizeSentencePosTags = (list?: string[] | null) =>
 export default async function VocabularyPage({
   searchParams,
 }: {
-  searchParams?:
-    | Record<string, string | string[] | undefined>
-    | Promise<Record<string, string | string[] | undefined>>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const PAGE_SIZE = 48
-  const resolvedSearchParams = await Promise.resolve(searchParams || {})
+  const resolvedSearchParams = await searchParams
   const pageValue = Array.isArray(resolvedSearchParams.page)
     ? resolvedSearchParams.page[0]
     : resolvedSearchParams.page
@@ -134,34 +99,9 @@ export default async function VocabularyPage({
   const wordbookValue = Array.isArray(resolvedSearchParams.wordbook)
     ? resolvedSearchParams.wordbook[0]
     : resolvedSearchParams.wordbook
-  const viewValue = Array.isArray(resolvedSearchParams.view)
-    ? resolvedSearchParams.view[0]
-    : resolvedSearchParams.view
-  const activeView = viewValue === 'wordbooks' ? 'wordbooks' : 'workbench'
   const focusId = (focusValue || '').trim()
   const initialFocusGroup = (groupValue || '').trim()
   const wordbookFilter = (wordbookValue || 'all').trim()
-
-  if (activeView === 'wordbooks') {
-    const wordbooks = await listWordbookShelf()
-
-    return (
-      <main className='min-h-screen bg-slate-50 pb-16'>
-        <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
-          <VocabularyHeader activeView='wordbooks' />
-
-          <WordbooksBrowser
-            items={wordbooks.map(item => ({
-              id: item.id,
-              title: item.title,
-              parentId: item.parentId,
-              count: item._count.entries,
-            }))}
-          />
-        </div>
-      </main>
-    )
-  }
 
   const allWordbooks = await listWordbookOptions()
   const getWordbookDescendantIds = (wordbookId: string) => {
@@ -258,17 +198,37 @@ export default async function VocabularyPage({
   }))
   const vocabularyIds = pageVocabularies.map(item => item.id)
   const sentenceLinks = await listVocabularySentenceLinks(vocabularyIds)
+  const audioDialogueClips = await resolveAudioDialogueClips(
+    sentenceLinks
+      .filter(link => link.sentence.sourceType === 'AUDIO_DIALOGUE')
+      .map(link => link.sentence.sourceId || '')
+      .filter(Boolean),
+  )
+  const resolvedSentenceSources = await resolveVocabularySentenceSources(
+    sentenceLinks.map(link => ({
+      sourceType: link.sentence.sourceType,
+      sourceId: link.sentence.sourceId,
+    })),
+  )
   const sentenceLinksByVocabularyId = sentenceLinks.reduce<
     Record<string, SentenceSource[]>
   >((acc, link) => {
     const posTags = normalizeSentencePosTags(parseJsonStringList(link.posTags))
+    const resolvedSource =
+      resolvedSentenceSources[
+        `${link.sentence.sourceType || ''}:${link.sentence.sourceId || ''}`
+      ]
     if (!acc[link.vocabularyId]) acc[link.vocabularyId] = []
     acc[link.vocabularyId].push({
       text: link.sentence.text,
-      source: link.sentence.source,
-      sourceUrl: link.sentence.sourceUrl,
+      source: resolvedSource?.source || link.sentence.source,
+      sourceUrl: resolvedSource?.sourceUrl || link.sentence.sourceUrl,
       translation: link.sentence.translation || null,
       audioFile: link.sentence.audioFile || null,
+      audioData:
+        (link.sentence.sourceId &&
+          audioDialogueClips[link.sentence.sourceId]) ||
+        null,
       sourceType: link.sentence.sourceType,
       meaningIndex: link.meaningIndex ?? null,
       posTags,
@@ -280,20 +240,10 @@ export default async function VocabularyPage({
 
   // 组装页面数据
   pageVocabularies.forEach(vocab => {
-    let audioData: AudioData | null = null
-
     let parsedSentences: SentenceSource[] = []
     const linkedSentences = sentenceLinksByVocabularyId[vocab.id] || []
     if (linkedSentences.length > 0) {
       parsedSentences = dedupeAndRankSentences(linkedSentences, 16)
-      const firstSentence = parsedSentences[0]
-      if (firstSentence?.audioFile) {
-        audioData = {
-          audioFile: firstSentence.audioFile,
-          start: 0,
-          end: 0,
-        }
-      }
     }
 
     // 分组
@@ -331,16 +281,13 @@ export default async function VocabularyPage({
       createdAt: vocab.createdAt,
       sourceType: vocab.sourceType,
       sentences: parsedSentences,
-      audioData,
       review: vocab.review || null,
     })
   })
 
   return (
-    <main className='min-h-screen bg-slate-50 pb-16'>
-      <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
-        <VocabularyHeader activeView='workbench' />
-
+    <main className='min-h-screen bg-stone-50 pb-12'>
+      <div className='mx-auto max-w-6xl px-4 py-4 md:px-8 md:py-6'>
         <VocabularyTabs
           groupedData={groupedData}
           groupedTotals={groupedTotals}

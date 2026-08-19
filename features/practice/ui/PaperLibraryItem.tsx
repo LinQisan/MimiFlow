@@ -1,27 +1,36 @@
+'use client'
+
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import type { ExamHubPaperSummary } from '@/lib/repositories/exam'
-import {
-  formatPaperDate,
-  getPaperQuestionBreakdown,
-  paperLanguageLabel,
-  paperLevelLabel,
-} from '../domain/paper-library'
+import { getPaperQuestionBreakdown } from '../domain/paper-library'
 
 export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary }) {
   const breakdown = getPaperQuestionBreakdown(paper)
-  const hasHistory = paper.attemptCount > 0
+  const [hasDraftProgress, setHasDraftProgress] = useState(false)
+
+  useEffect(() => {
+    try {
+      const rawDraft = window.localStorage.getItem(
+        `practice:draft:paper:${paper.id}`,
+      )
+      if (!rawDraft) return
+      const draft = JSON.parse(rawDraft) as {
+        hasProgress?: boolean
+        answers?: Record<string, string>
+      }
+      setHasDraftProgress(
+        draft.hasProgress === true || Object.keys(draft.answers || {}).length > 0,
+      )
+    } catch {
+      setHasDraftProgress(false)
+    }
+  }, [paper.id])
 
   return (
     <article className='group rounded-2xl border border-slate-200/80 bg-white px-5 py-5 shadow-[0_10px_35px_-30px_rgba(15,23,42,0.55)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] md:px-6 md:py-6'>
       <div className='grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)_auto] md:items-center'>
         <div className='min-w-0'>
-          <div className='mb-3 flex flex-wrap items-center gap-2 text-[11px] font-bold tracking-[0.08em] text-slate-500'>
-            <span>{paperLanguageLabel(paper.language)}</span>
-            <span className='h-1 w-1 rounded-full bg-slate-300' />
-            <span>{paperLevelLabel(paper.level)}</span>
-            <span className='h-1 w-1 rounded-full bg-slate-300' />
-            <span>更新于 {formatPaperDate(paper.updatedAt)}</span>
-          </div>
           <h3 className='text-xl font-semibold tracking-tight text-slate-950 md:text-2xl'>
             {paper.name}
           </h3>
@@ -44,7 +53,9 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
             <div>
               <p className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>练习记录</p>
               <p className='mt-1 text-sm font-semibold text-slate-700'>
-                {hasHistory ? `${paper.attemptCount} 次作答` : '尚未开始'}
+                {paper.completedPracticeCount > 0
+                  ? `${paper.completedPracticeCount} 次完成`
+                  : '尚无完整练习'}
               </p>
             </div>
             <p className='text-2xl font-semibold tabular-nums text-slate-950'>
@@ -66,7 +77,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
           <Link
             href={`/practice/${encodeURIComponent(paper.id)}/do`}
             className='inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 md:flex-none'>
-            {hasHistory ? '继续练习' : '开始答题'}
+            {hasDraftProgress ? '继续练习' : '开始练习'}
           </Link>
           <Link
             href={`/practice/${encodeURIComponent(paper.id)}`}

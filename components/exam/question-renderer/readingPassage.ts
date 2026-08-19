@@ -1,6 +1,7 @@
 import { annotateExamText } from './annotate'
 import { createTrustedMarkupSlots } from './trustedMarkup'
 import type { ExamAnnotationSettings, ExamQuestion } from './types'
+import { renderSafeStructuredText } from './structuredText'
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -82,7 +83,14 @@ export const buildReadingPassageHtml = ({
   if (!htmlContent) return ''
 
   if (fillBlankQuestions.length === 0) {
-    return annotateExamText({ text: htmlContent, settings: annotation })
+    return renderSafeStructuredText(
+      annotateExamText({
+        text: htmlContent,
+        preserveNewlines: true,
+        settings: annotation,
+      }),
+      { force: true },
+    )
   }
 
   let counter = 1
@@ -159,6 +167,13 @@ export const buildReadingPassageHtml = ({
   })
 
   return trustedMarkup.restore(
-    annotateExamText({ text: htmlContent, settings: annotation }),
+    renderSafeStructuredText(
+      annotateExamText({
+        text: htmlContent,
+        preserveNewlines: true,
+        settings: annotation,
+      }),
+      { force: true },
+    ),
   )
 }

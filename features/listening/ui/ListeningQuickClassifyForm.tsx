@@ -25,7 +25,7 @@ export default function ListeningQuickClassifyForm({
   )
 
   return (
-    <form action={action} className='space-y-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+    <form action={action} className='space-y-2'>
       <input type='hidden' name='materialId' value={materialId} />
       <div className='grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]'>
         <CustomSelect

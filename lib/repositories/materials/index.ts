@@ -9,7 +9,11 @@ import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 import { prepareEbookChapters } from '@/lib/ebooks/chapter-display'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
-import { readFiniteNumber, readString, readStringArray } from '@/lib/validation/schema'
+import {
+  readFiniteNumber,
+  readString,
+  readStringArray,
+} from '@/lib/validation/schema'
 import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
 
@@ -27,13 +31,13 @@ function asChapterArray(value: unknown) {
       text: readString(item.text) || '',
       href: readString(item.href) || '',
     }))
-    .filter(item => item.text.trim())
+    .filter((item) => item.text.trim())
 }
 
 function toAnswerIds(answer: unknown): string[] {
   if (typeof answer === 'string' && answer) return [answer]
   if (Array.isArray(answer)) {
-    return answer.filter(item => typeof item === 'string') as string[]
+    return answer.filter((item) => typeof item === 'string') as string[]
   }
   return []
 }
@@ -43,7 +47,7 @@ export function normalizeQuestionOptions(
   answer: unknown,
 ): Array<{ id: string; text: string; isCorrect: boolean }> {
   const answerIds = new Set(toAnswerIds(answer))
-  return asArray<JsonRecord>(options).map(item => {
+  return asArray<JsonRecord>(options).map((item) => {
     const id = readString(item.id) || ''
     return {
       id,
@@ -72,18 +76,19 @@ export function materialDialogueItems(
         : type === MaterialType.MEDIA_SUBTITLE
           ? decodeMaterialPayload(MaterialType.MEDIA_SUBTITLE, contentPayload)
           : null
-  return (payload?.dialogues ?? []).map(
-    (item, index) => ({
-      id: readFiniteNumber(item.id, index + 1),
-      text: readString(item.text) || '',
-      start: readFiniteNumber(item.start),
-      end: readFiniteNumber(item.end),
-      sequenceId: readFiniteNumber(item.sequenceId, index + 1),
-    }),
-  )
+  return (payload?.dialogues ?? []).map((item, index) => ({
+    id: readFiniteNumber(item.id, index + 1),
+    text: readString(item.text) || '',
+    start: readFiniteNumber(item.start),
+    end: readFiniteNumber(item.end),
+    sequenceId: readFiniteNumber(item.sequenceId, index + 1),
+  }))
 }
 
-const buildVocabularyMetaMapForText = async (text: string, sourceIds: string[]) => {
+const buildVocabularyMetaMapForText = async (
+  text: string,
+  sourceIds: string[],
+) => {
   const rows = await prisma.vocabulary.findMany({
     where: {
       OR: [
@@ -105,16 +110,13 @@ const buildVocabularyMetaMapForText = async (text: string, sourceIds: string[]) 
   const sourceIdSet = new Set(sourceIds)
   const aliasMap = buildSurfaceAliasMapForText(
     text,
-    rows.map(row => row.word),
+    rows.map((row) => row.word),
   )
   const matchedBaseWords = new Set(Object.values(aliasMap))
 
   return rows.reduce<Record<string, ReturnType<typeof toVocabularyMeta>>>(
     (acc, row) => {
-      if (
-        row.sourceType !== 'ARTICLE_TEXT' ||
-        !sourceIdSet.has(row.sourceId)
-      ) {
+      if (row.sourceType !== 'ARTICLE_TEXT' || !sourceIdSet.has(row.sourceId)) {
         if (!matchedBaseWords.has(row.word)) return acc
       }
       acc[row.word] = toVocabularyMeta(row)
@@ -160,9 +162,13 @@ export async function getArticleById(id: string) {
 
   if (!material) return null
 
-  const payload = decodeMaterialPayload(MaterialType.READING, material.contentPayload)
+  const payload = decodeMaterialPayload(
+    MaterialType.READING,
+    material.contentPayload,
+  )
   const category = material.collectionMaterials[0]?.collection
-  const materialText = readString(payload.text) || readString(payload.transcript) || ''
+  const materialText =
+    readString(payload.text) || readString(payload.transcript) || ''
   const displayTitle = getMaterialDisplayTitle(
     material.type,
     material.title,
@@ -173,10 +179,9 @@ export async function getArticleById(id: string) {
     category?.collectionType === 'PAPER' &&
     isReadingTitleDerivedFromContent(displayTitle, materialText)
   )
-  const vocabularyMetaMap = await buildVocabularyMetaMapForText(
-    materialText,
-    [material.id],
-  )
+  const vocabularyMetaMap = await buildVocabularyMetaMapForText(materialText, [
+    material.id,
+  ])
 
   return {
     id: material.id,
@@ -186,6 +191,16 @@ export async function getArticleById(id: string) {
     hasAuthenticTitle,
     content: materialText,
     sourceKind: readString(payload.sourceKind),
+    publishedDate: readString(payload.publishedDate),
+    edition: readString(payload.edition),
+    newsSeries: readString(payload.newsSeries),
+    pageNumber: readString(payload.pageNumber),
+    newsSource: readString(payload.newsSource),
+    newsType: readString(payload.newsType),
+    newsSection: readString(payload.newsSection),
+    newsColumn: readString(payload.newsColumn),
+    newsTopic: readString(payload.newsTopic),
+    audioFile: readString(payload.audioFile),
     author: readString(payload.author),
     description: readString(payload.description),
     chapters: asChapterArray(payload.chapters),
@@ -200,7 +215,7 @@ export async function getArticleById(id: string) {
           updatedAt: material.studyProgresses[0].updatedAt,
         }
       : null,
-    questions: material.questions.map(question => {
+    questions: material.questions.map((question) => {
       const contextSentence =
         question.context && question.context.trim() !== question.prompt?.trim()
           ? question.context
@@ -210,9 +225,10 @@ export async function getArticleById(id: string) {
         questionType: question.questionType,
         prompt: question.prompt,
         contextSentence,
-        options: normalizeQuestionOptions(question.options, question.answer).map(
-          ({ id, text }) => ({ id, text }),
-        ),
+        options: normalizeQuestionOptions(
+          question.options,
+          question.answer,
+        ).map(({ id, text }) => ({ id, text })),
         analysis: question.analysis,
         attemptCount: question._count.attempts,
       }
@@ -251,10 +267,14 @@ export async function listReadingMaterials() {
     },
   })
 
-  return rows.map(material => {
-    const payload = decodeMaterialPayload(material.type, material.contentPayload)
+  return rows.map((material) => {
+    const payload = decodeMaterialPayload(
+      material.type,
+      material.contentPayload,
+    )
     const category = material.collectionMaterials[0]?.collection
-    const content = readString(payload.text) || readString(payload.transcript) || ''
+    const content =
+      readString(payload.text) || readString(payload.transcript) || ''
     const displayTitle = getMaterialDisplayTitle(
       material.type,
       material.title,
@@ -274,11 +294,19 @@ export async function listReadingMaterials() {
       description: readString(payload.description),
       content,
       sourceKind: readString(payload.sourceKind),
+      publishedDate: readString(payload.publishedDate),
+      edition: readString(payload.edition),
+      newsSeries: readString(payload.newsSeries),
+      pageNumber: readString(payload.pageNumber),
+      newsSource: readString(payload.newsSource),
+      newsType: readString(payload.newsType),
+      newsSection: readString(payload.newsSection),
+      newsColumn: readString(payload.newsColumn),
+      newsTopic: readString(payload.newsTopic),
       author: readString(payload.author),
-      chapterCount:
-        isEbookSourceKind(readString(payload.sourceKind))
-          ? prepareEbookChapters(chapters, displayTitle).length
-          : chapters.length,
+      chapterCount: isEbookSourceKind(readString(payload.sourceKind))
+        ? prepareEbookChapters(chapters, displayTitle).length
+        : chapters.length,
       progress: material.studyProgresses[0]
         ? {
             percent: material.studyProgresses[0].progressPercent,
@@ -291,6 +319,7 @@ export async function listReadingMaterials() {
             id: category.id,
             name: category.title,
             level: null,
+            collectionType: category.collectionType,
           }
         : null,
       questionCount: material.questions.length,
@@ -328,18 +357,21 @@ export async function getLessonById(id: string) {
 
   if (!material) return null
 
-  const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
+  const payload = decodeMaterialPayload(
+    MaterialType.LISTENING,
+    material.contentPayload,
+  )
   const collection = material.collectionMaterials[0]?.collection
   const siblings =
     collection?.materials
-      .map(item => item.material)
-      .filter(item => item.type === MaterialType.LISTENING)
-      .map(item => ({
+      .map((item) => item.material)
+      .filter((item) => item.type === MaterialType.LISTENING)
+      .map((item) => ({
         id: item.id,
         title: item.title,
       })) || []
 
-  const currentIndex = siblings.findIndex(item => item.id === id)
+  const currentIndex = siblings.findIndex((item) => item.id === id)
 
   return {
     id: material.id,
@@ -350,8 +382,12 @@ export async function getLessonById(id: string) {
       material.contentPayload,
       material.id,
     ),
-    audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
-    dialogues: materialDialogueItems(MaterialType.LISTENING, material.contentPayload),
+    audioFile:
+      readString(payload.audioFile) || readString(payload.audioUrl) || '',
+    dialogues: materialDialogueItems(
+      MaterialType.LISTENING,
+      material.contentPayload,
+    ),
     paper: collection
       ? {
           id: collection.id,
@@ -401,7 +437,10 @@ export async function getSpeakingById(id: string) {
 
   if (!material) return null
 
-  const payload = decodeMaterialPayload(MaterialType.SPEAKING, material.contentPayload)
+  const payload = decodeMaterialPayload(
+    MaterialType.SPEAKING,
+    material.contentPayload,
+  )
   const collectionId = material.collectionMaterials[0]?.collectionId || null
   const collection = material.collectionMaterials[0]?.collection || null
 
@@ -425,7 +464,7 @@ export async function getSpeakingById(id: string) {
       })
     : []
 
-  const siblings = siblingRows.map(row => {
+  const siblings = siblingRows.map((row) => {
     return {
       id: row.material.id,
       title: getMaterialDisplayTitle(
@@ -437,7 +476,7 @@ export async function getSpeakingById(id: string) {
     }
   })
 
-  const currentIndex = siblings.findIndex(item => item.id === material.id)
+  const currentIndex = siblings.findIndex((item) => item.id === material.id)
 
   return {
     id: material.id,
@@ -448,8 +487,12 @@ export async function getSpeakingById(id: string) {
       material.contentPayload,
       material.id,
     ),
-    audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
-    dialogues: materialDialogueItems(MaterialType.SPEAKING, material.contentPayload),
+    audioFile:
+      readString(payload.audioFile) || readString(payload.audioUrl) || '',
+    dialogues: materialDialogueItems(
+      MaterialType.SPEAKING,
+      material.contentPayload,
+    ),
     paper: collection
       ? {
           id: collection.id || 'default',
@@ -531,11 +574,10 @@ export async function getTopMaterialSnapshots() {
             topArticle.contentPayload,
             topArticle.id,
           ),
-          content:
-            decodeMaterialPayload(
-              MaterialType.READING,
-              topArticle.contentPayload,
-            ).text,
+          content: decodeMaterialPayload(
+            MaterialType.READING,
+            topArticle.contentPayload,
+          ).text,
         }
       : null,
     topQuiz: topQuiz
@@ -597,8 +639,11 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
     },
   })
 
-  return rows.map(material => {
-    const payload = decodeMaterialPayload(material.type, material.contentPayload)
+  return rows.map((material) => {
+    const payload = decodeMaterialPayload(
+      material.type,
+      material.contentPayload,
+    )
     const collection = material.collectionMaterials[0]?.collection || null
     const tags = readStringArray(payload.tags)
     const parent = collection?.parent || null
@@ -624,7 +669,7 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
       collection?.collectionType === 'PAPER' ? collection : null
 
     const listeningSectionNumbers = material.questions
-      .map(question => {
+      .map((question) => {
         const content = decodeQuestionContent(question.content)
         const raw =
           content.listeningSectionNumber ??
@@ -642,7 +687,8 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
       payload.jlptPartNumber
     const parsedMaterialSectionNumber = Number(rawMaterialSectionNumber)
     const materialSectionNumber =
-      Number.isInteger(parsedMaterialSectionNumber) && parsedMaterialSectionNumber > 0
+      Number.isInteger(parsedMaterialSectionNumber) &&
+      parsedMaterialSectionNumber > 0
         ? parsedMaterialSectionNumber
         : null
     const listeningSectionNumber =
@@ -658,7 +704,8 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
     return {
       id: material.id,
       materialId: material.id,
-      materialType: material.type as 'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
+      materialType: material.type as
+        'SPEAKING' | 'LISTENING' | 'READING' | 'VOCAB_GRAMMAR',
       chapterName: (material.chapterName || '').trim(),
       title: getMaterialDisplayTitle(
         material.type,
@@ -666,7 +713,8 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
         material.contentPayload,
         material.id,
       ),
-      audioFile: readString(payload.audioFile) || readString(payload.audioUrl) || '',
+      audioFile:
+        readString(payload.audioFile) || readString(payload.audioUrl) || '',
       description: readString(payload.description) || '',
       transcript: readString(payload.transcript) || '',
       source: readString(payload.source) || '',
@@ -691,7 +739,8 @@ async function listMaterialsForShadowingByType(materialType: MaterialType) {
       questionCount: material.questions.length,
       listeningSectionNumber,
       needsQuestion:
-        material.type === MaterialType.LISTENING && material.questions.length === 0,
+        material.type === MaterialType.LISTENING &&
+        material.questions.length === 0,
       needsSection:
         material.type === MaterialType.LISTENING &&
         material.questions.length > 0 &&

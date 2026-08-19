@@ -16,6 +16,7 @@ type Props = {
   collections: CollectionNode[]
   mode?: 'learn' | 'manage'
   workspace?: 'mixed' | 'listening' | 'shadowing'
+  initialManagePage?: number
 }
 
 
@@ -24,6 +25,7 @@ export default function ListeningListClient({
   collections,
   mode = 'learn',
   workspace = 'mixed',
+  initialManagePage = 1,
 }: Props) {
   const isManageMode = mode === 'manage'
   const isEditMode = isManageMode
@@ -35,7 +37,7 @@ export default function ListeningListClient({
     setChapterFilter, paperFilter, setPaperFilter, openAssignMaterialId,
     setOpenAssignMaterialId, selectedMap, setSelectedMap, batchChapterId,
     setBatchChapterId, managePage, setManagePage,
-  } = useListeningListState()
+  } = useListeningListState(initialManagePage)
   const {
     batchState, batchAction, batching,
   } = useListeningListMutations()
@@ -72,42 +74,33 @@ export default function ListeningListClient({
   }
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl'>
-        <div className='mb-5 rounded-[20px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-5'>
-          <div className='mb-4 flex flex-wrap items-end justify-between gap-3'>
-            <div>
-              <h1 className='text-2xl font-black text-slate-900'>
-                {isListeningWorkspace
-                  ? '听力材料'
-                  : isShadowingWorkspace
-                    ? '跟读材料'
-                    : '跟读材料'}
-              </h1>
-              <p className='mt-1 text-sm text-slate-500'>
-                {isListeningWorkspace
-                  ? '检查所属试卷、問題与题目完整性。'
-                  : isShadowingWorkspace
-                    ? '按教材和章节维护跟读音频、字幕与归类。'
-                    : '以开始跟读为主，在编辑模式下完成教材与章节归类。'}
-              </p>
-            </div>
-            <div className='flex flex-wrap items-center gap-2'>
-              {isListeningWorkspace ? (
-                <Link
-                  href='/manage/import?type=listening'
-                  className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
-                  导入听力
-                </Link>
-              ) : (
+        <header
+          className={
+            isManageMode
+              ? 'mb-6 pt-6 md:pt-8'
+              : 'mb-5 rounded-[20px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-5'
+          }>
+          {!isManageMode ? (
+            <div className='mb-4 flex flex-wrap items-end justify-between gap-3'>
+              <div>
+                <h1 className='text-2xl font-semibold tracking-tight text-slate-950'>
+                  跟读材料
+                </h1>
+                <p className='mt-1 text-sm text-slate-500'>
+                  选择材料开始学习。
+                </p>
+              </div>
+              <div className='flex flex-wrap items-center gap-2'>
                 <Link
                   href='/manage/import?type=speaking'
-                  className='ui-btn ui-btn-primary h-10 px-4 text-sm font-bold'>
+                  className='ui-btn ui-btn-primary h-10 px-4 text-sm font-semibold'>
                   导入跟读
                 </Link>
-              )}
+              </div>
             </div>
-          </div>
+          ) : null}
 
           <div className={`grid grid-cols-1 gap-2 ${
             isListeningWorkspace
@@ -119,8 +112,8 @@ export default function ListeningListClient({
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder='搜索标题 / 音频 / 路径'
-              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+              placeholder={isListeningWorkspace ? '搜索标题 / 音频' : '搜索标题 / 路径'}
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
             />
             <CustomSelect
               value={statusFilter}
@@ -135,7 +128,7 @@ export default function ListeningListClient({
                     | 'unclassified',
                 )
               }
-              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
+              className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
               <option value='all'>全部状态</option>
               {isListeningWorkspace ? (
                 <>
@@ -168,7 +161,7 @@ export default function ListeningListClient({
                     setBookFilter(e.target.value)
                     setChapterFilter('all')
                   }}
-                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
+                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
                   <option value='all'>全部书籍</option>
                   {books.map(item => (
                     <option key={item.id} value={item.id}>
@@ -179,7 +172,7 @@ export default function ListeningListClient({
                 <CustomSelect
                   value={chapterFilter}
                   onChange={e => setChapterFilter(e.target.value)}
-                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none shadow-[inset_0_1px_1px_rgba(15,23,42,0.04)] focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
+                  className='h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-200'>
                   <option value='all'>全部章节</option>
                   {filteredChapterOptions.map(item => (
                     <option key={item.id} value={item.id}>
@@ -217,13 +210,12 @@ export default function ListeningListClient({
             </button>
           </div>
 
-          <p className='mt-2 text-xs font-semibold text-slate-500'>
+          <p className='mt-2 text-xs text-slate-500'>
             {isListeningWorkspace
-              ? `共 ${counts.listening} 条 · 缺题 ${counts.needsQuestion} 条 · 缺所属問題 ${counts.needsSection} 条`
-              : `共 ${counts.speaking} 条 · 未归类 ${counts.unclassified} 条`}
-            {' '}· 当前显示 {filteredRows.length} 条
+              ? `${counts.listening} 条 · 缺题 ${counts.needsQuestion} · 缺問題 ${counts.needsSection} · 显示 ${filteredRows.length}`
+              : `${counts.speaking} 条 · 未归类 ${counts.unclassified} · 显示 ${filteredRows.length}`}
           </p>
-        </div>
+        </header>
 
         {isShadowingWorkspace ? (
           <ShadowingLibraryManager collections={collections} />
@@ -232,7 +224,7 @@ export default function ListeningListClient({
         {isShadowingWorkspace && selectedIds.length > 0 ? (
           <form
             action={batchAction}
-            className='mb-4 grid grid-cols-1 gap-2 rounded-[18px] bg-white p-3 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:grid-cols-[1.4fr_auto_auto]'>
+            className='mb-4 grid grid-cols-1 gap-2 border-y border-slate-200 py-3 md:grid-cols-[1.4fr_auto_auto]'>
             <input
               type='hidden'
               name='materialIds'
@@ -276,57 +268,62 @@ export default function ListeningListClient({
         ) : null}
 
         {rows.length === 0 ? (
-          <div className='border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500'>
-            暂无音频材料，请先从导入页添加。
-          </div>
+          <p className='border-y border-slate-200 py-12 text-center text-sm text-slate-500'>暂无材料</p>
         ) : isManageMode ? (
           <section>
-            <div className='mb-3 flex items-center gap-2'>
-              {isShadowingWorkspace && (
-                <>
-                  <input
-                    type='checkbox'
-                    checked={
-                      visibleManageRows.length > 0 &&
-                      visibleManageRows.every(item => selectedMap[item.materialId])
-                    }
-                    onChange={e => selectAllOnPage(e.target.checked)}
-                    className='h-4 w-4'
-                  />
-                  <span className='text-xs font-semibold text-slate-600'>
-                    全选当前页
-                  </span>
-                </>
-              )}
-              <div className='ml-auto flex items-center gap-2'>
-                <span className='text-xs text-slate-500'>
-                  第 {normalizedManagePage}/{manageTotalPages} 页
-                </span>
-                <button
-                  type='button'
-                  disabled={normalizedManagePage <= 1}
-                  onClick={() => setManagePage(page => Math.max(1, page - 1))}
-                  className='ui-btn ui-btn-sm disabled:opacity-40'>
-                  上一页
-                </button>
-                <button
-                  type='button'
-                  disabled={normalizedManagePage >= manageTotalPages}
-                  onClick={() =>
-                    setManagePage(page => Math.min(manageTotalPages, page + 1))
-                  }
-                  className='ui-btn ui-btn-sm disabled:opacity-40'>
-                  下一页
-                </button>
+            {isShadowingWorkspace || manageTotalPages > 1 ? (
+              <div className='mb-3 flex items-center gap-2'>
+                {isShadowingWorkspace && (
+                  <>
+                    <input
+                      type='checkbox'
+                      checked={
+                        visibleManageRows.length > 0 &&
+                        visibleManageRows.every(item => selectedMap[item.materialId])
+                      }
+                      onChange={e => selectAllOnPage(e.target.checked)}
+                      className='h-4 w-4'
+                    />
+                    <span className='text-xs font-semibold text-slate-600'>
+                      全选当前页
+                    </span>
+                  </>
+                )}
+                {manageTotalPages > 1 ? (
+                  <div className='ml-auto flex items-center gap-2'>
+                    <span className='text-xs text-slate-500'>
+                      第 {normalizedManagePage}/{manageTotalPages} 页
+                    </span>
+                    <button
+                      type='button'
+                      disabled={normalizedManagePage <= 1}
+                      onClick={() => setManagePage(page => Math.max(1, page - 1))}
+                      className='ui-btn ui-btn-sm disabled:opacity-40'>
+                      上一页
+                    </button>
+                    <button
+                      type='button'
+                      disabled={normalizedManagePage >= manageTotalPages}
+                      onClick={() =>
+                        setManagePage(page => Math.min(manageTotalPages, page + 1))
+                      }
+                      className='ui-btn ui-btn-sm disabled:opacity-40'>
+                      下一页
+                    </button>
+                  </div>
+                ) : null}
               </div>
-            </div>
+            ) : null}
 
             {chapterSortedRows.length === 0 ? (
-              <div className='border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500'>
-                当前筛选条件下暂无材料。
-              </div>
+              <p className='border-y border-slate-200 py-12 text-center text-sm text-slate-500'>暂无材料</p>
             ) : (
-              <div className='space-y-2'>
+              <div
+                className={
+                  isShadowingWorkspace || isListeningWorkspace
+                    ? 'divide-y divide-slate-200 border-y border-slate-200'
+                    : 'space-y-2'
+                }>
                 {visibleManageRows.map(item => {
                   const statusText = item.needsQuestion
                     ? '缺少题目'
@@ -349,27 +346,29 @@ export default function ListeningListClient({
                       ? `問題${item.listeningSectionNumber}`
                       : '未设置所属問題'
                     : (item.chapterName || '').trim() || '未设置章节'
-                  const examManageHref = item.collectionId
-                    ? item.listeningSectionNumber
-                      ? `/manage/practice/${item.collectionId}?section=${encodeURIComponent(`LISTENING:listening-part-${item.listeningSectionNumber}`)}`
-                      : `/manage/practice/${item.collectionId}`
-                    : '/manage/practice'
-
                   return (
-                    <article
+                    <div
                       key={item.id}
-                      className={`rounded-xl bg-white p-3 shadow-sm md:p-4 ${
-                        item.needsQuestion
-                          ? 'border border-rose-200 ring-1 ring-rose-50'
-                          : 'border border-slate-200'
+                      className={
+                        isShadowingWorkspace || isListeningWorkspace
+                          ? `py-4 ${item.needsQuestion ? 'bg-rose-50/40' : ''}`
+                          : `rounded-xl bg-white p-3 shadow-sm md:p-4 ${
+                              item.needsQuestion
+                                ? 'border border-rose-200 ring-1 ring-rose-50'
+                                : 'border border-slate-200'
+                            }`
+                      }>
+                      <div className={`grid min-w-0 gap-3 md:items-center ${
+                        isListeningWorkspace
+                          ? 'md:grid-cols-[minmax(0,1fr)_auto]'
+                          : 'md:grid-cols-[auto_minmax(0,1fr)_auto]'
                       }`}>
-                      <div className='grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center'>
-                        {isListeningWorkspace || item.isExamMaterial ? (
+                        {!isListeningWorkspace && item.isExamMaterial ? (
                           <span
                             aria-hidden='true'
                             className='h-4 w-4 shrink-0 rounded-full bg-indigo-100'
                           />
-                        ) : (
+                        ) : !isListeningWorkspace ? (
                           <input
                             type='checkbox'
                             aria-label={`选择 ${item.title}`}
@@ -379,42 +378,42 @@ export default function ListeningListClient({
                             }
                             className='h-4 w-4 shrink-0'
                           />
-                        )}
+                        ) : null}
                         <div className='min-w-0'>
                           <div className='flex flex-wrap items-center gap-2'>
-                            <h3 className='text-sm font-bold text-slate-900 md:text-base'>
+                            <div role='heading' aria-level={3} className='min-w-0 flex-1 truncate text-sm font-semibold text-slate-900 md:text-base'>
                               {item.title}
-                            </h3>
-                            <span className='rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
-                              {sectionLabel}
-                            </span>
-                            <span className='rounded border border-slate-200 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
-                              {item.materialType === 'LISTENING' ? '听力' : '跟读'}
-                            </span>
-                            <span className={`rounded border px-2 py-0.5 text-[11px] font-bold ${statusStyle}`}>
-                              {statusText}
-                            </span>
+                            </div>
+                            {!isListeningWorkspace ? (
+                              <>
+                                <span className='rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                                  {sectionLabel}
+                                </span>
+                                <span className={`rounded border px-2 py-0.5 text-[11px] font-bold ${statusStyle}`}>
+                                  {statusText}
+                                </span>
+                              </>
+                            ) : item.needsQuestion || item.needsSection ? (
+                              <span className={`rounded border px-2 py-0.5 text-[11px] font-bold ${statusStyle}`}>
+                                {statusText}
+                              </span>
+                            ) : null}
                           </div>
                           <p className='mt-1 truncate text-xs text-slate-500'>
-                            {item.pathLabel} · 字幕 {item.dialogueCount} 句 · 题目 {item.questionCount} 道 · {item.audioFile || '音频未设置'}
+                            {isListeningWorkspace
+                              ? `${item.pathLabel} · ${sectionLabel} · ${item.questionCount} 题 · ${item.dialogueCount} 句字幕${item.audioFile ? '' : ' · 音频未设置'}`
+                              : `${item.pathLabel} · 字幕 ${item.dialogueCount} 句`}
                           </p>
                         </div>
                         <div className='flex flex-wrap items-center justify-start gap-2 md:justify-end'>
                           {item.materialType === 'LISTENING' ? (
-                            <>
-                              <Link
-                                href={`/manage/listening/${item.id}#questions`}
-                                className={`ui-btn ui-btn-sm ${
-                                  item.needsQuestion ? 'ui-btn-primary' : ''
-                                }`}>
-                                {item.needsQuestion ? '添加题目' : '管理题目'}
-                              </Link>
-                              {item.isExamMaterial ? (
-                                <Link href={examManageHref} className='ui-btn ui-btn-sm'>
-                                  整卷管理
-                                </Link>
-                              ) : null}
-                            </>
+                            <Link
+                              href={`/manage/listening/${item.id}?returnPage=${normalizedManagePage}#questions`}
+                              className={`ui-btn ui-btn-sm ${
+                                item.needsQuestion ? 'ui-btn-primary' : ''
+                              }`}>
+                              {item.needsQuestion ? '添加题目' : '管理题目'}
+                            </Link>
                           ) : (
                             <>
                               <button
@@ -465,7 +464,7 @@ export default function ListeningListClient({
                           />
                         </div>
                       ) : null}
-                    </article>
+                    </div>
                   )
                 })}
               </div>

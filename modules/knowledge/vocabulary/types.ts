@@ -4,11 +4,13 @@ export type SentenceItem = {
   sourceUrl: string
   translation?: string | null
   audioFile?: string | null
+  audioData?: AudioData | null
+  sourceType?: string | null
   meaningIndex?: number | null
   posTags?: string[]
 }
 
-type AudioData = {
+export type AudioData = {
   audioFile: string
   start: number
   end: number
@@ -30,7 +32,6 @@ export type VocabItem = {
   folderName?: string | null
   sourceType: string
   sentences: SentenceItem[]
-  audioData: AudioData | null
   review?: {
     id: string
     due: Date | string

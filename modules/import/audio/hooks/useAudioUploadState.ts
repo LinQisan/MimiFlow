@@ -63,6 +63,7 @@ function reducer(state: AudioUploadState, action: AudioUploadAction) {
 export function useAudioUploadState(
   hasPapers: boolean,
   defaultMaterialType: MaterialType = 'LISTENING',
+  defaultLanguage = 'ja',
 ) {
   const [state, dispatch] = useReducer(reducer, {
     mode: hasPapers ? 'existing' : 'new',
@@ -72,13 +73,14 @@ export function useAudioUploadState(
     lastUpload: null,
     title: '',
     audioFile: '',
-    audioSourceType: 'manual',
+    audioSourceType:
+      defaultMaterialType === 'LISTENING' ? 'upload' : 'manual',
     existingAudioFiles: [],
     selectedAudioFolder: '',
     audioListLoading: false,
     audioUploadFileNames: [],
     paperName: '',
-    materialLanguage: '',
+    materialLanguage: defaultLanguage,
     materialChapterName: '',
     materialType: defaultMaterialType,
     subtitleNoAudio: false,

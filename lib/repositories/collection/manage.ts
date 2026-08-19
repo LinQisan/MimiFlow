@@ -38,17 +38,19 @@ function normalizeQuestionOptions(options: unknown, answer: unknown) {
   const optionRows = asArray<JsonRecord>(options).map((opt, index) => ({
     id: readString(opt.id) || `opt_${index + 1}`,
     text: readString(opt.text),
+    imageUrl: readString(opt.imageUrl),
   }))
   const answerIds = new Set(
     Array.isArray(answer)
-      ? answer.filter(item => typeof item === 'string')
+      ? answer.filter((item) => typeof item === 'string')
       : typeof answer === 'string'
         ? [answer]
         : [],
   )
-  return optionRows.map(item => ({
+  return optionRows.map((item) => ({
     id: item.id,
     text: item.text,
+    imageUrl: item.imageUrl || null,
     isCorrect: answerIds.has(item.id),
   }))
 }
@@ -80,7 +82,10 @@ export async function getReadingEditData(maybeId: string) {
     },
   })
   if (!material) return null
-  const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
+  const payload = decodeMaterialPayloadRecord(
+    material.type,
+    material.contentPayload,
+  )
   return {
     id: material.id,
     title: getMaterialDisplayTitle(
@@ -90,12 +95,17 @@ export async function getReadingEditData(maybeId: string) {
       material.id,
     ),
     content: readString(payload.text) || readString(payload.transcript),
+    sourceKind: readString(payload.sourceKind),
+    publishedDate: readString(payload.publishedDate),
+    edition: readString(payload.edition),
+    pageNumber: readString(payload.pageNumber),
+    audioFile: readString(payload.audioFile),
     category: {
       levelId: material.collectionMaterials[0]?.collection.id || null,
       collectionType:
         material.collectionMaterials[0]?.collection.collectionType || null,
     },
-    questions: material.questions.map(question => ({
+    questions: material.questions.map((question) => ({
       id: question.id,
       questionType: question.questionType,
       prompt: question.prompt,
@@ -106,7 +116,10 @@ export async function getReadingEditData(maybeId: string) {
 }
 
 export async function getQuizEditData(maybeId: string) {
-  const materialId = await resolveMaterialId(maybeId, MaterialType.VOCAB_GRAMMAR)
+  const materialId = await resolveMaterialId(
+    maybeId,
+    MaterialType.VOCAB_GRAMMAR,
+  )
   if (!materialId) return null
   const material = await prisma.material.findUnique({
     where: { id: materialId },
@@ -134,13 +147,16 @@ export async function getQuizEditData(maybeId: string) {
       collectionType:
         material.collectionMaterials[0]?.collection.collectionType || null,
     },
-    questions: material.questions.map(question => {
+    questions: material.questions.map((question) => {
       const content = decodeQuestionContent(question.content)
       return {
         id: question.id,
         questionType: question.questionType,
         contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
+        sortingOrder: Array.isArray(content.sortingOrder)
+          ? content.sortingOrder
+          : [],
         prompt: question.prompt,
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
@@ -152,11 +168,12 @@ export async function getQuizEditData(maybeId: string) {
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,
-          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+          'numeric',
         ),
         customOptionLabels: parseCustomOptionLabels(
           content.customOptionLabels,
         ).join('|'),
+        shuffleOptions: content.shuffleOptions !== false,
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),
@@ -204,10 +221,13 @@ export async function getListeningEditData(maybeId: string) {
       })
     : []
 
-  const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
+  const payload = decodeMaterialPayloadRecord(
+    material.type,
+    material.contentPayload,
+  )
   const siblings = siblingRows
-    .filter(item => item.material.type === MaterialType.LISTENING)
-    .map(item => ({
+    .filter((item) => item.material.type === MaterialType.LISTENING)
+    .map((item) => ({
       id: item.material.id,
       title: getMaterialDisplayTitle(
         item.material.type,
@@ -220,12 +240,14 @@ export async function getListeningEditData(maybeId: string) {
 
   const titleSectionNumber =
     material.title.match(/(?:問題|问题|P)\s*0*(\d+)/i)?.[1] || ''
-  const dialogues = asArray<JsonRecord>(payload.dialogues).map((item, index) => ({
-    id: Number(item.id) || index + 1,
-    text: readString(item.text),
-    start: Number(item.start || 0),
-    end: Number(item.end || 0),
-  }))
+  const dialogues = asArray<JsonRecord>(payload.dialogues).map(
+    (item, index) => ({
+      id: Number(item.id) || index + 1,
+      text: readString(item.text),
+      start: Number(item.start || 0),
+      end: Number(item.end || 0),
+    }),
+  )
 
   return {
     id: material.id,
@@ -254,18 +276,22 @@ export async function getListeningEditData(maybeId: string) {
       episode: readString(payload.subtitleEpisode),
     },
     collectionId,
-    collectionTitle: material.collectionMaterials[0]?.collection.title || '未分组',
+    collectionTitle:
+      material.collectionMaterials[0]?.collection.title || '未分组',
     collectionType:
       material.collectionMaterials[0]?.collection.collectionType || null,
     siblings,
     dialogues,
-    questions: material.questions.map(question => {
+    questions: material.questions.map((question) => {
       const content = decodeQuestionContent(question.content)
       return {
         id: question.id,
         questionType: question.questionType,
         contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
+        sortingOrder: Array.isArray(content.sortingOrder)
+          ? content.sortingOrder
+          : [],
         prompt: question.prompt,
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
@@ -277,11 +303,12 @@ export async function getListeningEditData(maybeId: string) {
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,
-          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+          'numeric',
         ),
         customOptionLabels: parseCustomOptionLabels(
           content.customOptionLabels,
         ).join('|'),
+        shuffleOptions: content.shuffleOptions !== false,
         options: normalizeQuestionOptions(question.options, question.answer),
       }
     }),
@@ -329,10 +356,13 @@ export async function getSpeakingEditData(maybeId: string) {
       })
     : []
 
-  const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
+  const payload = decodeMaterialPayloadRecord(
+    material.type,
+    material.contentPayload,
+  )
   const siblings = siblingRows
-    .filter(item => item.material.type === MaterialType.SPEAKING)
-    .map(item => ({
+    .filter((item) => item.material.type === MaterialType.SPEAKING)
+    .map((item) => ({
       id: item.material.id,
       title: getMaterialDisplayTitle(
         item.material.type,
@@ -343,12 +373,14 @@ export async function getSpeakingEditData(maybeId: string) {
       _count: { questions: item.material._count.questions },
     }))
 
-  const dialogues = asArray<JsonRecord>(payload.dialogues).map((item, index) => ({
-    id: Number(item.id) || index + 1,
-    text: readString(item.text),
-    start: Number(item.start || 0),
-    end: Number(item.end || 0),
-  }))
+  const dialogues = asArray<JsonRecord>(payload.dialogues).map(
+    (item, index) => ({
+      id: Number(item.id) || index + 1,
+      text: readString(item.text),
+      start: Number(item.start || 0),
+      end: Number(item.end || 0),
+    }),
+  )
 
   return {
     id: material.id,
@@ -362,18 +394,22 @@ export async function getSpeakingEditData(maybeId: string) {
     ),
     audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
     collectionId,
-    collectionTitle: material.collectionMaterials[0]?.collection.title || '未分组',
+    collectionTitle:
+      material.collectionMaterials[0]?.collection.title || '未分组',
     collectionType:
       material.collectionMaterials[0]?.collection.collectionType || null,
     siblings,
     dialogues,
-    questions: material.questions.map(question => {
+    questions: material.questions.map((question) => {
       const content = decodeQuestionContent(question.content)
       return {
         id: question.id,
         questionType: question.questionType,
         contextSentence: question.context || '',
         targetWord: readString(content.targetWord) || null,
+        sortingOrder: Array.isArray(content.sortingOrder)
+          ? content.sortingOrder
+          : [],
         prompt: question.prompt,
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
@@ -382,7 +418,7 @@ export async function getSpeakingEditData(maybeId: string) {
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,
-          question.questionType === 'LISTENING' ? 'numeric' : 'upper-alpha',
+          'numeric',
         ),
         customOptionLabels: parseCustomOptionLabels(
           content.customOptionLabels,

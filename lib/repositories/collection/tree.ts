@@ -37,7 +37,7 @@ const normalizePathSegments = (segments: string[]) => {
   return normalized
 }
 
-export function buildCollectionTree<T extends CollectionTreeLike>(
+function buildCollectionTree<T extends CollectionTreeLike>(
   items: T[],
 ): CollectionTreeNode<T>[] {
   const nodeMap = new Map<string, CollectionTreeNode<T>>()

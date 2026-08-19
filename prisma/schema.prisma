@@ -37,11 +37,25 @@ enum QuestionType {
   WORD_DISTINCTION // 单词辨析题（一个词 + 四个语境句）
   FILL_BLANK // 填空题 (例如：选词填空)
   GRAMMAR // 语法题
+  GRAMMAR_SELECTION // 文の文法1（文法形式の判断）
   TRANSLATION // 翻译题
   SORTING
   READING_COMPREHENSION
+  READING_SHORT
+  READING_MEDIUM
+  READING_LONG
+  READING_INTEGRATED
+  READING_ARGUMENT
+  READING_INFORMATION
   SYNONYM_REPLACEMENT // 近义词替换题
   LISTENING // 听力理解题
+  TOEIC_PHOTOGRAPH // TOEIC Part 1 Photographs
+  TOEIC_QUESTION_RESPONSE // TOEIC Part 2 Question-Response
+  TOEIC_CONVERSATIONS // TOEIC Part 3 Conversations
+  TOEIC_TALKS // TOEIC Part 4 Talks
+  TOEIC_INCOMPLETE_SENTENCES // TOEIC Part 5 Incomplete Sentences
+  TOEIC_TEXT_COMPLETION // TOEIC Part 6 Text Completion
+  TOEIC_READING_COMPREHENSION // TOEIC Part 7 Reading Comprehension
 }
 
 enum QuestionTemplate {
@@ -93,6 +107,8 @@ model MediaSubtitleLine {
   @@unique([materialId, stableId])
   @@index([materialId, sequenceId])
   @@index([subtitleSourceType, workTitle])
+  @@index([normalizedText(ops: raw("gin_trgm_ops"))], type: Gin, map: "media_subtitle_lines_normalized_text_trgm_idx")
+  @@index([searchText(ops: raw("gin_trgm_ops"))], type: Gin, map: "media_subtitle_lines_search_text_trgm_idx")
   @@map("media_subtitle_lines")
 }
 
@@ -369,24 +385,37 @@ model Question {
 }
 
 model Collection {
-  id             String         @id @default(uuid())
-  title          String
-  description    String?        @db.Text
-  language       String?
-  level          String?
-  collectionType CollectionType @map("collection_type")
+  id                    String         @id @default(uuid())
+  title                 String
+  description           String?        @db.Text
+  language              String?
+  level                 String?
+  collectionType        CollectionType @map("collection_type")
   acceptedMaterialTypes MaterialType[] @default([]) @map("accepted_material_types")
-  parentId       String?        @map("parent_id")
-  sortOrder      Int            @default(0) @map("sort_order")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  parentId              String?        @map("parent_id")
+  sortOrder             Int            @default(0) @map("sort_order")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
 
-  parent    Collection?          @relation("CollectionTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Collection[]         @relation("CollectionTree")
-  materials CollectionMaterial[]
+  parent              Collection?               @relation("CollectionTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children            Collection[]              @relation("CollectionTree")
+  materials           CollectionMaterial[]
+  practiceSubmissions PracticePaperSubmission[]
 
   @@index([parentId, sortOrder])
   @@map("collections")
+}
+
+model PracticePaperSubmission {
+  id            String     @id @default(uuid())
+  collectionId  String     @map("collection_id")
+  questionCount Int        @map("question_count")
+  correctCount  Int        @map("correct_count")
+  completedAt   DateTime   @default(now()) @map("completed_at")
+  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, completedAt])
+  @@map("practice_paper_submissions")
 }
 
 model CollectionMaterial {

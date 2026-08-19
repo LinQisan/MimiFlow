@@ -101,6 +101,14 @@ export default function ManagePapersListClient({ levels }: Props) {
                         </div>
 
                         <div className='flex shrink-0 gap-2'>
+                          <a
+                            href={`/api/manage/practice/${encodeURIComponent(paper.id)}/export`}
+                            target='_blank'
+                            rel='noreferrer'
+                            className='ui-btn ui-btn-sm'
+                            title='下载试题、答案、听力原文和音频压缩包'>
+                            导出 ZIP
+                          </a>
                           <Link
                             href={`/manage/practice/${encodeURIComponent(paper.id)}`}
                             className='ui-btn ui-btn-sm ui-btn-primary'>

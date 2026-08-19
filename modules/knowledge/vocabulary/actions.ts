@@ -3,11 +3,13 @@
 
 import {
   MaterialType,
+  QuestionType,
   SourceType,
 } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import {
   normalizeVocabularyHeadword,
@@ -23,12 +25,17 @@ import {
   findSentenceLinkByText,
   listVocabularySentenceRecords,
   normalizeSentencePosTags,
+  resolveAudioDialogueSentenceText,
   resolveVocabularySourceMeta,
   upsertVocabularySentenceLink,
 } from './server/repository'
 import type { VocabularySentenceRecord } from './server/repository'
 import { extractSentenceContainingSelection } from '@/utils/text/sentenceContext'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import {
+  buildCompletedQuestionText,
+  buildCompletedSortingText,
+} from '@/modules/practice/domain/question-text'
 
 
 
@@ -47,10 +54,14 @@ export async function saveVocabulary(
   try {
     const trimmedWord = word.trim()
     if (!trimmedWord) return { success: false, message: '单词为空' }
-    const normalizedContextSentence = extractSentenceContainingSelection(
-      contextSentence,
-      originalSelectedText,
-    )
+    const canonicalAudioSentence =
+      sourceType === SourceType.AUDIO_DIALOGUE
+        ? await resolveAudioDialogueSentenceText(sourceId)
+        : ''
+    const normalizedContextSentence =
+      canonicalAudioSentence ||
+      extractSentenceContainingSelection(contextSentence, trimmedWord) ||
+      extractSentenceContainingSelection(contextSentence, originalSelectedText)
     const sourceMeta = await resolveVocabularySourceMeta(sourceType, sourceId)
 
     const normalizedPronunciations = sanitizePronunciations(
@@ -270,12 +281,19 @@ export async function searchSentencesForWord(word: string) {
         OR: [
           { prompt: { contains: word } },
           { context: { contains: word } },
+          { questionType: QuestionType.GRAMMAR },
+          { questionType: QuestionType.GRAMMAR_SELECTION },
+          { questionType: QuestionType.SORTING },
         ],
       },
       select: {
         id: true,
+        questionType: true,
         prompt: true,
         context: true,
+        options: true,
+        answer: true,
+        content: true,
         material: { select: { id: true, title: true, type: true } },
       },
     })
@@ -309,7 +327,18 @@ export async function searchSentencesForWord(word: string) {
     })
 
     questions.forEach(q => {
-      const t = (q.context || q.prompt || '').trim()
+      const content = decodeQuestionContent(q.content)
+      const t =
+        q.questionType === QuestionType.GRAMMAR ||
+        q.questionType === QuestionType.GRAMMAR_SELECTION
+          ? buildCompletedQuestionText(q.prompt, q.options, q.answer)
+          : q.questionType === QuestionType.SORTING
+            ? buildCompletedSortingText(
+                q.prompt,
+                q.options,
+                content.sortingOrder,
+              )
+            : (q.context || q.prompt || '').trim()
       if (t.includes(word) && t.length > 5) {
         results.push({
           text: t,

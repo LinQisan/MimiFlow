@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef } from 'react'
+import Image from 'next/image'
 import { annotateExamText } from './annotate'
 import type {
   ExamAnnotationSettings,
@@ -23,11 +24,14 @@ type OptionsListProps = {
   isJapanesePaper?: boolean
   optionLabelFormat?: OptionLabelFormat | null
   customOptionLabels?: string[]
+  optionTargetWord?: string | null
+  compact?: boolean
   annotation: ExamAnnotationSettings
 }
 
 const isAudioOnlyOptions = (options: ExamQuestionOption[]) =>
-  options.length > 0 && options.every(option => !(option.text || '').trim())
+  options.length > 0 &&
+  options.every(option => !(option.text || '').trim() && !option.imageUrl)
 
 type SelectionSnapshot = {
   text: string
@@ -74,7 +78,7 @@ const selectionTouchesElement = (
 ) =>
   Boolean(
     (selection.anchorNode && element.contains(selection.anchorNode)) ||
-      (selection.focusNode && element.contains(selection.focusNode)),
+    (selection.focusNode && element.contains(selection.focusNode)),
   )
 
 export function OptionsList({
@@ -87,6 +91,8 @@ export function OptionsList({
   isJapanesePaper = false,
   optionLabelFormat,
   customOptionLabels = [],
+  optionTargetWord,
+  compact = false,
   annotation,
 }: OptionsListProps) {
   const pointerStartSelectionRef = useRef<SelectionSnapshot | null>(null)
@@ -100,26 +106,188 @@ export function OptionsList({
   const correctOptionId = options.find(option => option.isCorrect)?.id
   const resolvedLabelFormat = normalizeOptionLabelFormat(
     optionLabelFormat,
-    isJapanesePaper ? 'numeric' : 'upper-alpha',
+    'numeric',
   )
+  const hasImageOptions = options.some(option => Boolean(option.imageUrl))
+
+  if (audioOnly) {
+    return (
+      <div
+        className={`${compact ? 'mt-3' : 'mt-7'} flex flex-wrap items-center gap-3 py-2`}>
+        {options.map((option, index) => {
+          const label = formatOptionLabel(
+            index,
+            resolvedLabelFormat,
+            customOptionLabels,
+          )
+          const isSelected = currentAnswer === option.id
+          const isCorrect = correctOptionId === option.id
+          const isWrongSelected = isSubmitted && isSelected && !isCorrect
+          const stateClass = isSubmitted
+            ? isCorrect
+              ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
+              : isWrongSelected
+                ? 'border-rose-500 bg-rose-50 text-rose-800'
+                : 'border-slate-200 bg-white text-slate-400'
+            : isSelected
+              ? 'border-slate-950 bg-slate-950 text-white shadow-sm'
+              : 'border-slate-300 bg-white text-slate-700 hover:border-slate-600 hover:bg-slate-50'
+          const content = (
+            <>
+              <span className='text-base font-bold'>{label}</span>
+              {isSubmitted && isCorrect ? (
+                <span className='sr-only'>正确答案</span>
+              ) : null}
+              {isSubmitted && isWrongSelected ? (
+                <span className='sr-only'>你的选择</span>
+              ) : null}
+            </>
+          )
+          const className = `inline-flex h-12 min-w-14 items-center justify-center rounded-lg border px-4 transition-colors ${stateClass}`
+
+          if (isInteractionLocked) {
+            return (
+              <div
+                key={option.id}
+                data-source-type='QUIZ_QUESTION'
+                data-source-id={sourceId}
+                data-context-block='true'
+                data-context-role='question-option'
+                aria-label={`选项 ${label}`}
+                className={className}>
+                {content}
+              </div>
+            )
+          }
+
+          return (
+            <button
+              key={option.id}
+              type='button'
+              onClick={() => onSelect(option.id)}
+              data-source-type='QUIZ_QUESTION'
+              data-source-id={sourceId}
+              data-context-block='true'
+              data-context-role='question-option'
+              aria-label={`选择选项 ${label}`}
+              aria-pressed={isSelected}
+              aria-keyshortcuts={`${index + 1}`}
+              className={className}>
+              {content}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (hasImageOptions) {
+    return (
+      <div className={`${compact ? 'mt-3' : 'mt-7'} grid grid-cols-2 gap-3 md:grid-cols-4`}>
+        {options.map((option, index) => {
+          const label = formatOptionLabel(
+            index,
+            resolvedLabelFormat,
+            customOptionLabels,
+          )
+          const isSelected = currentAnswer === option.id
+          const isCorrect = correctOptionId === option.id
+          const isWrongSelected = isSubmitted && isSelected && !isCorrect
+          const stateClass = isSubmitted
+            ? isCorrect
+              ? 'border-emerald-500 bg-emerald-50'
+              : isWrongSelected
+                ? 'border-rose-500 bg-rose-50'
+                : 'border-slate-200 bg-white opacity-60'
+            : isSelected
+              ? 'border-slate-950 bg-slate-50 ring-1 ring-slate-950'
+              : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50'
+          const content = (
+            <>
+              <span className={`absolute left-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center bg-white px-1.5 text-xs font-black shadow-sm ${
+                isSelected ? 'text-slate-950' : 'text-slate-500'
+              }`}>
+                {label}
+              </span>
+              {option.imageUrl ? (
+                <Image
+                  src={option.imageUrl}
+                  alt={`选项 ${label}`}
+                  width={480}
+                  height={320}
+                  unoptimized
+                  className='max-h-52 w-full object-contain'
+                />
+              ) : (
+                <span className='text-xs font-medium text-slate-400'>未上传图片</span>
+              )}
+              {isSubmitted && (isCorrect || isWrongSelected) ? (
+                <span className={`absolute bottom-2 right-2 px-2 py-1 text-[11px] font-bold ${
+                  isCorrect
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-rose-600 text-white'
+                }`}>
+                  {isCorrect ? '正确答案' : '你的选择'}
+                </span>
+              ) : null}
+            </>
+          )
+
+          const className = `relative flex min-h-32 w-full items-center justify-center overflow-hidden border p-2 text-left transition-colors ${stateClass}`
+          if (isInteractionLocked) {
+            return (
+              <div
+                key={option.id}
+                data-source-type='QUIZ_QUESTION'
+                data-source-id={sourceId}
+                data-context-block='true'
+                data-context-role='question-option'
+                className={className}>
+                {content}
+              </div>
+            )
+          }
+          return (
+            <button
+              key={option.id}
+              type='button'
+              onClick={() => onSelect(option.id)}
+              data-source-type='QUIZ_QUESTION'
+              data-source-id={sourceId}
+              data-context-block='true'
+              data-context-role='question-option'
+              aria-label={`选择选项 ${label}`}
+              className={className}>
+              {content}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
-    <div className='mt-6 grid gap-3'>
+    <div
+      className={`${compact ? 'mt-2' : 'mt-7'} divide-y divide-slate-200 border-y border-slate-200`}>
       {options.map((option, index) => {
-        const label = formatOptionLabel(index, resolvedLabelFormat, customOptionLabels)
+        const label = formatOptionLabel(
+          index,
+          resolvedLabelFormat,
+          customOptionLabels,
+        )
         const isSelected = currentAnswer === option.id
         const isCorrect = correctOptionId === option.id
         const isWrongSelected = isSubmitted && isSelected && !isCorrect
-        const optionClassName = `group flex items-start rounded-xl border px-5 py-4 text-left transition-all duration-200 ${
+        const optionClassName = `group flex w-full items-start px-2 ${compact ? 'py-3' : 'py-4'} text-left transition-colors duration-150 md:px-3 ${
           isSubmitted
             ? isCorrect
-              ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+              ? 'bg-emerald-50 text-emerald-900'
               : isWrongSelected
-                ? 'border-rose-300 bg-rose-50 text-rose-900'
-                : 'border-slate-200 bg-white text-slate-500'
+                ? 'bg-rose-50 text-rose-900'
+                : 'text-slate-500'
             : isSelected
-              ? 'border-slate-900 bg-slate-100 text-slate-900 shadow-sm ring-1 ring-slate-400'
-              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+              ? 'bg-slate-200/70 text-slate-950'
+              : 'text-slate-700 hover:bg-slate-100/70'
         }`
         const content = (
           <>
@@ -137,24 +305,19 @@ export function OptionsList({
               }`}>
               {label}.
             </span>
-            {audioOnly ? (
-              <span
-                className={`cursor-text select-text leading-relaxed ${
-                  isJapanesePaper ? 'exam-japanese-text' : ''
-                }`}>{`选项 ${label}`}</span>
-            ) : (
-              <span
-                className={`cursor-text select-text leading-relaxed ${
-                  isJapanesePaper ? 'exam-japanese-text' : ''
-                }`}
-                dangerouslySetInnerHTML={{
-                  __html: annotateExamText({
-                    text: option.text || '',
-                    settings: annotation,
-                  }),
-                }}
-              />
-            )}
+            <span
+              className={`cursor-text select-text leading-relaxed ${
+                isJapanesePaper ? 'exam-japanese-text' : ''
+              }`}
+              dangerouslySetInnerHTML={{
+                __html: annotateExamText({
+                  text: option.text || '',
+                  targetWord: optionTargetWord,
+                  fuzzyTarget: Boolean(optionTargetWord),
+                  settings: annotation,
+                }),
+              }}
+            />
             {isSubmitted && isCorrect && (
               <span className='ml-2 rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700'>
                 正确答案

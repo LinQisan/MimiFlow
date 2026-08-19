@@ -1,6 +1,10 @@
 'use client'
 
-import { updatePaperQuestion } from '@/features/practice/admin-actions'
+import {
+  deletePaperQuestions,
+  movePaperQuestions,
+  updatePaperQuestion,
+} from '@/features/practice/admin-actions'
 import {
   updateLessonQuestions,
   updateQuizWithQuestions,
@@ -11,6 +15,8 @@ export function useQuestionEditorMutations() {
   return {
     updateLessonQuestions,
     updatePaperQuestion,
+    deletePaperQuestions,
+    movePaperQuestions,
     updateQuizWithQuestions,
     updateSortOrder,
   }

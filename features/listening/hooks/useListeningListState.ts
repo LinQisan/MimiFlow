@@ -41,7 +41,7 @@ function reducer(state: ListeningListState, action: StateAction) {
   return { ...state, [action.key]: next }
 }
 
-export function useListeningListState() {
+export function useListeningListState(initialManagePage = 1) {
   const [state, dispatch] = useReducer(reducer, {
     search: '',
     statusFilter: 'all',
@@ -52,7 +52,7 @@ export function useListeningListState() {
     openAssignMaterialId: null,
     selectedMap: {},
     batchChapterId: '',
-    managePage: 1,
+    managePage: Math.max(1, Math.floor(initialManagePage) || 1),
   })
   const setter = useCallback(
     <Key extends keyof ListeningListState>(key: Key) =>

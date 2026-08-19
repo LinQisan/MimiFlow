@@ -12,10 +12,24 @@ import QuestionSectionAnchor from './QuestionSectionAnchor'
 
 export default async function ManageAudioMaterialEditPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ returnPage?: string | string[] }>
 }) {
   const { id } = await params
+  const resolvedSearchParams = await searchParams
+  const returnPageValue = Array.isArray(resolvedSearchParams.returnPage)
+    ? resolvedSearchParams.returnPage[0]
+    : resolvedSearchParams.returnPage
+  const returnPage = Math.max(
+    1,
+    Number.parseInt(returnPageValue || '1', 10) || 1,
+  )
+  const returnHref =
+    returnPage > 1 ? `/manage/listening?page=${returnPage}` : '/manage/listening'
+  const siblingHrefQuery =
+    returnPage > 1 ? `?returnPage=${returnPage}` : ''
   const material = await getListeningEditData(id)
   if (!material) return notFound()
 
@@ -23,7 +37,7 @@ export default async function ManageAudioMaterialEditPage({
     <main className='min-h-screen bg-slate-50 pb-16 text-slate-900'>
       <div className='mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8'>
         <Link
-          href='/manage/listening'
+          href={returnHref}
           className='text-sm font-semibold text-slate-500 transition hover:text-slate-950'>
           ← 听力材料
         </Link>
@@ -68,6 +82,7 @@ export default async function ManageAudioMaterialEditPage({
           lessons={material.siblings}
           currentLessonId={material.id}
           hrefBase='/manage/listening'
+          hrefQuery={siblingHrefQuery}
           appearance='practice'
         />
 
@@ -110,6 +125,7 @@ export default async function ManageAudioMaterialEditPage({
                 collectionLabel={material.collectionTitle}
                 isExamMaterial={material.collectionType === 'PAPER'}
                 redirectAfterDelete
+                redirectHref={returnHref}
               />
             </div>
           </div>

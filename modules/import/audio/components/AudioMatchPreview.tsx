@@ -6,31 +6,33 @@ export default function AudioMatchPreview({
   rows,
   isBatch,
   collectionLabel,
+  destinationLabel = '集合',
   overrides,
   onOverride,
 }: {
   rows: AudioMatchPreviewRow[]
   isBatch: boolean
   collectionLabel: string
+  destinationLabel?: string
   overrides: Record<string, string>
   onOverride: (rowKey: string, value: string) => void
 }) {
   return (
-    <section className='border border-blue-100 bg-blue-50/30 p-4 md:p-6'>
-      <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-        <h3 className='text-sm font-black text-blue-900 md:text-base'>
+    <section className='border-b border-slate-200 py-5'>
+      <div className='flex flex-wrap items-baseline gap-x-3 gap-y-1'>
+        <h3 className='text-sm font-bold text-slate-900 md:text-base'>
           {isBatch ? '多音频题目录入预览' : '音频配对预览'}
         </h3>
-        <span className='rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-bold text-blue-700'>
+        <span className='text-xs font-semibold text-slate-400'>
           {rows.length} 条
         </span>
       </div>
 
-      <p className='mb-3 text-xs font-semibold text-blue-700'>
-        当前集合：{collectionLabel}
+      <p className='mt-1.5 text-xs font-medium text-slate-500'>
+        当前{destinationLabel}：{collectionLabel}
       </p>
 
-      <div className='space-y-2'>
+      <div className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
         {rows.map(row => {
           const overrideValue = overrides[row.key] ?? row.autoValue
           const uniqueCandidates = Array.from(
@@ -42,31 +44,31 @@ export default function AudioMatchPreview({
           )
 
           return (
-            <div key={row.key} className='border border-blue-100 bg-white p-3'>
-              <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+            <div key={row.key} className='py-3.5'>
+              <div className='flex flex-wrap items-center justify-between gap-2'>
                 <p className='truncate text-xs font-bold text-gray-700 md:text-sm'>
                   {row.name}
                 </p>
                 <button
                   type='button'
                   onClick={() => onOverride(row.key, row.autoValue)}
-                  className='rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700 hover:bg-blue-100'>
+                  className='text-[11px] font-semibold text-slate-500 hover:text-slate-900'>
                   恢复自动
                 </button>
               </div>
 
-              <p className='mb-2 text-[11px] font-medium text-blue-700'>
+              <p className='mt-1 text-[11px] font-medium text-slate-500'>
                 自动结果：{row.autoLabel}
               </p>
 
               {uniqueCandidates.length > 0 ? (
-                <div className='mb-2 flex flex-wrap gap-1.5'>
+                <div className='mt-2 flex flex-wrap gap-x-3 gap-y-1'>
                   {uniqueCandidates.slice(0, 6).map(candidate => (
                     <button
                       key={`${row.key}-${candidate}`}
                       type='button'
                       onClick={() => onOverride(row.key, candidate)}
-                      className='rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-100'>
+                      className='border-b border-slate-300 py-0.5 text-[11px] font-semibold text-slate-600 hover:border-slate-900 hover:text-slate-900'>
                       {candidate.startsWith('upload://')
                         ? `上传同名（${row.uploadCandidates[0] || row.stem}）`
                         : candidate}
@@ -82,7 +84,7 @@ export default function AudioMatchPreview({
                   onOverride(row.key, event.currentTarget.value)
                 }
                 placeholder='可手动填写 /audios/xxx.mp3 或 upload://词干'
-                className='w-full border border-blue-200 bg-blue-50/40 px-3 py-2 text-xs text-gray-700 outline-none focus:border-blue-300 focus:bg-white focus:ring-2 focus:ring-blue-100'
+                className='mt-3 !h-9 !min-h-0 w-full !rounded-none border-0 border-b border-slate-300 bg-transparent px-0 py-1 text-xs text-slate-700 outline-none focus:border-slate-900 focus:ring-0'
               />
             </div>
           )

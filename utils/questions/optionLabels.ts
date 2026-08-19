@@ -13,7 +13,7 @@ const KATAKANA = ['ア', 'イ', 'ウ', 'エ', 'オ', 'カ', 'キ', 'ク', 'ケ',
 
 export function normalizeOptionLabelFormat(
   value: unknown,
-  fallback: OptionLabelFormat = 'upper-alpha',
+  fallback: OptionLabelFormat = 'numeric',
 ): OptionLabelFormat {
   return OPTION_LABEL_FORMATS.includes(value as OptionLabelFormat)
     ? (value as OptionLabelFormat)

@@ -3,7 +3,10 @@ export const cleanInlineSelectionText = (value: string) =>
 
 export function getCleanSelectionText(selection: Selection | null) {
   if (!selection || selection.rangeCount === 0) return ''
-  const range = selection.getRangeAt(0)
+  return getCleanRangeText(selection.getRangeAt(0))
+}
+
+export function getCleanRangeText(range: Range) {
   const fragment = range.cloneContents()
   fragment
     .querySelectorAll(

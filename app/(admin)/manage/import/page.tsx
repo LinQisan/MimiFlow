@@ -1,36 +1,114 @@
-import Link from 'next/link'
-
 import UploadCenterUI from '@/features/import/ui/UploadCenterUI'
 import EpubImportForm from '@/features/reading/ui/EpubImportForm'
 import { getUploadPageSeedData } from '@/lib/repositories/manage'
 import type { UploadCenterTab } from '@/modules/import/types'
-import type { MaterialType } from '@prisma/client'
+import type { CollectionType, MaterialType } from '@prisma/client'
+import Link from 'next/link'
 import AnkiImportPanel from './AnkiImportPanel'
+import ImportNavigation from './ImportNavigation'
+import {
+  TOEIC_PARTS,
+  getToeicPartBySlug,
+} from '@/features/questions/domain/toeic'
+import { PAPER_LISTENING_SECTIONS } from '@/features/questions/domain/paper-editor'
 
-const importGroups = [
+const importLanguages = [
   {
-    label: '练习内容',
-    items: [
-      ['listening', '听力材料', 'MP3 与字幕'],
-      ['speaking', '跟读材料', 'MP3 与字幕'],
-      ['reading', '阅读文章', '正文与表格'],
-      ['questions', '练习题', '单题或批量'],
-    ],
+    value: 'ja',
+    label: '日语',
   },
   {
-    label: '学习资料',
-    items: [
-      ['subtitles', '影视字幕', 'ASS 字幕'],
-      ['ebook', '电子书', '正文或 EPUB'],
-      ['anki', '词汇卡片', 'Anki 牌组'],
-    ],
+    value: 'en',
+    label: '英语',
   },
 ] as const
 
-const importTypeValues = importGroups.flatMap(group =>
-  group.items.map(([value]) => value),
-)
-type ImportType = (typeof importTypeValues)[number]
+type ImportLanguage = (typeof importLanguages)[number]['value']
+type ImportScope = 'paper' | 'material' | 'vocabulary'
+type ImportType =
+  | 'listening'
+  | 'speaking'
+  | 'reading'
+  | 'questions'
+  | 'subtitles'
+  | 'ebook'
+  | 'anki'
+  | `toeic-part-${1 | 2 | 3 | 4 | 5 | 6 | 7}`
+
+type ImportNavigationItem = {
+  type: ImportType
+  label: string
+  enabled: boolean
+}
+
+type ImportNavigationGroup = {
+  scope: ImportScope
+  label: string
+  items: ImportNavigationItem[]
+}
+
+function getImportGroups(language: ImportLanguage): ImportNavigationGroup[] {
+  return [
+    {
+      scope: 'paper',
+      label: '试卷',
+      items: [
+        {
+          type: 'listening',
+          label: '听力题',
+          enabled: true,
+        },
+        {
+          type: 'reading',
+          label: '阅读题',
+          enabled: true,
+        },
+        {
+          type: 'questions',
+          label: language === 'ja' ? '文字·词汇·语法' : '文法题',
+          enabled: true,
+        },
+      ],
+    },
+    {
+      scope: 'material',
+      label: '学习材料',
+      items: [
+        {
+          type: 'speaking',
+          label: '跟读材料',
+          enabled: true,
+        },
+        {
+          type: 'reading',
+          label: '阅读文章',
+          enabled: true,
+        },
+        {
+          type: 'subtitles',
+          label: '影视字幕',
+          enabled: true,
+        },
+        {
+          type: 'ebook',
+          label: '电子书',
+          enabled: true,
+        },
+      ],
+    },
+    {
+      scope: 'vocabulary',
+      label: '词汇资料',
+      items: [
+        {
+          type: 'anki',
+          label: 'Anki 词汇卡片',
+          enabled: true,
+        },
+      ],
+    },
+  ]
+}
 
 const uploadTabs: Partial<Record<ImportType, UploadCenterTab>> = {
   listening: 'audio',
@@ -49,79 +127,224 @@ const importMaterialTypes: Partial<Record<ImportType, MaterialType>> = {
   ebook: 'READING',
 }
 
-function isImportType(value: string | undefined): value is ImportType {
-  return importTypeValues.some(item => item === value)
+const collectionTypesByScope: Record<
+  Exclude<ImportScope, 'vocabulary'>,
+  CollectionType[]
+> = {
+  paper: ['PAPER'],
+  material: ['LIBRARY_ROOT', 'BOOK', 'CHAPTER', 'CUSTOM_GROUP'],
+}
+
+function isImportLanguage(value: string | undefined): value is ImportLanguage {
+  return importLanguages.some(language => language.value === value)
+}
+
+function isImportScope(value: string | undefined): value is ImportScope {
+  return value === 'paper' || value === 'material' || value === 'vocabulary'
+}
+
+function inferLegacyScope(type: string | undefined): ImportScope {
+  if (type === 'anki') return 'vocabulary'
+  if (type === 'speaking' || type === 'subtitles' || type === 'ebook') {
+    return 'material'
+  }
+  return 'paper'
 }
 
 export default async function UnifiedImportPage({
   searchParams,
 }: {
-  searchParams: Promise<{ type?: string }>
+  searchParams: Promise<{
+    language?: string
+    scope?: string
+    type?: string
+    part?: string
+  }>
 }) {
-  const { type } = await searchParams
-  const importType: ImportType = isImportType(type) ? type : 'listening'
+  const params = await searchParams
+  const language: ImportLanguage = isImportLanguage(params.language)
+    ? params.language
+    : 'ja'
+  const importGroups = getImportGroups(language)
+  const legacyToeicPart = getToeicPartBySlug(params.type || '')
+  const normalizedRequestedType = legacyToeicPart
+    ? legacyToeicPart.part <= 4
+      ? 'listening'
+      : legacyToeicPart.part === 5
+        ? 'questions'
+        : 'reading'
+    : params.type
+  const requestedScope = isImportScope(params.scope)
+    ? params.scope
+    : inferLegacyScope(normalizedRequestedType)
+  const requestedGroup = importGroups.find(
+    group => group.scope === requestedScope,
+  )
+  const requestedItem = requestedGroup?.items.find(
+    item => item.type === normalizedRequestedType && item.enabled,
+  )
+  const fallbackGroup =
+    importGroups.find(group => group.scope === 'paper') ?? importGroups[0]
+  const activeGroup = requestedItem ? requestedGroup! : fallbackGroup
+  const activeItem =
+    requestedItem ?? activeGroup.items.find(item => item.enabled)!
+  const importType = activeItem.type
+  const toeicPartsForType =
+    language !== 'en' || activeGroup.scope !== 'paper'
+      ? []
+      : TOEIC_PARTS.filter(part =>
+          importType === 'listening'
+            ? part.part <= 4
+            : importType === 'questions'
+              ? part.part === 5
+              : importType === 'reading'
+                ? part.part >= 6
+                : false,
+        )
+  const requestedPartNumber = legacyToeicPart?.part || Number(params.part)
+  const toeicPart =
+    toeicPartsForType.find(part => part.part === requestedPartNumber) ||
+    toeicPartsForType[0]
+  const japaneseListeningSections =
+    language === 'ja' &&
+    activeGroup.scope === 'paper' &&
+    importType === 'listening'
+      ? PAPER_LISTENING_SECTIONS
+      : []
+  const japaneseListeningSection =
+    japaneseListeningSections.find(
+      section => section.sectionNumber === requestedPartNumber,
+    ) || japaneseListeningSections[0]
+  const resolvedUploadTab = toeicPart?.uploadTab ?? uploadTabs[importType]
+  const resolvedMaterialType =
+    toeicPart?.materialType ?? importMaterialTypes[importType]
   const needsCollections = importType !== 'anki'
-  const needsLessons = ['listening', 'speaking', 'subtitles'].includes(importType)
+  const needsLessons = ['listening', 'speaking', 'subtitles'].includes(
+    importType,
+  )
+  const collectionTypes =
+    activeGroup.scope === 'vocabulary'
+      ? undefined
+      : collectionTypesByScope[activeGroup.scope]
   const { dbLevels, dbCollections } = needsCollections
     ? await getUploadPageSeedData({
         includeLessons: needsLessons,
-        materialType: importMaterialTypes[importType],
+        materialType: resolvedMaterialType,
+        language,
+        collectionTypes,
       })
     : { dbLevels: [], dbCollections: [] }
-
   return (
     <main className='manage-upload-surface min-h-screen bg-[#f6f5f1] pb-16 font-sans text-slate-900'>
-      <h1 className='sr-only'>内容导入</h1>
-      <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 md:px-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
-        <aside className='min-w-0 lg:sticky lg:top-24 lg:self-start'>
-          <nav
-            aria-label='导入类型'
-            className='overflow-x-auto rounded-2xl border border-slate-200/80 bg-white p-3 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] lg:overflow-visible lg:p-4'>
-            <div className='flex gap-5 lg:block lg:space-y-6'>
-              {importGroups.map(group => (
-                <section key={group.label} className='shrink-0'>
-                  <h2 className='mb-2 px-2 text-[11px] font-bold tracking-[0.08em] text-slate-400'>
-                    {group.label}
-                  </h2>
-                  <div className='flex gap-1 lg:flex-col'>
-                    {group.items.map(([value, label]) => {
-                      const active = importType === value
-                      return (
-                        <Link
-                          key={value}
-                          href={`/manage/import?type=${value}`}
-                          aria-current={active ? 'page' : undefined}
-                          className={`flex min-w-max items-center rounded-xl px-3 py-2.5 text-sm transition-colors lg:min-w-0 ${
-                            active
-                              ? 'bg-slate-950 font-semibold text-white'
-                              : 'font-semibold text-slate-600 hover:bg-white hover:text-slate-900'
-                          }`}>
-                          <span>{label}</span>
-                        </Link>
-                      )
-                    })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          </nav>
-        </aside>
+      <div className='mx-auto max-w-6xl px-4 py-5 md:px-8 lg:py-8'>
+        <div className='grid gap-6 pt-6 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-8'>
+          <ImportNavigation
+            languages={[...importLanguages]}
+            groups={importGroups}
+            language={language}
+            activeScope={activeGroup.scope}
+            activeType={importType}
+          />
 
-        <section className='min-w-0'>
-          {importType === 'ebook' ? (
-            <EpubImportForm collections={dbCollections} />
-          ) : importType === 'anki' ? (
-            <AnkiImportPanel />
-          ) : (
-            <UploadCenterUI
-              key={importType}
-              dbLevels={dbLevels}
-              dbCollections={dbCollections}
-              initialTab={uploadTabs[importType]}
-              initialMaterialType={importMaterialTypes[importType]}
-            />
-          )}
-        </section>
+          <section className='min-w-0'>
+            <h2 className='sr-only'>{activeItem.label}</h2>
+
+            {toeicPart ? (
+              <div className='mb-5 border-b border-slate-300 pb-4'>
+                <span className='mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400'>
+                  TOEIC Part
+                </span>
+                <nav
+                  aria-label='选择 TOEIC Part'
+                  className='flex flex-wrap gap-x-5 gap-y-2'>
+                  {toeicPartsForType.map(part => (
+                    <Link
+                      key={part.part}
+                      href={`/manage/import?language=en&scope=paper&type=${importType}&part=${part.part}`}
+                      aria-current={
+                        part.part === toeicPart.part ? 'page' : undefined
+                      }
+                      className={`border-b-2 py-2 text-sm font-bold transition-colors ${
+                        part.part === toeicPart.part
+                          ? 'border-slate-950 text-slate-950'
+                          : 'border-transparent text-slate-400 hover:border-slate-400 hover:text-slate-700'
+                      }`}>
+                      Part {part.part} · {part.title}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            ) : null}
+
+            {japaneseListeningSection ? (
+              <div className='mb-5 border-b border-slate-300 pb-4'>
+                <nav
+                  aria-label='选择日语听力题型'
+                  className='flex flex-wrap gap-x-5 gap-y-2'>
+                  {japaneseListeningSections.map(section => (
+                    <Link
+                      key={section.sectionNumber}
+                      href={`/manage/import?language=ja&scope=paper&type=listening&part=${section.sectionNumber}`}
+                      aria-current={
+                        section.sectionNumber ===
+                        japaneseListeningSection.sectionNumber
+                          ? 'page'
+                          : undefined
+                      }
+                      className={`border-b-2 py-2 text-sm font-bold transition-colors ${
+                        section.sectionNumber ===
+                        japaneseListeningSection.sectionNumber
+                          ? 'border-slate-950 text-slate-950'
+                          : 'border-transparent text-slate-400 hover:border-slate-400 hover:text-slate-700'
+                      }`}>
+                      問題{section.sectionNumber} · {section.title}
+                    </Link>
+                  ))}
+                </nav>
+              </div>
+            ) : null}
+
+            {importType === 'ebook' ? (
+              <EpubImportForm
+                collections={dbCollections}
+                defaultLanguage={language}
+              />
+            ) : importType === 'anki' ? (
+              <AnkiImportPanel />
+            ) : (
+              <UploadCenterUI
+                key={`${language}-${activeGroup.scope}-${importType}-${toeicPart?.part || japaneseListeningSection?.sectionNumber || ''}`}
+                dbLevels={dbLevels}
+                dbCollections={dbCollections}
+                initialTab={resolvedUploadTab}
+                initialMaterialType={resolvedMaterialType}
+                language={language}
+                collectionScope={
+                  activeGroup.scope === 'paper' ? 'paper' : 'material'
+                }
+                defaultQuestionType={
+                  toeicPart?.questionType ||
+                  (japaneseListeningSection ? 'LISTENING' : undefined)
+                }
+                defaultListeningSectionNumber={
+                  japaneseListeningSection
+                    ? String(japaneseListeningSection.sectionNumber)
+                    : undefined
+                }
+                listeningSectionLabel={
+                  japaneseListeningSection
+                    ? `問題${japaneseListeningSection.sectionNumber} · ${japaneseListeningSection.title}`
+                    : undefined
+                }
+                toeicPartLabel={
+                  toeicPart
+                    ? `Part ${toeicPart.part} · ${toeicPart.title}`
+                    : undefined
+                }
+              />
+            )}
+          </section>
+        </div>
       </div>
     </main>
   )

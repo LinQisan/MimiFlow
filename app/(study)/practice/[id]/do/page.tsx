@@ -41,6 +41,9 @@ export default async function ExamDoingPage({
         initialIndex={initialIndex}
         exitHref={`/practice/${encodeURIComponent(id)}`}
         exitLabel='返回试卷详情'
+        paperId={id}
+        draftKey={`practice:draft:paper:${id}`}
+        restoreDraftIndex={!qid}
         pronunciationMap={examData.pronunciationMap}
         vocabularyMetaMap={examData.vocabularyMetaMap}
       />

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useRef, useState } from 'react'
 import type { CollectionType } from '@prisma/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -12,6 +12,8 @@ import {
   ActionInterceptor,
 } from '@/features/collections/ui/DndSystem'
 import { updateArticleWithQuestions } from '@/modules/content/actions/materials'
+import { uploadAudioFileAdmin } from '@/features/audio/manage-actions'
+import ManageAudioPlayer from '@/features/listening/ui/ManageAudioPlayer'
 import { updateSortOrder } from '@/modules/practice/actions/questions'
 import { useDialog } from '@/context/DialogContext'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
@@ -20,11 +22,45 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '@/features/questions/domain/editor'
+import {
+  ARTICLE_TABLE_TEMPLATE,
+  insertArticleText,
+} from '@/features/reading/domain/article-editing'
+import {
+  parseArticleContentBlocks,
+  renderSafeArticleContentBlocksHtml,
+} from '@/features/reading/domain/article-blocks'
+import { escapeHtml } from '@/utils/language/japaneseRuby'
+import {
+  renderUnderlineMarkup,
+  toggleUnderlineSelection,
+} from '@/utils/text/underlineMarkup'
 
 const splitIntoSentences = (text: string) => {
   if (!text) return []
   const regex = /[^。！？.!?\n]+[。！？.!?\n]*/g
   return text.match(regex) || [text]
+}
+
+function ArticleQuestionPreview({ text }: { text: string }) {
+  const safeText = escapeHtml(text)
+  const html = renderUnderlineMarkup(
+    renderSafeArticleContentBlocksHtml(
+      parseArticleContentBlocks(
+        safeText
+          .split(/\n\s*\n/)
+          .map((paragraph) => paragraph.trim())
+          .filter(Boolean),
+      ),
+    ),
+  )
+
+  return (
+    <div
+      className="reading-passage-body text-sm font-semibold leading-6 text-slate-800"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  )
 }
 
 type QuestionOption = {
@@ -45,6 +81,11 @@ type EditableArticle = {
   id?: string
   title?: string | null
   content?: string | null
+  sourceKind?: string | null
+  publishedDate?: string | null
+  edition?: string | null
+  pageNumber?: string | null
+  audioFile?: string | null
   questions?: ArticleQuestion[]
   category?: {
     levelId?: string | null
@@ -52,43 +93,49 @@ type EditableArticle = {
   } | null
 }
 
-export default function EditArticleUI({ article }: { article: EditableArticle }) {
+export default function EditArticleUI({
+  article,
+  returnHref,
+}: {
+  article: EditableArticle
+  returnHref?: string
+}) {
   const dialog = useDialog()
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
-  const [isMobile, setIsMobile] = useState(false)
+  const articleTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const audioInputRef = useRef<HTMLInputElement | null>(null)
   const backHref =
-    article.category?.collectionType === 'PAPER' && article.category.levelId
+    returnHref ||
+    (article.category?.collectionType === 'PAPER' && article.category.levelId
       ? `/manage/practice/${article.category.levelId}`
-      : '/manage/reading'
-  const backLabel = article.category?.collectionType === 'PAPER' ? '返回试卷' : '返回阅读'
-
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 1024)
-    }
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
+      : '/manage/reading')
+  const backLabel = returnHref
+    ? '返回阅读'
+    : article.category?.collectionType === 'PAPER'
+      ? '返回试卷'
+      : '返回阅读'
 
   const [title, setTitle] = useState(article.title || '')
   const [content, setContent] = useState(article.content || '')
+  const [sourceKind, setSourceKind] = useState(
+    article.sourceKind === 'NEWS' ? 'NEWS' : 'ARTICLE',
+  )
+  const [publishedDate, setPublishedDate] = useState(
+    article.publishedDate || '',
+  )
+  const [edition, setEdition] = useState(article.edition || '')
+  const [pageNumber, setPageNumber] = useState(article.pageNumber || '')
+  const [audioFile, setAudioFile] = useState(article.audioFile || '')
+  const [pendingAudioFile, setPendingAudioFile] = useState<File | null>(null)
   const [questions, setQuestions] = useState<ArticleQuestion[]>(
     article.questions || [],
   )
-
-  const [selection, setSelection] = useState<{
-    text: string
-    x: number
-    y: number
-  } | null>(null)
+  const isPaperArticle = article.category?.collectionType === 'PAPER'
 
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(
     null,
   )
-
-  const [showAddMenu, setShowAddMenu] = useState(false)
 
   const createDefaultOptions = () => [
     { id: `opt_${Date.now()}_1`, text: '选项 A', isCorrect: true },
@@ -111,33 +158,24 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
     }
     setQuestions([...questions, newQ])
     setEditingQuestionId(newQ.id)
-    setShowAddMenu(false)
-  }
-
-  // ================= 划词生成填空题 =================
-  const handleMouseUp = (e: React.MouseEvent<HTMLTextAreaElement>) => {
-    if (isMobile) return
-
-    const textarea = e.target as HTMLTextAreaElement
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-
-    if (start !== end) {
-      const selectedText = textarea.value.substring(start, end).trim()
-      if (selectedText.length > 0 && selectedText.length < 50) {
-        setSelection({ text: selectedText, x: e.clientX, y: e.clientY })
-        return
-      }
-    }
-    setSelection(null)
   }
 
   const handleCreateBlankQuestion = () => {
-    if (!selection) return
+    const textarea = articleTextareaRef.current
+    if (!textarea) return
+    const selectedText = content
+      .slice(textarea.selectionStart, textarea.selectionEnd)
+      .trim()
+    if (!selectedText || selectedText.length >= 50) {
+      dialog.toast('请先在正文中选择需要设为空格的文字。', {
+        tone: 'error',
+      })
+      return
+    }
     const sentences = splitIntoSentences(content)
     const targetSentence =
       sentences.find((s: string) =>
-        s.toLowerCase().includes(selection.text.toLowerCase()),
+        s.toLowerCase().includes(selectedText.toLowerCase()),
       ) || content
 
     const newQuestion = {
@@ -146,7 +184,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
       prompt: targetSentence.trim(),
       contextSentence: targetSentence.trim(),
       options: [
-        { id: `opt_${Date.now()}_1`, text: selection.text, isCorrect: true },
+        { id: `opt_${Date.now()}_1`, text: selectedText, isCorrect: true },
         { id: `opt_${Date.now()}_2`, text: '干扰项1', isCorrect: false },
         { id: `opt_${Date.now()}_3`, text: '干扰项2', isCorrect: false },
         { id: `opt_${Date.now()}_4`, text: '干扰项3', isCorrect: false },
@@ -155,12 +193,45 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
 
     setQuestions([...questions, newQuestion])
     setEditingQuestionId(newQuestion.id)
-    setSelection(null)
+  }
+
+  const handleToggleUnderline = () => {
+    const textarea = articleTextareaRef.current
+    if (!textarea) return
+    const result = toggleUnderlineSelection(
+      content,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+    )
+    if (!result.changed) {
+      dialog.toast('请先选择需要加下划线的文字。', { tone: 'error' })
+      return
+    }
+    setContent(result.text)
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(result.selectionStart, result.selectionEnd)
+    })
+  }
+
+  const handleInsertTable = () => {
+    const textarea = articleTextareaRef.current
+    const result = insertArticleText(
+      content,
+      ARTICLE_TABLE_TEMPLATE,
+      textarea?.selectionStart ?? content.length,
+      textarea?.selectionEnd ?? content.length,
+    )
+    setContent(result.text)
+    window.requestAnimationFrame(() => {
+      textarea?.focus()
+      textarea?.setSelectionRange(result.cursor, result.cursor)
+    })
   }
 
   const handleUpdateQuestion = (id: string, field: string, value: unknown) => {
     setQuestions(
-      questions.map(q => (q.id === id ? { ...q, [field]: value } : q)),
+      questions.map((q) => (q.id === id ? { ...q, [field]: value } : q)),
     )
   }
 
@@ -171,7 +242,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
     value: QuestionOption[keyof QuestionOption],
   ) => {
     setQuestions(
-      questions.map(q => {
+      questions.map((q) => {
         if (q.id !== qId) return q
         const newOptions = [...q.options]
         if (field === 'isCorrect') {
@@ -185,8 +256,8 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
   }
 
   const handleAddOption = (questionId: string) => {
-    setQuestions(current =>
-      current.map(question =>
+    setQuestions((current) =>
+      current.map((question) =>
         question.id === questionId
           ? {
               ...question,
@@ -201,15 +272,12 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
   }
 
   const handleRemoveOption = (questionId: string, optionIndex: number) => {
-    setQuestions(current =>
-      current.map(question =>
+    setQuestions((current) =>
+      current.map((question) =>
         question.id === questionId
           ? {
               ...question,
-              options: removeQuestionOptionAt(
-                question.options,
-                optionIndex,
-              ),
+              options: removeQuestionOptionAt(question.options, optionIndex),
             }
           : question,
       ),
@@ -218,7 +286,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
 
   const handleReorderQuestions = async (orderedIds: string[]) => {
     const reordered = orderedIds
-      .map(id => questions.find(q => q.id === id))
+      .map((id) => questions.find((q) => q.id === id))
       .filter((item): item is ArticleQuestion => Boolean(item))
     setQuestions(reordered)
     return updateSortOrder('Question', orderedIds)
@@ -231,7 +299,7 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
       danger: true,
     })
     if (!confirmed) return
-    setQuestions(prev => prev.filter(item => item.id !== questionId))
+    setQuestions((prev) => prev.filter((item) => item.id !== questionId))
     if (editingQuestionId === questionId) {
       setEditingQuestionId(null)
     }
@@ -239,297 +307,459 @@ export default function EditArticleUI({ article }: { article: EditableArticle })
 
   const handleSaveArticle = async () => {
     setIsSaving(true)
-    const result = await updateArticleWithQuestions({
-      passageId: article.id || '',
-      title,
-      content,
-      questions: questions.map(question => ({
-        id: question.id,
-        questionType: question.questionType,
-        prompt: question.prompt,
-        contextSentence: question.contextSentence || '',
-        options: question.options.map(option => ({
-          id: option.id,
-          text: option.text,
-          isCorrect: option.isCorrect,
+    try {
+      let nextAudioFile = audioFile
+      if (pendingAudioFile) {
+        const formData = new FormData()
+        formData.set('audioFile', pendingAudioFile)
+        formData.set('folder', 'reading')
+        const uploadResult = await uploadAudioFileAdmin(formData)
+        if (
+          !uploadResult.success ||
+          !('path' in uploadResult) ||
+          !uploadResult.path
+        ) {
+          dialog.toast(uploadResult.message || '音频上传失败', {
+            tone: 'error',
+          })
+          return
+        }
+        nextAudioFile = uploadResult.path
+      }
+
+      const result = await updateArticleWithQuestions({
+        passageId: article.id || '',
+        title,
+        content,
+        sourceKind,
+        publishedDate,
+        edition,
+        pageNumber,
+        audioFile: nextAudioFile,
+        questions: questions.map((question) => ({
+          id: question.id,
+          questionType: question.questionType,
+          prompt: question.prompt,
+          contextSentence: question.contextSentence || '',
+          options: question.options.map((option) => ({
+            id: option.id,
+            text: option.text,
+            isCorrect: option.isCorrect,
+          })),
         })),
-      })),
-    })
-    if (result.success) {
-      dialog.toast('文章与题目已保存', { tone: 'success' })
-      router.refresh()
-    } else {
-      dialog.toast(result.message || '保存失败', { tone: 'error' })
+      })
+      if (result.success) {
+        setAudioFile(nextAudioFile)
+        setPendingAudioFile(null)
+        if (audioInputRef.current) audioInputRef.current.value = ''
+        dialog.toast(isPaperArticle ? '文章与题目已保存' : '文章已保存', {
+          tone: 'success',
+        })
+        router.refresh()
+      } else {
+        dialog.toast(result.message || '保存失败', { tone: 'error' })
+      }
+    } catch {
+      dialog.toast('保存失败，请重试', { tone: 'error' })
+    } finally {
+      setIsSaving(false)
     }
-    setIsSaving(false)
   }
 
   return (
-    <div className='relative mx-auto max-w-7xl animate-in px-3 pb-28 pt-3 fade-in duration-500 md:px-8 md:pb-32 md:pt-6'>
-      {selection && !isMobile && (
-        <div
-          className='fixed z-[100] flex items-center gap-3 rounded-2xl bg-gray-900 px-4 py-2.5 text-white shadow-2xl shadow-indigo-500/10 animate-in zoom-in-95 duration-200'
-          style={{ top: selection.y - 65, left: selection.x - 50 }}>
-          <span className='text-sm font-bold max-w-30 truncate text-indigo-100'>
-            &quot;{selection.text}&quot;
-          </span>
-          <div className='w-px h-5 bg-gray-700'></div>
-          <button
-            onClick={handleCreateBlankQuestion}
-            className='text-xs font-bold text-indigo-300 hover:text-indigo-100 whitespace-nowrap active:scale-95 transition-all'>
-            + 设为文章穴埋め
-          </button>
-        </div>
-      )}
-
-      <div className='sticky top-3 z-40 mb-6 rounded-2xl border border-gray-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur md:px-5'>
-        <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
-          <div>
-          <Link
-            href={backHref}
-            className='mb-2 inline-flex rounded-lg border border-gray-200 bg-gray-50 px-3 py-1 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-100'>
-            {backLabel}
-          </Link>
-          <h1 className='text-3xl font-black text-gray-900 flex items-center gap-3'>
+    <main className="min-h-screen bg-stone-50 text-slate-900">
+      <div className="mx-auto max-w-6xl px-4 pb-12 md:px-6">
+        <header className="sticky top-0 z-30 flex items-center gap-4 border-b border-slate-200 bg-stone-50/95 py-4 backdrop-blur">
+          <div className="min-w-0 flex-1">
+            <Link
+              href={backHref}
+              className="text-xs font-semibold text-slate-500 transition hover:text-slate-950"
+            >
+              ← {backLabel}
+            </Link>
             <input
-              type='text'
+              type="text"
+              aria-label="文章标题"
               value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder='输入文章标题...'
-              className='w-full text-xl md:text-2xl font-black bg-transparent border-none outline-none focus:ring-0 p-0 text-gray-800 placeholder-gray-300'
-            />
-          </h1>
-        </div>
-        <button
-          onClick={handleSaveArticle}
-          disabled={isSaving}
-          className='inline-flex items-center justify-center rounded-xl bg-indigo-600 px-7 py-3 text-sm font-black text-white transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50'>
-          {isSaving ? '正在保存...' : '保存修改'}
-        </button>
-      </div>
-      </div>
-
-      <div className='flex flex-col lg:flex-row gap-6 md:gap-8 items-start relative z-10'>
-        {/* 左侧：文章正文 */}
-        <div className='w-full lg:flex-3 flex flex-col gap-6 relative'>
-          <div className='bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden flex flex-col h-[70vh]'>
-            <textarea
-              value={content}
-              onChange={e => setContent(e.target.value)}
-              onMouseUp={handleMouseUp}
-              placeholder='在此粘贴文章正文... (电脑端可划选文字出题)'
-              className='flex-1 w-full p-6 bg-white border-none outline-none resize-none focus:ring-0 text-gray-700 leading-loose text-base md:text-lg custom-scrollbar selection:bg-indigo-200 selection:text-indigo-900'
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="文章标题"
+              className="mt-1 block w-full border-0 bg-transparent p-0 text-xl font-black tracking-tight text-slate-950 outline-none placeholder:text-slate-300 focus:ring-0 md:text-2xl"
             />
           </div>
-          <p className='absolute -bottom-5.5 left-3 z-20 text-xs font-bold text-indigo-500'>
-            可在正文中划词，快速生成文章穴埋め题。
-          </p>
-        </div>
+          <button
+            type="button"
+            onClick={handleSaveArticle}
+            disabled={isSaving}
+            className="ui-btn ui-btn-primary h-10 shrink-0 px-5 disabled:opacity-50"
+          >
+            {isSaving ? '保存中' : '保存'}
+          </button>
+        </header>
 
-        {/* 右侧：题目管理区 */}
-        <div className='w-full lg:flex-2 bg-white rounded-3xl border border-gray-200 p-5 md:p-6 lg:sticky lg:top-[12vh] max-h-[85vh] flex flex-col shadow-sm'>
-          <div className='flex items-center justify-between mb-6 shrink-0 relative'>
-            <h2 className='text-xl font-black text-gray-800 flex items-center gap-2'>
-              关联题目{' '}
-              <span className='text-gray-400 font-medium text-sm'>
-                ({questions.length})
-              </span>
-            </h2>
+        {!isPaperArticle ? (
+          <section className="border-b border-slate-200 py-5">
+            <div className="mb-4 flex flex-wrap gap-2">
+              {(
+                [
+                  ['ARTICLE', '文章'],
+                  ['NEWS', '新闻'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={sourceKind === value}
+                  onClick={() => setSourceKind(value)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
+                    sourceKind === value
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white text-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {sourceKind === 'NEWS' ? (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <input
+                  type="date"
+                  value={publishedDate}
+                  onChange={(event) => setPublishedDate(event.target.value)}
+                  aria-label="日期"
+                  className="border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500"
+                />
+                <select
+                  value={edition}
+                  onChange={(event) => setEdition(event.target.value)}
+                  aria-label="刊别"
+                  className="border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500"
+                >
+                  <option value="">刊别</option>
+                  <option value="MORNING">朝刊</option>
+                  <option value="EVENING">夕刊</option>
+                  <option value="FLASH">速報</option>
+                </select>
+                <input
+                  value={pageNumber}
+                  onChange={(event) => setPageNumber(event.target.value)}
+                  placeholder="版面，例如：12面"
+                  aria-label="版面"
+                  className="border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500"
+                />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
 
-            <div className='relative'>
+        <section className="border-b border-slate-200 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">文章音频</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                上传全文朗读；支持 MP3、M4A、WAV、OGG、AAC、FLAC 和 WebM。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={audioInputRef}
+                type="file"
+                accept="audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg,audio/aac,audio/flac,audio/webm,.mp3,.m4a,.wav,.ogg,.aac,.flac,.webm"
+                aria-label="上传文章音频"
+                onChange={(event) =>
+                  setPendingAudioFile(event.currentTarget.files?.[0] || null)
+                }
+                className="sr-only"
+              />
               <button
-                onClick={() => setShowAddMenu(!showAddMenu)}
-                className='text-xs px-4 py-2.5 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition-colors flex items-center gap-1.5'>
-                + 新增题目
+                type="button"
+                onClick={() => audioInputRef.current?.click()}
+                className="ui-btn ui-btn-sm">
+                {audioFile || pendingAudioFile ? '替换音频' : '选择音频'}
               </button>
-
-              {showAddMenu && (
-                <>
-                  <div
-                    className='fixed inset-0 z-40'
-                    onClick={() => setShowAddMenu(false)}></div>
-                  <div className='absolute right-0 top-full mt-2 w-36 bg-white rounded-xl shadow-xl border border-gray-100 p-2 z-50 animate-in fade-in slide-in-from-top-2'>
-                    <button
-                      onClick={() =>
-                        handleAddNewQuestion('READING_COMPREHENSION')
-                      }
-                      className='w-full text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg text-xs font-bold text-gray-700 flex items-center gap-2'>
-                      阅读理解
-                    </button>
-                    <button
-                      onClick={() => handleAddNewQuestion('FILL_BLANK')}
-                      className='w-full text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg text-xs font-bold text-gray-700 flex items-center gap-2'>
-                      文章穴埋め
-                    </button>
-                  </div>
-                </>
-              )}
+              {pendingAudioFile ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingAudioFile(null)
+                    if (audioInputRef.current) audioInputRef.current.value = ''
+                  }}
+                  className="ui-btn ui-btn-sm">
+                  取消选择
+                </button>
+              ) : audioFile ? (
+                <button
+                  type="button"
+                  onClick={() => setAudioFile('')}
+                  className="ui-btn ui-btn-sm text-rose-600">
+                  移除音频
+                </button>
+              ) : null}
             </div>
           </div>
 
-          <div className='flex-1 overflow-y-auto pr-2 custom-scrollbar'>
-            {questions.length === 0 ? (
-              <div className='text-center py-16 text-gray-400 font-medium bg-white rounded-2xl border border-dashed border-gray-200'>
-                暂无题目，可通过新增或划词快速创建。
+          {pendingAudioFile ? (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+              <p className="font-semibold">{pendingAudioFile.name}</p>
+              <p className="mt-1 text-xs text-slate-400">
+                {(pendingAudioFile.size / 1024 / 1024).toFixed(1)} MB · 保存文章时上传
+              </p>
+            </div>
+          ) : audioFile ? (
+            <div className="mt-4 max-w-2xl">
+              <ManageAudioPlayer src={audioFile} />
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-400">尚未上传音频。</p>
+          )}
+        </section>
+
+        <div
+          className={`grid gap-8 py-6 ${isPaperArticle ? 'lg:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.85fr)]' : ''}`}
+        >
+          <section className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-sm font-bold">正文</h2>
+              <div className="flex flex-wrap items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handleInsertTable}
+                  className="px-2 py-1 text-xs font-semibold text-slate-500 transition hover:text-slate-950"
+                >
+                  插入表格
+                </button>
+                <span className="h-4 w-px bg-slate-200" />
+                <button
+                  type="button"
+                  onClick={handleToggleUnderline}
+                  className="px-2 py-1 text-xs font-semibold text-slate-500 transition hover:text-slate-950"
+                >
+                  添加/取消下划线
+                </button>
+                {isPaperArticle ? (
+                  <button
+                    type="button"
+                    onClick={handleCreateBlankQuestion}
+                    className="px-2 py-1 text-xs font-semibold text-slate-500 transition hover:text-slate-950"
+                  >
+                    生成問題7填空
+                  </button>
+                ) : null}
               </div>
-            ) : (
-              <SortableList
-                items={questions}
-                action={handleReorderQuestions}
-                className='space-y-4 flex flex-col pb-10'>
-                {questions.map((q, index: number) => {
-                  const isEditing = editingQuestionId === q.id
+            </div>
+            <textarea
+              ref={articleTextareaRef}
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              placeholder="粘贴正文；表格使用 | 分隔"
+              className="min-h-[68vh] w-full resize-y border border-slate-300 bg-white px-5 py-4 text-base leading-8 text-slate-800 outline-none selection:bg-slate-200 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            />
+          </section>
 
-                  return (
-                    <SortableItem key={q.id} id={q.id}>
-                      {isEditing ? (
-                        <div className='bg-indigo-50/50 p-4.5 rounded-2xl border border-indigo-200 shadow-inner group relative cursor-default'>
-                          <div className='flex justify-between items-center mb-3'>
-                            <div className='flex items-center gap-2.5'>
-                              <span className='px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500 text-white animate-pulse'>
-                                编辑中 Q{index + 1}
-                              </span>
-                            </div>
-                            <ActionInterceptor>
-                              <button
-                                onClick={() => setEditingQuestionId(null)}
-                                className='text-xs bg-indigo-600 text-white px-4 py-1.5 rounded-lg font-bold hover:bg-indigo-700 shadow-sm transition-colors'>
-                                完成
-                              </button>
-                            </ActionInterceptor>
-                          </div>
+          {isPaperArticle ? (
+            <section className="min-w-0 lg:border-l lg:border-slate-200 lg:pl-8">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-sm font-bold">题目 {questions.length}</h2>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleAddNewQuestion('READING_COMPREHENSION')
+                    }
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-950"
+                  >
+                    + 阅读题
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleAddNewQuestion('FILL_BLANK')}
+                    className="text-xs font-semibold text-slate-500 hover:text-slate-950"
+                  >
+                    + 問題7
+                  </button>
+                </div>
+              </div>
 
-                          <ActionInterceptor>
-                            <textarea
-                              value={q.prompt ?? ''}
-                              onChange={e =>
-                                handleUpdateQuestion(
-                                  q.id,
-                                  'prompt',
-                                  e.target.value,
-                                )
-                              }
-                              className='w-full p-3 bg-white border border-indigo-100 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400 mb-3 resize-none h-20'
-                              placeholder='输入题干...'
-                            />
-                            <div className='mb-2 flex items-center justify-between gap-2'>
-                              <span className='text-xs font-bold text-indigo-700'>
-                                {q.options.length} 个选项（最少 {MIN_QUESTION_OPTION_COUNT} 个）
-                              </span>
-                              <button
-                                type='button'
-                                onClick={() => handleAddOption(q.id)}
-                                className='rounded-lg border border-indigo-200 bg-white px-3 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-50'>
-                                + 添加选项
-                              </button>
-                            </div>
-                            <div className='space-y-2'>
-                              {q.options?.map((opt, i: number) => (
-                                <div
-                                  key={opt.id}
-                                  className={`flex items-center gap-2 p-2 rounded-xl border transition-colors ${opt.isCorrect ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-indigo-100'}`}>
-                                  <input
-                                    type='radio'
-                                    checked={opt.isCorrect}
-                                    onChange={() =>
-                                      handleUpdateOption(
-                                        q.id,
-                                        i,
-                                        'isCorrect',
-                                        true,
-                                      )
-                                    }
-                                    className='w-4 h-4 text-emerald-600 focus:ring-emerald-500 cursor-pointer'
-                                  />
-                                  <input
-                                    type='text'
-                                    value={opt.text}
-                                    onChange={e =>
-                                      handleUpdateOption(
-                                        q.id,
-                                        i,
-                                        'text',
-                                        e.target.value,
-                                      )
-                                    }
-                                    className='flex-1 bg-transparent border-none focus:ring-0 text-sm font-bold text-gray-800 outline-none'
-                                  />
-                                  <button
-                                    type='button'
-                                    disabled={q.options.length <= MIN_QUESTION_OPTION_COUNT}
-                                    onClick={() => handleRemoveOption(q.id, i)}
-                                    aria-label={`删除选项 ${i + 1}`}
-                                    className='shrink-0 rounded-md px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25'>
-                                    删除
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </ActionInterceptor>
-                        </div>
-                      ) : (
-                        <div className='bg-white p-4.5 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-200 transition-colors group relative'>
-                          <div className='flex justify-between items-start mb-3 gap-2'>
-                            <div className='flex items-center gap-2.5 flex-wrap'>
+              {questions.length === 0 ? (
+                <p className="border-y border-slate-200 py-8 text-sm text-slate-400">
+                  暂无题目
+                </p>
+              ) : (
+                <SortableList
+                  items={questions}
+                  action={handleReorderQuestions}
+                  className="flex flex-col border-y border-slate-200"
+                >
+                  {questions.map((question, index) => {
+                    const isEditing = editingQuestionId === question.id
+                    return (
+                      <SortableItem key={question.id} id={question.id}>
+                        <div className="border-b border-slate-200 py-4 last:border-b-0">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2 text-xs">
                               <ActionInterceptor>
                                 <DragHandle />
                               </ActionInterceptor>
-                              <span className='bg-gray-800 text-white text-[10px] font-bold px-1.5 py-0.5 rounded'>
-                                Q{index + 1}
-                              </span>
-                              <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${q.questionType === 'FILL_BLANK' ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-purple-50 border-purple-100 text-purple-700'}`}>
-                                {getQuestionTypeLabel(q.questionType)}
+                              <strong className="text-slate-900">
+                                {index + 1}
+                              </strong>
+                              <span className="truncate font-semibold text-slate-400">
+                                {getQuestionTypeLabel(question.questionType)}
                               </span>
                             </div>
-                            <div className='flex gap-2.5 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity'>
-                              <ActionInterceptor>
+                            <ActionInterceptor>
+                              <div className="flex shrink-0 items-center gap-3">
                                 <button
-                                  onClick={() => setEditingQuestionId(q.id)}
-                                  className='text-xs text-indigo-500 hover:text-indigo-700 font-bold bg-indigo-50 px-2.5 py-1 rounded-md'>
-                                  编辑
-                                </button>
-                              </ActionInterceptor>
-                              <ActionInterceptor>
-                                <button
+                                  type="button"
                                   onClick={() =>
-                                    void handleRemoveQuestion(q.id, index)
+                                    setEditingQuestionId(
+                                      isEditing ? null : question.id,
+                                    )
                                   }
-                                  className='rounded-md border border-red-100 bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600 transition-colors hover:bg-red-100 hover:text-red-700'>
-                                  移除题目
+                                  className="text-xs font-semibold text-slate-500 hover:text-slate-950"
+                                >
+                                  {isEditing ? '完成' : '编辑'}
                                 </button>
-                              </ActionInterceptor>
-                            </div>
-                          </div>
-
-                          <p className='text-sm text-gray-800 font-bold leading-relaxed mb-3 line-clamp-3'>
-                            {q.prompt || '（无题干）'}
-                          </p>
-
-                          <div className='space-y-1.5'>
-                            {q.options?.map((opt, i: number) => (
-                              <div
-                                key={opt.id}
-                                className={`text-xs p-2 rounded-lg border ${opt.isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-bold' : 'bg-gray-50 border-gray-100 text-gray-500'}`}>
-                                {String.fromCharCode(65 + i)}. {opt.text}
-                                {opt.isCorrect && (
-                                  <span className='float-right text-emerald-600 font-black'>
-                                    正确
-                                  </span>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    void handleRemoveQuestion(
+                                      question.id,
+                                      index,
+                                    )
+                                  }
+                                  className="text-xs font-semibold text-rose-500 hover:text-rose-700"
+                                >
+                                  删除
+                                </button>
                               </div>
-                            ))}
+                            </ActionInterceptor>
                           </div>
+
+                          {isEditing ? (
+                            <ActionInterceptor>
+                              <div className="mt-4 bg-slate-100/70 px-3 py-4">
+                                <label className="text-xs font-semibold text-slate-500">
+                                  题干
+                                  <textarea
+                                    value={question.prompt ?? ''}
+                                    onChange={(event) =>
+                                      handleUpdateQuestion(
+                                        question.id,
+                                        'prompt',
+                                        event.target.value,
+                                      )
+                                    }
+                                    rows={3}
+                                    className="mt-1 w-full resize-y border border-slate-300 bg-white px-3 py-2 text-sm leading-6 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                                    placeholder="输入题干"
+                                  />
+                                </label>
+                                <div className="mt-4 flex items-center justify-between gap-3">
+                                  <span className="text-xs font-semibold text-slate-500">
+                                    选项 {question.options.length}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAddOption(question.id)}
+                                    className="text-xs font-semibold text-slate-500 hover:text-slate-950"
+                                  >
+                                    + 添加选项
+                                  </button>
+                                </div>
+                                <div className="mt-2 border-t border-slate-200">
+                                  {question.options.map(
+                                    (option, optionIndex) => (
+                                      <div
+                                        key={option.id}
+                                        className="flex items-center gap-2 border-b border-slate-200 py-2"
+                                      >
+                                        <input
+                                          type="radio"
+                                          checked={option.isCorrect}
+                                          onChange={() =>
+                                            handleUpdateOption(
+                                              question.id,
+                                              optionIndex,
+                                              'isCorrect',
+                                              true,
+                                            )
+                                          }
+                                          aria-label={`设为正确答案 ${optionIndex + 1}`}
+                                        />
+                                        <input
+                                          type="text"
+                                          value={option.text}
+                                          onChange={(event) =>
+                                            handleUpdateOption(
+                                              question.id,
+                                              optionIndex,
+                                              'text',
+                                              event.target.value,
+                                            )
+                                          }
+                                          className="min-w-0 flex-1 border-0 bg-transparent px-1 py-1 text-sm outline-none focus:ring-0"
+                                        />
+                                        <button
+                                          type="button"
+                                          disabled={
+                                            question.options.length <=
+                                            MIN_QUESTION_OPTION_COUNT
+                                          }
+                                          onClick={() =>
+                                            handleRemoveOption(
+                                              question.id,
+                                              optionIndex,
+                                            )
+                                          }
+                                          aria-label={`删除选项 ${optionIndex + 1}`}
+                                          className="text-xs font-semibold text-rose-500 disabled:opacity-25"
+                                        >
+                                          删除
+                                        </button>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              </div>
+                            </ActionInterceptor>
+                          ) : (
+                            <div className="mt-3">
+                              {question.prompt ? (
+                                <ArticleQuestionPreview
+                                  text={question.prompt}
+                                />
+                              ) : (
+                                <p className="text-sm text-slate-400">
+                                  （无题干）
+                                </p>
+                              )}
+                              <div className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                                {question.options.map((option, optionIndex) => (
+                                  <p
+                                    key={option.id}
+                                    className={`text-xs leading-5 ${
+                                      option.isCorrect
+                                        ? 'font-bold text-slate-950'
+                                        : 'text-slate-500'
+                                    }`}
+                                  >
+                                    {optionIndex + 1}. {option.text}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </SortableItem>
-                  )
-                })}
-              </SortableList>
-            )}
-          </div>
+                      </SortableItem>
+                    )
+                  })}
+                </SortableList>
+              )}
+            </section>
+          ) : null}
         </div>
       </div>
-    </div>
+    </main>
   )
 }

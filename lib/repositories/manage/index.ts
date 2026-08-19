@@ -39,17 +39,24 @@ function toCollectionTypeLabel(type: CollectionType) {
 export async function getUploadPageSeedData({
   includeLessons = true,
   materialType,
+  language,
+  collectionTypes,
 }: {
   includeLessons?: boolean
   materialType?: MaterialType
+  language?: string
+  collectionTypes?: CollectionType[]
 } = {}): Promise<{
   dbLevels: UploadPageLevelLite[]
   dbCollections: UploadPageCollectionLite[]
 }> {
   const collections = await prisma.collection.findMany({
-    where: materialType
-      ? { acceptedMaterialTypes: { has: materialType } }
-      : undefined,
+    where: {
+      ...(materialType ? { acceptedMaterialTypes: { has: materialType } } : {}),
+      ...(collectionTypes?.length
+        ? { collectionType: { in: collectionTypes } }
+        : {}),
+    },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -76,9 +83,23 @@ export async function getUploadPageSeedData({
       },
     },
   })
+  const allowsPaper =
+    !collectionTypes || collectionTypes.includes(CollectionType.PAPER)
+  const allowsMaterial =
+    !collectionTypes ||
+    collectionTypes.some((type) => type !== CollectionType.PAPER)
   const dbLevels: UploadPageLevelLite[] = [
-    { id: CollectionType.PAPER, title: '正式试卷 - 真题 / 模考' },
-    { id: CollectionType.CUSTOM_GROUP, title: '普通集合 - 教材 / 自定义练习' },
+    ...(allowsPaper
+      ? [{ id: CollectionType.PAPER, title: '正式试卷 - 真题 / 模考' }]
+      : []),
+    ...(allowsMaterial
+      ? [
+          {
+            id: CollectionType.CUSTOM_GROUP,
+            title: '资料集 - 教材 / 新闻 / 自定义内容',
+          },
+        ]
+      : []),
   ]
 
   const priorityByType: Record<MaterialType, number> = {
@@ -113,9 +134,9 @@ export async function getUploadPageSeedData({
     )
   }
 
-  const dbCollections: UploadPageCollectionLite[] = collections.map(
-    collection => {
-      const lessons = collection.materials.map(row => {
+  const allDbCollections: UploadPageCollectionLite[] = collections.map(
+    (collection) => {
+      const lessons = collection.materials.map((row) => {
         const payload = decodeMaterialPayloadRecord(
           row.material.type,
           row.material.contentPayload,
@@ -151,6 +172,37 @@ export async function getUploadPageSeedData({
       }
     },
   )
+
+  const collectionById = new Map(
+    collections.map((collection) => [collection.id, collection]),
+  )
+  const languageById = new Map<string, string | null>()
+  const resolveCollectionLanguage = (
+    collectionId: string,
+    visited = new Set<string>(),
+  ): string | null => {
+    if (languageById.has(collectionId))
+      return languageById.get(collectionId) ?? null
+    if (visited.has(collectionId)) return null
+    visited.add(collectionId)
+    const collection = collectionById.get(collectionId)
+    if (!collection) return null
+    const ownLanguage = collection.language?.trim().toLowerCase()
+    const resolved: string | null =
+      ownLanguage ||
+      (collection.parentId
+        ? resolveCollectionLanguage(collection.parentId, visited)
+        : null)
+    languageById.set(collectionId, resolved)
+    return resolved
+  }
+  const normalizedLanguage = language?.trim().toLowerCase()
+  const dbCollections = normalizedLanguage
+    ? allDbCollections.filter(
+        (collection) =>
+          resolveCollectionLanguage(collection.id) === normalizedLanguage,
+      )
+    : allDbCollections
 
   return { dbLevels, dbCollections }
 }

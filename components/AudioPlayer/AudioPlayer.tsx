@@ -10,16 +10,11 @@ import { logMaterialPlaytime } from '@/features/audio/actions'
 import type { TooltipSaveState } from '@/components/vocabulary/VocabularySaveStatus'
 import WordTooltip from '@/components/exam/WordTooltip'
 import TrustedHtml from '@/components/ui/TrustedHtml'
-import WordMetaPanel from '@/components/vocabulary/WordMetaPanel'
-import {
-  useShowMeaning,
-  useShowPronunciation,
-} from '@/hooks/usePronunciationPrefs'
+import { useShowPronunciation } from '@/hooks/usePronunciationPrefs'
 import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
 import { inferContextualPos } from '@/utils/language/posTagger'
 import {
   buildPronunciationMapForText,
-  buildSurfaceAliasMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useTextSelection } from '@/hooks/useTextSelection'
@@ -96,7 +91,6 @@ export default function AudioPlayer({
   const [dialogueSaveState, setDialogueSaveState] =
     useState<TooltipSaveState>('idle')
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
-  const { showMeaning, setShowMeaning } = useShowMeaning()
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     useState(vocabularyMetaMap)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
@@ -107,9 +101,6 @@ export default function AudioPlayer({
     kind: StudyTimeKind.LESSON_SPEAKING,
     intervalMs: 45000,
   })
-  const [meaningMatchBySentence, setMeaningMatchBySentence] = useState<
-    Record<number, Record<string, number>>
-  >({})
   const [sessionPlaySeconds, setSessionPlaySeconds] = useState(0)
   const [totalPlaySeconds, setTotalPlaySeconds] = useState(
     initialTotalPlaySeconds,
@@ -120,10 +111,6 @@ export default function AudioPlayer({
   const dirtySecondsRef = useRef(0)
   const isFlushingRef = useRef(false)
   const playerRootRef = useRef<HTMLDivElement>(null)
-  const activeSentenceNo =
-    activeId === null
-      ? 0
-      : lesson.dialogue.findIndex(item => item.id === activeId) + 1
   const activeSentenceIndex =
     activeId === null
       ? -1
@@ -132,59 +119,6 @@ export default function AudioPlayer({
     activeSentenceIndex > 0
       ? (lesson.dialogue[activeSentenceIndex - 1]?.id ?? null)
       : null
-  const sentenceMetaMap = useMemo(() => {
-    const entries = Object.entries(localVocabularyMetaMap).filter(
-      ([, meta]) =>
-        meta.pronunciations.filter(Boolean).length > 0 ||
-        meta.meanings.filter(Boolean).length > 0,
-    )
-    return new Map(
-      lesson.dialogue.map(item => {
-        const aliasMap = buildSurfaceAliasMapForText(
-          item.text,
-          entries.map(([word]) => word),
-        )
-        const bestByBase = new Map<
-          string,
-          {
-            word: string
-            baseWord: string
-            pronunciation: string
-            pronunciations: string[]
-            partsOfSpeech: string[]
-            meanings: string[]
-          }
-        >()
-        Object.entries(aliasMap).forEach(([surface, base]) => {
-          const meta = localVocabularyMetaMap[base]
-          if (!meta) return
-          const nextItem = {
-            word: surface,
-            baseWord: base,
-            pronunciation: meta.pronunciations[0] || '',
-            pronunciations: meta.pronunciations,
-            partsOfSpeech: meta.partsOfSpeech,
-            meanings: meta.meanings,
-          }
-          const existing = bestByBase.get(base)
-          if (!existing || surface.length > existing.word.length) {
-            bestByBase.set(base, nextItem)
-          }
-        })
-        const matched = Array.from(bestByBase.values())
-          .sort((a, b) => b.word.length - a.word.length)
-          .slice(0, 6)
-          .map(item => ({
-            word: item.word,
-            pronunciation: item.pronunciation,
-            pronunciations: item.pronunciations,
-            partsOfSpeech: item.partsOfSpeech,
-            meanings: item.meanings,
-          }))
-        return [item.id, matched] as const
-      }),
-    )
-  }, [localVocabularyMetaMap, lesson.dialogue])
   const transcriptPlainText = useMemo(
     () =>
       lesson.dialogue
@@ -193,9 +127,6 @@ export default function AudioPlayer({
         .join('\n'),
     [lesson.dialogue],
   )
-  const activeSentenceEntries = activeId
-    ? sentenceMetaMap.get(activeId) || []
-    : []
   const selectedVocabularyMeta = useMemo(() => {
     if (!selection.text) return undefined
     const existing = localVocabularyMetaMap[selection.text]
@@ -209,17 +140,6 @@ export default function AudioPlayer({
       ),
     }
   }, [localVocabularyMetaMap, selection.contextSentence, selection.text])
-  const isSentenceMeaningMatched = (sentenceId: number) => {
-    if (!showMeaning) return true
-    const entries = sentenceMetaMap.get(sentenceId) || []
-    const requiredWords = entries
-      .filter(entry => entry.meanings.length > 0)
-      .map(entry => entry.word)
-    if (requiredWords.length === 0) return true
-    const matchedMap = meaningMatchBySentence[sentenceId] || {}
-    return requiredWords.every(word => !!matchedMap[word])
-  }
-
   const annotateSentence = (text: string) => {
     if (!showPronunciation) return text
     const basePronMap = Object.entries(localVocabularyMetaMap).reduce<
@@ -362,11 +282,7 @@ export default function AudioPlayer({
   useEffect(() => {
     if (activeId === null) return
     const frameId = window.requestAnimationFrame(() => {
-      const targetId =
-        isBlindMode && previousSentenceId !== null
-          ? previousSentenceId
-          : activeId
-      const element = document.getElementById(`sentence-${targetId}`)
+      const element = document.getElementById(`sentence-${activeId}`)
       if (!element) return
 
       const root = isEmbedded ? playerRootRef.current : null
@@ -378,18 +294,14 @@ export default function AudioPlayer({
       const viewportBottom = rootRect
         ? Math.min(rootRect.bottom, window.innerHeight)
         : window.innerHeight
-      const safeTop = Math.max(0, headerBottom) + 16
-      const safeBottom = Math.max(safeTop + 80, viewportBottom - 72)
+      const safeTop = Math.max(rootRect?.top ?? 0, headerBottom) + 16
+      const safeBottom = Math.max(safeTop + 80, viewportBottom - 24)
       const targetRect = element.getBoundingClientRect()
-      const scrollDelta =
-        targetRect.top < safeTop
-          ? targetRect.top - safeTop
-          : targetRect.bottom > safeBottom
-            ? targetRect.bottom - safeBottom
-            : 0
+      const targetCenter = targetRect.top + targetRect.height / 2
+      const visibleCenter = safeTop + (safeBottom - safeTop) / 2
+      const scrollDelta = targetCenter - visibleCenter
 
-      // 当前句仍在舒适阅读区时保持用户视角，只在离开视区时最小幅度跟随。
-      if (Math.abs(scrollDelta) < 1) return
+      if (Math.abs(scrollDelta) < 2) return
       const behavior = window.matchMedia('(prefers-reduced-motion: reduce)')
         .matches
         ? 'auto'
@@ -399,40 +311,7 @@ export default function AudioPlayer({
     })
 
     return () => window.cancelAnimationFrame(frameId)
-  }, [activeId, isBlindMode, isEmbedded, previousSentenceId])
-
-  const activeVocabularyPanel =
-    activeId !== null && activeSentenceEntries.length > 0 ? (
-      <section className='rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-900 md:p-4'>
-        <div className='mb-2 flex items-center justify-between'>
-          <h2 className='text-sm font-bold text-slate-900 dark:text-slate-100'>
-            当前句词汇
-          </h2>
-          <span className='text-[11px] text-slate-400'>
-            第 {activeSentenceNo} 句
-          </span>
-        </div>
-        <WordMetaPanel
-          entries={activeSentenceEntries}
-          showPronunciation={showPronunciation}
-          showMeaning={showMeaning}
-          contextSentence={
-            lesson.dialogue.find(item => item.id === activeId)?.text || ''
-          }
-          enableMeaningMatch={showMeaning}
-          matchedMeaningMap={meaningMatchBySentence[activeId] || {}}
-          onMatchedMeaningChange={(word, meaningIndex) => {
-            setMeaningMatchBySentence(prev => ({
-              ...prev,
-              [activeId]: {
-                ...(prev[activeId] || {}),
-                [word]: meaningIndex,
-              },
-            }))
-          }}
-        />
-      </section>
-    ) : null
+  }, [activeId, isEmbedded])
 
   return (
     <div
@@ -472,9 +351,6 @@ export default function AudioPlayer({
               setLocalVocabularyMetaMap(prev => ({
                 ...prev,
                 [word]: meta,
-                ...(selection.text && selection.text !== word
-                  ? { [selection.text]: meta }
-                  : {}),
               }))
             }
           />
@@ -491,7 +367,6 @@ export default function AudioPlayer({
         isTrackLoop={isTrackLoop}
         playbackRate={playbackRate}
         showPronunciation={showPronunciation}
-        showMeaning={showMeaning}
         isBlindMode={isBlindMode}
         sessionPlaySeconds={sessionPlaySeconds}
         totalPlaySeconds={totalPlaySeconds}
@@ -503,11 +378,10 @@ export default function AudioPlayer({
         onToggleTrackLoop={toggleTrackLoop}
         onTogglePlaybackRate={togglePlaybackRate}
         onShowPronunciationChange={setShowPronunciation}
-        onShowMeaningChange={setShowMeaning}
         onBlindModeChange={setIsBlindMode}
       />
 
-      <div className='mx-auto grid w-full max-w-6xl gap-4 px-3 py-3 md:px-5 md:py-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start'>
+      <div className='mx-auto w-full max-w-5xl px-3 py-4 md:px-5 md:py-5'>
         <div className='min-w-0 space-y-2 pb-24 md:pb-32'>
           {lesson.dialogue.map((item, index) => (
             <ListeningSentenceRow
@@ -532,10 +406,6 @@ export default function AudioPlayer({
               savingDialogueId={savingDialogueId}
               dialogueSaveState={dialogueSaveState}
               renderedText={annotateSentence(item.text)}
-              activeVocabulary={
-                activeId === item.id ? activeVocabularyPanel : null
-              }
-              canAddToReview={isSentenceMeaningMatched(item.id)}
               onClick={() => handleSentenceClick(item)}
               onToggleLoop={event => {
                 event.stopPropagation()
@@ -545,19 +415,6 @@ export default function AudioPlayer({
             />
           ))}
         </div>
-
-        <aside className='sticky top-28 hidden max-h-[calc(100vh-8rem)] overflow-y-auto [overflow-anchor:none] lg:block'>
-          {activeVocabularyPanel || (
-            <div className='rounded-xl border border-dashed border-slate-300 bg-white/60 p-5 text-center dark:border-slate-700 dark:bg-slate-900/60'>
-              <p className='text-sm font-semibold text-slate-600 dark:text-slate-300'>
-                播放一句后显示词汇
-              </p>
-              <p className='mt-1 text-xs text-slate-400'>
-                词汇会固定在右侧，不会挤动正文
-              </p>
-            </div>
-          )}
-        </aside>
       </div>
     </div>
   )

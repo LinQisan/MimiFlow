@@ -35,6 +35,27 @@ function splitTableCells(line: string) {
     .filter(Boolean)
 }
 
+function splitMarkdownTableCells(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map(cell => cell.trim())
+}
+
+const isMarkdownTableRow = (line: string) =>
+  /^\s*\|.+\|\s*$/.test(line)
+
+const isMarkdownTableSeparator = (line: string) => {
+  if (!isMarkdownTableRow(line)) return false
+  const cells = splitMarkdownTableCells(line)
+  return (
+    cells.length >= 2 &&
+    cells.every(cell => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, '')))
+  )
+}
+
 function normalizeTableRows(rows: string[][]) {
   const columnCount = Math.max(...rows.map(row => row.length))
   return rows.map((row, index) => {
@@ -63,6 +84,22 @@ function parseParagraph(paragraph: string): ArticleContentBlock[] {
   }
 
   for (let index = 0; index < lines.length;) {
+    if (
+      isMarkdownTableRow(lines[index]) &&
+      isMarkdownTableSeparator(lines[index + 1] || '')
+    ) {
+      flushText()
+      const rows = [splitMarkdownTableCells(lines[index])]
+      let cursor = index + 2
+      while (cursor < lines.length && isMarkdownTableRow(lines[cursor])) {
+        rows.push(splitMarkdownTableCells(lines[cursor]))
+        cursor += 1
+      }
+      blocks.push({ type: 'table', rows: normalizeTableRows(rows), hasHeader: true })
+      index = cursor
+      continue
+    }
+
     const candidateRows: string[][] = []
     let cursor = index
     while (cursor < lines.length) {
@@ -97,4 +134,40 @@ export function parseArticleContentBlocks(paragraphs: string[]) {
     const math = parseDisplayMath(paragraph)
     return math ? [math] : parseParagraph(paragraph)
   })
+}
+
+export function renderSafeArticleContentBlocksHtml(
+  blocks: ArticleContentBlock[],
+) {
+  return blocks
+    .map(block => {
+      if (block.type === 'table') {
+        const bodyRows = block.hasHeader ? block.rows.slice(1) : block.rows
+        const header = block.hasHeader
+          ? `<thead><tr>${block.rows[0]
+              .map(cell => `<th scope="col">${cell}</th>`)
+              .join('')}</tr></thead>`
+          : ''
+        const body = bodyRows
+          .map(
+            row =>
+              `<tr>${row
+                .map((cell, index) =>
+                  block.hasHeader && index === 0
+                    ? `<th scope="row">${cell}</th>`
+                    : `<td>${cell}</td>`,
+                )
+                .join('')}</tr>`,
+          )
+          .join('')
+        return `<div class="article-structured-table-wrap"><table class="article-structured-table">${header}<tbody>${body}</tbody></table></div>`
+      }
+
+      if (block.type === 'math') {
+        return `<div class="article-structured-math">${block.expression}</div>`
+      }
+
+      return `<p>${block.text.replace(/\n/g, '<br />')}</p>`
+    })
+    .join('')
 }

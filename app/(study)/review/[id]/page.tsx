@@ -10,6 +10,29 @@ import ReviewQuestionClient from './ReviewQuestionClient'
 
 export const dynamic = 'force-dynamic'
 
+const groupRetryItems = <T extends { retryId: string; lessonId: string | null }>(
+  items: T[],
+) => {
+  const groups: T[][] = []
+  const lessonGroupIndexes = new Map<string, number>()
+
+  items.forEach(item => {
+    if (!item.lessonId) {
+      groups.push([item])
+      return
+    }
+    const existingIndex = lessonGroupIndexes.get(item.lessonId)
+    if (existingIndex !== undefined) {
+      groups[existingIndex].push(item)
+      return
+    }
+    lessonGroupIndexes.set(item.lessonId, groups.length)
+    groups.push([item])
+  })
+
+  return groups
+}
+
 export default async function ReviewQuestionPage({
   params,
   searchParams,
@@ -30,9 +53,11 @@ export default async function ReviewQuestionPage({
     ? requestedType
     : undefined
   const items = await getDueRetryQuestions(100, activeQuestionType)
-
-  const foundIndex = items.findIndex(item => item.retryId === id)
-  if (foundIndex === -1) {
+  const itemGroups = groupRetryItems(items)
+  const foundGroupIndex = itemGroups.findIndex(group =>
+    group.some(item => item.retryId === id),
+  )
+  if (foundGroupIndex === -1) {
     const currentItem = await getRetryQuestionById(id)
     if (currentItem) {
       if (
@@ -44,14 +69,25 @@ export default async function ReviewQuestionPage({
           `/review/${items[0].retryId}?type=${encodeURIComponent(activeQuestionType)}`,
         )
       }
+      const relatedItems = currentItem.lessonId
+        ? items.filter(item => item.lessonId === currentItem.lessonId)
+        : []
+      const currentItems = [
+        currentItem,
+        ...relatedItems.filter(item => item.retryId !== currentItem.retryId),
+      ]
+      const relatedIds = new Set(currentItems.map(item => item.retryId))
+      const remainingGroups = groupRetryItems(
+        items.filter(item => !relatedIds.has(item.retryId)),
+      )
       const queue = [
         { retryId: currentItem.retryId },
-        ...items.map(item => ({ retryId: item.retryId })),
+        ...remainingGroups.map(group => ({ retryId: group[0].retryId })),
       ]
       return (
         <ReviewQuestionClient
           initialSummary={summary}
-          currentItem={currentItem}
+          currentItems={currentItems}
           queue={queue}
           currentIndex={0}
           activeQuestionType={activeQuestionType || null}
@@ -66,15 +102,15 @@ export default async function ReviewQuestionPage({
     notFound()
   }
 
-  const currentItem = items[foundIndex]
-  const queue = items.map(item => ({ retryId: item.retryId }))
+  const currentItems = itemGroups[foundGroupIndex]
+  const queue = itemGroups.map(group => ({ retryId: group[0].retryId }))
 
   return (
     <ReviewQuestionClient
       initialSummary={summary}
-      currentItem={currentItem}
+      currentItems={currentItems}
       queue={queue}
-      currentIndex={foundIndex}
+      currentIndex={foundGroupIndex}
       activeQuestionType={activeQuestionType || null}
       questionTypes={typeSummaries}
     />

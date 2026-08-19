@@ -624,6 +624,16 @@ html.dark .ui-tag-warn {
   min-height: 2.75rem;
 }
 
+body.editorial-ui main.manage-upload-surface form > :where(fieldset, section) {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+body.editorial-ui main .paper-question-row {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 .ui-mobile-py-sm {
   padding-top: var(--ui-py-mobile-sm);
   padding-bottom: var(--ui-py-mobile-sm);
@@ -707,6 +717,51 @@ html {
 
 .reading-passage-body li + li {
   margin-top: 0.45em;
+}
+
+.article-structured-table-wrap {
+  max-width: 100%;
+  margin: 1.2em 0 1.5em;
+  overflow-x: auto;
+  border: 1px solid rgb(148 163 184);
+}
+
+.article-structured-table {
+  width: 100%;
+  min-width: 38rem;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.84em;
+  line-height: 1.65;
+}
+
+.article-structured-table th,
+.article-structured-table td {
+  padding: 0.65em 0.8em;
+  border-right: 1px solid rgb(203 213 225);
+  border-bottom: 1px solid rgb(203 213 225);
+  vertical-align: top;
+}
+
+.article-structured-table th {
+  background: rgb(241 245 249);
+  color: rgb(30 41 59);
+  font-weight: 700;
+}
+
+.article-structured-table tr:last-child > * {
+  border-bottom: 0;
+}
+
+.article-structured-table tr > *:last-child {
+  border-right: 0;
+}
+
+.exam-text-underline {
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.2em;
 }
 
 /* Japanese-focused typography for exam question content and reading passages. */

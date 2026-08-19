@@ -1,10 +1,15 @@
 import { annotateJapaneseHtml } from '@/hooks/usePronunciationPrefs'
 import { escapeHtml } from '@/utils/language/japaneseRuby'
 import type { ExamAnnotationSettings } from './types'
+import { renderUnderlineMarkup } from '@/utils/text/underlineMarkup'
+import { resolveJapaneseTargetSurface } from '@/utils/vocabulary/japaneseInflection'
 
 const BLANK_TOKEN_GLOBAL = /([（(]\s*[）)]|[＿_]{2,}|[★＊])/g
 
-const toRichHtml = (text: string) => escapeHtml(text || '').replace(/\n/g, '<br/>')
+const toRichHtml = (text: string, preserveNewlines = false) => {
+  const html = renderUnderlineMarkup(escapeHtml(text || ''))
+  return preserveNewlines ? html : html.replace(/\n/g, '<br/>')
+}
 
 const withTargetHighlight = (html: string, targetWord?: string | null) => {
   const token = (targetWord || '').trim()
@@ -13,7 +18,7 @@ const withTargetHighlight = (html: string, targetWord?: string | null) => {
 
   return html.replace(
     escapedToken,
-    `<span class="mx-1 border-b-2 border-black px-1 font-bold">${escapedToken}</span>`,
+    `<span class="mx-1 inline-block whitespace-nowrap border-b-2 border-black px-1 font-bold">${escapedToken}</span>`,
   )
 }
 
@@ -26,16 +31,27 @@ const withFillBlankHint = (html: string) =>
 export const annotateExamText = ({
   text,
   targetWord,
+  fuzzyTarget = false,
   fillBlank = false,
+  preserveNewlines = false,
   settings,
 }: {
   text: string
   targetWord?: string | null
+  fuzzyTarget?: boolean
   fillBlank?: boolean
+  preserveNewlines?: boolean
   settings: ExamAnnotationSettings
 }) => {
-  const html = toRichHtml(text)
-  const highlighted = fillBlank ? withFillBlankHint(html) : withTargetHighlight(html, targetWord)
+  const html = toRichHtml(text, preserveNewlines)
+  const highlighted = fillBlank
+    ? withFillBlankHint(html)
+    : withTargetHighlight(
+        html,
+        fuzzyTarget
+          ? resolveJapaneseTargetSurface(text, targetWord || '')
+          : targetWord,
+      )
 
   return annotateJapaneseHtml(
     highlighted,

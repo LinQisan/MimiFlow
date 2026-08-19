@@ -18,10 +18,13 @@ const questionContentSchema = z
     targetWord: z.string().nullable().optional(),
     optionLabelFormat: z.string().optional(),
     customOptionLabels: z.array(z.string()).catch([]),
+    shuffleOptions: z.boolean().optional(),
+    sortingOrder: z.array(z.number().int().nonnegative()).optional(),
     listeningSectionNumber: z.number().int().positive().nullable().optional(),
     sectionNumber: z.number().int().positive().nullable().optional(),
     listeningSectionTitle: z.string().optional(),
     sectionTitle: z.string().optional(),
+    imageUrl: z.string().optional(),
     order: z.number().int().nonnegative().optional(),
   })
   .passthrough()

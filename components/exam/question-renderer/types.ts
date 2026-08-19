@@ -4,6 +4,7 @@ import type { OptionLabelFormat } from '@/utils/questions/optionLabels'
 export type ExamQuestionOption = {
   id: string
   text: string
+  imageUrl?: string | null
   isCorrect?: boolean
 }
 
@@ -21,6 +22,9 @@ export type ExamQuestion = {
   options?: ExamQuestionOption[]
   optionLabelFormat?: OptionLabelFormat | null
   customOptionLabels?: string[]
+  shuffleOptions?: boolean
+  sortingOrder?: number[]
+  imageUrl?: string | null
   passageId?: string | null
   lessonId?: string | null
   passage?: {
@@ -32,6 +36,7 @@ export type ExamQuestion = {
     audioFile?: string | null
     sectionKey?: string | null
     sectionTitle?: string | null
+    sectionNumber?: number | null
     dialogues?: {
       id: number
       text: string

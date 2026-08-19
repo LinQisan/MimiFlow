@@ -1,31 +1,53 @@
 // Practice paper overview.
-import { notFound } from 'next/navigation'
-import Link from 'next/link'
-import { findPaperDetailById } from '@/lib/repositories/exam'
-import { getQuestionTypeDisplay } from '@/utils/questions/typeLabels'
+import { notFound } from "next/navigation";
+import Link from "next/link";
+import { findPaperDetailById } from "@/lib/repositories/exam";
+import { getQuestionTypeDisplay } from "@/utils/questions/typeLabels";
+import {
+  getReadingQuestionSection,
+  getVocabGrammarQuestionSection,
+  isReadingGrammarQuestion,
+} from "@/features/questions/domain/paper-editor";
+import { getToeicPartByQuestionType } from "@/features/questions/domain/toeic";
+import { groupQuestionsByMaterial } from "@/modules/practice/domain/material-question-groups";
+import { buildPaperFrequencyDocuments } from "@/features/practice/domain/paper-word-frequency";
+import PaperWordFrequencyDialog from "@/features/practice/ui/PaperWordFrequencyDialog";
+import { getSudachiPronunciationMap } from "@/features/reading/server/sudachi-pronunciation";
+import { buildWordFrequency } from "@/features/reading/domain/sudachi";
 
 export default async function PaperPage({
   params,
 }: {
-  params: Promise<{ id: string }>
+  params: Promise<{ id: string }>;
 }) {
-  const { id } = await params
-  const paper = await findPaperDetailById(id)
+  const { id } = await params;
+  const paper = await findPaperDetailById(id);
   // 2. 错误处理：如果数据库中找不到该试卷，返回 404 页面
   if (!paper) {
-    notFound()
+    notFound();
   }
+  const frequencySource = buildPaperFrequencyDocuments(paper);
+  const paperFrequency = buildWordFrequency(
+    (await getSudachiPronunciationMap(frequencySource.texts)).tokens,
+  );
+  const normalizedPaperLanguage = (paper.language || "").trim().toLowerCase();
+  const isJapanesePaper =
+    normalizedPaperLanguage === "ja" ||
+    normalizedPaperLanguage.startsWith("ja-");
+  const isEnglishPaper =
+    normalizedPaperLanguage === "en" ||
+    normalizedPaperLanguage.startsWith("en-");
 
   const listeningSections = Array.from(
     paper.lessons
-      .flatMap(lesson =>
-        (lesson.questions || []).map(question => ({
+      .flatMap((lesson) =>
+        (lesson.questions || []).map((question) => ({
           ...question,
           lessonId: lesson.id,
           lessonTitle: lesson.title,
           audioFile: lesson.audioFile,
-          sectionKey: question.sectionKey || 'listening',
-          sectionTitle: question.sectionTitle || '听力',
+          sectionKey: question.sectionKey || "listening",
+          sectionTitle: question.sectionTitle || "听力",
           sectionNumber: question.sectionNumber || null,
         })),
       )
@@ -33,47 +55,45 @@ export default async function PaperPage({
         Map<
           string,
           {
-            key: string
-            title: string
-            sectionNumber: number | null
+            key: string;
+            title: string;
+            sectionNumber: number | null;
             questions: Array<{
-              id: string
-              lessonId: string
-              lessonTitle: string
-              audioFile: string | null
-              prompt: string | null
-              contextSentence: string | null
-              sectionKey: string
-              sectionTitle: string
-              sectionNumber: number | null
-            }>
+              id: string;
+              lessonId: string;
+              lessonTitle: string;
+              audioFile: string | null;
+              prompt: string | null;
+              contextSentence: string | null;
+              sectionKey: string;
+              sectionTitle: string;
+              sectionNumber: number | null;
+            }>;
           }
         >
       >((acc, question) => {
-        const key = question.sectionKey
-        const existing =
-          acc.get(key) ||
-          {
-            key,
-            title: question.sectionTitle,
-            sectionNumber: question.sectionNumber,
-            questions: [],
-          }
-        existing.questions.push(question)
-        acc.set(key, existing)
-        return acc
+        const key = question.sectionKey;
+        const existing = acc.get(key) || {
+          key,
+          title: question.sectionTitle,
+          sectionNumber: question.sectionNumber,
+          questions: [],
+        };
+        existing.questions.push(question);
+        acc.set(key, existing);
+        return acc;
       }, new Map())
       .values(),
   ).sort((a, b) => {
-    const aNumber = a.sectionNumber || Number.MAX_SAFE_INTEGER
-    const bNumber = b.sectionNumber || Number.MAX_SAFE_INTEGER
-    if (aNumber !== bNumber) return aNumber - bNumber
-    return a.title.localeCompare(b.title, 'zh-CN')
-  })
+    const aNumber = a.sectionNumber || Number.MAX_SAFE_INTEGER;
+    const bNumber = b.sectionNumber || Number.MAX_SAFE_INTEGER;
+    if (aNumber !== bNumber) return aNumber - bNumber;
+    return a.title.localeCompare(b.title, "zh-CN");
+  });
 
   const quizTypeSections = Array.from(
     paper.quizzes
-      .flatMap(quiz =>
+      .flatMap((quiz) =>
         quiz.questions.map((question, index) => ({
           ...question,
           quizTitle: quiz.title,
@@ -84,274 +104,419 @@ export default async function PaperPage({
         Map<
           string,
           {
-            questionType: string
+            questionType: string;
             questions: Array<{
-              id: string
-              questionType: string
-              quizTitle: string
-              questionNumber: number
-              prompt: string | null
-              contextSentence: string | null
-            }>
+              id: string;
+              questionType: string;
+              quizTitle: string;
+              questionNumber: number;
+              prompt: string | null;
+              contextSentence: string | null;
+            }>;
           }
         >
       >((acc, question) => {
-        const key = question.questionType
-        const section = acc.get(key) || { questionType: key, questions: [] }
-        section.questions.push(question)
-        acc.set(key, section)
-        return acc
+        const key = question.questionType;
+        const section = acc.get(key) || { questionType: key, questions: [] };
+        section.questions.push(question);
+        acc.set(key, section);
+        return acc;
       }, new Map())
       .values(),
   )
+    .map((section) => ({
+      ...section,
+      ...getVocabGrammarQuestionSection(section.questionType),
+    }))
+    .sort((a, b) => a.sectionNumber - b.sectionNumber);
 
-  // 3. 渲染页面内容
+  const passageQuestions = paper.passages.flatMap((passage, passageIndex) =>
+    (passage.questions || []).map((question, questionIndex) => ({
+      ...question,
+      passageId: passage.id,
+      passageTitle: passage.title,
+      passageIndex,
+      questionIndex,
+    })),
+  );
+  const readingGrammarQuestions = passageQuestions
+    .filter((question) => isReadingGrammarQuestion(question.questionType))
+    .sort(
+      (a, b) =>
+        a.passageIndex - b.passageIndex ||
+        a.order - b.order ||
+        a.questionIndex - b.questionIndex,
+    );
+  const languageQuestionGroups = (isJapanesePaper
+    ? [
+        {
+          key: "TEXT_VOCAB",
+          title: "文字・語彙",
+          sections: quizTypeSections.filter(
+            (section) =>
+              section.sectionNumber >= 1 && section.sectionNumber <= 4,
+          ),
+          readingGrammarQuestions: [] as typeof readingGrammarQuestions,
+        },
+        {
+          key: "GRAMMAR",
+          title: "文法",
+          sections: quizTypeSections.filter(
+            (section) =>
+              section.sectionNumber >= 5 && section.sectionNumber <= 7,
+          ),
+          readingGrammarQuestions,
+        },
+      ]
+    : [
+        {
+          key: "LANGUAGE",
+          title: isEnglishPaper ? "Reading" : "语言",
+          sections: quizTypeSections,
+          readingGrammarQuestions,
+        },
+      ]
+  ).filter(
+    (group) =>
+      group.sections.length > 0 || group.readingGrammarQuestions.length > 0,
+  );
+  const readingSections = Array.from(
+    passageQuestions
+      .filter((question) => !isReadingGrammarQuestion(question.questionType))
+      .reduce<
+        Map<
+          number,
+          {
+            sectionNumber: number;
+            title: string;
+            questions: typeof passageQuestions;
+          }
+        >
+      >((sections, question) => {
+        const toeicPart = isEnglishPaper
+          ? getToeicPartByQuestionType(question.questionType)
+          : null;
+        const section = toeicPart
+          ? {
+              sectionNumber: toeicPart.part,
+              title: `Part ${toeicPart.part} · ${toeicPart.title}`,
+            }
+          : getReadingQuestionSection(question.questionType);
+        const current = sections.get(section.sectionNumber) || {
+          ...section,
+          questions: [],
+        };
+        current.questions.push(question);
+        sections.set(section.sectionNumber, current);
+        return sections;
+      }, new Map())
+      .values(),
+  ).sort((a, b) => a.sectionNumber - b.sectionNumber);
+  const totalQuestionCount =
+    quizTypeSections.reduce(
+      (total, section) => total + section.questions.length,
+      0,
+    ) +
+    listeningSections.reduce(
+      (total, section) => total + section.questions.length,
+      0,
+    ) +
+    paper.passages.reduce(
+      (total, passage) => total + (passage.questions?.length || 0),
+      0,
+    );
+
   return (
-    <div className='mx-auto max-w-5xl p-4 md:p-6'>
-      <header className='mb-6 rounded-[20px] bg-white p-5 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-6'>
-        <p className='mb-2 text-xs font-bold uppercase tracking-[0.18em] text-slate-500'>
-          试卷详情
-        </p>
-        <h1 className='mb-2 text-2xl font-black tracking-tight text-slate-900 md:text-3xl'>
-          {paper.name}
-        </h1>
-        <div className='mb-3 flex flex-wrap gap-2 text-xs font-semibold'>
-          <span className='ui-tag'>
-            类型: {paper.collectionType}
-          </span>
-          <span className='ui-tag'>
-            语言: {paper.language || '未设置'}
-          </span>
-          <span className='ui-tag'>
-            等级: {paper.level || '未设置'}
-          </span>
-          <span className='ui-tag'>
-            排序: {paper.sortOrder}
-          </span>
-        </div>
-        {paper.description && (
-          <p className='text-slate-600'>{paper.description}</p>
-        )}
-        <p className='mt-2 text-[11px] font-medium text-slate-400'>
-          更新于 {paper.updatedAt.toLocaleString('zh-CN')}
-        </p>
-        <div className='mt-4 flex flex-wrap items-center gap-2'>
+    <main className="min-h-screen bg-stone-50 text-slate-900">
+      <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-8">
+        <header className="mb-8 border-b border-slate-200 pb-6">
           <Link
-            href='/practice'
-            className='ui-btn'>
-            返回试卷列表
+            href="/practice"
+            className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
+          >
+            ← 试卷
           </Link>
-          <Link
-            href={`/practice/${encodeURIComponent(paper.id)}/do`}
-            className='ui-btn ui-btn-primary'>
-            开始答题
-          </Link>
-        </div>
-      </header>
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
+                {paper.name}
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                {paper.level || "练习"} · {totalQuestionCount} 题
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <PaperWordFrequencyDialog
+                rows={paperFrequency}
+                stats={frequencySource.stats}
+              />
+              <Link
+                href={`/practice/${encodeURIComponent(paper.id)}/do`}
+                className="ui-btn ui-btn-primary"
+              >
+                开始答题
+              </Link>
+            </div>
+          </div>
+        </header>
 
-      {/* 文字·词汇·语法 */}
-      {quizTypeSections.length > 0 && (
-        <section className='mt-8'>
-          <div className='flex items-center gap-2 mb-6'>
-            <div className='h-6 w-1.5 rounded-full bg-slate-900'></div>
-            <h2 className='text-xl font-bold tracking-tight text-slate-900'>
-              文字·词汇·语法
+        {languageQuestionGroups.map((languageGroup) => (
+          <section key={languageGroup.key} className="mt-8">
+            <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-950">
+              {languageGroup.title}
             </h2>
-          </div>
+            <div className="divide-y divide-slate-200 border-y border-slate-200">
+              {languageGroup.sections.map((section) => {
+                const questionCount = section.questions.length;
+                const typeDisplay = getQuestionTypeDisplay(
+                  section.questionType,
+                );
+                const toeicPart = isEnglishPaper
+                  ? getToeicPartByQuestionType(section.questionType)
+                  : null;
 
-          <div className='space-y-5'>
-            {quizTypeSections.map((section, sectionIndex) => {
-              const questionCount = section.questions.length
-              const typeDisplay = getQuestionTypeDisplay(section.questionType)
-
-              return (
-                <div
-                  key={section.questionType}
-                  className='rounded-[18px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
-                  <div className='mb-5 flex items-center justify-between gap-3 border-b border-slate-100 pb-3'>
-                    <div>
-                      <p className='mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
-                        题型 {sectionIndex + 1}
-                      </p>
-                      <h3 className='text-lg font-bold tracking-tight text-slate-900'>
-                        {typeDisplay.label}
+                return (
+                  <div key={section.questionType} className="py-5">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="font-bold text-slate-900">
+                        {isJapanesePaper
+                          ? `問題${section.sectionNumber}｜${typeDisplay.label}`
+                          : toeicPart
+                            ? `Part ${toeicPart.part} · ${toeicPart.title}`
+                            : typeDisplay.label}
                       </h3>
-                      <div className='mt-2 flex flex-wrap items-center gap-2'>
-                        <span className='ui-tag inline-flex'>
-                          {questionCount} 道题
-                        </span>
-                        <span className='text-xs font-medium text-slate-500'>
-                          {typeDisplay.description}
-                        </span>
-                      </div>
+                      <span className="text-xs font-semibold text-slate-400">
+                        {questionCount} 题
+                      </span>
                     </div>
-                  </div>
-
-                  <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'>
-                    {section.questions.map(question => (
-                      <Link
-                        href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
-                        key={question.id}
-                        className='group flex flex-col rounded-xl bg-slate-50 p-3 shadow-[inset_0_1px_1px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
-                        <span className='mb-1 text-xs font-medium text-slate-400 transition-colors group-hover:text-slate-600'>
-                          第 {question.questionNumber} 题
-                        </span>
-
-                        <span className='text-sm font-semibold text-slate-700 transition-colors group-hover:text-slate-900'>
-                          {question.prompt ||
-                            question.contextSentence ||
-                            '进入练习'}
-                        </span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-      {listeningSections.length > 0 && (
-        <section className='mt-8'>
-          <div className='mb-6 flex items-center gap-2'>
-            <div className='h-6 w-1.5 rounded-full bg-slate-900'></div>
-            <h2 className='text-xl font-bold tracking-tight text-slate-900'>
-              听力理解
-            </h2>
-          </div>
-
-          <div className='space-y-6'>
-            {listeningSections.map((section, sectionIndex) => {
-              const questionCount = section.questions.length
-              const firstQuestion = section.questions[0]
-
-              return (
-                <div
-                  key={section.key}
-                  className='rounded-[18px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
-                  <div className='mb-5 flex items-center justify-between gap-4 border-b border-slate-100 pb-4'>
-                    <div className='flex-1'>
-                      <p className='mb-1 text-xs font-bold uppercase tracking-[0.18em] text-slate-400'>
-                        听力部分 {sectionIndex + 1}
-                      </p>
-                      <h3 className='text-lg font-bold tracking-tight text-slate-900'>
-                        {section.title}
-                      </h3>
-                      <div className='mt-2 flex flex-wrap gap-2'>
-                        <span className='ui-tag inline-flex shrink-0'>
-                          {questionCount} 道题
-                        </span>
-                        <span className='ui-tag inline-flex shrink-0'>
-                          每题独立音频
-                        </span>
-                      </div>
-                    </div>
-                    {firstQuestion && (
-                      <Link
-                        href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(firstQuestion.id)}`}
-                        className='ui-btn ui-btn-primary shrink-0'>
-                        进入本部分
-                      </Link>
-                    )}
-                  </div>
-
-                  {questionCount > 0 ? (
-                    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'>
-                      {section.questions.map((question, index) => (
+                    <div className="mt-3 grid gap-x-8 md:grid-cols-2">
+                      {section.questions.map((question) => (
                         <Link
-                          key={question.id}
                           href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
-                          className='group rounded-xl bg-slate-50 px-3 py-3 shadow-[inset_0_1px_1px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
-                          <span className='block text-xs font-semibold text-slate-400 transition-colors group-hover:text-slate-600'>
-                            第 {index + 1} 题
+                          key={question.id}
+                          className="group flex gap-3 border-t border-slate-100 py-3 text-sm transition first:border-t-0 hover:text-slate-950"
+                        >
+                          <span className="w-6 shrink-0 font-semibold tabular-nums text-slate-400 group-hover:text-slate-700">
+                            {question.questionNumber}
                           </span>
-                          <span className='mt-1 block truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-slate-900'>
+                          <span className="line-clamp-2 font-medium text-slate-700 group-hover:text-slate-950">
                             {question.prompt ||
                               question.contextSentence ||
-                              question.lessonTitle ||
-                              '纯听力选项题'}
+                              "进入练习"}
                           </span>
                         </Link>
                       ))}
                     </div>
-                  ) : (
-                    <p className='text-sm italic text-slate-400'>暂无题目</p>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
-      {paper.passages.length > 0 && (
-        <section className='mt-8'>
-          <div className='mb-6 flex items-center gap-2'>
-            <div className='h-6 w-1.5 rounded-full bg-slate-900'></div>
-            <h2 className='text-xl font-bold tracking-tight text-slate-900'>
-              阅读理解
-            </h2>
-          </div>
-
-          <div className='space-y-6'>
-            {paper.passages.map(passage => {
-              const questions = passage.questions || []
-              const questionCount = questions.length
-              const readingTypeLabels = Array.from(
-                new Set(
-                  questions.map(
-                    question =>
-                      getQuestionTypeDisplay(question.questionType).label,
-                  ),
-                ),
-              )
-
-              return (
-                <div
-                  key={passage.id}
-                  className='rounded-[18px] bg-white p-6 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
-                  <div className='mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4'>
-                    <div className='flex-1'>
-                      <div className='mb-2 flex flex-wrap gap-2'>
-                        {readingTypeLabels.map(label => (
-                          <span key={label} className='ui-tag inline-flex'>
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                      <h3 className='mb-2 line-clamp-1 text-lg font-bold tracking-tight text-slate-900'>
-                        {passage.title}
-                      </h3>
-                      <p className='line-clamp-2 text-sm leading-relaxed text-slate-500'>
-                        {passage.content}
-                      </p>
-                    </div>
-                    <span className='ui-tag mt-1 shrink-0'>
-                      共 {questionCount} 题
+                  </div>
+                );
+              })}
+              {languageGroup.readingGrammarQuestions.length > 0 && (
+                <div className="py-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-bold text-slate-900">
+                      {isJapanesePaper ? "問題7｜文章の文法" : "Grammar"}
+                    </h3>
+                    <span className="text-xs font-semibold text-slate-400">
+                      {languageGroup.readingGrammarQuestions.length} 题
                     </span>
                   </div>
-                  {questionCount > 0 ? (
-                    <div className='grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8'>
-                      {questions.map((question, index) => (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {languageGroup.readingGrammarQuestions.map(
+                      (question, index) => (
                         <Link
                           href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
                           key={question.id}
-                          className='group flex items-center justify-center rounded-xl bg-slate-50 px-2 py-2.5 text-center shadow-[inset_0_1px_1px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5 hover:bg-white hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
-                          <span className='text-sm font-medium text-slate-600 transition-colors group-hover:text-slate-900'>
-                            第 {index + 1} 题
-                          </span>
+                          aria-label={`文章の文法第 ${index + 1} 题`}
+                          className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
+                        >
+                          {index + 1}
                         </Link>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className='text-sm italic text-slate-400'>暂无关联题目</p>
-                  )}
+                      ),
+                    )}
+                  </div>
                 </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-    </div>
-  )
+              )}
+            </div>
+          </section>
+        ))}
+
+        {readingSections.length > 0 && (
+          <section className="mt-8">
+            <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-950">
+              {isEnglishPaper ? "Reading" : isJapanesePaper ? "読解" : "阅读"}
+            </h2>
+            <div className="divide-y divide-slate-200 border-y border-slate-200">
+              {readingSections.map((section) => {
+                const questionCount = section.questions.length;
+                const passageGroups = groupQuestionsByMaterial(
+                  section.questions,
+                  (question) => question.passageId,
+                );
+
+                return (
+                  <div key={section.sectionNumber} className="py-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <h3 className="truncate font-bold text-slate-900">
+                        {isJapanesePaper
+                          ? `問題${section.sectionNumber}｜${section.title}`
+                          : section.title}
+                      </h3>
+                      <span className="shrink-0 text-xs font-semibold text-slate-400">
+                        {questionCount} 题
+                      </span>
+                    </div>
+
+                    {questionCount > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {passageGroups.map((passageGroup, passageIndex) => {
+                          if (passageGroup.questions.length === 1) {
+                            const question = passageGroup.questions[0];
+                            return (
+                              <Link
+                                key={passageGroup.materialId}
+                                href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                aria-label={`${section.title}第 ${passageIndex + 1} 篇，${question.passageTitle}`}
+                                className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
+                              >
+                                {passageIndex + 1}
+                              </Link>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={passageGroup.materialId}
+                              className="flex items-center gap-2"
+                            >
+                              <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">
+                                {passageIndex + 1})
+                              </span>
+                              <div
+                                className="flex flex-wrap items-center gap-2"
+                                aria-label={`第 ${passageIndex + 1} 篇的小问`}
+                              >
+                                {passageGroup.questions.map(
+                                  (question, questionIndex) => (
+                                    <Link
+                                      key={question.id}
+                                      href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                      aria-label={`小问 ${questionIndex + 1}`}
+                                      className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
+                                    >
+                                      {questionIndex + 1}
+                                    </Link>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">暂无题目</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {listeningSections.length > 0 && (
+          <section className="mt-8">
+            <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-950">
+              {isEnglishPaper ? "Listening" : "听力"}
+            </h2>
+            <div className="divide-y divide-slate-200 border-y border-slate-200">
+              {listeningSections.map((section) => {
+                const questionCount = section.questions.length;
+                const firstQuestion = section.questions[0];
+                const lessonGroups = groupQuestionsByMaterial(
+                  section.questions,
+                  (question) => question.lessonId,
+                );
+
+                return (
+                  <div key={section.key} className="py-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-baseline gap-3">
+                        {section.sectionNumber && isJapanesePaper ? (
+                          <span className="text-xs font-bold text-slate-400">
+                            問題{section.sectionNumber}
+                          </span>
+                        ) : null}
+                        <h3 className="truncate font-bold text-slate-900">
+                          {section.title}
+                        </h3>
+                        <span className="shrink-0 text-xs font-semibold text-slate-400">
+                          {questionCount} 题
+                        </span>
+                      </div>
+                      {firstQuestion && (
+                        <Link
+                          href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(firstQuestion.id)}`}
+                          className="text-xs font-bold text-slate-600 transition hover:text-slate-950"
+                        >
+                          开始 →
+                        </Link>
+                      )}
+                    </div>
+                    {questionCount > 0 ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {lessonGroups.map((lessonGroup, lessonIndex) => {
+                          if (lessonGroup.questions.length === 1) {
+                            const question = lessonGroup.questions[0];
+                            return (
+                              <Link
+                                href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                key={lessonGroup.materialId}
+                                aria-label={`${section.title}第 ${lessonIndex + 1} 段音频`}
+                                className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
+                              >
+                                {lessonIndex + 1}
+                              </Link>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={lessonGroup.materialId}
+                              className="flex items-center gap-2"
+                            >
+                              <span className="shrink-0 text-sm font-bold tabular-nums text-slate-600">
+                                {lessonIndex + 1})
+                              </span>
+                              <div
+                                className="flex flex-wrap items-center gap-2"
+                                aria-label={`第 ${lessonIndex + 1} 段音频的小问`}
+                              >
+                                {lessonGroup.questions.map(
+                                  (question, questionIndex) => (
+                                    <Link
+                                      key={question.id}
+                                      href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                      aria-label={`小问 ${questionIndex + 1}`}
+                                      className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
+                                    >
+                                      {questionIndex + 1}
+                                    </Link>
+                                  ),
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-400">暂无题目</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </div>
+    </main>
+  );
 }

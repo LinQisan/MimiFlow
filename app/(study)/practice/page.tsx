@@ -1,11 +1,19 @@
 // Practice library route.
 import Link from 'next/link'
 
-import { findLevelsWithPapersAndCounts } from '@/lib/repositories/exam'
+import {
+  findLevelsWithPapersAndCounts,
+  getPracticePerformanceGroups,
+} from '@/lib/repositories/exam'
 import PapersListClient from './PapersListClient'
+import { getPracticeVocabularyAnalytics } from '@/features/practice/server/vocabulary-analytics'
 
 export default async function AllPapersPage() {
-  const levels = await findLevelsWithPapersAndCounts()
+  const [levels, performanceGroups, vocabularyAnalytics] = await Promise.all([
+    findLevelsWithPapersAndCounts(),
+    getPracticePerformanceGroups(),
+    getPracticeVocabularyAnalytics(),
+  ])
 
   if (levels.length === 0) {
     return (
@@ -30,5 +38,12 @@ export default async function AllPapersPage() {
     0,
   )
 
-  return <PapersListClient levels={levels} totalPaperCount={totalPaperCount} />
+  return (
+    <PapersListClient
+      levels={levels}
+      totalPaperCount={totalPaperCount}
+      performanceGroups={performanceGroups}
+      vocabularyAnalytics={vocabularyAnalytics}
+    />
+  )
 }

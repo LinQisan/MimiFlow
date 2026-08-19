@@ -20,10 +20,18 @@ import {
   parseCustomOptionLabels,
 } from '@/utils/questions/optionLabels'
 import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
-import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
+import {
+  normalizeQuestionTextFields,
+  normalizeSortingPrompt,
+  parseSortingPrompt,
+  supportsSeparateQuestionContext,
+  usesExplicitQuestionTargetWord,
+} from '@/modules/practice/domain/question-text'
+import { getPaperReadingMaterialTitle } from '@/features/questions/domain/paper-editor'
 
 type QuestionOptionInput = {
   text?: string | null
+  imageUrl?: string | null
   isCorrect?: boolean | null
 }
 
@@ -37,9 +45,20 @@ type ArticleQuestionInput = {
 
 type CreateArticlePayload = {
   title?: string | null
+  questionType?: string | null
   content?: string | null
   paperId?: string | null
   description?: string | null
+  sourceKind?: string | null
+  publishedDate?: string | null
+  edition?: string | null
+  newsSeries?: string | null
+  pageNumber?: string | null
+  newsSource?: string | null
+  newsType?: string | null
+  newsSection?: string | null
+  newsColumn?: string | null
+  newsTopic?: string | null
   questions?: ArticleQuestionInput[] | null
 }
 
@@ -49,14 +68,12 @@ type CreateQuizQuestionPayload = {
   prompt?: string | null
   contextSentence?: string | null
   targetWord?: string | null
+  sortingOrder?: number[] | null
   explanation?: string | null
   options?: QuestionOptionInput[] | null
 }
 
-const resolveMaterialId = async (
-  type: MaterialType,
-  id: string,
-) => {
+const resolveMaterialId = async (type: MaterialType, id: string) => {
   const direct = await prisma.material.findUnique({
     where: { id },
     select: { id: true, type: true },
@@ -67,15 +84,18 @@ const resolveMaterialId = async (
 
 const normalizeOptions = (
   optionsInput: QuestionOptionInput[] | null | undefined,
-): { text: string; isCorrect: boolean }[] => {
+): { text: string; imageUrl?: string; isCorrect: boolean }[] => {
   const source = Array.isArray(optionsInput) ? optionsInput : []
   if (source.length > 0 && source.length < MIN_QUESTION_OPTION_COUNT) {
     throw new Error(`每道题至少需要 ${MIN_QUESTION_OPTION_COUNT} 个选项。`)
   }
   const normalized =
     source.length > 0
-      ? source.map(option => ({
+      ? source.map((option) => ({
           text: (option?.text || '').trim(),
+          ...((option?.imageUrl || '').trim()
+            ? { imageUrl: (option?.imageUrl || '').trim() }
+            : {}),
           isCorrect: Boolean(option?.isCorrect),
         }))
       : [
@@ -84,8 +104,23 @@ const normalizeOptions = (
           { text: '选项 3', isCorrect: false },
           { text: '选项 4', isCorrect: false },
         ]
-  if (!normalized.some(option => option.isCorrect)) normalized[0].isCorrect = true
+  if (!normalized.some((option) => option.isCorrect))
+    normalized[0].isCorrect = true
   return normalized
+}
+
+const normalizeSortingOrder = (
+  value: number[] | null | undefined,
+  optionCount: number,
+) => {
+  if (!Array.isArray(value) || value.length !== optionCount) return []
+  const normalized = value.map(Number)
+  const expected = Array.from({ length: optionCount }, (_, index) => index)
+  return [...new Set(normalized)]
+    .sort((a, b) => a - b)
+    .every((index, position) => index === expected[position])
+    ? normalized
+    : []
 }
 
 const getErrorMessage = (error: unknown) =>
@@ -96,33 +131,57 @@ export async function createArticle(data: CreateArticlePayload) {
     const articleTitle = (data.title || '').trim()
     const content = (data.content || '').trim()
     const collectionId = (data.paperId || '').trim()
+    const isNews = data.sourceKind === 'NEWS'
     if (!collectionId) {
       return { success: false, message: '请选择所属集合。' }
     }
     if (!content) {
       return { success: false, message: '文章正文不能为空。' }
     }
-    const normalizedQuestions = (data.questions || []).map((q, index) => {
-      const questionText = normalizeQuestionTextFields(
-        q.prompt,
-        q.contextSentence,
-      )
-      return {
-        questionType: toSafeQuestionType(
-          (q.questionType || '').trim(),
-          QuestionType.READING_COMPREHENSION,
-        ),
-        prompt: questionText.prompt,
-        contextSentence: questionText.context,
-        explanation: (q.explanation || '').trim(),
-        order: index + 1,
-        options: normalizeOptions(q.options),
-      }
-    })
-
+    if (isNews && !articleTitle) {
+      return { success: false, message: '请填写新闻标题。' }
+    }
+    if (
+      isNews &&
+      (!['日経', '朝日'].includes((data.newsSource || '').trim()) ||
+        !['news', 'editorial', 'column'].includes((data.newsType || '').trim()) ||
+        (!(data.newsSection || '').trim() && data.newsType !== 'column'))
+    ) {
+      return { success: false, message: '请完整选择新闻类型、来源和版面。' }
+    }
+    if (isNews && data.newsType === 'column' && !['春秋', '天声人語'].includes((data.newsColumn || '').trim())) {
+      return { success: false, message: '请选择专栏名称。' }
+    }
+    if (
+      isNews &&
+      data.newsType === 'column' &&
+      ((data.newsColumn === '春秋' && data.newsSource !== '日経') ||
+        (data.newsColumn === '天声人語' && data.newsSource !== '朝日'))
+    ) {
+      return { success: false, message: '专栏与新闻来源不一致，请重新选择。' }
+    }
+    const automaticMorningEdition =
+      isNews &&
+      ((data.newsType === 'column' &&
+        (data.newsColumn === '春秋' || data.newsColumn === '天声人語')) ||
+        (data.newsType === 'editorial' && data.newsSource === '日経'))
+    if (
+      isNews &&
+      data.edition === 'FLASH' &&
+      !(data.newsSource === '日経' && data.newsType === 'news')
+    ) {
+      return { success: false, message: '速報刊面仅用于日経普通新闻。' }
+    }
+    const automaticFrontPageSection =
+      isNews &&
+      data.newsType === 'column' &&
+      (data.newsColumn === '春秋' || data.newsColumn === '天声人語')
+    const newsSection = automaticFrontPageSection
+      ? '一面'
+      : (data.newsSection || '').trim()
     const exists = await prisma.collection.findUnique({
       where: { id: collectionId },
-      select: { id: true, acceptedMaterialTypes: true },
+      select: { id: true, collectionType: true, acceptedMaterialTypes: true },
     })
     if (!exists) {
       return { success: false, message: '所属集合不存在，请刷新后重试。' }
@@ -133,14 +192,67 @@ export async function createArticle(data: CreateArticlePayload) {
         message: '该集合未设置为阅读内容集合，请重新选择。',
       }
     }
+    const isPaperArticle = exists.collectionType === CollectionType.PAPER
+    const normalizedQuestions = isPaperArticle
+      ? (data.questions || []).map((q, index) => {
+          const questionText = normalizeQuestionTextFields(
+            q.prompt,
+            q.contextSentence,
+          )
+          return {
+            questionType: toSafeQuestionType(
+              (q.questionType || '').trim(),
+              QuestionType.READING_COMPREHENSION,
+            ),
+            prompt: questionText.prompt,
+            contextSentence: questionText.context,
+            explanation: (q.explanation || '').trim(),
+            order: index + 1,
+            options: normalizeOptions(q.options),
+          }
+        })
+      : []
+    const paperQuestionType = toSafeQuestionType(
+      (data.questionType || '').trim(),
+      QuestionType.READING_COMPREHENSION,
+    )
+    const materialTitle =
+      exists.collectionType === CollectionType.PAPER
+        ? getPaperReadingMaterialTitle(paperQuestionType)
+        : articleTitle || '未命名阅读材料'
 
     await prisma.material.create({
       data: {
         type: MaterialType.READING,
-        title: articleTitle || '未命名阅读材料',
+        title: materialTitle,
         contentPayload: encodeMaterialPayload(MaterialType.READING, {
           text: content,
           description: (data.description || '').trim() || null,
+          sourceKind: isNews ? 'NEWS' : 'ARTICLE',
+          publishedDate: isNews ? (data.publishedDate || '').trim() : '',
+          edition:
+            automaticMorningEdition
+              ? 'MORNING'
+              : isNews && ['MORNING', 'EVENING', 'FLASH'].includes(data.edition || '')
+              ? data.edition
+              : '',
+          newsSeries: isNews && ['天声人語', '社説', '春秋'].includes(
+            (data.newsSeries || '').trim(),
+          )
+            ? (data.newsSeries || '').trim()
+            : '',
+          pageNumber: isNews ? newsSection : '',
+          newsSource: isNews && ['日経', '朝日'].includes((data.newsSource || '').trim())
+            ? (data.newsSource || '').trim()
+            : '',
+          newsType: isNews && ['news', 'editorial', 'column'].includes((data.newsType || '').trim())
+            ? (data.newsType || '').trim()
+            : '',
+          newsSection: isNews ? newsSection : '',
+          newsColumn: isNews && ['春秋', '天声人語'].includes((data.newsColumn || '').trim())
+            ? (data.newsColumn || '').trim()
+            : '',
+          newsTopic: isNews ? (data.newsTopic || '').trim() : '',
         }),
         collectionMaterials: {
           create: {
@@ -149,14 +261,16 @@ export async function createArticle(data: CreateArticlePayload) {
           },
         },
         questions: {
-          create: normalizedQuestions.map(q => ({
+          create: normalizedQuestions.map((q) => ({
             questionType: q.questionType,
-            content: encodeQuestionContent(toQuestionRecordPayload(
-              q.prompt,
-              q.contextSentence,
-              null,
-              q.explanation || null,
-            )),
+            content: encodeQuestionContent(
+              toQuestionRecordPayload(
+                q.prompt,
+                q.contextSentence,
+                null,
+                q.explanation || null,
+              ),
+            ),
             prompt: q.prompt,
             context: q.contextSentence,
             analysis: q.explanation || null,
@@ -166,7 +280,13 @@ export async function createArticle(data: CreateArticlePayload) {
         },
       },
     })
-    return { success: true, message: '文章及相关题目发布成功！' }
+    return {
+      success: true,
+      message:
+        exists.collectionType === CollectionType.PAPER
+          ? '阅读文章与题目已保存。'
+          : '文章已保存。',
+    }
   } catch (error: unknown) {
     console.error('createArticle failed:', getErrorMessage(error), error)
     return { success: false, message: '发布失败' }
@@ -181,7 +301,8 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       where: { id: data.paperId },
       select: { id: true, title: true },
     })
-    if (!collection) return { success: false, message: '集合不存在，请刷新后重试。' }
+    if (!collection)
+      return { success: false, message: '集合不存在，请刷新后重试。' }
 
     let quizMaterialId =
       (
@@ -229,8 +350,7 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
     if (!promptText && !contextText) {
       return {
         success: false,
-        message:
-          '未检测到题目内容。请填写“题目呈现”或“语境句”，或使用快速粘贴自动解析。',
+        message: '未检测到题目内容。请填写题干，或使用快速粘贴自动解析。',
       }
     }
     const rawQuestionType = toSafeQuestionType(
@@ -242,19 +362,58 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
       rawQuestionType,
     )
     const normalizedOptions = normalizeOptions(data.options)
-    const normalizedContext = questionText.context
+    const sortingOrder = normalizeSortingOrder(
+      data.sortingOrder,
+      normalizedOptions.length,
+    )
+    if (
+      questionType === QuestionType.SORTING &&
+      sortingOrder.length !== normalizedOptions.length
+    ) {
+      return {
+        success: false,
+        message: '问题6请按正确语序点击全部选项后再保存。',
+      }
+    }
+    const persistedPrompt =
+      questionType === QuestionType.SORTING
+        ? normalizeSortingPrompt(promptText)
+        : promptText
+    const parsedSortingPrompt = parseSortingPrompt(persistedPrompt)
+    if (
+      questionType === QuestionType.SORTING &&
+      (parsedSortingPrompt.slotCount !== normalizedOptions.length ||
+        parsedSortingPrompt.starCount !== 1)
+    ) {
+      return {
+        success: false,
+        message: `问题6题干需要 ${normalizedOptions.length} 个排序位，并标出一个★位。`,
+      }
+    }
+    const normalizedContext = supportsSeparateQuestionContext(questionType)
+      ? questionText.context
+      : null
 
     await prisma.question.create({
       data: {
         materialId: quizMaterialId,
         questionType,
-        content: encodeQuestionContent(toQuestionRecordPayload(
-          promptText || null,
-          normalizedContext,
-          (data.targetWord || '').trim() || null,
-          (data.explanation || '').trim() || null,
-        )),
-        prompt: promptText || null,
+        content: encodeQuestionContent({
+          ...toQuestionRecordPayload(
+            persistedPrompt || null,
+            normalizedContext,
+            usesExplicitQuestionTargetWord(questionType)
+              ? (data.targetWord || '').trim() || null
+              : null,
+            (data.explanation || '').trim() || null,
+          ),
+          ...(questionType === QuestionType.SORTING
+            ? {
+                sortingOrder,
+              }
+            : {}),
+        }),
+        prompt: persistedPrompt || null,
         context: normalizedContext,
         analysis: (data.explanation || '').trim() || null,
         ...toQuestionOptionsAndAnswer(normalizedOptions),
@@ -286,6 +445,11 @@ type UpdateArticlePayload = {
   passageId: string
   title: string
   content: string
+  sourceKind?: string
+  publishedDate?: string
+  edition?: string
+  pageNumber?: string
+  audioFile?: string
   questions: EditableArticleQuestionInput[]
 }
 
@@ -301,6 +465,10 @@ export async function updateArticleWithQuestions(
     if (!content) {
       return { success: false, message: '请填写文章正文。' }
     }
+    const audioFile = (payload.audioFile || '').trim()
+    if (audioFile && !audioFile.startsWith('/audios/')) {
+      return { success: false, message: '文章音频路径无效。' }
+    }
     const materialId = await resolveMaterialId(
       MaterialType.READING,
       payload.passageId.trim(),
@@ -309,7 +477,7 @@ export async function updateArticleWithQuestions(
       return { success: false, message: '阅读材料不存在。' }
     }
 
-    await prisma.$transaction(async tx => {
+    await prisma.$transaction(async (tx) => {
       const currentMaterial = await tx.material.findUnique({
         where: { id: materialId },
         select: { contentPayload: true },
@@ -319,7 +487,7 @@ export async function updateArticleWithQuestions(
         where: { materialId },
         select: { id: true },
       })
-      const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
+      const existingQuestionIdSet = new Set(existingQuestions.map((q) => q.id))
 
       await tx.material.update({
         where: { id: materialId },
@@ -328,7 +496,18 @@ export async function updateArticleWithQuestions(
           contentPayload: patchMaterialPayload(
             MaterialType.READING,
             currentMaterial.contentPayload,
-            { text: content },
+            {
+              text: content,
+              sourceKind: payload.sourceKind === 'NEWS' ? 'NEWS' : 'ARTICLE',
+              publishedDate: (payload.publishedDate || '').trim(),
+              edition: ['MORNING', 'EVENING', 'FLASH'].includes(
+                payload.edition || '',
+              )
+                ? payload.edition
+                : '',
+              pageNumber: (payload.pageNumber || '').trim(),
+              audioFile,
+            },
           ),
         },
       })
@@ -345,16 +524,20 @@ export async function updateArticleWithQuestions(
           (question.questionType || '').trim(),
           QuestionType.READING_COMPREHENSION,
         )
-        const normalizedContext = questionText.context
+        const normalizedContext = supportsSeparateQuestionContext(questionType)
+          ? questionText.context
+          : null
         const normalizedOptions = normalizeOptions(question.options)
         const nextQuestionData = {
           questionType,
-          content: encodeQuestionContent(toQuestionRecordPayload(
-            promptText || null,
-            normalizedContext,
-            null,
-            null,
-          )),
+          content: encodeQuestionContent(
+            toQuestionRecordPayload(
+              promptText || null,
+              normalizedContext,
+              null,
+              null,
+            ),
+          ),
           prompt: promptText || null,
           context: normalizedContext,
           ...toQuestionOptionsAndAnswer(normalizedOptions),
@@ -362,7 +545,10 @@ export async function updateArticleWithQuestions(
         }
 
         const incomingQuestionId = (question.id || '').trim()
-        if (incomingQuestionId && existingQuestionIdSet.has(incomingQuestionId)) {
+        if (
+          incomingQuestionId &&
+          existingQuestionIdSet.has(incomingQuestionId)
+        ) {
           keepQuestionIds.push(incomingQuestionId)
           await tx.question.update({
             where: { id: incomingQuestionId },
@@ -416,6 +602,8 @@ type EditableQuizQuestionInput = {
   listeningSectionNumber?: string | null
   optionLabelFormat?: string | null
   customOptionLabels?: string | string[] | null
+  shuffleOptions?: boolean
+  sortingOrder?: number[] | null
   options?: EditableQuizOptionInput[]
 }
 
@@ -442,12 +630,12 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
       return { success: false, message: '题库材料不存在。' }
     }
 
-    await prisma.$transaction(async tx => {
+    await prisma.$transaction(async (tx) => {
       const existingQuestions = await tx.question.findMany({
         where: { materialId },
         select: { id: true },
       })
-      const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
+      const existingQuestionIdSet = new Set(existingQuestions.map((q) => q.id))
 
       await tx.material.update({
         where: { id: materialId },
@@ -471,8 +659,12 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
           MaterialType.VOCAB_GRAMMAR,
           rawQuestionType,
         )
-        const normalizedContext = questionText.context
-        const targetWord = (question.targetWord || '').trim() || null
+        const normalizedContext = supportsSeparateQuestionContext(questionType)
+          ? questionText.context
+          : null
+        const targetWord = usesExplicitQuestionTargetWord(questionType)
+          ? (question.targetWord || '').trim() || null
+          : null
         const explanation = (question.explanation || '').trim() || null
         const listeningSectionNumberText = String(
           question.listeningSectionNumber || '',
@@ -487,9 +679,19 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         }
 
         const normalizedOptions = normalizeOptions(question.options)
+        const sortingOrder = normalizeSortingOrder(
+          question.sortingOrder,
+          normalizedOptions.length,
+        )
+        if (
+          questionType === QuestionType.SORTING &&
+          sortingOrder.length !== normalizedOptions.length
+        ) {
+          throw new Error(`第 ${index + 1} 题尚未设置正确语序。`)
+        }
         const optionLabelFormat = normalizeOptionLabelFormat(
           question.optionLabelFormat,
-          questionType === QuestionType.LISTENING ? 'numeric' : 'upper-alpha',
+          'numeric',
         )
         const customOptionLabels = parseCustomOptionLabels(
           question.customOptionLabels,
@@ -498,9 +700,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
           optionLabelFormat === 'custom' &&
           customOptionLabels.length < normalizedOptions.length
         ) {
-          throw new Error(
-            `第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`,
-          )
+          throw new Error(`第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`)
         }
         const baseContent = {
           ...toQuestionRecordPayload(
@@ -511,6 +711,17 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
           ),
           optionLabelFormat,
           customOptionLabels,
+          shuffleOptions:
+            question.shuffleOptions !== false &&
+            !(
+              questionType === QuestionType.LISTENING &&
+              listeningSectionNumber === 3
+            ),
+          ...(questionType === QuestionType.SORTING
+            ? {
+                sortingOrder,
+              }
+            : {}),
         }
         const nextQuestionData = {
           questionType,
@@ -600,7 +811,7 @@ export async function updateLessonQuestions(
 
     const listeningSectionNumberText = String(
       payload.listeningSectionNumber ||
-        payload.questions.find(question => question.listeningSectionNumber)
+        payload.questions.find((question) => question.listeningSectionNumber)
           ?.listeningSectionNumber ||
         '',
     ).trim()
@@ -616,7 +827,7 @@ export async function updateLessonQuestions(
       listeningSectionNumber = Math.floor(parsedNumber)
     }
 
-    await prisma.$transaction(async tx => {
+    await prisma.$transaction(async (tx) => {
       const currentMaterial = await tx.material.findUnique({
         where: { id: materialId },
         select: { contentPayload: true },
@@ -626,7 +837,7 @@ export async function updateLessonQuestions(
         where: { materialId },
         select: { id: true },
       })
-      const existingQuestionIdSet = new Set(existingQuestions.map(q => q.id))
+      const existingQuestionIdSet = new Set(existingQuestions.map((q) => q.id))
 
       const keepQuestionIds: string[] = []
 
@@ -641,13 +852,27 @@ export async function updateLessonQuestions(
           (question.questionType || '').trim(),
           QuestionType.PRONUNCIATION,
         )
-        const normalizedContext = questionText.context
-        const targetWord = (question.targetWord || '').trim() || null
+        const normalizedContext = supportsSeparateQuestionContext(questionType)
+          ? questionText.context
+          : null
+        const targetWord = usesExplicitQuestionTargetWord(questionType)
+          ? (question.targetWord || '').trim() || null
+          : null
         const explanation = (question.explanation || '').trim() || null
         const normalizedOptions = normalizeOptions(question.options)
+        const sortingOrder = normalizeSortingOrder(
+          question.sortingOrder,
+          normalizedOptions.length,
+        )
+        if (
+          questionType === QuestionType.SORTING &&
+          sortingOrder.length !== normalizedOptions.length
+        ) {
+          throw new Error(`第 ${index + 1} 题尚未设置正确语序。`)
+        }
         const optionLabelFormat = normalizeOptionLabelFormat(
           question.optionLabelFormat,
-          questionType === QuestionType.LISTENING ? 'numeric' : 'upper-alpha',
+          'numeric',
         )
         const customOptionLabels = parseCustomOptionLabels(
           question.customOptionLabels,
@@ -656,9 +881,7 @@ export async function updateLessonQuestions(
           optionLabelFormat === 'custom' &&
           customOptionLabels.length < normalizedOptions.length
         ) {
-          throw new Error(
-            `第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`,
-          )
+          throw new Error(`第 ${index + 1} 题的自定义序号不足，请用 | 分隔。`)
         }
         const baseContent = {
           ...toQuestionRecordPayload(
@@ -669,6 +892,17 @@ export async function updateLessonQuestions(
           ),
           optionLabelFormat,
           customOptionLabels,
+          shuffleOptions:
+            question.shuffleOptions !== false &&
+            !(
+              questionType === QuestionType.LISTENING &&
+              listeningSectionNumber === 3
+            ),
+          ...(questionType === QuestionType.SORTING
+            ? {
+                sortingOrder,
+              }
+            : {}),
         }
         const nextQuestionData = {
           questionType,
@@ -725,9 +959,9 @@ export async function updateLessonQuestions(
             MaterialType.LISTENING,
             currentMaterial.contentPayload,
             {
-            questionEntryRequired: false,
-            listeningSectionNumber,
-            sectionNumber: listeningSectionNumber,
+              questionEntryRequired: false,
+              listeningSectionNumber,
+              sectionNumber: listeningSectionNumber,
             },
           ),
         },
@@ -743,7 +977,8 @@ export async function updateLessonQuestions(
     return { success: true }
   } catch (error) {
     console.error('updateLessonQuestions failed:', error)
-    const message = error instanceof Error ? error.message : '保存失败，请稍后重试。'
+    const message =
+      error instanceof Error ? error.message : '保存失败，请稍后重试。'
     return { success: false, message }
   }
 }
@@ -753,6 +988,7 @@ export async function createCategory(data: {
   levelId?: string
   name: string
   materialType?: MaterialType
+  language?: string
 }) {
   try {
     const title = (data.name || '').trim()
@@ -764,16 +1000,14 @@ export async function createCategory(data: {
       requestedType === CollectionType.CUSTOM_GROUP
         ? CollectionType.CUSTOM_GROUP
         : CollectionType.PAPER
-    const typeLabel =
-      collectionType === CollectionType.PAPER
-        ? '试卷'
-        : '分组'
+    const typeLabel = collectionType === CollectionType.PAPER ? '试卷' : '分组'
 
     const newCategory = await prisma.collection.create({
       data: {
         title,
         collectionType,
         acceptedMaterialTypes: data.materialType ? [data.materialType] : [],
+        language: data.language?.trim().toLowerCase() || null,
       },
       select: {
         id: true,

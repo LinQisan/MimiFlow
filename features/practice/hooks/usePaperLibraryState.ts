@@ -1,11 +1,13 @@
 'use client'
 
 import { useCallback, useReducer, type SetStateAction } from 'react'
+import type { PaperLibrarySort } from '@/features/practice/domain/paper-library'
 
 type State = {
   query: string
   language: string
   level: string
+  sort: PaperLibrarySort
 }
 
 type Action = {
@@ -29,6 +31,7 @@ export function usePaperLibraryState() {
     query: '',
     language: 'all',
     level: 'all',
+    sort: 'newest',
   })
   const setter = useCallback(
     <Key extends keyof State>(key: Key) =>
@@ -39,6 +42,7 @@ export function usePaperLibraryState() {
     dispatch({ key: 'query', value: '' })
     dispatch({ key: 'language', value: 'all' })
     dispatch({ key: 'level', value: 'all' })
+    dispatch({ key: 'sort', value: 'newest' })
   }, [])
 
   return {
@@ -46,6 +50,7 @@ export function usePaperLibraryState() {
     setQuery: setter('query'),
     setLanguage: setter('language'),
     setLevel: setter('level'),
+    setSort: setter('sort'),
     reset,
   }
 }

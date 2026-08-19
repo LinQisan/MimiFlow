@@ -1,4 +1,5 @@
 import type { ParsedQuizDraft } from '../types'
+import { normalizeSortingPrompt } from '../../practice/domain/question-text.ts'
 
 const CIRCLED_NUMBER_INDEX: Record<string, number> = {
   '①': 0,
@@ -38,25 +39,6 @@ const detectQuestionType = (
   if (isWordDistinction) return 'WORD_DISTINCTION'
   if (/文法|語法|语法|助詞|助词|接続|接续|活用/.test(prompt)) return 'GRAMMAR'
   return 'PRONUNCIATION'
-}
-
-export const inferTargetWord = (
-  questionType: ParsedQuizDraft['questionType'],
-  prompt: string,
-) => {
-  if (
-    questionType !== 'WORD_DISTINCTION' &&
-    questionType !== 'PRONUNCIATION' &&
-    questionType !== 'SYNONYM_REPLACEMENT'
-  )
-    return ''
-  const normalized = prompt
-    .replace(/^\s*\[?\d+\]?\s*[：:．.、)\-]\s*/, '')
-    .trim()
-  if (!normalized) return ''
-  return questionType === 'WORD_DISTINCTION'
-    ? normalized.split(/[\s　]/)[0] || normalized
-    : ''
 }
 
 const parseOptionLine = (rawLine: string) => {
@@ -146,6 +128,7 @@ const parseQuestionHeaderLine = (rawLine: string) => {
   const patterns = [
     /^\s*[（(]\d+[）)]\s*([\s\S]*)$/,
     /^\s*[（(]?\d+[）)]?[．.、，:：)\-]\s*([\s\S]*)$/,
+    /^\s*\d{2,}[\t　 ]+([^\d\s][\s\S]*)$/,
     /^\s*第\s*\d+\s*[题題問]\s*[：:.\-、，]?\s*([\s\S]*)$/,
     /^\s*[Qq]\s*\d+\s*[：:.\-、，]?\s*([\s\S]*)$/,
   ]
@@ -160,7 +143,7 @@ const splitLineByOptionMarkers = (rawLine: string) => {
   const line = rawLine.trim()
   if (!line) return [] as string[]
   const markerRegex =
-    /(^|[\s　])(①|②|③|④|⑤|⑥|⑦|⑧|⑨|[1-9][．.、，:：)\-]|[A-Ia-i][．.、，:：)\-])\s*/g
+    /(^|[\s　])(①|②|③|④|⑤|⑥|⑦|⑧|⑨|[1-9](?:[．.、，:：)\-]|(?=[\t　 ]))|[A-Ia-i](?:[．.、，:：)\-]|(?=[\t　 ])))\s*/g
   const starts: number[] = []
   let match: RegExpExecArray | null
   while ((match = markerRegex.exec(line)) !== null)
@@ -176,14 +159,27 @@ const splitLineByOptionMarkers = (rawLine: string) => {
   return parts.length > 0 ? parts : [line]
 }
 
-const createDraft = (prompt: string, options: string[]): ParsedQuizDraft => {
-  const questionType = detectQuestionType(prompt, options)
+const createDraft = (
+  prompt: string,
+  options: string[],
+  questionSerial: number | null = null,
+): ParsedQuizDraft => {
+  const detectedType = detectQuestionType(prompt, options)
+  const questionType =
+    detectedType === 'GRAMMAR' &&
+    questionSerial !== null &&
+    questionSerial >= 26 &&
+    questionSerial <= 35
+      ? 'GRAMMAR_SELECTION'
+      : detectedType
   return {
     questionType,
-    prompt,
+    prompt: questionType === 'SORTING' ? normalizeSortingPrompt(prompt) : prompt,
     contextSentence: '',
-    targetWord: inferTargetWord(questionType, prompt),
+    targetWord: '',
+    sortingOrder: [],
     explanation: '',
+    sourceSerial: questionSerial ?? undefined,
     options: options.map((text, index) => ({
       text,
       isCorrect: index === 0,
@@ -202,19 +198,27 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
   let options: string[] = []
   let seenOption = false
   let lastOptionIndex = -1
+  let questionSerial: number | null = null
 
   const reset = () => {
     promptLines = []
     options = []
     seenOption = false
     lastOptionIndex = -1
+    questionSerial = null
   }
   const flushIfReady = () => {
     const normalizedOptions = options.map(item => item.trim())
     if (normalizedOptions.length < 2 || !normalizedOptions.every(Boolean)) {
       return false
     }
-    results.push(createDraft(promptLines.join('\n').trim(), normalizedOptions))
+    results.push(
+      createDraft(
+        promptLines.join('\n').trim(),
+        normalizedOptions,
+        questionSerial,
+      ),
+    )
     reset()
     return true
   }
@@ -227,10 +231,18 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
     isLikelySentencePrompt(stripLooseQuestionNumber(line))
   const isOnlyQuestionSerial = (text: string) =>
     /^\s*\[?\d+\]?\s*[：:．.、)\-]?\s*$/.test(text)
+  const readQuestionSerial = (line: string) => {
+    const matched = line.match(
+      /^\s*[（(]?(\d+)[）)]?(?:[．.、，:：)\-]|[\t　 ]+|\s*$)/,
+    )
+    return matched ? Number(matched[1]) : null
+  }
   const shouldTreatAsQuestionHeader = (line: string, lineIndex: number) => {
+    if (isOnlyQuestionSerial(line))
+      return { isHeader: true, text: '' }
     const header = parseQuestionHeaderLine(line)
     const option = parseOptionLine(line)
-    if (header.isHeader && (!option || option.index !== 0))
+    if (header.isHeader && !option)
       return { isHeader: true, text: header.text }
     if (!option || option.index !== 0) return { isHeader: false, text: '' }
     let nextOptionIndex: number | null = null
@@ -269,9 +281,17 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
         createDraft(
           promptLines.join('\n').trim() || inlineSet.prompt,
           inlineSet.options,
+          questionSerial,
         ),
       )
       reset()
+      return
+    }
+    const questionHeader = shouldTreatAsQuestionHeader(line, lineIndex)
+    if (seenOption && questionHeader.isHeader) {
+      if (!flushIfReady()) reset()
+      questionSerial = readQuestionSerial(line)
+      if (questionHeader.text) promptLines.push(questionHeader.text)
       return
     }
     const optionLine = parseOptionLine(line)
@@ -287,13 +307,14 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
       return
     }
     if (!seenOption && promptLines.length === 0) {
-      if (isLooseNumberedPrompt(line)) {
+      if (questionSerial === null && isLooseNumberedPrompt(line)) {
+        questionSerial = readQuestionSerial(line)
         promptLines.push(stripLooseQuestionNumber(line))
         return
       }
-      const header = shouldTreatAsQuestionHeader(line, lineIndex)
-      if (header.isHeader) {
-        if (header.text) promptLines.push(header.text)
+      if (questionHeader.isHeader) {
+        questionSerial = readQuestionSerial(line)
+        if (questionHeader.text) promptLines.push(questionHeader.text)
         return
       }
     }

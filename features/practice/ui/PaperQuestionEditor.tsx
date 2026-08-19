@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useMemo, useTransition } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
+import ToggleSwitch from '@/components/ToggleSwitch'
+import { useDialog } from '@/context/DialogContext'
 import {
   formatOptionLabel,
   normalizeOptionLabelFormat,
@@ -11,6 +13,9 @@ import {
 } from '@/utils/questions/optionLabels'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 import {
+  getReadingQuestionSection,
+  getPaperLanguageSectionGroup,
+  getVocabGrammarQuestionSection,
   MATERIAL_GROUPS,
   parseActiveQuestionSection,
 } from '@/features/questions/domain/paper-editor'
@@ -21,6 +26,7 @@ import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
 } from '@/features/questions/domain/editor'
+import { supportsSeparateQuestionContext } from '@/modules/practice/domain/question-text'
 
 type EditableOption = {
   id: string
@@ -39,6 +45,8 @@ type EditableQuestion = {
   listeningSectionKey: string
   optionLabelFormat: OptionLabelFormat
   customOptionLabels: string
+  shuffleOptions: boolean
+  sortingOrder: number[]
   sortOrder: number
   options: EditableOption[]
 }
@@ -65,17 +73,44 @@ type PaperQuestionEditorProps = {
     materials: MaterialBlock[]
   }
   activeSectionKey?: string | null
+  moveTargets: Array<{
+    id: string
+    title: string
+    level: string | null
+  }>
 }
 
 export default function PaperQuestionEditor({
   paper,
   activeSectionKey,
+  moveTargets,
 }: PaperQuestionEditorProps) {
-  const { updatePaperQuestion } = useQuestionEditorMutations()
+  const dialog = useDialog()
+  const { deletePaperQuestions, movePaperQuestions, updatePaperQuestion } =
+    useQuestionEditorMutations()
   const {
-    materials, setMaterials, savingId, setSavingId, message, setMessage,
-    openQuestionId, setOpenQuestionId, questionQuery, setQuestionQuery,
-    questionTypeFilter, setQuestionTypeFilter, dirtyIds, setDirtyIds,
+    materials,
+    setMaterials,
+    savingId,
+    setSavingId,
+    message,
+    setMessage,
+    openQuestionId,
+    setOpenQuestionId,
+    questionQuery,
+    setQuestionQuery,
+    questionTypeFilter,
+    setQuestionTypeFilter,
+    dirtyIds,
+    setDirtyIds,
+    selectedQuestionIds,
+    setSelectedQuestionIds,
+    targetPaperId,
+    setTargetPaperId,
+    bulkAction,
+    setBulkAction,
+    bulkMessage,
+    setBulkMessage,
   } = usePaperQuestionEditorState<MaterialBlock>(paper.materials)
   const [isPending, startTransition] = useTransition()
 
@@ -102,11 +137,13 @@ export default function PaperQuestionEditor({
           ...material,
           questionCount: material.questions.filter(
             question =>
-              question.listeningSectionKey === activeSection.listeningSectionKey,
+              question.listeningSectionKey ===
+              activeSection.listeningSectionKey,
           ).length,
           questions: material.questions.filter(
             question =>
-              question.listeningSectionKey === activeSection.listeningSectionKey,
+              question.listeningSectionKey ===
+              activeSection.listeningSectionKey,
           ),
         }
       })
@@ -126,8 +163,14 @@ export default function PaperQuestionEditor({
   const questionTypes = useMemo(
     () =>
       Array.from(
-        new Set(materials.flatMap(material => material.questions.map(item => item.questionType))),
-      ).sort((a, b) => getQuestionTypeLabel(a).localeCompare(getQuestionTypeLabel(b), 'ja')),
+        new Set(
+          materials.flatMap(material =>
+            material.questions.map(item => item.questionType),
+          ),
+        ),
+      ).sort((a, b) =>
+        getQuestionTypeLabel(a).localeCompare(getQuestionTypeLabel(b), 'ja'),
+      ),
     [materials],
   )
   const filteredMaterials = useMemo(() => {
@@ -135,7 +178,10 @@ export default function PaperQuestionEditor({
     return visibleMaterials
       .map(material => {
         const questions = material.questions.filter(question => {
-          if (questionTypeFilter !== 'all' && question.questionType !== questionTypeFilter) {
+          if (
+            questionTypeFilter !== 'all' &&
+            question.questionType !== questionTypeFilter
+          ) {
             return false
           }
           if (!keyword) return true
@@ -145,7 +191,11 @@ export default function PaperQuestionEditor({
             question.explanation,
             material.title,
             getQuestionTypeLabel(question.questionType),
-          ].some(value => String(value || '').toLowerCase().includes(keyword))
+          ].some(value =>
+            String(value || '')
+              .toLowerCase()
+              .includes(keyword),
+          )
         })
         return { ...material, questions, questionCount: questions.length }
       })
@@ -163,14 +213,139 @@ export default function PaperQuestionEditor({
     () =>
       MATERIAL_GROUPS.map(group => ({
         ...group,
-        materials: filteredMaterials.filter(item => item.materialType === group.key),
+        materials: filteredMaterials.filter(
+          item => item.materialType === group.key,
+        ),
       })).filter(group => group.materials.length > 0),
     [filteredMaterials],
   )
+  const questionSectionGroups = useMemo(() => {
+    type SectionGroup = {
+      key: string
+      materialType: string
+      materialTitle: string
+      sectionNumber: number
+      title: string
+      materials: MaterialBlock[]
+    }
+    const sections = new Map<string, SectionGroup>()
+
+    for (const materialGroup of groupedMaterials) {
+      for (const material of materialGroup.materials) {
+        for (const question of material.questions) {
+          const section =
+            material.materialType === 'VOCAB_GRAMMAR'
+              ? getVocabGrammarQuestionSection(question.questionType)
+              : material.materialType === 'READING'
+                ? getReadingQuestionSection(question.questionType)
+                : material.materialType === 'LISTENING'
+                  ? {
+                      sectionNumber:
+                        Number(question.listeningSectionNumber) ||
+                        Number(material.listeningSectionNumber) ||
+                        1,
+                      title:
+                        question.listeningSectionTitle ||
+                        material.listeningSectionTitle ||
+                        '聴解',
+                    }
+                  : {
+                      sectionNumber: 1,
+                      title: getQuestionTypeLabel(question.questionType),
+                    }
+          const key = `${material.materialType}:${section.sectionNumber}`
+          let current = sections.get(key)
+          if (!current) {
+            current = {
+              key,
+              materialType: material.materialType,
+              materialTitle:
+                section.sectionNumber <= 7
+                  ? getPaperLanguageSectionGroup(section.sectionNumber).title
+                  : materialGroup.title,
+              sectionNumber: section.sectionNumber,
+              title: section.title,
+              materials: [],
+            }
+            sections.set(key, current)
+          }
+
+          let sectionMaterial = current.materials.find(
+            item => item.id === material.id,
+          )
+          if (!sectionMaterial) {
+            sectionMaterial = {
+              ...material,
+              questions: [],
+              questionCount: 0,
+            }
+            current.materials.push(sectionMaterial)
+          }
+          sectionMaterial.questions.push(question)
+          sectionMaterial.questionCount = sectionMaterial.questions.length
+        }
+      }
+    }
+
+    const materialOrder = new Map<string, number>(
+      MATERIAL_GROUPS.map((group, index) => [group.key, index]),
+    )
+    return [...sections.values()].sort(
+      (a, b) =>
+        (materialOrder.get(a.materialType) ?? Number.MAX_SAFE_INTEGER) -
+          (materialOrder.get(b.materialType) ?? Number.MAX_SAFE_INTEGER) ||
+        a.sectionNumber - b.sectionNumber,
+    )
+  }, [groupedMaterials])
   const visibleQuestionCount = filteredMaterials.reduce(
     (sum, material) => sum + material.questions.length,
     0,
   )
+  const visibleQuestionIds = useMemo(
+    () =>
+      filteredMaterials.flatMap(material =>
+        material.questions.map(question => question.id),
+      ),
+    [filteredMaterials],
+  )
+  const selectedCount = selectedQuestionIds.size
+  const allVisibleSelected =
+    visibleQuestionIds.length > 0 &&
+    visibleQuestionIds.every(questionId => selectedQuestionIds.has(questionId))
+  const vocabGrammarQuestionNumbers = useMemo(() => {
+    const counters = new Map<number, number>()
+    const numbers = new Map<
+      string,
+      { sectionNumber: number; questionNumber: number; title: string }
+    >()
+    for (const material of materials) {
+      if (material.materialType !== 'VOCAB_GRAMMAR') continue
+      for (const question of material.questions) {
+        const section = getVocabGrammarQuestionSection(question.questionType)
+        const questionNumber = (counters.get(section.sectionNumber) || 0) + 1
+        counters.set(section.sectionNumber, questionNumber)
+        numbers.set(question.id, { ...section, questionNumber })
+      }
+    }
+    return numbers
+  }, [materials])
+  const readingQuestionNumbers = useMemo(() => {
+    const counters = new Map<number, number>()
+    const numbers = new Map<
+      string,
+      { sectionNumber: number; questionNumber: number; title: string }
+    >()
+    for (const material of materials) {
+      if (material.materialType !== 'READING') continue
+      for (const question of material.questions) {
+        const section = getReadingQuestionSection(question.questionType)
+        const questionNumber = (counters.get(section.sectionNumber) || 0) + 1
+        counters.set(section.sectionNumber, questionNumber)
+        numbers.set(question.id, { ...section, questionNumber })
+      }
+    }
+    return numbers
+  }, [materials])
   const activeSectionLabel = useMemo(() => {
     if (!activeSection) return ''
     if (
@@ -182,14 +357,22 @@ export default function PaperQuestionEditor({
       )
       const question = materials
         .flatMap(item => item.questions)
-        .find(item => item.listeningSectionKey === activeSection.listeningSectionKey)
-      const sectionNumber = question?.listeningSectionNumber || material?.listeningSectionNumber
-      const sectionTitle = question?.listeningSectionTitle || material?.listeningSectionTitle
+        .find(
+          item =>
+            item.listeningSectionKey === activeSection.listeningSectionKey,
+        )
+      const sectionNumber =
+        question?.listeningSectionNumber || material?.listeningSectionNumber
+      const sectionTitle =
+        question?.listeningSectionTitle || material?.listeningSectionTitle
       return sectionNumber
         ? `問題${sectionNumber}${sectionTitle ? `｜${sectionTitle}` : ''}`
         : '聴解'
     }
-    return MATERIAL_GROUPS.find(group => group.key === activeSection.materialType)?.title || ''
+    return (
+      MATERIAL_GROUPS.find(group => group.key === activeSection.materialType)
+        ?.title || ''
+    )
   }, [activeSection, materials])
 
   const setQuestionField = (
@@ -211,7 +394,9 @@ export default function PaperQuestionEditor({
         return {
           ...material,
           questions: material.questions.map(question =>
-            question.id === questionId ? { ...question, [field]: value } : question,
+            question.id === questionId
+              ? { ...question, [field]: value }
+              : question,
           ),
         }
       }),
@@ -235,6 +420,10 @@ export default function PaperQuestionEditor({
             if (question.id !== questionId) return question
             return {
               ...question,
+              sortingOrder:
+                question.questionType === 'SORTING'
+                  ? []
+                  : question.sortingOrder,
               options: question.options.map(option => {
                 if (option.id !== optionId) return option
                 if (field === 'isCorrect') {
@@ -252,6 +441,84 @@ export default function PaperQuestionEditor({
           }),
         }
       }),
+    )
+  }
+
+  const selectSortingOption = (
+    materialId: string,
+    questionId: string,
+    optionIndex: number,
+  ) => {
+    setDirtyIds(current => new Set(current).add(questionId))
+    setMaterials(previous =>
+      previous.map(material =>
+        material.id !== materialId
+          ? material
+          : {
+              ...material,
+              questions: material.questions.map(question => {
+                if (question.id !== questionId) return question
+                const currentOrder = question.sortingOrder || []
+                if (currentOrder.includes(optionIndex)) return question
+                const sortingOrder = [...currentOrder, optionIndex]
+                const slots = question.prompt.match(/[＿_]{2,}|[★＊]/g) || []
+                const starIndex = Math.max(
+                  0,
+                  slots.findIndex(slot => /[★＊]/.test(slot)),
+                )
+                return {
+                  ...question,
+                  sortingOrder,
+                  options: question.options.map((option, index) => ({
+                    ...option,
+                    isCorrect:
+                      sortingOrder.length === question.options.length &&
+                      index === sortingOrder[starIndex],
+                  })),
+                }
+              }),
+            },
+      ),
+    )
+  }
+
+  const resetSortingOrder = (materialId: string, questionId: string) => {
+    setDirtyIds(current => new Set(current).add(questionId))
+    setMaterials(previous =>
+      previous.map(material =>
+        material.id !== materialId
+          ? material
+          : {
+              ...material,
+              questions: material.questions.map(question =>
+                question.id === questionId
+                  ? { ...question, sortingOrder: [] }
+                  : question,
+              ),
+            },
+      ),
+    )
+  }
+
+  const setQuestionShuffle = (
+    materialId: string,
+    questionId: string,
+    shuffleOptions: boolean,
+  ) => {
+    setDirtyIds(current => new Set(current).add(questionId))
+    setMaterials(prev =>
+      prev.map(material =>
+        material.id !== materialId
+          ? material
+          : {
+              ...material,
+              questions: material.questions.map(question =>
+                question.id === questionId
+                  ? { ...question, shuffleOptions }
+                  : question,
+              ),
+            },
+      ),
     )
   }
 
@@ -294,6 +561,7 @@ export default function PaperQuestionEditor({
                   ? question
                   : {
                       ...question,
+                      sortingOrder: [],
                       options: [
                         ...question.options,
                         createQuestionOption(`${question.id}_opt`),
@@ -322,6 +590,7 @@ export default function PaperQuestionEditor({
                   ? question
                   : {
                       ...question,
+                      sortingOrder: [],
                       options: removeQuestionOptionAt(
                         question.options,
                         optionIndex,
@@ -350,6 +619,8 @@ export default function PaperQuestionEditor({
         listeningSectionNumber: question.listeningSectionNumber,
         optionLabelFormat: question.optionLabelFormat,
         customOptionLabels: question.customOptionLabels,
+        shuffleOptions: question.shuffleOptions,
+        sortingOrder: question.sortingOrder,
         options: question.options,
       })
       setSavingId(null)
@@ -362,31 +633,153 @@ export default function PaperQuestionEditor({
       }
       setMessage(prev => ({
         ...prev,
-        [questionId]: result.message || (result.success ? '已保存。' : '保存失败。'),
+        [questionId]:
+          result.message || (result.success ? '已保存。' : '保存失败。'),
       }))
     })
   }
 
+  const toggleQuestionSelection = (questionId: string) => {
+    setSelectedQuestionIds(current => {
+      const next = new Set(current)
+      if (next.has(questionId)) next.delete(questionId)
+      else next.add(questionId)
+      return next
+    })
+  }
+
+  const toggleVisibleQuestions = () => {
+    setSelectedQuestionIds(current => {
+      const next = new Set(current)
+      if (allVisibleSelected) {
+        visibleQuestionIds.forEach(questionId => next.delete(questionId))
+      } else {
+        visibleQuestionIds.forEach(questionId => next.add(questionId))
+      }
+      return next
+    })
+  }
+
+  const clearQuestionSelection = () => {
+    setSelectedQuestionIds(new Set())
+    setTargetPaperId('')
+  }
+
+  const removeSelectedQuestionsFromState = (removeEmptyMaterials: boolean) => {
+    setMaterials(current => {
+      const next = current.map(material => {
+        const questions = material.questions.filter(
+          question => !selectedQuestionIds.has(question.id),
+        )
+        return { ...material, questions, questionCount: questions.length }
+      })
+      return removeEmptyMaterials
+        ? next.filter(material => material.questions.length > 0)
+        : next
+    })
+    setDirtyIds(current => {
+      const next = new Set(current)
+      selectedQuestionIds.forEach(questionId => next.delete(questionId))
+      return next
+    })
+    setMessage(current =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([questionId]) => !selectedQuestionIds.has(questionId),
+        ),
+      ),
+    )
+    if (openQuestionId && selectedQuestionIds.has(openQuestionId)) {
+      setOpenQuestionId(null)
+    }
+  }
+
+  const handleDeleteSelected = async () => {
+    if (selectedCount === 0 || bulkAction) return
+    const confirmed = await dialog.confirm(
+      `确定删除所选 ${selectedCount} 道题吗？相关答题记录和错题记录也会一并删除。`,
+      {
+        title: '删除题目',
+        confirmText: '删除',
+        danger: true,
+      },
+    )
+    if (!confirmed) return
+
+    setBulkAction('delete')
+    setBulkMessage('')
+    const result = await deletePaperQuestions({
+      paperId: paper.id,
+      questionIds: Array.from(selectedQuestionIds),
+    })
+    setBulkAction(null)
+    setBulkMessage(
+      result.message || (result.success ? '题目已删除。' : '删除失败。'),
+    )
+    if (!result.success) return
+    removeSelectedQuestionsFromState(false)
+    setSelectedQuestionIds(new Set())
+    dialog.toast(result.message || '题目已删除。', { tone: 'success' })
+  }
+
+  const handleMoveSelected = async () => {
+    if (selectedCount === 0 || !targetPaperId || bulkAction) return
+    const target = moveTargets.find(item => item.id === targetPaperId)
+    const confirmed = await dialog.confirm(
+      `将所选 ${selectedCount} 道题移动到“${target?.title || '目标试卷'}”？`,
+      { title: '移动题目', confirmText: '移动' },
+    )
+    if (!confirmed) return
+
+    setBulkAction('move')
+    setBulkMessage('')
+    const result = await movePaperQuestions({
+      paperId: paper.id,
+      targetPaperId,
+      questionIds: Array.from(selectedQuestionIds),
+    })
+    setBulkAction(null)
+    setBulkMessage(
+      result.message || (result.success ? '题目已移动。' : '移动失败。'),
+    )
+    if (!result.success) return
+    removeSelectedQuestionsFromState(true)
+    setSelectedQuestionIds(new Set())
+    setTargetPaperId('')
+    dialog.toast(result.message || '题目已移动。', { tone: 'success' })
+  }
+
   return (
-    <main className='min-h-screen bg-slate-50 px-3 py-4 md:px-6 md:py-6'>
-      <div className='mx-auto max-w-6xl space-y-4'>
-        <header className='space-y-3'>
-          <Link
-            href='/manage/practice'
-            className='text-sm font-bold text-slate-500 hover:text-slate-900'>
-            ← 试卷
-          </Link>
-          <div className='flex flex-wrap items-end justify-between gap-2'>
-            <div className='min-w-0'>
-              <h1 className='truncate text-xl font-black text-slate-950 md:text-2xl'>
-                {paper.title}
-              </h1>
-              <p className='mt-1 text-xs text-slate-500'>
-                {activeSection ? `${activeSectionLabel} · ` : ''}
-                {visibleQuestionCount} / {totalQuestionCount} 题
-                {dirtyIds.size > 0 ? ` · ${dirtyIds.size} 项未保存` : ''}
-              </p>
+    <main
+      className={`min-h-screen bg-[#f6f5f1] px-3 py-4 md:px-6 md:py-6 ${selectedCount > 0 ? 'pb-28' : ''}`}>
+      <div className='mx-auto max-w-6xl space-y-5'>
+        <header className='space-y-4 border-b border-slate-200 pb-5'>
+          <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
+            <Link
+              href='/manage/practice'
+              className='text-xs font-bold text-slate-500 hover:text-slate-900'>
+              ← 试卷
+            </Link>
+            <div className='min-w-0 flex-1'>
+              <div className='flex min-w-0 items-baseline gap-3'>
+                <h1 className='truncate text-xl font-black text-slate-950 md:text-2xl'>
+                  {paper.title}
+                </h1>
+                <p className='shrink-0 text-xs text-slate-500'>
+                  {activeSection ? `${activeSectionLabel} · ` : ''}
+                  {visibleQuestionCount} / {totalQuestionCount} 题
+                  {dirtyIds.size > 0 ? ` · ${dirtyIds.size} 项未保存` : ''}
+                </p>
+              </div>
             </div>
+            <a
+              href={`/api/manage/practice/${encodeURIComponent(paper.id)}/export`}
+              target='_blank'
+              rel='noreferrer'
+              className='ui-btn ui-btn-sm'
+              title='下载试题、答案、听力原文和音频压缩包'>
+              导出 ZIP
+            </a>
             {activeSection ? (
               <Link
                 href={`/manage/practice/${encodeURIComponent(paper.id)}`}
@@ -395,7 +788,7 @@ export default function PaperQuestionEditor({
               </Link>
             ) : null}
           </div>
-          <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_220px]'>
+          <div className='grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px_auto]'>
             <input
               type='search'
               value={questionQuery}
@@ -411,387 +804,662 @@ export default function PaperQuestionEditor({
               className='h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm'>
               <option value='all'>全部题型</option>
               {questionTypes.map(type => (
-                <option key={type} value={type}>{getQuestionTypeLabel(type)}</option>
+                <option key={type} value={type}>
+                  {getQuestionTypeLabel(type)}
+                </option>
               ))}
             </CustomSelect>
+            <label className='inline-flex h-9 cursor-pointer items-center justify-center gap-2 border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 sm:justify-start'>
+              <input
+                type='checkbox'
+                checked={allVisibleSelected}
+                onChange={toggleVisibleQuestions}
+                disabled={
+                  visibleQuestionIds.length === 0 || Boolean(bulkAction)
+                }
+                className='h-4 w-4 rounded border-slate-300 accent-slate-900'
+              />
+              全选 {visibleQuestionCount}
+            </label>
           </div>
+          {bulkMessage ? (
+            <p
+              role='status'
+              className={`text-xs font-semibold ${
+                bulkMessage.includes('失败') || bulkMessage.includes('不存在')
+                  ? 'text-rose-600'
+                  : 'text-emerald-700'
+              }`}>
+              {bulkMessage}
+            </p>
+          ) : null}
         </header>
 
-        {groupedMaterials.length === 0 ? (
+        {questionSectionGroups.length > 1 ? (
+          <nav
+            aria-label='题目分区'
+            className='flex gap-1 overflow-x-auto border-b border-slate-200 pb-2'>
+            {questionSectionGroups.map(group => (
+              <a
+                key={group.key}
+                href={`#question-section-${group.key}`}
+                className='inline-flex shrink-0 items-center gap-2 px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-white hover:text-slate-950'>
+                問題{group.sectionNumber}
+                <span className='font-medium text-slate-400'>
+                  {group.materials.reduce(
+                    (sum, material) => sum + material.questions.length,
+                    0,
+                  )}
+                </span>
+              </a>
+            ))}
+          </nav>
+        ) : null}
+
+        {questionSectionGroups.length === 0 ? (
           <section className='rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500'>
             暂无题目
           </section>
-        ) : groupedMaterials.map(group => (
-          <section key={group.key} className='space-y-2'>
-            <div className='flex items-center gap-2'>
-              <h2 className='text-sm font-black text-slate-700'>{group.title}</h2>
-              <span className='text-xs text-slate-400'>
-                {group.materials.reduce(
-                  (sum, material) => sum + material.questions.length,
-                  0,
-                )}
-              </span>
-            </div>
+        ) : (
+          questionSectionGroups.map(group => (
+            <section
+              key={group.key}
+              id={`question-section-${group.key}`}
+              className='scroll-mt-24 space-y-1'>
+              <div className='sticky top-16 z-10 flex items-center gap-3 border-b border-slate-300 bg-[#f6f5f1]/95 py-2.5 backdrop-blur-sm'>
+                <h2 className='text-sm font-black text-slate-900'>
+                  問題{group.sectionNumber}｜{group.title}
+                </h2>
+                <span className='text-xs text-slate-400'>
+                  {group.materials.reduce(
+                    (sum, material) => sum + material.questions.length,
+                    0,
+                  )}
+                </span>
+                <span className='ml-auto text-[10px] font-bold tracking-[0.12em] text-slate-400'>
+                  {group.materialTitle}
+                </span>
+              </div>
 
-            {group.materials.map(material => (
-              <div
-                key={material.id}
-                className='rounded-xl border border-slate-200 bg-white'>
-                {material.materialType !== 'LISTENING' ||
-                material.questions.length !== 1 ? (
-                  <div className='border-b border-slate-100 px-3 py-2.5'>
-                  <div className='flex min-w-0 items-center justify-between gap-2'>
-                    <h3 className='truncate text-sm font-bold text-slate-900'>
-                      {material.title}
-                    </h3>
-                    {material.questionCount > 1 ? (
-                      <span className='shrink-0 text-xs text-slate-400'>
-                        {material.questionCount} 题
-                      </span>
-                    ) : null}
-                  </div>
-                  </div>
-                ) : null}
-
-                <div className='divide-y divide-slate-100'>
-                  {material.questions.length === 0 ? (
-                    <div className='flex items-center justify-between gap-3 px-3 py-3'>
-                      <span className='text-sm text-slate-500'>暂无题目</span>
-                      <Link
-                        href={`/manage/listening/${encodeURIComponent(material.id)}#questions`}
-                        className='ui-btn ui-btn-primary ui-btn-sm'>
-                        添加题目
-                      </Link>
-                    </div>
-                  ) : null}
-                  {material.questions.map((question, index) => {
-                    const statusText = message[question.id] || ''
-                    const isSaving = savingId === question.id && isPending
-                    const isOpen = openQuestionId === question.id
-                    const typeLabel = getQuestionTypeLabel(question.questionType)
-                    const summaryText =
-                      question.prompt || question.contextSentence
-
-                    return (
-                      <article
-                        key={question.id}
-                        className={`overflow-hidden bg-white ${
-                          dirtyIds.has(question.id)
-                            ? 'border-l-2 border-amber-400'
-                            : 'border-l-2 border-transparent'
-                        }`}>
-                        <div className='flex items-center gap-2 px-3 py-2.5'>
-                          <div className='flex min-w-0 flex-1 items-center gap-2.5'>
-                            {material.materialType !== 'LISTENING' ? (
-                              <span className='inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 px-1.5 text-xs font-black text-white'>
-                                {question.sortOrder || index + 1}
-                              </span>
-                            ) : null}
-                            <div className='min-w-0'>
-                              {material.materialType === 'LISTENING' &&
-                              material.questions.length === 1 ? (
-                                <div className='flex flex-wrap items-center gap-2'>
-                                  <h3 className='truncate text-sm font-bold text-slate-900'>
-                                    {material.title}
-                                  </h3>
-                                  {dirtyIds.has(question.id) ? (
-                                    <span className='text-[10px] font-bold text-amber-700'>
-                                      未保存
-                                    </span>
-                                  ) : null}
-                                </div>
-                              ) : (
-                                <>
-                                  <div className='flex flex-wrap items-center gap-2'>
-                                    <span className='text-[11px] font-bold text-slate-500'>
-                                      {typeLabel}
-                                    </span>
-                                    {dirtyIds.has(question.id) ? (
-                                      <span className='text-[10px] font-bold text-amber-700'>
-                                        未保存
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                  {summaryText ? (
-                                    <p className='mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-slate-800'>
-                                      {summaryText}
-                                    </p>
-                                  ) : null}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <div className='flex shrink-0 items-center gap-1.5'>
-                            <button type='button' onClick={() => setOpenQuestionId(isOpen ? null : question.id)} className='ui-btn ui-btn-sm'>
-                              {isOpen ? '收起' : '编辑'}
-                            </button>
-                          </div>
+              <div className='border-t border-slate-200'>
+                {group.materials.map((material, materialIndex) => (
+                  <div key={material.id} className='contents'>
+                    {material.materialType !== 'VOCAB_GRAMMAR' &&
+                    (material.materialType !== 'LISTENING' ||
+                      material.questions.length !== 1) ? (
+                      <div className='border-b border-slate-200 px-3 py-2'>
+                        <div className='flex min-w-0 items-center justify-between gap-2'>
+                          <h3 className='truncate text-sm font-bold text-slate-900'>
+                            {material.materialType === 'READING'
+                              ? `文章 ${materialIndex + 1}`
+                              : material.title}
+                          </h3>
+                          {material.questionCount > 1 ? (
+                            <span className='shrink-0 text-xs text-slate-400'>
+                              {material.questionCount} 题
+                            </span>
+                          ) : null}
                         </div>
+                      </div>
+                    ) : null}
 
-                        {isOpen ? (
-                        <div className='border-t border-slate-200 bg-slate-100/70 p-3 md:p-4'>
-                          <div className='grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]'>
-                            <section className='space-y-4 rounded-xl border border-slate-200 bg-white p-4'>
-                              <div className='flex items-center justify-between gap-3'>
-                                <h4 className='text-sm font-black text-slate-900'>题目内容</h4>
-                                {material.materialType === 'LISTENING' ? (
-                                  <label className='flex items-center gap-2 text-xs font-semibold text-slate-500'>
-                                    所属問題
-                                    <input
-                                      type='number'
-                                      min='1'
-                                      step='1'
-                                      value={question.listeningSectionNumber}
-                                      onChange={event =>
-                                        setQuestionField(
-                                          material.id,
-                                          question.id,
-                                          'listeningSectionNumber',
-                                          event.target.value,
-                                        )
-                                      }
-                                      aria-label='所属問題'
-                                      className='h-8 w-20 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none focus:border-slate-400'
-                                    />
-                                  </label>
-                                ) : null}
-                              </div>
+                    <div className={'contents'}>
+                      {material.questions.length === 0 ? (
+                        <div className='flex items-center justify-between gap-3 px-3 py-3'>
+                          <span className='text-sm text-slate-500'>
+                            暂无题目
+                          </span>
+                          <Link
+                            href={`/manage/listening/${encodeURIComponent(material.id)}#questions`}
+                            className='ui-btn ui-btn-primary ui-btn-sm'>
+                            添加题目
+                          </Link>
+                        </div>
+                      ) : null}
+                      {material.questions.map((question, index) => {
+                        const statusText = message[question.id] || ''
+                        const isSaving = savingId === question.id && isPending
+                        const isOpen = openQuestionId === question.id
+                        const typeLabel = getQuestionTypeLabel(
+                          question.questionType,
+                        )
+                        const vocabGrammarNumber =
+                          vocabGrammarQuestionNumbers.get(question.id)
+                        const readingNumber = readingQuestionNumbers.get(
+                          question.id,
+                        )
+                        const summaryText =
+                          question.prompt || question.contextSentence
 
-                              <label className='block space-y-1.5'>
-                                <span className='text-xs font-bold text-slate-600'>题干</span>
-                                <textarea
-                                  value={question.prompt}
-                                  onChange={event =>
-                                    setQuestionField(
-                                      material.id,
-                                      question.id,
-                                      'prompt',
-                                      event.target.value,
-                                    )
-                                  }
-                                  rows={4}
-                                  className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
-                                />
-                              </label>
-
-                              <details
-                                key={`${question.id}-${question.contextSentence ? 'with-context' : 'empty-context'}`}
-                                open={
-                                  material.materialType !== 'LISTENING' ||
-                                  Boolean(question.contextSentence)
+                        return (
+                          <article
+                            key={question.id}
+                            className={`paper-question-row overflow-hidden border-b border-slate-200 bg-transparent ${
+                              dirtyIds.has(question.id) ? 'bg-amber-50/40' : ''
+                            }`}>
+                            <div className='flex min-h-12 items-center gap-2 px-3 py-2'>
+                              <input
+                                type='checkbox'
+                                checked={selectedQuestionIds.has(question.id)}
+                                onChange={() =>
+                                  toggleQuestionSelection(question.id)
                                 }
-                                className='rounded-lg border border-slate-200 bg-slate-50/70'>
-                                <summary className='cursor-pointer list-none px-3 py-2 text-xs font-bold text-slate-600'>
-                                  {question.questionType === 'FILL_BLANK'
-                                    ? '定位句（可选，保留空位）'
-                                    : question.questionType === 'READING_COMPREHENSION'
-                                      ? '引用原文（可选）'
-                                      : '语境句（可选）'}
-                                </summary>
-                                <div className='border-t border-slate-200 p-2'>
-                                <textarea
-                                  value={question.contextSentence}
-                                  onChange={event =>
-                                    setQuestionField(
-                                      material.id,
-                                      question.id,
-                                      'contextSentence',
-                                      event.target.value,
-                                    )
-                                  }
-                                  rows={3}
-                                  aria-label='语境句'
-                                  placeholder='仅在内容与题干不同时填写'
-                                  className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
-                                />
+                                disabled={Boolean(bulkAction)}
+                                aria-label={`选择题目 ${question.sortOrder || index + 1}`}
+                                className='h-4 w-4 shrink-0 rounded border-slate-300 accent-slate-900'
+                              />
+                              <div className='flex min-w-0 flex-1 items-center gap-2.5'>
+                                {material.materialType !== 'LISTENING' &&
+                                material.materialType !== 'VOCAB_GRAMMAR' &&
+                                material.materialType !== 'READING' ? (
+                                  <span className='inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 px-1.5 text-xs font-black text-white'>
+                                    {question.sortOrder || index + 1}
+                                  </span>
+                                ) : null}
+                                <div className='min-w-0'>
+                                  {(material.materialType === 'LISTENING' &&
+                                    material.questions.length === 1) ||
+                                  material.materialType === 'VOCAB_GRAMMAR' ||
+                                  material.materialType === 'READING' ? (
+                                    <div className='flex flex-wrap items-center gap-2'>
+                                      <h3 className='truncate text-sm font-bold text-slate-900'>
+                                        {material.materialType ===
+                                          'VOCAB_GRAMMAR' && vocabGrammarNumber
+                                          ? `問題${vocabGrammarNumber.sectionNumber}-${String(vocabGrammarNumber.questionNumber).padStart(2, '0')}｜${vocabGrammarNumber.title}`
+                                          : material.materialType ===
+                                                'READING' && readingNumber
+                                            ? `問題${readingNumber.sectionNumber}-${String(readingNumber.questionNumber).padStart(2, '0')}｜${readingNumber.title}`
+                                            : material.title}
+                                      </h3>
+                                      {dirtyIds.has(question.id) ? (
+                                        <span className='text-[10px] font-bold text-amber-700'>
+                                          未保存
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className='flex flex-wrap items-center gap-2'>
+                                        <span className='text-[11px] font-bold text-slate-500'>
+                                          {typeLabel}
+                                        </span>
+                                        {dirtyIds.has(question.id) ? (
+                                          <span className='text-[10px] font-bold text-amber-700'>
+                                            未保存
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {summaryText ? (
+                                        <p className='mt-0.5 line-clamp-2 text-sm font-medium leading-5 text-slate-800'>
+                                          {summaryText}
+                                        </p>
+                                      ) : null}
+                                    </>
+                                  )}
                                 </div>
-                              </details>
-
-                              <label className='block space-y-1.5'>
-                                <span className='text-xs font-bold text-slate-600'>解析（可选）</span>
-                                <textarea
-                                  value={question.explanation}
-                                  onChange={event =>
-                                    setQuestionField(
-                                      material.id,
-                                      question.id,
-                                      'explanation',
-                                      event.target.value,
-                                    )
-                                  }
-                                  rows={3}
-                                  className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
-                                />
-                              </label>
-                            </section>
-
-                            <section className='rounded-xl border border-slate-200 bg-white p-4'>
-                              <div className='flex flex-wrap items-center justify-between gap-2'>
-                                <div>
-                                  <h4 className='text-sm font-black text-slate-900'>选项与答案</h4>
-                                  <p className='mt-0.5 text-xs text-slate-400'>{question.options.length} 个选项</p>
-                                </div>
+                              </div>
+                              <div className='flex shrink-0 items-center gap-1.5'>
                                 <button
                                   type='button'
-                                  onClick={() => addOption(material.id, question.id)}
+                                  onClick={() =>
+                                    setOpenQuestionId(
+                                      isOpen ? null : question.id,
+                                    )
+                                  }
                                   className='ui-btn ui-btn-sm'>
-                                  添加选项
+                                  {isOpen ? '收起' : '编辑'}
                                 </button>
                               </div>
+                            </div>
 
-                              <div className='mt-3 grid gap-2 sm:grid-cols-2'>
-                                <label className='space-y-1'>
-                                  <span className='text-[11px] font-semibold text-slate-500'>序号</span>
-                                  <CustomSelect
-                                    value={question.optionLabelFormat || 'numeric'}
-                                    onChange={event =>
-                                      setQuestionField(
-                                        material.id,
-                                        question.id,
-                                        'optionLabelFormat',
-                                        event.target.value,
-                                      )
-                                    }
-                                    className='h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm'>
-                                    <option value='numeric'>1、2、3、4</option>
-                                    <option value='upper-alpha'>A、B、C、D</option>
-                                    <option value='circled-number'>①、②、③、④</option>
-                                    <option value='katakana'>ア、イ、ウ、エ</option>
-                                    <option value='custom'>自定义</option>
-                                  </CustomSelect>
-                                </label>
-                                {question.optionLabelFormat === 'custom' ? (
-                                  <label className='space-y-1'>
-                                    <span className='text-[11px] font-semibold text-slate-500'>自定义序号</span>
-                                    <input
-                                      value={question.customOptionLabels || ''}
-                                      onChange={event =>
-                                        setQuestionField(
-                                          material.id,
-                                          question.id,
-                                          'customOptionLabels',
-                                          event.target.value,
-                                        )
-                                      }
-                                      placeholder='Ⅰ|Ⅱ|Ⅲ|Ⅳ'
-                                      className='h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-slate-400'
-                                    />
-                                  </label>
-                                ) : null}
-                              </div>
+                            {isOpen ? (
+                              <div className='border-t border-slate-200 bg-slate-100/70 p-3 md:p-4'>
+                                <div className='grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]'>
+                                  <section className='space-y-4 rounded-xl border border-slate-200 bg-white p-4'>
+                                    <div className='flex items-center justify-between gap-3'>
+                                      <h4 className='text-sm font-black text-slate-900'>
+                                        题目内容
+                                      </h4>
+                                      {material.materialType === 'LISTENING' ? (
+                                        <label className='flex items-center gap-2 text-xs font-semibold text-slate-500'>
+                                          所属問題
+                                          <input
+                                            type='number'
+                                            min='1'
+                                            step='1'
+                                            value={
+                                              question.listeningSectionNumber
+                                            }
+                                            onChange={event =>
+                                              setQuestionField(
+                                                material.id,
+                                                question.id,
+                                                'listeningSectionNumber',
+                                                event.target.value,
+                                              )
+                                            }
+                                            aria-label='所属問題'
+                                            className='h-8 w-20 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-800 outline-none focus:border-slate-400'
+                                          />
+                                        </label>
+                                      ) : null}
+                                    </div>
 
-                              <div className='mt-4 space-y-2'>
-                                {question.options.map((option, optionIndex) => {
-                                  const optionLabel = formatOptionLabel(
-                                    optionIndex,
-                                    normalizeOptionLabelFormat(
-                                      question.optionLabelFormat,
-                                      'numeric',
-                                    ),
-                                    parseCustomOptionLabels(
-                                      question.customOptionLabels,
-                                    ),
-                                  )
-
-                                  return (
-                                    <div
-                                      key={option.id}
-                                      className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border p-2 ${
-                                        option.isCorrect
-                                          ? 'border-emerald-300 bg-emerald-50/70'
-                                          : 'border-slate-200 bg-slate-50/60'
-                                      }`}>
-                                      <span className='inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-white px-1.5 text-xs font-black text-slate-600 shadow-sm ring-1 ring-slate-200'>
-                                        {optionLabel}
+                                    <label className='block space-y-1.5'>
+                                      <span className='text-xs font-bold text-slate-600'>
+                                        题干
                                       </span>
-                                      <input
-                                        value={option.text}
+                                      <textarea
+                                        value={question.prompt}
                                         onChange={event =>
-                                          setOptionField(
+                                          setQuestionField(
                                             material.id,
                                             question.id,
-                                            option.id,
-                                            'text',
+                                            'prompt',
                                             event.target.value,
                                           )
                                         }
-                                        aria-label={`选项 ${optionLabel}`}
-                                        className='h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-slate-400'
+                                        rows={4}
+                                        className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
                                       />
-                                      <div className='flex items-center gap-1'>
-                                        <label className={`flex h-8 cursor-pointer items-center gap-1 rounded-md px-2 text-[11px] font-bold ${
-                                          option.isCorrect
-                                            ? 'bg-emerald-100 text-emerald-800'
-                                            : 'text-slate-500 hover:bg-white'
-                                        }`}>
-                                          <input
-                                            type='radio'
-                                            name={`correct-${question.id}`}
-                                            checked={option.isCorrect}
-                                            onChange={() =>
-                                              setCorrectOption(
+                                    </label>
+
+                                    {supportsSeparateQuestionContext(
+                                      question.questionType,
+                                    ) ? (
+                                      <details
+                                        key={`${question.id}-${question.contextSentence ? 'with-context' : 'empty-context'}`}
+                                        open={
+                                          material.materialType !==
+                                            'LISTENING' ||
+                                          Boolean(question.contextSentence)
+                                        }
+                                        className='rounded-lg border border-slate-200 bg-slate-50/70'>
+                                        <summary className='cursor-pointer list-none px-3 py-2 text-xs font-bold text-slate-600'>
+                                          {question.questionType ===
+                                          'FILL_BLANK'
+                                            ? '定位句（可选，保留空位）'
+                                            : question.questionType ===
+                                                'READING_COMPREHENSION'
+                                              ? '引用原文（可选）'
+                                              : '语境句（可选）'}
+                                        </summary>
+                                        <div className='border-t border-slate-200 p-2'>
+                                          <textarea
+                                            value={question.contextSentence}
+                                            onChange={event =>
+                                              setQuestionField(
                                                 material.id,
                                                 question.id,
-                                                option.id,
+                                                'contextSentence',
+                                                event.target.value,
                                               )
                                             }
-                                            className='h-3.5 w-3.5'
+                                            rows={3}
+                                            aria-label='语境句'
+                                            placeholder='仅在内容与题干不同时填写'
+                                            className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
                                           />
-                                          正确
-                                        </label>
+                                        </div>
+                                      </details>
+                                    ) : null}
+
+                                    <label className='block space-y-1.5'>
+                                      <span className='text-xs font-bold text-slate-600'>
+                                        解析（可选）
+                                      </span>
+                                      <textarea
+                                        value={question.explanation}
+                                        onChange={event =>
+                                          setQuestionField(
+                                            material.id,
+                                            question.id,
+                                            'explanation',
+                                            event.target.value,
+                                          )
+                                        }
+                                        rows={3}
+                                        className='w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm leading-6 text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'
+                                      />
+                                    </label>
+                                  </section>
+
+                                  <section className='rounded-xl border border-slate-200 bg-white p-4'>
+                                    <div className='flex flex-wrap items-center justify-between gap-2'>
+                                      <div>
+                                        <h4 className='text-sm font-black text-slate-900'>
+                                          选项与答案
+                                        </h4>
+                                        <p className='mt-0.5 text-xs text-slate-400'>
+                                          {question.options.length} 个选项
+                                        </p>
+                                      </div>
+                                      <div className='flex items-center gap-2'>
+                                        {material.materialType ===
+                                        'LISTENING' ? (
+                                          <ToggleSwitch
+                                            label='选项乱序'
+                                            checked={
+                                              question.listeningSectionNumber !==
+                                                '3' && question.shuffleOptions
+                                            }
+                                            disabled={
+                                              question.listeningSectionNumber ===
+                                              '3'
+                                            }
+                                            onChange={checked =>
+                                              setQuestionShuffle(
+                                                material.id,
+                                                question.id,
+                                                checked,
+                                              )
+                                            }
+                                          />
+                                        ) : null}
                                         <button
                                           type='button'
-                                          disabled={question.options.length <= MIN_QUESTION_OPTION_COUNT}
                                           onClick={() =>
-                                            removeOption(
-                                              material.id,
-                                              question.id,
-                                              optionIndex,
-                                            )
+                                            addOption(material.id, question.id)
                                           }
-                                          aria-label={`删除选项 ${optionIndex + 1}`}
-                                          className='h-8 rounded-md px-2 text-[11px] font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-25'>
-                                          移除
+                                          className='ui-btn ui-btn-sm'>
+                                          添加选项
                                         </button>
                                       </div>
                                     </div>
-                                  )
-                                })}
-                              </div>
-                            </section>
-                          </div>
 
-                          <div className='mt-3 flex flex-wrap items-center justify-end gap-3'>
-                            {statusText ? (
-                              <p
-                                role='status'
-                                className={`mr-auto text-xs font-semibold ${
-                                  statusText.includes('已保存')
-                                    ? 'text-emerald-700'
-                                    : 'text-rose-600'
-                                }`}>
-                                {statusText}
-                              </p>
+                                    {question.questionType === 'SORTING' ? (
+                                      <div className='mt-4 border-y border-slate-200 py-4'>
+                                        <div className='mb-3 flex items-center justify-between gap-3'>
+                                          <span className='text-xs font-bold text-slate-700'>
+                                            按正确语序点击选项
+                                          </span>
+                                          {question.sortingOrder.length > 0 ? (
+                                            <button
+                                              type='button'
+                                              onClick={() =>
+                                                resetSortingOrder(
+                                                  material.id,
+                                                  question.id,
+                                                )
+                                              }
+                                              className='text-xs font-semibold text-slate-500 hover:text-slate-900'>
+                                              重置
+                                            </button>
+                                          ) : null}
+                                        </div>
+                                        <div className='flex flex-wrap gap-2'>
+                                          {question.options.map(
+                                            (option, optionIndex) => {
+                                              const position =
+                                                question.sortingOrder.indexOf(
+                                                  optionIndex,
+                                                )
+                                              return (
+                                                <button
+                                                  key={`paper-sorting-${question.id}-${option.id}`}
+                                                  type='button'
+                                                  disabled={
+                                                    position >= 0 ||
+                                                    !option.text.trim()
+                                                  }
+                                                  onClick={() =>
+                                                    selectSortingOption(
+                                                      material.id,
+                                                      question.id,
+                                                      optionIndex,
+                                                    )
+                                                  }
+                                                  className='rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 disabled:bg-slate-100 disabled:text-slate-400'>
+                                                  {position >= 0
+                                                    ? `${position + 1}. `
+                                                    : ''}
+                                                  {option.text ||
+                                                    `选项 ${optionIndex + 1}`}
+                                                </button>
+                                              )
+                                            },
+                                          )}
+                                        </div>
+                                      </div>
+                                    ) : null}
+
+                                    <div className='mt-3 grid gap-2 sm:grid-cols-2'>
+                                      <label className='space-y-1'>
+                                        <span className='text-[11px] font-semibold text-slate-500'>
+                                          序号
+                                        </span>
+                                        <CustomSelect
+                                          value={
+                                            question.optionLabelFormat ||
+                                            'numeric'
+                                          }
+                                          onChange={event =>
+                                            setQuestionField(
+                                              material.id,
+                                              question.id,
+                                              'optionLabelFormat',
+                                              event.target.value,
+                                            )
+                                          }
+                                          className='h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm'>
+                                          <option value='numeric'>
+                                            1、2、3、4
+                                          </option>
+                                          <option value='upper-alpha'>
+                                            A、B、C、D
+                                          </option>
+                                          <option value='circled-number'>
+                                            ①、②、③、④
+                                          </option>
+                                          <option value='katakana'>
+                                            ア、イ、ウ、エ
+                                          </option>
+                                          <option value='custom'>自定义</option>
+                                        </CustomSelect>
+                                      </label>
+                                      {question.optionLabelFormat ===
+                                      'custom' ? (
+                                        <label className='space-y-1'>
+                                          <span className='text-[11px] font-semibold text-slate-500'>
+                                            自定义序号
+                                          </span>
+                                          <input
+                                            value={
+                                              question.customOptionLabels || ''
+                                            }
+                                            onChange={event =>
+                                              setQuestionField(
+                                                material.id,
+                                                question.id,
+                                                'customOptionLabels',
+                                                event.target.value,
+                                              )
+                                            }
+                                            placeholder='Ⅰ|Ⅱ|Ⅲ|Ⅳ'
+                                            className='h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm outline-none focus:border-slate-400'
+                                          />
+                                        </label>
+                                      ) : null}
+                                    </div>
+
+                                    <div className='mt-4 space-y-2'>
+                                      {question.options.map(
+                                        (option, optionIndex) => {
+                                          const optionLabel = formatOptionLabel(
+                                            optionIndex,
+                                            normalizeOptionLabelFormat(
+                                              question.optionLabelFormat,
+                                              'numeric',
+                                            ),
+                                            parseCustomOptionLabels(
+                                              question.customOptionLabels,
+                                            ),
+                                          )
+
+                                          return (
+                                            <div
+                                              key={option.id}
+                                              className={`grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border p-2 ${
+                                                option.isCorrect
+                                                  ? 'border-emerald-300 bg-emerald-50/70'
+                                                  : 'border-slate-200 bg-slate-50/60'
+                                              }`}>
+                                              <span className='inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-white px-1.5 text-xs font-black text-slate-600 shadow-sm ring-1 ring-slate-200'>
+                                                {optionLabel}
+                                              </span>
+                                              <input
+                                                value={option.text}
+                                                onChange={event =>
+                                                  setOptionField(
+                                                    material.id,
+                                                    question.id,
+                                                    option.id,
+                                                    'text',
+                                                    event.target.value,
+                                                  )
+                                                }
+                                                aria-label={`选项 ${optionLabel}`}
+                                                className='h-9 min-w-0 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 outline-none focus:border-slate-400'
+                                              />
+                                              <div className='flex items-center gap-1'>
+                                                <label
+                                                  className={`flex h-8 cursor-pointer items-center gap-1 rounded-md px-2 text-[11px] font-bold ${
+                                                    option.isCorrect
+                                                      ? 'bg-emerald-100 text-emerald-800'
+                                                      : 'text-slate-500 hover:bg-white'
+                                                  }`}>
+                                                  <input
+                                                    type='radio'
+                                                    name={`correct-${question.id}`}
+                                                    checked={option.isCorrect}
+                                                    onChange={() =>
+                                                      setCorrectOption(
+                                                        material.id,
+                                                        question.id,
+                                                        option.id,
+                                                      )
+                                                    }
+                                                    className='h-3.5 w-3.5'
+                                                  />
+                                                  正确
+                                                </label>
+                                                <button
+                                                  type='button'
+                                                  disabled={
+                                                    question.options.length <=
+                                                    MIN_QUESTION_OPTION_COUNT
+                                                  }
+                                                  onClick={() =>
+                                                    removeOption(
+                                                      material.id,
+                                                      question.id,
+                                                      optionIndex,
+                                                    )
+                                                  }
+                                                  aria-label={`删除选项 ${optionIndex + 1}`}
+                                                  className='h-8 rounded-md px-2 text-[11px] font-bold text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-25'>
+                                                  移除
+                                                </button>
+                                              </div>
+                                            </div>
+                                          )
+                                        },
+                                      )}
+                                    </div>
+                                  </section>
+                                </div>
+
+                                <div className='mt-3 flex flex-wrap items-center justify-end gap-3'>
+                                  {statusText ? (
+                                    <p
+                                      role='status'
+                                      className={`mr-auto text-xs font-semibold ${
+                                        statusText.includes('已保存')
+                                          ? 'text-emerald-700'
+                                          : 'text-rose-600'
+                                      }`}>
+                                      {statusText}
+                                    </p>
+                                  ) : null}
+                                  <button
+                                    type='button'
+                                    onClick={() =>
+                                      saveQuestion(material.id, question.id)
+                                    }
+                                    disabled={isSaving}
+                                    className='ui-btn ui-btn-primary min-w-24 disabled:opacity-50'>
+                                    {isSaving ? '保存中…' : '保存题目'}
+                                  </button>
+                                </div>
+                              </div>
                             ) : null}
-                            <button
-                              type='button'
-                              onClick={() => saveQuestion(material.id, question.id)}
-                              disabled={isSaving}
-                              className='ui-btn ui-btn-primary min-w-24 disabled:opacity-50'>
-                              {isSaving ? '保存中…' : '保存题目'}
-                            </button>
-                          </div>
-                        </div>
-                        ) : null}
-                      </article>
-                    )
-                  })}
-                </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </section>
-        ))}
+            </section>
+          ))
+        )}
       </div>
+
+      {selectedCount > 0 ? (
+        <div className='fixed inset-x-0 bottom-0 z-50 border-t border-slate-300 bg-[#f6f5f1]/95 px-3 py-2.5 shadow-[0_-14px_35px_-28px_rgba(15,23,42,0.45)] backdrop-blur-md'>
+          <div className='mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-center'>
+            <div className='flex items-center justify-between gap-3 sm:shrink-0'>
+              <span className='px-1 text-sm font-black text-slate-900'>
+                已选 {selectedCount} 题
+              </span>
+              <button
+                type='button'
+                onClick={clearQuestionSelection}
+                disabled={Boolean(bulkAction)}
+                className='px-1 text-xs font-semibold text-slate-400 hover:text-slate-800 sm:hidden'>
+                取消选择
+              </button>
+            </div>
+            <CustomSelect
+              value={targetPaperId}
+              onChange={event => setTargetPaperId(event.target.value)}
+              aria-label='移动到试卷'
+              disabled={moveTargets.length === 0 || Boolean(bulkAction)}
+              className='h-9 min-w-0 flex-1 border border-slate-200 bg-white px-3 text-sm'>
+              <option value=''>移动到其他试卷…</option>
+              {moveTargets.map(target => (
+                <option key={target.id} value={target.id}>
+                  {target.level ? `${target.level} · ` : ''}
+                  {target.title}
+                </option>
+              ))}
+            </CustomSelect>
+            <div className='flex gap-2 sm:shrink-0'>
+              <button
+                type='button'
+                onClick={clearQuestionSelection}
+                disabled={Boolean(bulkAction)}
+                className='ui-btn ui-btn-sm hidden sm:inline-flex'>
+                取消
+              </button>
+              <button
+                type='button'
+                onClick={() => void handleMoveSelected()}
+                disabled={!targetPaperId || Boolean(bulkAction)}
+                className='ui-btn ui-btn-sm flex-1 disabled:opacity-40 sm:flex-none'>
+                {bulkAction === 'move' ? '移动中…' : '移动'}
+              </button>
+              <button
+                type='button'
+                onClick={() => void handleDeleteSelected()}
+                disabled={Boolean(bulkAction)}
+                className='ui-btn ui-btn-sm flex-1 text-rose-600 hover:bg-rose-50 disabled:opacity-40 sm:flex-none'>
+                {bulkAction === 'delete' ? '删除中…' : '删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   )
 }

@@ -1,7 +1,11 @@
 // app/upload/action.ts
 'use server'
 
-import { CollectionType, MaterialType, Prisma } from '@prisma/client'
+import {
+  CollectionType,
+  MaterialType,
+  Prisma,
+} from '@prisma/client'
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
@@ -22,6 +26,11 @@ import {
 import {
   buildCollectionAudioFolder,
 } from '@/modules/import/audio/domain'
+import { parseListeningQuestionDraftPayload } from '@/modules/import/domain/listening-question-drafts'
+import { selectListeningQuestionEntriesForFile } from '@/modules/import/domain/listening-batch-assignments'
+import { encodeQuestionContent } from '@/lib/codecs/question-content'
+import { toQuestionOptionsAndAnswer } from '@/modules/practice/domain/question-record'
+import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
 
 function assTimeToSeconds(timeStr: string): number {
   const [h, m, s] = timeStr.split(':')
@@ -186,6 +195,12 @@ const AUDIO_EXTENSIONS = new Set([
 ])
 
 const PUBLIC_AUDIO_DIR = path.join(process.cwd(), 'public', 'audios')
+const PUBLIC_QUESTION_IMAGE_DIR = path.join(
+  process.cwd(),
+  'public',
+  'images',
+  'questions',
+)
 
 function toSafeFilename(name: string) {
   return name
@@ -440,6 +455,8 @@ async function ensureTargetCollections(
       (formData.get('collectionName') as string)?.trim() ||
       (formData.get('categoryName') as string)?.trim()
     const rawCollectionType = (formData.get('collectionType') as string)?.trim()
+    const collectionLanguage =
+      (formData.get('collectionLanguage') as string)?.trim().toLowerCase() || null
     if (!collectionName) {
       throw new Error('请填写新集合名称。')
     }
@@ -452,6 +469,7 @@ async function ensureTargetCollections(
         title: collectionName,
         collectionType,
         acceptedMaterialTypes: [materialType],
+        language: collectionLanguage,
       },
       select: { id: true },
     })
@@ -590,6 +608,47 @@ async function saveUploadedAudio(
   return `/audios/${safeFolderName}/${finalName}`
 }
 
+async function saveUploadedQuestionImage(
+  file: File,
+  questionIndex: number,
+  questionTitle: string,
+  questionCount: number,
+  nameSuffix = '',
+  imageLabel = '题目图片',
+) {
+  const extensionByMime: Record<string, string> = {
+    'image/jpeg': '.jpg',
+    'image/png': '.png',
+    'image/webp': '.webp',
+  }
+  const extension = extensionByMime[file.type]
+  if (!extension) {
+    throw new Error(
+      `第 ${questionIndex + 1} 题${imageLabel}仅支持 JPG、PNG 或 WebP。`,
+    )
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    throw new Error(`第 ${questionIndex + 1} 题${imageLabel}不能超过 10MB。`)
+  }
+
+  await mkdir(PUBLIC_QUESTION_IMAGE_DIR, { recursive: true })
+  const safeTitle = toSafeFilename(questionTitle) || `question-${questionIndex + 1}`
+  const indexedTitle =
+    questionCount > 1 ? `${safeTitle}-${questionIndex + 1}` : safeTitle
+  const imageTitle = `${indexedTitle}${nameSuffix}`
+  let fileName = `${imageTitle}${extension}`
+  let suffix = 2
+  while (await fileExists(path.join(PUBLIC_QUESTION_IMAGE_DIR, fileName))) {
+    fileName = `${imageTitle}-${suffix}${extension}`
+    suffix += 1
+  }
+  await writeFile(
+    path.join(PUBLIC_QUESTION_IMAGE_DIR, fileName),
+    Buffer.from(await file.arrayBuffer()),
+  )
+  return `/images/questions/${fileName}`
+}
+
 export async function uploadAssAndSaveData(formData: FormData) {
   try {
     const uploadMode = parseUploadMode(formData.get('uploadMode'))
@@ -639,17 +698,32 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const audioUploadFiles = (
       formData.getAll('audioUploadFiles').filter(item => item instanceof File) as File[]
     ).filter(file => file.size > 0)
+    const combinedMediaFiles = (
+      formData.getAll('mediaFiles').filter(item => item instanceof File) as File[]
+    ).filter(file => file.size > 0)
+    const combinedAudioFiles = combinedMediaFiles.filter(file =>
+      file.name.toLowerCase().endsWith('.mp3'),
+    )
+    const combinedSubtitleFiles = combinedMediaFiles.filter(file =>
+      file.name.toLowerCase().endsWith('.ass'),
+    )
     const uniqueAudioUploadFiles = Array.from(
       new Map(
-        [...audioUploadFiles, ...(audioUploadFile ? [audioUploadFile] : [])].map(file => [
-          `${file.name}_${file.size}`,
-          file,
-        ]),
+        [
+          ...audioUploadFiles,
+          ...combinedAudioFiles,
+          ...(audioUploadFile ? [audioUploadFile] : []),
+        ].map(file => [`${file.name}_${file.size}`, file]),
       ).values(),
     )
     const audioMatchFolder = (formData.get('audioMatchFolder') as string) || ''
     const files = (
-      formData.getAll('assFiles').filter(item => item instanceof File) as File[]
+      [
+        ...(formData
+          .getAll('assFiles')
+          .filter(item => item instanceof File) as File[]),
+        ...combinedSubtitleFiles,
+      ]
     ).filter(file => file.size > 0 && file.name.toLowerCase().endsWith('.ass'))
 
     const uniqueFiles = Array.from(
@@ -670,6 +744,61 @@ export async function uploadAssAndSaveData(formData: FormData) {
     }
 
     const isBatch = uniqueFiles.length > 1
+    const listeningQuestionDrafts =
+      matchedMaterialType === MaterialType.LISTENING
+        ? parseListeningQuestionDraftPayload(
+            formData.get('listeningQuestionsJson'),
+          )
+        : {
+            listeningSectionNumber: null,
+            listeningSectionTitle: null,
+            questions: [],
+          }
+    const questionImageTitle =
+      title || getBaseNameWithoutExt(uniqueFiles[0]?.name || '')
+    const listeningQuestionImagePaths = await Promise.all(
+      listeningQuestionDrafts.questions.map(async (question, questionIndex) => {
+        if (question.questionType !== 'TOEIC_PHOTOGRAPH') return ''
+        const image = formData.get(`listeningQuestionImage_${questionIndex}`)
+        if (!(image instanceof File) || image.size === 0) {
+          throw new Error(`请上传第 ${questionIndex + 1} 题的题目图片。`)
+        }
+        return saveUploadedQuestionImage(
+          image,
+          questionIndex,
+          questionImageTitle,
+          listeningQuestionDrafts.questions.length,
+        )
+      }),
+    )
+    const listeningOptionImagePaths = await Promise.all(
+      listeningQuestionDrafts.questions.map(async (question, questionIndex) => {
+        if (question.optionKind !== 'image') {
+          return question.options.map(option => option.imageUrl || '')
+        }
+        return Promise.all(
+          question.options.map(async (option, optionIndex) => {
+            const image = formData.get(
+              `listeningQuestionOptionImage_${questionIndex}_${optionIndex}`,
+            )
+            if (!(image instanceof File) || image.size === 0) {
+              if (option.imageUrl) return option.imageUrl
+              throw new Error(
+                `请上传第 ${questionIndex + 1} 题的第 ${optionIndex + 1} 个选项图片。`,
+              )
+            }
+            return saveUploadedQuestionImage(
+              image,
+              questionIndex,
+              questionImageTitle,
+              listeningQuestionDrafts.questions.length,
+              `-option-${optionIndex + 1}`,
+              `选项 ${optionIndex + 1} 图片`,
+            )
+          }),
+        )
+      }),
+    )
     let baseAudioFile = ensureAudioWebPath(audioFileFromInput)
     const uploadedAudioByStem = new Map<string, string[]>()
 
@@ -741,6 +870,11 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
     for (let i = 0; i < uniqueFiles.length; i += 1) {
       const file = uniqueFiles[i]
+      const materialQuestionEntries = selectListeningQuestionEntriesForFile(
+        listeningQuestionDrafts.questions,
+        file.name,
+        isBatch,
+      )
       const fileContent = await file.text()
       const rawSubs = parseAssToRawSubs(fileContent)
       if (rawSubs.length === 0) {
@@ -824,6 +958,19 @@ export async function uploadAssAndSaveData(formData: FormData) {
       }
 
       const materialId = randomUUID()
+      const listeningSectionNumber =
+        listeningQuestionDrafts.listeningSectionNumber ||
+        jlptIdentity?.sectionNumber ||
+        null
+      const toeicPart = getToeicPartByQuestionType(
+        listeningQuestionDrafts.questions[0]?.questionType || '',
+      )
+      const listeningSectionTitle =
+        listeningQuestionDrafts.listeningSectionTitle ||
+        jlptIdentity?.sectionLabel ||
+        (toeicPart
+          ? `Part ${toeicPart.part} · ${toeicPart.title}`
+          : '听力')
       const contentPayload: Record<string, unknown> = { dialogues: processedSubs }
       if (finalAudioFile) {
         contentPayload.audioUrl = finalAudioFile
@@ -838,13 +985,16 @@ export async function uploadAssAndSaveData(formData: FormData) {
       if (subtitleEpisode) contentPayload.subtitleEpisode = subtitleEpisode
       if (materialLanguage) contentPayload.language = materialLanguage
       if (matchedMaterialType === MaterialType.LISTENING) {
-        contentPayload.questionEntryRequired = true
+        contentPayload.questionEntryRequired =
+          materialQuestionEntries.length === 0
+        if (listeningSectionNumber) {
+          contentPayload.listeningSectionNumber = listeningSectionNumber
+          contentPayload.sectionNumber = listeningSectionNumber
+          contentPayload.listeningSectionTitle = listeningSectionTitle
+          contentPayload.sectionTitle = listeningSectionTitle
+        }
       }
       if (jlptIdentity) {
-        contentPayload.listeningSectionNumber = jlptIdentity.sectionNumber
-        contentPayload.sectionNumber = jlptIdentity.sectionNumber
-        contentPayload.listeningSectionTitle = jlptIdentity.sectionLabel
-        contentPayload.sectionTitle = jlptIdentity.sectionLabel
         contentPayload.questionNumber = jlptIdentity.questionNumber
         contentPayload.jlptLevel = jlptIdentity.level
         contentPayload.jlptSession = jlptIdentity.session
@@ -892,6 +1042,45 @@ export async function uploadAssAndSaveData(formData: FormData) {
           },
         })
 
+        if (
+          matchedMaterialType === MaterialType.LISTENING &&
+          materialQuestionEntries.length > 0
+        ) {
+          for (let questionIndex = 0; questionIndex < materialQuestionEntries.length; questionIndex += 1) {
+            const { question, globalIndex } = materialQuestionEntries[questionIndex]
+            const questionOptions = toQuestionOptionsAndAnswer(
+              question.options.map((option, optionIndex) => ({
+                ...option,
+                imageUrl:
+                  listeningOptionImagePaths[globalIndex]?.[optionIndex] ||
+                  undefined,
+              })),
+            )
+            await tx.question.create({
+              data: {
+                materialId,
+                questionType: question.questionType,
+                prompt: question.prompt,
+                context: question.context,
+                analysis: question.explanation,
+                content: encodeQuestionContent({
+                  optionLabelFormat: question.optionLabelFormat,
+                  customOptionLabels: question.customOptionLabels,
+                  shuffleOptions:
+                    question.shuffleOptions && listeningSectionNumber !== 3,
+                  listeningSectionNumber,
+                  sectionNumber: listeningSectionNumber,
+                  listeningSectionTitle,
+                  sectionTitle: listeningSectionTitle,
+                  imageUrl: listeningQuestionImagePaths[globalIndex] || undefined,
+                }),
+                ...questionOptions,
+                sortOrder: questionIndex + 1,
+              },
+            })
+          }
+        }
+
         if (matchedMaterialType === MaterialType.MEDIA_SUBTITLE) {
           await replaceMediaSubtitleSearchIndex(tx, {
             id: materialId,
@@ -903,7 +1092,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
       createdMaterials.push({
         name: file.name,
         id: materialId,
-        listeningSectionNumber: jlptIdentity?.sectionNumber || null,
+        listeningSectionNumber,
       })
       createdCount += 1
     }
@@ -926,17 +1115,25 @@ export async function uploadAssAndSaveData(formData: FormData) {
 
     revalidatePath('/')
     revalidatePath('/manage/import')
+    if (matchedMaterialType === MaterialType.LISTENING) {
+      revalidatePath('/manage/listening')
+      revalidatePath('/practice')
+    }
     revalidatePath('/manage/shadowing')
     if (isMediaUploadMode) revalidatePath('/subtitles')
 
     return {
       success: true,
       message: isBatch
-        ? `批量导入完成：${createdMaterials.length} 个字幕文件已写入（MaterialType=${matchedMaterialType}）。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
-        : `成功导入 ${createdMaterials[0].name}（MaterialType=${matchedMaterialType}）。`,
+        ? `已导入 ${createdMaterials.length} 个字幕文件。${summary.length > 0 ? `（${summary.join('，')}）` : ''}`
+        : listeningQuestionDrafts.questions.length > 0
+          ? `已导入 ${createdMaterials[0].name}，并保存 ${listeningQuestionDrafts.questions.length} 道题。`
+          : `已导入 ${createdMaterials[0].name}。`,
       lessonIds: createdMaterials.map(item => item.id),
       materialType: matchedMaterialType,
-      questionEntryRequired: matchedMaterialType === MaterialType.LISTENING,
+      questionEntryRequired:
+        matchedMaterialType === MaterialType.LISTENING &&
+        listeningQuestionDrafts.questions.length === 0,
       listeningSectionNumber:
         createdMaterials.length === 1
           ? createdMaterials[0].listeningSectionNumber

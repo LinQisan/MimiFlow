@@ -31,7 +31,12 @@ const listeningPayloadSchema = z
     ...audioPayloadFields,
     jlptLevel: z.string().catch(''),
     jlptSession: z.string().catch(''),
-    listeningSectionNumber: z.coerce.number().int().positive().nullable().catch(null),
+    listeningSectionNumber: z.coerce
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .catch(null),
     listeningSectionTitle: z.string().catch(''),
     questionNumber: z.coerce.number().int().positive().nullable().catch(null),
     sectionNumber: z.coerce.number().int().positive().nullable().catch(null),
@@ -40,9 +45,7 @@ const listeningPayloadSchema = z
   })
   .passthrough()
 
-const speakingPayloadSchema = z
-  .object(audioPayloadFields)
-  .passthrough()
+const speakingPayloadSchema = z.object(audioPayloadFields).passthrough()
 
 const mediaSubtitleDialogueSchema = materialDialogueSchema.extend({
   stableId: z.string().trim().min(1),
@@ -56,6 +59,16 @@ const readingPayloadSchema = z
     author: z.string().catch(''),
     language: z.string().catch(''),
     sourceKind: z.string().catch(''),
+    publishedDate: z.string().catch(''),
+    edition: z.string().catch(''),
+    newsSeries: z.string().catch(''),
+    pageNumber: z.string().catch(''),
+    newsSource: z.string().catch(''),
+    newsType: z.string().catch(''),
+    newsSection: z.string().catch(''),
+    newsColumn: z.string().catch(''),
+    newsTopic: z.string().catch(''),
+    audioFile: z.string().catch(''),
     fileName: z.string().catch(''),
     chapters: z
       .array(
@@ -90,9 +103,18 @@ export const mediaSubtitlePayloadSchema = z
   .passthrough()
 
 export const materialPayloadEnvelopeSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal(MaterialType.LISTENING), payload: listeningPayloadSchema }),
-  z.object({ type: z.literal(MaterialType.SPEAKING), payload: speakingPayloadSchema }),
-  z.object({ type: z.literal(MaterialType.READING), payload: readingPayloadSchema }),
+  z.object({
+    type: z.literal(MaterialType.LISTENING),
+    payload: listeningPayloadSchema,
+  }),
+  z.object({
+    type: z.literal(MaterialType.SPEAKING),
+    payload: speakingPayloadSchema,
+  }),
+  z.object({
+    type: z.literal(MaterialType.READING),
+    payload: readingPayloadSchema,
+  }),
   z.object({
     type: z.literal(MaterialType.VOCAB_GRAMMAR),
     payload: vocabularyGrammarPayloadSchema,
@@ -103,9 +125,7 @@ export const materialPayloadEnvelopeSchema = z.discriminatedUnion('type', [
   }),
 ])
 
-type MaterialPayloadEnvelope = z.output<
-  typeof materialPayloadEnvelopeSchema
->
+type MaterialPayloadEnvelope = z.output<typeof materialPayloadEnvelopeSchema>
 export type MaterialPayload<T extends MaterialType> = Extract<
   MaterialPayloadEnvelope,
   { type: T }
@@ -115,7 +135,8 @@ export function decodeMaterialPayload<T extends MaterialType>(
   type: T,
   value: unknown,
 ): MaterialPayload<T> {
-  return materialPayloadEnvelopeSchema.parse({ type, payload: value }).payload as MaterialPayload<T>
+  return materialPayloadEnvelopeSchema.parse({ type, payload: value })
+    .payload as MaterialPayload<T>
 }
 
 export function encodeMaterialPayload<T extends MaterialType>(
