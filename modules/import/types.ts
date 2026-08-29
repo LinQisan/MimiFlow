@@ -31,6 +31,8 @@ export type ArticlePreviewRow = {
   serial: string
   placeholderToken: string
   generatedPrompt: string
+  questionType: string
+  correctAnswer: string
   isDuplicateToken: boolean
 }
 

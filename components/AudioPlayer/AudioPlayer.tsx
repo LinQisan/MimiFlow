@@ -345,6 +345,7 @@ export default function AudioPlayer({
             contextSentence={selection.contextSentence}
             sourceType={selection.sourceType}
             sourceId={selection.sourceId}
+            detectedWord={selection.detectedWord}
             initialMeta={selectedVocabularyMeta}
             onClose={closeSelection}
             onSaved={({ word, meta }) =>

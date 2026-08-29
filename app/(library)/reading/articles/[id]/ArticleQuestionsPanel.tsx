@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type ArticleQuestion = {
   id: string
@@ -28,17 +28,24 @@ export default function ArticleQuestionsPanel({
 }: {
   questions: ArticleQuestion[]
 }) {
-  const openedAtRef = useRef(Date.now())
+  const openedAtRef = useRef<number | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
   const [results, setResults] = useState<Record<string, SubmissionResult>>({})
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    openedAtRef.current = Date.now()
+  }, [])
+
   if (questions.length === 0) {
     return null
   }
 
-  const submitQuestion = async (question: ArticleQuestion) => {
+  const submitQuestion = async (
+    question: ArticleQuestion,
+    submittedAt: number,
+  ) => {
     const selectedId = answers[question.id]
     if (!selectedId || results[question.id]) return
     if (!question.options.some(option => option.id === selectedId)) return
@@ -54,7 +61,10 @@ export default function ArticleQuestionsPanel({
             {
               questionId: question.id,
               selectedOptionId: selectedId,
-              timeSpentMs: Math.max(0, Date.now() - openedAtRef.current),
+              timeSpentMs:
+                openedAtRef.current === null
+                  ? 0
+                  : Math.max(0, submittedAt - openedAtRef.current),
             },
           ],
         }),
@@ -173,7 +183,7 @@ export default function ArticleQuestionsPanel({
                 <button
                   type='button'
                   disabled={!selectedId || Boolean(result) || savingId === question.id}
-                  onClick={() => void submitQuestion(question)}
+                  onClick={() => void submitQuestion(question, Date.now())}
                   className='ui-btn ui-btn-primary disabled:cursor-not-allowed disabled:opacity-45'>
                   {savingId === question.id ? '保存中…' : '提交答案'}
                 </button>

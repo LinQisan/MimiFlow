@@ -4,14 +4,17 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import type { ExamHubPaperSummary } from '@/lib/repositories/exam'
 import { getPaperQuestionBreakdown } from '../domain/paper-library'
+import { readUserStorageValue, useCurrentUser } from '@/context/UserContext'
 
 export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary }) {
+  const currentUser = useCurrentUser()
   const breakdown = getPaperQuestionBreakdown(paper)
   const [hasDraftProgress, setHasDraftProgress] = useState(false)
 
   useEffect(() => {
     try {
-      const rawDraft = window.localStorage.getItem(
+      const rawDraft = readUserStorageValue(
+        currentUser.id,
         `practice:draft:paper:${paper.id}`,
       )
       if (!rawDraft) return
@@ -25,7 +28,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
     } catch {
       setHasDraftProgress(false)
     }
-  }, [paper.id])
+  }, [currentUser.id, paper.id])
 
   return (
     <article className='group rounded-2xl border border-slate-200/80 bg-white px-5 py-5 shadow-[0_10px_35px_-30px_rgba(15,23,42,0.55)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] md:px-6 md:py-6'>
@@ -58,9 +61,32 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
                   : '尚无完整练习'}
               </p>
             </div>
-            <p className='text-2xl font-semibold tabular-nums text-slate-950'>
-              {paper.attemptAccuracyPct !== null ? `${paper.attemptAccuracyPct}%` : '—'}
-            </p>
+            <div className='text-right'>
+              <p className='text-2xl font-semibold tabular-nums text-slate-950'>
+                {paper.latestPracticeScore !== null
+                  ? paper.latestPracticeScore
+                  : paper.attemptAccuracyPct !== null
+                    ? `${paper.attemptAccuracyPct}%`
+                    : '—'}
+              </p>
+              {paper.latestPracticeScore !== null ? (
+                <p
+                  className={`text-[10px] font-bold ${
+                    paper.latestPracticePassed === true
+                      ? 'text-emerald-700'
+                      : paper.latestPracticePassed === false
+                        ? 'text-rose-700'
+                        : 'text-slate-400'
+                  }`}>
+                  {paper.latestPracticePassed === null
+                    ? '最近得分'
+                    : paper.latestPracticePassed
+                      ? '最近合格'
+                      : '最近未合格'}{' '}
+                  · /180
+                </p>
+              ) : null}
+            </div>
           </div>
           <div className='mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100'>
             <div
@@ -79,11 +105,11 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
             className='inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 md:flex-none'>
             {hasDraftProgress ? '继续练习' : '开始练习'}
           </Link>
-          <Link
+          <a
             href={`/practice/${encodeURIComponent(paper.id)}`}
             className='inline-flex h-11 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 md:flex-none'>
             查看详情
-          </Link>
+          </a>
         </div>
       </div>
     </article>

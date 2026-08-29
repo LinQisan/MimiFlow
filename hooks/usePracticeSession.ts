@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { summarizePracticeSubmission } from '@/modules/practice/domain/submission-summary'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
 
 type PracticeOptionLike = {
   id: string
@@ -16,6 +21,8 @@ type PracticeQuestionLike = {
 type PracticeSessionOptions = {
   draftKey?: string
   restoreDraftIndex?: boolean
+  initialAnswers?: Record<string, string>
+  initialSubmitted?: boolean
 }
 
 type StoredPracticeDraft = {
@@ -32,29 +39,40 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   initialIndex = 0,
   options: PracticeSessionOptions = {},
 ) {
-  const { draftKey, restoreDraftIndex = true } = options
+  const currentUser = useCurrentUser()
+  const {
+    draftKey,
+    restoreDraftIndex = true,
+    initialAnswers = {},
+    initialSubmitted = false,
+  } = options
+  const scopedDraftKey = draftKey
+    ? userStorageKey(currentUser.id, draftKey)
+    : undefined
   const [currentIndex, setCurrentIndexState] = useState(initialIndex)
-  const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers)
   const [sortingDrafts, setSortingDrafts] = useState<
     Record<string, Array<string | null>>
   >({})
   const [draftReady, setDraftReady] = useState(!draftKey)
   const [showSheet, setShowSheet] = useState(false)
-  const [isSubmitted, setIsSubmitted] = useState(false)
-  const [submittedQuestionIds, setSubmittedQuestionIds] = useState<string[]>([])
+  const [isSubmitted, setIsSubmitted] = useState(initialSubmitted)
+  const [submittedQuestionIds, setSubmittedQuestionIds] = useState<string[]>(
+    initialSubmitted ? questions.map(question => question.id) : [],
+  )
   const [timeSpentByQuestionId, setTimeSpentByQuestionId] = useState<
     Record<string, number>
   >({})
   const questionEnterAtRef = useRef<number>(0)
 
   useEffect(() => {
-    if (!draftKey || typeof window === 'undefined') {
+    if (!scopedDraftKey || typeof window === 'undefined') {
       setDraftReady(true)
       return
     }
 
     try {
-      const rawDraft = window.localStorage.getItem(draftKey)
+      const rawDraft = readUserStorageValue(currentUser.id, draftKey!)
       if (!rawDraft) return
       const stored = JSON.parse(rawDraft) as Partial<StoredPracticeDraft>
       if (
@@ -103,11 +121,11 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
         if (storedIndex >= 0) setCurrentIndexState(storedIndex)
       }
     } catch {
-      window.localStorage.removeItem(draftKey)
+      window.localStorage.removeItem(scopedDraftKey)
     } finally {
       setDraftReady(true)
     }
-  }, [draftKey, questions, restoreDraftIndex])
+  }, [currentUser.id, draftKey, questions, restoreDraftIndex, scopedDraftKey])
 
   const getCorrectOptionId = useCallback(
     (question: TQuestion) =>
@@ -194,7 +212,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   }
 
   const saveDraft = useCallback(() => {
-    if (!draftKey || !draftReady || typeof window === 'undefined') return
+    if (!scopedDraftKey || !draftReady || typeof window === 'undefined') return
     const draft: StoredPracticeDraft = {
       version: 2,
       answers,
@@ -204,20 +222,20 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
       updatedAt: new Date().toISOString(),
     }
     try {
-      window.localStorage.setItem(draftKey, JSON.stringify(draft))
+      window.localStorage.setItem(scopedDraftKey, JSON.stringify(draft))
     } catch {
       // Storage can be unavailable in restricted browser modes; answering still works.
     }
-  }, [answers, currentIndex, draftKey, draftReady, questions, sortingDrafts])
+  }, [answers, currentIndex, draftReady, questions, scopedDraftKey, sortingDrafts])
 
   const clearDraft = useCallback(() => {
-    if (!draftKey || typeof window === 'undefined') return
+    if (!scopedDraftKey || typeof window === 'undefined') return
     try {
-      window.localStorage.removeItem(draftKey)
+      window.localStorage.removeItem(scopedDraftKey)
     } catch {
       // Ignore unavailable storage after a successful submission.
     }
-  }, [draftKey])
+  }, [scopedDraftKey])
 
   const submit = () => {
     if (isSubmitted) return

@@ -789,9 +789,11 @@ export default function VocabularyTabs({
             (localData[group] || []).some(item => item.id === initialFocusId),
           )
     if (!preferredGroup) return
-    setActiveTab(preferredGroup)
-    const nextVisible = localData[preferredGroup] || []
-    const nextIndex = nextVisible.findIndex(item => item.id === initialFocusId)
+    if (activeTab !== preferredGroup) {
+      setActiveTab(preferredGroup)
+      return
+    }
+    const nextIndex = flashList.findIndex(item => item.id === initialFocusId)
     if (nextIndex >= 0) {
       setCurrentIndex(nextIndex)
       setViewMode('flashcard')
@@ -801,6 +803,8 @@ export default function VocabularyTabs({
     initialFocusId,
     initialFocusGroup,
     localData,
+    activeTab,
+    flashList,
     setActiveTab,
     setCurrentIndex,
     setViewMode,
@@ -1405,7 +1409,10 @@ export default function VocabularyTabs({
                             { value: 'none', label: '选择目标单词书' },
                             ...flatFolders.map(folder => ({
                               value: folder.id,
-                              label: folder.pathLabel,
+                              label: folder.name,
+                              selectedLabel: folder.pathLabel,
+                              depth: folder.depth,
+                              count: folder.totalCount,
                             })),
                           ]}
                         />
@@ -1620,7 +1627,10 @@ export default function VocabularyTabs({
                       { value: 'none', label: '未加入单词书' },
                       ...flatFolders.map(folder => ({
                         value: folder.id,
-                        label: folder.pathLabel,
+                        label: folder.name,
+                        selectedLabel: folder.pathLabel,
+                        depth: folder.depth,
+                        count: folder.totalCount,
                       })),
                     ]}
                   />
@@ -1739,6 +1749,23 @@ export default function VocabularyTabs({
                         <p className='mt-0.5 line-clamp-1 text-xs text-slate-500'>
                           {(vocab.meanings || []).slice(0, 2).join('；')}
                         </p>
+                      ) : null}
+                      {(vocab.wordbooks || []).length > 0 ? (
+                        <div className='mt-1 flex min-w-0 flex-wrap gap-1'>
+                          {vocab.wordbooks!.slice(0, 2).map(wordbook => (
+                            <span
+                              key={`${vocab.id}-list-wordbook-${wordbook.id}`}
+                              title={wordbook.pathLabel}
+                              className='max-w-40 truncate rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700'>
+                              {wordbook.pathLabel}
+                            </span>
+                          ))}
+                          {vocab.wordbooks!.length > 2 ? (
+                            <span className='rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+                              +{vocab.wordbooks!.length - 2}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   </div>
@@ -1874,6 +1901,17 @@ export default function VocabularyTabs({
                   </button>
                 </div>
               )}
+              {(currentFlashVocab.wordbooks || []).length > 0 ? (
+                <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
+                  {currentFlashVocab.wordbooks!.map(wordbook => (
+                    <span
+                      key={`${currentFlashVocab.id}-wordbook-${wordbook.id}`}
+                      className='rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700'>
+                      {wordbook.pathLabel}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
               {currentFlashVocab.tags && currentFlashVocab.tags.length > 0 && (
                 <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
                   {currentFlashVocab.tags.slice(0, 2).map(tag => (
@@ -2095,6 +2133,67 @@ export default function VocabularyTabs({
               }>
               {(() => {
                 const currentVocab = currentFlashVocab
+                const separatedSources = currentVocab.wordbookSources || []
+                if (!isEditMode && separatedSources.length > 1) {
+                  return (
+                    <div className='min-h-0 flex-1 space-y-5 pt-2'>
+                      {separatedSources.map((source, sourceIndex) => (
+                        <section
+                          key={`${currentVocab.id}-source-${source.id}`}
+                          className='overflow-hidden rounded-2xl border border-slate-200 bg-white'>
+                          <header className='flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/80 px-4 py-3 sm:px-5'>
+                            <div>
+                              <p className='text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400'>
+                                单词书内容 {sourceIndex + 1}
+                              </p>
+                              <h3 className='mt-0.5 text-sm font-bold text-slate-900'>
+                                {source.pathLabel}
+                              </h3>
+                            </div>
+                            <div className='flex flex-wrap items-center gap-1.5 text-[11px]'>
+                              {source.pronunciations.slice(0, 2).map(value => (
+                                <span key={`${source.id}-reading-${value}`} className='rounded-full bg-white px-2.5 py-1 font-semibold text-slate-600'>
+                                  {value}
+                                </span>
+                              ))}
+                              {source.partsOfSpeech.slice(0, 2).map(value => (
+                                <span key={`${source.id}-pos-${value}`} className='rounded-full bg-white px-2.5 py-1 font-semibold text-slate-500'>
+                                  {value}
+                                </span>
+                              ))}
+                            </div>
+                          </header>
+                          <div className='space-y-4 px-4 py-4 sm:px-5'>
+                            {source.meanings.length > 0 ? (
+                              <ol className='space-y-2'>
+                                {source.meanings.map((meaning, index) => (
+                                  <li key={`${source.id}-meaning-${meaning}`} className='flex gap-2 text-sm text-slate-700'>
+                                    <span className='text-slate-400'>{index + 1}.</span>
+                                    <span className='font-semibold'>{meaning}</span>
+                                  </li>
+                                ))}
+                              </ol>
+                            ) : null}
+                            {source.sentences.length > 0 ? (
+                              <div className='space-y-3 border-t border-slate-100 pt-3'>
+                                {source.sentences.map((sentence, index) => (
+                                  <div key={`${source.id}-sentence-${index}`} className='text-sm leading-relaxed text-slate-700'>
+                                    <div>{renderSentenceWithPronunciation(sentence, currentVocab)}</div>
+                                    {renderSentenceTranslation(sentence)}
+                                    <div className='mt-1.5'>{renderSentenceMetaRow(currentVocab, sentence)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
+                            {source.meanings.length === 0 && source.sentences.length === 0 ? (
+                              <p className='text-xs text-slate-500'>该单词收录于此单词书，当前提供读音与词性信息。</p>
+                            ) : null}
+                          </div>
+                        </section>
+                      ))}
+                    </div>
+                  )
+                }
                 const hasMeanings =
                   !!currentVocab.meanings && currentVocab.meanings.length > 0
                 const unmatchedEntries = currentVocab.sentences

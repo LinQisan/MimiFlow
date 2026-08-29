@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import CustomSelect from '@/components/ui/CustomSelect'
@@ -40,13 +40,19 @@ export default function PerformanceStatsDialog({
   groups,
   averageAccuracy,
   papers,
+  initialOpen = false,
+  hideTrigger = false,
+  onDismiss,
 }: {
   groups: PracticePerformanceGroup[]
   averageAccuracy: number | null
   papers: ExamHubPaperSummary[]
+  initialOpen?: boolean
+  hideTrigger?: boolean
+  onDismiss?: () => void
 }) {
   const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(initialOpen)
   const [resetState, setResetState] = useState<'idle' | 'resetting' | 'error'>(
     'idle',
   )
@@ -70,6 +76,10 @@ export default function PerformanceStatsDialog({
     languageTargets[0] || '',
   )
   const [resetPaperId, setResetPaperId] = useState(papers[0]?.id || '')
+  const closeDialog = useCallback(() => {
+    setIsOpen(false)
+    onDismiss?.()
+  }, [onDismiss])
   const activeGroup =
     groups.find(group => group.key === activeGroupKey) || groups[0]
   const categories = useMemo(() => {
@@ -94,7 +104,7 @@ export default function PerformanceStatsDialog({
         setIsResetConfirmOpen(false)
         return
       }
-      setIsOpen(false)
+      closeDialog()
     }
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', handleKeyDown)
@@ -102,7 +112,7 @@ export default function PerformanceStatsDialog({
       document.body.style.overflow = ''
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [isOpen, isResetConfirmOpen])
+  }, [closeDialog, isOpen, isResetConfirmOpen])
 
   const handleReset = async () => {
     setResetState('resetting')
@@ -121,7 +131,7 @@ export default function PerformanceStatsDialog({
         setResetState('error')
         return
       }
-      setIsOpen(false)
+      closeDialog()
       setIsResetConfirmOpen(false)
       setResetState('idle')
       router.refresh()
@@ -140,29 +150,31 @@ export default function PerformanceStatsDialog({
 
   return (
     <>
-      <button
-        type='button'
-        aria-haspopup='dialog'
-        aria-expanded={isOpen}
-        onClick={() => setIsOpen(true)}
-        disabled={groups.length === 0}
-        className='group mt-1 inline-flex items-baseline gap-2 text-left disabled:cursor-default'>
-        <span className='text-xl font-semibold tabular-nums text-slate-950'>
-          {averageAccuracy !== null ? `${averageAccuracy}%` : '—'}
-        </span>
-        {groups.length > 0 ? (
-          <span className='text-[11px] font-semibold text-slate-400 transition group-hover:text-slate-700'>
-            查看详情
+      {!hideTrigger ? (
+        <button
+          type='button'
+          aria-haspopup='dialog'
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen(true)}
+          disabled={groups.length === 0}
+          className='group mt-1 inline-flex items-baseline gap-2 text-left disabled:cursor-default'>
+          <span className='text-xl font-semibold tabular-nums text-slate-950'>
+            {averageAccuracy !== null ? `${averageAccuracy}%` : '—'}
           </span>
-        ) : null}
-      </button>
+          {groups.length > 0 ? (
+            <span className='text-[11px] font-semibold text-slate-400 transition group-hover:text-slate-700'>
+              查看详情
+            </span>
+          ) : null}
+        </button>
+      ) : null}
 
       {isOpen ? (
         <div className='fixed inset-0 z-[100]'>
           <button
             type='button'
             aria-label='关闭统计窗口'
-            onClick={() => setIsOpen(false)}
+            onClick={closeDialog}
             className='absolute inset-0 bg-slate-950/35 backdrop-blur-[2px]'
           />
           <section
@@ -183,7 +195,7 @@ export default function PerformanceStatsDialog({
               </div>
               <button
                 type='button'
-                onClick={() => setIsOpen(false)}
+                onClick={closeDialog}
                 className='px-2 py-1 text-sm font-semibold text-slate-500 hover:text-slate-950'>
                 关闭
               </button>

@@ -113,6 +113,30 @@ export default function PaperQuestionEditor({
     setBulkMessage,
   } = usePaperQuestionEditorState<MaterialBlock>(paper.materials)
   const [isPending, startTransition] = useTransition()
+  const paperReturnHref = `/manage/practice/${encodeURIComponent(paper.id)}${
+    activeSectionKey
+      ? `?section=${encodeURIComponent(activeSectionKey)}`
+      : ''
+  }`
+
+  const getMaterialEditor = (material: MaterialBlock) => {
+    const returnQuery = `returnTo=${encodeURIComponent(paperReturnHref)}`
+    if (material.materialType === 'LISTENING') {
+      return {
+        href: `/manage/listening/${encodeURIComponent(material.id)}?${returnQuery}`,
+        label: '编辑',
+        ariaLabel: `编辑听力材料：${material.title}`,
+      }
+    }
+    if (material.materialType === 'READING') {
+      return {
+        href: `/manage/reading/${encodeURIComponent(material.id)}?${returnQuery}`,
+        label: '编辑',
+        ariaLabel: `编辑阅读材料：${material.title}`,
+      }
+    }
+    return null
+  }
 
   const totalQuestionCount = useMemo(
     () => materials.reduce((sum, item) => sum + item.questions.length, 0),
@@ -884,21 +908,33 @@ export default function PaperQuestionEditor({
               <div className='border-t border-slate-200'>
                 {group.materials.map((material, materialIndex) => (
                   <div key={material.id} className='contents'>
-                    {material.materialType !== 'VOCAB_GRAMMAR' &&
-                    (material.materialType !== 'LISTENING' ||
-                      material.questions.length !== 1) ? (
-                      <div className='border-b border-slate-200 px-3 py-2'>
+                    {material.materialType !== 'VOCAB_GRAMMAR' ? (
+                      <div className='border-b border-slate-200 bg-white/70 px-3 py-2.5'>
                         <div className='flex min-w-0 items-center justify-between gap-2'>
-                          <h3 className='truncate text-sm font-bold text-slate-900'>
-                            {material.materialType === 'READING'
-                              ? `文章 ${materialIndex + 1}`
-                              : material.title}
-                          </h3>
-                          {material.questionCount > 1 ? (
-                            <span className='shrink-0 text-xs text-slate-400'>
+                          <div className='min-w-0'>
+                            <h3 className='truncate text-sm font-bold text-slate-900'>
+                              {material.title}
+                            </h3>
+                            <p className='mt-0.5 text-[11px] font-medium text-slate-400'>
+                              {material.materialType === 'READING'
+                                ? `阅读文章 ${materialIndex + 1}`
+                                : '听力材料'}
+                              {' · '}
                               {material.questionCount} 题
-                            </span>
-                          ) : null}
+                            </p>
+                          </div>
+                          {(() => {
+                            const editor = getMaterialEditor(material)
+                            return editor ? (
+                              <Link
+                                href={editor.href}
+                                aria-label={editor.ariaLabel}
+                                className='ui-btn ui-btn-sm shrink-0 px-4'>
+                                {editor.label}
+                                <span aria-hidden='true'>→</span>
+                              </Link>
+                            ) : null
+                          })()}
                         </div>
                       </div>
                     ) : null}
@@ -909,11 +945,14 @@ export default function PaperQuestionEditor({
                           <span className='text-sm text-slate-500'>
                             暂无题目
                           </span>
-                          <Link
-                            href={`/manage/listening/${encodeURIComponent(material.id)}#questions`}
-                            className='ui-btn ui-btn-primary ui-btn-sm'>
-                            添加题目
-                          </Link>
+                          {material.materialType !== 'LISTENING' &&
+                          material.materialType !== 'READING' ? (
+                            <Link
+                              href={`/manage/listening/${encodeURIComponent(material.id)}#questions`}
+                              className='ui-btn ui-btn-primary ui-btn-sm'>
+                              添加题目
+                            </Link>
+                          ) : null}
                         </div>
                       ) : null}
                       {material.questions.map((question, index) => {
@@ -998,18 +1037,21 @@ export default function PaperQuestionEditor({
                                   )}
                                 </div>
                               </div>
-                              <div className='flex shrink-0 items-center gap-1.5'>
-                                <button
-                                  type='button'
-                                  onClick={() =>
-                                    setOpenQuestionId(
-                                      isOpen ? null : question.id,
-                                    )
-                                  }
-                                  className='ui-btn ui-btn-sm'>
-                                  {isOpen ? '收起' : '编辑'}
-                                </button>
-                              </div>
+                              {material.materialType !== 'LISTENING' &&
+                              material.materialType !== 'READING' ? (
+                                <div className='flex shrink-0 items-center gap-1.5'>
+                                  <button
+                                    type='button'
+                                    onClick={() =>
+                                      setOpenQuestionId(
+                                        isOpen ? null : question.id,
+                                      )
+                                    }
+                                    className='ui-btn ui-btn-sm'>
+                                    {isOpen ? '收起' : '编辑'}
+                                  </button>
+                                </div>
+                              ) : null}
                             </div>
 
                             {isOpen ? (

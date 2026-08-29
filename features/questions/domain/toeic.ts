@@ -57,8 +57,6 @@ export const TOEIC_PARTS = [
   },
 ] as const
 
-export type ToeicPart = (typeof TOEIC_PARTS)[number]
-export type ToeicQuestionType = ToeicPart['questionType']
 
 export const getToeicPartBySlug = (slug: string) =>
   TOEIC_PARTS.find(item => item.slug === slug)

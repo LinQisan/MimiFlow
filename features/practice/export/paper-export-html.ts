@@ -2,6 +2,7 @@ import { formatOptionLabel } from '../../../utils/questions/optionLabels.ts'
 import { resolveJapaneseTargetSurface } from '../../../utils/vocabulary/japaneseInflection.ts'
 import { parseArticleContentBlocks } from '../../reading/domain/article-blocks.ts'
 import { parseSortingPrompt } from '../../../modules/practice/domain/question-text.ts'
+import { buildPracticeQuestionNumberMap } from '../../../modules/practice/domain/question-numbering.ts'
 import type {
   PaperExportData,
   PaperExportMaterial,
@@ -37,24 +38,18 @@ const fuzzyTargetTextHtml = (value: string, targetWord: string) => {
 }
 
 export const buildPaperPartQuestionNumbers = (data: PaperExportData) => {
-  const numbers = new Map<string, number>()
-  let nonListeningNumber = 0
-  let listeningNumber = 0
-  for (const section of data.sections) {
-    const isListening = section.materialKey === 'LISTENING'
-    for (const material of section.materials) {
-      for (const question of material.questions) {
-        if (isListening) {
-          listeningNumber += 1
-          numbers.set(question.id, listeningNumber)
-        } else {
-          nonListeningNumber += 1
-          numbers.set(question.id, nonListeningNumber)
-        }
-      }
-    }
-  }
-  return numbers
+  return buildPracticeQuestionNumberMap(
+    data.sections.flatMap(section =>
+      section.materials.flatMap(material =>
+        material.questions.map(question => ({
+          id: question.id,
+          isListening: section.materialKey === 'LISTENING',
+          sectionKey: section.key,
+        })),
+      ),
+    ),
+    data.language,
+  )
 }
 
 const hasMarkdownTable = (value: string) => /^\s*\|.+\|\s*$/m.test(value)
@@ -135,9 +130,10 @@ const pageShell = (
   .material { margin-bottom: 8mm; }
   .material-title { margin: 0 0 3mm; color: #475569; font-size: 9pt; font-weight: 700; letter-spacing: .08em; break-after: avoid; }
   .material.listening-single { break-inside: avoid; }
-  .passage { margin: 0 0 7mm; padding: 5mm 6mm; border: .7pt solid #cbd5e1; background: #fbfcfe; font-family: inherit; font-size: 10.2pt; line-height: 1.9; text-align: justify; }
-  .passage p { margin: 0 0 3.5mm; }
+  .passage { margin: 0 0 8mm; padding: 0; font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", "YuGothic", "Noto Sans JP", "Meiryo", sans-serif; font-size: 11pt; line-height: 2.05; letter-spacing: .012em; text-align: justify; overflow-wrap: anywhere; }
+  .passage p { margin: 0 0 1.15em; }
   .passage p:last-child { margin-bottom: 0; }
+  .passage-blank { display: inline-block; min-width: 13mm; margin: 0 1mm; padding: 0 2mm .5mm; border-bottom: 1.2pt solid #0f172a; color: #334155; font-weight: 650; line-height: 1.2; text-align: center; vertical-align: baseline; }
   .question { position: relative; margin: 0 0 6mm; padding-left: 10mm; break-inside: avoid; }
   .question-number { position: absolute; left: 0; top: .2mm; width: 7mm; font-weight: 800; font-size: 11pt; color: #0f172a; }
   .prompt { font-weight: 650; color: #111827; }
@@ -260,10 +256,86 @@ const renderQuestion = (
 </article>`
 }
 
-const renderPassage = (material: PaperExportMaterial) =>
-  material.passageText
-    ? `<article class="passage">${hasMarkdownTable(material.passageText) ? structuredTextHtml(material.passageText) : `<p>${textHtml(material.passageText)}</p>`}</article>`
-    : ''
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const extractBlankSerial = (value: string) => {
+  const match = value.match(
+    /\[\s*(\d+)\s*\]|［\s*(\d+)\s*］|\(\s*(\d+)\s*\)|（\s*(\d+)\s*）|【\s*(\d+)\s*】|「\s*(\d+)\s*」|『\s*(\d+)\s*』/,
+  )
+  return match?.slice(1).find(Boolean) || ''
+}
+
+const replaceSerialToken = (
+  value: string,
+  serial: string,
+  replacement: string,
+) => {
+  if (!serial) return { value, replaced: false }
+  const escaped = escapeRegExp(serial)
+  const patterns = [
+    new RegExp(`\\[\\s*${escaped}\\s*\\]`),
+    new RegExp(`［\\s*${escaped}\\s*］`),
+    new RegExp(`\\(\\s*${escaped}\\s*\\)`),
+    new RegExp(`（\\s*${escaped}\\s*）`),
+    new RegExp(`【\\s*${escaped}\\s*】`),
+    new RegExp(`「\\s*${escaped}\\s*」`),
+    new RegExp(`『\\s*${escaped}\\s*』`),
+  ]
+  for (const pattern of patterns) {
+    if (!pattern.test(value)) continue
+    return { value: value.replace(pattern, replacement), replaced: true }
+  }
+  return { value, replaced: false }
+}
+
+const renderPassage = (material: PaperExportMaterial) => {
+  if (!material.passageText) return ''
+  let passage = material.passageText
+  const markers = new Map<string, string>()
+  const clozeQuestions = material.questions.filter(question =>
+    ['FILL_BLANK', 'TOEIC_TEXT_COMPLETION'].includes(question.questionType),
+  )
+
+  clozeQuestions.forEach((question, index) => {
+    const anchor = question.context || question.prompt
+    const serial =
+      extractBlankSerial(question.context) ||
+      extractBlankSerial(question.prompt) ||
+      String(index + 1)
+    const token = `PAPERBLANKTOKEN${index}END`
+    markers.set(
+      token,
+      `<span class="passage-blank">(${escapePaperHtml(serial)})</span>`,
+    )
+
+    const direct = replaceSerialToken(passage, serial, token)
+    passage = direct.value
+    if (direct.replaced || !anchor || !passage.includes(anchor)) return
+
+    let anchored = anchor
+    const anchorToken = replaceSerialToken(anchored, serial, token)
+    anchored = anchorToken.value
+    if (!anchorToken.replaced) {
+      const correctOption = question.options.find(option =>
+        question.answerIds.includes(option.id),
+      )
+      const answerText = correctOption?.text.trim() || ''
+      anchored = answerText && anchored.includes(answerText)
+        ? anchored.replace(answerText, token)
+        : `${anchored}${token}`
+    }
+    passage = passage.replace(anchor, anchored)
+  })
+
+  let html = hasMarkdownTable(passage)
+    ? structuredTextHtml(passage)
+    : `<p>${textHtml(passage)}</p>`
+  markers.forEach((markup, token) => {
+    html = html.replaceAll(token, markup)
+  })
+  return `<article class="passage">${html}</article>`
+}
 
 export function renderQuestionPaperHtml(data: PaperExportData) {
   const isJapanese =
@@ -389,6 +461,7 @@ export function renderTranscriptPaperHtml(data: PaperExportData) {
   const listeningSections = data.sections.filter(
     section => section.materialKey === 'LISTENING',
   )
+  const questionNumbers = buildPaperPartQuestionNumbers(data)
   const sections = listeningSections.length
     ? listeningSections
         .map(
@@ -399,11 +472,11 @@ export function renderTranscriptPaperHtml(data: PaperExportData) {
               const range =
                 material.questions.length === 1
                   ? isEnglish
-                    ? `Question ${material.questions[0].localNumber}`
-                    : `第 ${material.questions[0].localNumber} 题`
+                    ? `Question ${questionNumbers.get(material.questions[0].id)}`
+                    : `第 ${questionNumbers.get(material.questions[0].id)} 题`
                   : isEnglish
-                    ? `Questions ${material.questions[0].localNumber}-${material.questions.at(-1)!.localNumber}`
-                    : `第 ${material.questions[0].localNumber}-${material.questions.at(-1)!.localNumber} 题`
+                    ? `Questions ${questionNumbers.get(material.questions[0].id)}-${questionNumbers.get(material.questions.at(-1)!.id)}`
+                    : `第 ${questionNumbers.get(material.questions[0].id)}-${questionNumbers.get(material.questions.at(-1)!.id)} 题`
               const transcript = material.dialogues.length
                 ? material.dialogues
                     .map(

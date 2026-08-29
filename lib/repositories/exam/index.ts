@@ -26,6 +26,7 @@ import {
   getToeicPartByNumber,
   getToeicPartByQuestionType,
 } from "@/features/questions/domain/toeic";
+import { getCurrentUserId } from "@/modules/users/server/current-user";
 
 export type ExamHubPaperSummary = {
   id: string;
@@ -50,6 +51,8 @@ export type ExamHubPaperSummary = {
   grammarQuestionCount: number;
   readingQuestionCount: number;
   completedPracticeCount: number;
+  latestPracticeScore: number | null;
+  latestPracticePassed: boolean | null;
   attemptCount: number;
   attemptCorrectCount: number;
   attemptAccuracyPct: number | null;
@@ -62,7 +65,7 @@ export type ExamHubLevelSummary = {
   papers: ExamHubPaperSummary[];
 };
 
-export type PracticeQuestionTypeStat = {
+type PracticeQuestionTypeStat = {
   key: string;
   category: string;
   sectionNumber: number;
@@ -94,7 +97,7 @@ type ExamHubManageSection = {
   sectionNumber: number | null;
 };
 
-export type RandomPracticeSelectionOption = {
+type RandomPracticeSelectionOption = {
   key: string;
   label: string;
   sectionNumber: number | null;
@@ -470,6 +473,7 @@ function buildQuestionView(
     contextSentence: normalizeQuestionDisplayText(row.context),
     targetWord: readString(content.targetWord),
     options: orderedOptions,
+    authoredOptions: options,
     optionLabelFormat: readString(content.optionLabelFormat)
       ? normalizeOptionLabelFormat(content.optionLabelFormat)
       : null,
@@ -522,9 +526,10 @@ function buildQuestionView(
   return base;
 }
 
-async function buildVocabularyMaps() {
+async function buildVocabularyMaps(userId: string, relevantText = "") {
   const vocabularyRows = await prisma.vocabulary.findMany({
     where: {
+      userId,
       OR: [{ pronunciations: { not: null } }, { meanings: { not: null } }],
     },
     select: {
@@ -535,8 +540,11 @@ async function buildVocabularyMaps() {
     },
   });
 
+  const relevantVocabularyRows = relevantText
+    ? vocabularyRows.filter(item => relevantText.includes(item.word))
+    : vocabularyRows;
   const pronunciationMap: Record<string, string> = {};
-  const vocabularyMetaMap = vocabularyRows.reduce<
+  const vocabularyMetaMap = relevantVocabularyRows.reduce<
     Record<string, VocabularyMeta>
   >((acc, item) => {
     const meta = toVocabularyMeta({ ...item, word: item.word });
@@ -552,6 +560,7 @@ async function buildVocabularyMaps() {
 export async function findLevelsWithPapersAndCounts(): Promise<
   ExamHubLevelSummary[]
 > {
+  const userId = await getCurrentUserId();
   const collections = await prisma.collection.findMany({
     where: {
       collectionType: CollectionType.PAPER,
@@ -565,7 +574,16 @@ export async function findLevelsWithPapersAndCounts(): Promise<
     include: {
       _count: {
         select: {
-          practiceSubmissions: true,
+          practiceSubmissions: { where: { userId } },
+        },
+      },
+      practiceSubmissions: {
+        where: { userId },
+        orderBy: { completedAt: "desc" },
+        take: 1,
+        select: {
+          totalScore: true,
+          passed: true,
         },
       },
       materials: {
@@ -583,6 +601,7 @@ export async function findLevelsWithPapersAndCounts(): Promise<
                   questionType: true,
                   content: true,
                   attempts: {
+                    where: { userId },
                     select: {
                       isCorrect: true,
                     },
@@ -820,6 +839,10 @@ export async function findLevelsWithPapersAndCounts(): Promise<
         grammarQuestionCount,
         readingQuestionCount: readingComprehensionQuestionCount,
         completedPracticeCount: collection._count.practiceSubmissions,
+        latestPracticeScore:
+          collection.practiceSubmissions[0]?.totalScore ?? null,
+        latestPracticePassed:
+          collection.practiceSubmissions[0]?.passed ?? null,
         attemptCount,
         attemptCorrectCount,
         attemptAccuracyPct,
@@ -859,7 +882,9 @@ export async function findLevelsWithPapersAndCounts(): Promise<
 export async function getPracticePerformanceGroups(): Promise<
   PracticePerformanceGroup[]
 > {
+  const userId = await getCurrentUserId();
   const attempts = await prisma.questionAttempt.findMany({
+    where: { userId },
     select: {
       isCorrect: true,
       timeSpentMs: true,
@@ -1049,13 +1074,31 @@ export async function getPracticePerformanceGroups(): Promise<
 }
 
 export async function findPaperDetailById(id: string) {
+  const userId = await getCurrentUserId();
   const collection = await prisma.collection.findFirst({
     where: {
       id,
     },
     include: {
+      practiceSubmissions: {
+        where: { userId },
+        orderBy: { completedAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          questionCount: true,
+          correctCount: true,
+          languageScore: true,
+          readingScore: true,
+          listeningScore: true,
+          totalScore: true,
+          passLine: true,
+          passed: true,
+          completedAt: true,
+        },
+      },
       materials: {
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         include: {
           material: {
             include: {
@@ -1223,6 +1266,7 @@ export async function findPaperDetailById(id: string) {
     quizzes,
     lessons,
     passages,
+    practiceSubmissions: collection.practiceSubmissions,
   };
 }
 
@@ -1231,7 +1275,7 @@ export async function getManagePaperEditData(paperId: string) {
     where: { id: paperId },
     include: {
       materials: {
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         include: {
           material: {
             include: {
@@ -1376,13 +1420,14 @@ export async function getManagePaperMoveTargets(currentPaperId: string) {
 }
 
 export async function getExamQuestionsByPaperId(paperId: string) {
+  const userId = await getCurrentUserId();
   const collection = await prisma.collection.findFirst({
     where: {
       id: paperId,
     },
     include: {
       materials: {
-        orderBy: { sortOrder: "asc" },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         include: {
           material: {
             include: {
@@ -1390,8 +1435,13 @@ export async function getExamQuestionsByPaperId(paperId: string) {
                 orderBy: { sortOrder: "asc" },
                 select: {
                   id: true,
-                  note: true,
+                  userNotes: {
+                    where: { userId },
+                    take: 1,
+                    select: { note: true },
+                  },
                   attempts: {
+                    where: { userId },
                     select: {
                       isCorrect: true,
                     },
@@ -1435,7 +1485,7 @@ export async function getExamQuestionsByPaperId(paperId: string) {
     const questions = material.questions.map((row, index) => {
       sourceOrder += 1;
       const question = buildQuestionView(
-        row,
+        { ...row, note: row.userNotes[0]?.note || null },
         material,
         index + 1,
         collection.language,
@@ -1485,7 +1535,8 @@ export async function getExamQuestionsByPaperId(paperId: string) {
       return question;
     },
   );
-  const { pronunciationMap, vocabularyMetaMap } = await buildVocabularyMaps();
+  const { pronunciationMap, vocabularyMetaMap } =
+    await buildVocabularyMaps(userId, JSON.stringify(allQuestions));
 
   return {
     paperTitle: collection.title,
@@ -1496,11 +1547,70 @@ export async function getExamQuestionsByPaperId(paperId: string) {
   };
 }
 
+export async function getPracticeSubmissionReview(
+  paperId: string,
+  submissionId: string,
+) {
+  const userId = await getCurrentUserId();
+  const submission = await prisma.practicePaperSubmission.findFirst({
+    where: {
+      id: submissionId,
+      collectionId: paperId,
+      userId,
+    },
+    select: {
+      id: true,
+      questionCount: true,
+      correctCount: true,
+      languageScore: true,
+      readingScore: true,
+      listeningScore: true,
+      totalScore: true,
+      passed: true,
+      completedAt: true,
+      attempts: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          questionId: true,
+          isCorrect: true,
+          selectedOptionId: true,
+          correctOptionId: true,
+          timeSpentMs: true,
+        },
+      },
+    },
+  });
+  if (!submission) return null;
+
+  const examData = await getExamQuestionsByPaperId(paperId);
+  if (!examData) return null;
+
+  const attemptByQuestionId = new Map(
+    submission.attempts.map(attempt => [attempt.questionId, attempt]),
+  );
+  const submissionQuestions = examData.questions
+    .filter(question => attemptByQuestionId.has(question.id))
+    .map(question => ({
+      question,
+      attempt: attemptByQuestionId.get(question.id)!,
+    }));
+
+  return {
+    submission,
+    submissionQuestions,
+    paperTitle: examData.paperTitle,
+    paperLanguage: examData.paperLanguage,
+    pronunciationMap: examData.pronunciationMap,
+    vocabularyMetaMap: examData.vocabularyMetaMap,
+  };
+}
+
 export async function getRandomExamQuestionsBySelections(
   selectionKeys: string[],
   requestedCount: number,
   filters?: RandomPracticeFilters,
 ) {
+  const userId = await getCurrentUserId();
   const normalizedLanguage = (filters?.language || "").trim();
   const normalizedLevel = (filters?.level || "").trim();
   const scope = filters?.scope || "unattempted";
@@ -1524,9 +1634,9 @@ export async function getRandomExamQuestionsBySelections(
   const candidateRows = await prisma.question.findMany({
     where: {
       ...(scope === "unattempted"
-        ? { attempts: { none: {} } }
+        ? { attempts: { none: { userId } } }
         : scope === "attempted"
-          ? { attempts: { some: {} } }
+          ? { attempts: { some: { userId } } }
           : {}),
       material: {
         type: { in: Array.from(selectedMaterialTypes) },
@@ -1606,9 +1716,15 @@ export async function getRandomExamQuestionsBySelections(
     where: { id: { in: uniqueIds } },
     include: {
       attempts: {
+        where: { userId },
         select: {
           isCorrect: true,
         },
+      },
+      userNotes: {
+        where: { userId },
+        take: 1,
+        select: { note: true },
       },
       material: {
         select: {
@@ -1639,7 +1755,7 @@ export async function getRandomExamQuestionsBySelections(
       return buildQuestionView(
         {
           id: row.id,
-          note: row.note,
+          note: row.userNotes[0]?.note || null,
           attempts: row.attempts,
           questionType: row.questionType,
           content: row.content,
@@ -1666,7 +1782,8 @@ export async function getRandomExamQuestionsBySelections(
     ),
   );
 
-  const { pronunciationMap, vocabularyMetaMap } = await buildVocabularyMaps();
+  const { pronunciationMap, vocabularyMetaMap } =
+    await buildVocabularyMaps(userId);
 
   return {
     paperTitle: "自定义练习",

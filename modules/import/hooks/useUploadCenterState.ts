@@ -11,7 +11,6 @@ import {
 import type {
   ArticleFormState,
   ArticleImportedQuestionDraft,
-  ArticlePreviewRow,
   ParsedQuizDraft,
   QuizFormState,
   UploadCenterTab,
@@ -27,8 +26,6 @@ type UploadCenterState = {
   articleForm: ArticleFormState
   articleQuestions: ArticleImportedQuestionDraft[]
   articleQuickInput: string
-  articleParsedPreviewRows: ArticlePreviewRow[]
-  articleParsedDrafts: ArticleImportedQuestionDraft[]
   quizForm: QuizFormState
   quickInput: string
   bulkQuickInput: string
@@ -91,8 +88,6 @@ export function useUploadCenterState(
     },
     articleQuestions: [],
     articleQuickInput: '',
-    articleParsedPreviewRows: [],
-    articleParsedDrafts: [],
     quizForm: {
       collectionId: dbCollections[0]?.id || '',
       questionType: initialQuestionType || 'PRONUNCIATION',
@@ -132,8 +127,6 @@ export function useUploadCenterState(
       setArticleForm: setter('articleForm'),
       setArticleQuestions: setter('articleQuestions'),
       setArticleQuickInput: setter('articleQuickInput'),
-      setArticleParsedPreviewRows: setter('articleParsedPreviewRows'),
-      setArticleParsedDrafts: setter('articleParsedDrafts'),
       setQuizForm: setter('quizForm'),
       setQuickInput: setter('quickInput'),
       setBulkQuickInput: setter('bulkQuickInput'),

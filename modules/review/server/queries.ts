@@ -1,5 +1,6 @@
 import prisma from '@/lib/prisma'
 import { parseJsonStringList } from '@/utils/text/jsonList'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export type MemoryReviewItem =
   | {
@@ -21,12 +22,15 @@ export type MemoryReviewItem =
     }
 
 export async function getReviewOverview(now = new Date()) {
+  const userId = await getCurrentUserId()
   const [dueSentences, dueVocabularies, dueMistakes, allMistakes] =
     await Promise.all([
-      prisma.sentenceReview.count({ where: { due: { lte: now } } }),
-      prisma.vocabularyReview.count({ where: { due: { lte: now } } }),
-      prisma.questionRetry.count({ where: { dueAt: { lte: now } } }),
-      prisma.questionRetry.count(),
+      prisma.sentenceReview.count({ where: { userId, due: { lte: now } } }),
+      prisma.vocabularyReview.count({
+        where: { vocabulary: { userId }, due: { lte: now } },
+      }),
+      prisma.questionRetry.count({ where: { userId, dueAt: { lte: now } } }),
+      prisma.questionRetry.count({ where: { userId } }),
     ])
 
   return {
@@ -42,10 +46,11 @@ export async function getDueMemoryReviewItems(
   limit = 100,
   now = new Date(),
 ): Promise<MemoryReviewItem[]> {
+  const userId = await getCurrentUserId()
   const safeLimit = Math.min(200, Math.max(1, Math.floor(limit)))
   const [sentences, vocabularies] = await Promise.all([
     prisma.sentenceReview.findMany({
-      where: { due: { lte: now } },
+      where: { userId, due: { lte: now } },
       orderBy: { due: 'asc' },
       take: safeLimit,
       select: {
@@ -57,7 +62,7 @@ export async function getDueMemoryReviewItems(
       },
     }),
     prisma.vocabularyReview.findMany({
-      where: { due: { lte: now } },
+      where: { vocabulary: { userId }, due: { lte: now } },
       orderBy: { due: 'asc' },
       take: safeLimit,
       select: {

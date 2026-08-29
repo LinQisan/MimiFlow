@@ -15,7 +15,10 @@ export default async function ManageAudioMaterialEditPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ returnPage?: string | string[] }>
+  searchParams: Promise<{
+    returnPage?: string | string[]
+    returnTo?: string | string[]
+  }>
 }) {
   const { id } = await params
   const resolvedSearchParams = await searchParams
@@ -26,10 +29,25 @@ export default async function ManageAudioMaterialEditPage({
     1,
     Number.parseInt(returnPageValue || '1', 10) || 1,
   )
+  const rawReturnTo = Array.isArray(resolvedSearchParams.returnTo)
+    ? resolvedSearchParams.returnTo[0]
+    : resolvedSearchParams.returnTo
+  const safeReturnTo =
+    rawReturnTo?.startsWith('/manage/practice/') ||
+    rawReturnTo?.startsWith('/manage/listening')
+      ? rawReturnTo
+      : undefined
   const returnHref =
-    returnPage > 1 ? `/manage/listening?page=${returnPage}` : '/manage/listening'
-  const siblingHrefQuery =
-    returnPage > 1 ? `?returnPage=${returnPage}` : ''
+    safeReturnTo ||
+    (returnPage > 1 ? `/manage/listening?page=${returnPage}` : '/manage/listening')
+  const returnLabel = safeReturnTo?.startsWith('/manage/practice/')
+    ? '返回试卷'
+    : '听力材料'
+  const siblingHrefQuery = safeReturnTo
+    ? `?returnTo=${encodeURIComponent(safeReturnTo)}`
+    : returnPage > 1
+      ? `?returnPage=${returnPage}`
+      : ''
   const material = await getListeningEditData(id)
   if (!material) return notFound()
 
@@ -39,7 +57,7 @@ export default async function ManageAudioMaterialEditPage({
         <Link
           href={returnHref}
           className='text-sm font-semibold text-slate-500 transition hover:text-slate-950'>
-          ← 听力材料
+          ← {returnLabel}
         </Link>
 
         <header className='mt-4 mb-5'>
@@ -78,6 +96,21 @@ export default async function ManageAudioMaterialEditPage({
           </div>
         </header>
 
+        <section className='mb-5 rounded-2xl border border-sky-100 bg-gradient-to-br from-white to-sky-50/70 p-4 shadow-sm md:p-5'>
+          <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
+            <div>
+              <h2 className='text-sm font-black text-slate-950'>材料信息</h2>
+              <p className='mt-0.5 text-xs text-slate-500'>
+                可修改“問題5-01｜統合理解”这类材料标题。
+              </p>
+            </div>
+            <span className='rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700'>
+              标题会同步显示在试卷中
+            </span>
+          </div>
+          <ListeningTitleForm id={material.id} title={material.title} />
+        </section>
+
         <LessonSiblingNav
           lessons={material.siblings}
           currentLessonId={material.id}
@@ -110,24 +143,21 @@ export default async function ManageAudioMaterialEditPage({
 
         <details className='group mt-8 rounded-2xl border border-slate-200 bg-white'>
           <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-600 marker:content-none'>
-            <span>材料设置</span>
+            <span>危险操作</span>
             <span className='text-xs text-slate-400 group-open:hidden'>展开</span>
             <span className='hidden text-xs text-slate-400 group-open:inline'>收起</span>
           </summary>
-          <div className='space-y-4 border-t border-slate-100 p-4'>
-            <ListeningTitleForm id={material.id} title={material.title} />
-            <div className='border-t border-slate-100 pt-4'>
-              <DeleteAudioMaterialButton
-                id={material.id}
-                title={material.title}
-                materialType='LISTENING'
-                questionCount={material.questions.length}
-                collectionLabel={material.collectionTitle}
-                isExamMaterial={material.collectionType === 'PAPER'}
-                redirectAfterDelete
-                redirectHref={returnHref}
-              />
-            </div>
+          <div className='border-t border-slate-100 p-4'>
+            <DeleteAudioMaterialButton
+              id={material.id}
+              title={material.title}
+              materialType='LISTENING'
+              questionCount={material.questions.length}
+              collectionLabel={material.collectionTitle}
+              isExamMaterial={material.collectionType === 'PAPER'}
+              redirectAfterDelete
+              redirectHref={returnHref}
+            />
           </div>
         </details>
       </div>

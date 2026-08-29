@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useDeferredValue, useMemo } from 'react'
 import {
   filterListeningRows,
   sortListeningRows,
@@ -22,6 +22,7 @@ type QueryInput = {
 }
 
 export function useListeningListQuery(input: QueryInput) {
+  const deferredSearch = useDeferredValue(input.search)
   const roots = useMemo(
     () => sortCollections(input.collections, 'LIBRARY_ROOT'),
     [input.collections],
@@ -63,14 +64,33 @@ export function useListeningListQuery(input: QueryInput) {
       input.bookFilter === 'all'
         ? chapterOptions
         : chapterOptions.filter(option =>
-            chapters.find(chapter => chapter.id === option.id)?.parentId ===
+            collectionById[option.id]?.parentId ===
             input.bookFilter,
           ),
-    [chapterOptions, chapters, input.bookFilter],
+    [chapterOptions, collectionById, input.bookFilter],
   )
   const filteredRows = useMemo(
-    () => filterListeningRows(input),
-    [input],
+    () =>
+      filterListeningRows({
+        rows: input.rows,
+        search: deferredSearch,
+        statusFilter: input.statusFilter,
+        materialTypeFilter: input.materialTypeFilter,
+        bookFilter: input.bookFilter,
+        chapterFilter: input.chapterFilter,
+        paperFilter: input.paperFilter,
+        workspace: input.workspace,
+      }),
+    [
+      deferredSearch,
+      input.bookFilter,
+      input.chapterFilter,
+      input.materialTypeFilter,
+      input.paperFilter,
+      input.rows,
+      input.statusFilter,
+      input.workspace,
+    ],
   )
   const sortedRows = useMemo(() => sortListeningRows(filteredRows), [filteredRows])
   const pageSize = 20
@@ -81,13 +101,24 @@ export function useListeningListQuery(input: QueryInput) {
     [normalizedPage, sortedRows],
   )
   const counts = useMemo(
-    () => ({
-      unclassified: input.rows.filter(item => !item.isClassified).length,
-      listening: input.rows.filter(item => item.materialType === 'LISTENING').length,
-      speaking: input.rows.filter(item => item.materialType === 'SPEAKING').length,
-      needsQuestion: input.rows.filter(item => item.needsQuestion).length,
-      needsSection: input.rows.filter(item => item.needsSection).length,
-    }),
+    () =>
+      input.rows.reduce(
+        (summary, item) => {
+          if (!item.isClassified) summary.unclassified += 1
+          if (item.materialType === 'LISTENING') summary.listening += 1
+          if (item.materialType === 'SPEAKING') summary.speaking += 1
+          if (item.needsQuestion) summary.needsQuestion += 1
+          if (item.needsSection) summary.needsSection += 1
+          return summary
+        },
+        {
+          unclassified: 0,
+          listening: 0,
+          speaking: 0,
+          needsQuestion: 0,
+          needsSection: 0,
+        },
+      ),
     [input.rows],
   )
 

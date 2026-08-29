@@ -4,6 +4,11 @@ import React, { createContext, useContext, useState, useEffect } from 'react'
 import zh from '@/locales/zh'
 import en from '@/locales/en'
 import ja from '@/locales/ja'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
 
 // 聚合字典
 const dictionaries: Record<string, any> = { zh, en, ja }
@@ -19,6 +24,8 @@ interface I18nContextType {
 const I18nContext = createContext<I18nContextType | null>(null)
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
+  const currentUser = useCurrentUser()
+  const storageKey = userStorageKey(currentUser.id, 'app_lang')
   // 默认中文
   const [lang, setLangState] = useState<Language>('zh')
 
@@ -30,14 +37,14 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
   // 初始化时从 LocalStorage 读取用户偏好
   useEffect(() => {
-    const savedLang = localStorage.getItem('app_lang') as Language
+    const savedLang = readUserStorageValue(currentUser.id, 'app_lang') as Language
     if (savedLang && dictionaries[savedLang]) {
       setLangState(savedLang)
       applyLangToDocument(savedLang)
       return
     }
     applyLangToDocument('zh')
-  }, [])
+  }, [currentUser.id])
 
   useEffect(() => {
     applyLangToDocument(lang)
@@ -46,7 +53,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   // 切换语言并保存到本地
   const setLang = (newLang: Language) => {
     setLangState(newLang)
-    localStorage.setItem('app_lang', newLang)
+    localStorage.setItem(storageKey, newLang)
     applyLangToDocument(newLang)
   }
 

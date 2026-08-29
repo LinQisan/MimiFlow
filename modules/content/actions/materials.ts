@@ -28,6 +28,10 @@ import {
   usesExplicitQuestionTargetWord,
 } from '@/modules/practice/domain/question-text'
 import { getPaperReadingMaterialTitle } from '@/features/questions/domain/paper-editor'
+import {
+  normalizePaperAttributes,
+  PAPER_ACCEPTED_MATERIAL_TYPES,
+} from '@/features/practice/domain/paper-attributes'
 
 type QuestionOptionInput = {
   text?: string | null
@@ -221,64 +225,72 @@ export async function createArticle(data: CreateArticlePayload) {
         ? getPaperReadingMaterialTitle(paperQuestionType)
         : articleTitle || '未命名阅读材料'
 
-    await prisma.material.create({
-      data: {
-        type: MaterialType.READING,
-        title: materialTitle,
-        contentPayload: encodeMaterialPayload(MaterialType.READING, {
-          text: content,
-          description: (data.description || '').trim() || null,
-          sourceKind: isNews ? 'NEWS' : 'ARTICLE',
-          publishedDate: isNews ? (data.publishedDate || '').trim() : '',
-          edition:
-            automaticMorningEdition
-              ? 'MORNING'
-              : isNews && ['MORNING', 'EVENING', 'FLASH'].includes(data.edition || '')
-              ? data.edition
+    await prisma.$transaction(async tx => {
+      const lastMaterial = await tx.collectionMaterial.aggregate({
+        where: { collectionId },
+        _max: { sortOrder: true },
+      })
+      const nextMaterialOrder = (lastMaterial._max.sortOrder ?? -1) + 1
+
+      await tx.material.create({
+        data: {
+          type: MaterialType.READING,
+          title: materialTitle,
+          contentPayload: encodeMaterialPayload(MaterialType.READING, {
+            text: content,
+            description: (data.description || '').trim() || null,
+            sourceKind: isNews ? 'NEWS' : 'ARTICLE',
+            publishedDate: isNews ? (data.publishedDate || '').trim() : '',
+            edition:
+              automaticMorningEdition
+                ? 'MORNING'
+                : isNews && ['MORNING', 'EVENING', 'FLASH'].includes(data.edition || '')
+                ? data.edition
+                : '',
+            newsSeries: isNews && ['天声人語', '社説', '春秋'].includes(
+              (data.newsSeries || '').trim(),
+            )
+              ? (data.newsSeries || '').trim()
               : '',
-          newsSeries: isNews && ['天声人語', '社説', '春秋'].includes(
-            (data.newsSeries || '').trim(),
-          )
-            ? (data.newsSeries || '').trim()
-            : '',
-          pageNumber: isNews ? newsSection : '',
-          newsSource: isNews && ['日経', '朝日'].includes((data.newsSource || '').trim())
-            ? (data.newsSource || '').trim()
-            : '',
-          newsType: isNews && ['news', 'editorial', 'column'].includes((data.newsType || '').trim())
-            ? (data.newsType || '').trim()
-            : '',
-          newsSection: isNews ? newsSection : '',
-          newsColumn: isNews && ['春秋', '天声人語'].includes((data.newsColumn || '').trim())
-            ? (data.newsColumn || '').trim()
-            : '',
-          newsTopic: isNews ? (data.newsTopic || '').trim() : '',
-        }),
-        collectionMaterials: {
-          create: {
-            collectionId,
-            sortOrder: 0,
+            pageNumber: isNews ? newsSection : '',
+            newsSource: isNews && ['日経', '朝日'].includes((data.newsSource || '').trim())
+              ? (data.newsSource || '').trim()
+              : '',
+            newsType: isNews && ['news', 'editorial', 'column'].includes((data.newsType || '').trim())
+              ? (data.newsType || '').trim()
+              : '',
+            newsSection: isNews ? newsSection : '',
+            newsColumn: isNews && ['春秋', '天声人語'].includes((data.newsColumn || '').trim())
+              ? (data.newsColumn || '').trim()
+              : '',
+            newsTopic: isNews ? (data.newsTopic || '').trim() : '',
+          }),
+          collectionMaterials: {
+            create: {
+              collectionId,
+              sortOrder: nextMaterialOrder,
+            },
+          },
+          questions: {
+            create: normalizedQuestions.map((q) => ({
+              questionType: q.questionType,
+              content: encodeQuestionContent(
+                toQuestionRecordPayload(
+                  q.prompt,
+                  q.contextSentence,
+                  null,
+                  q.explanation || null,
+                ),
+              ),
+              prompt: q.prompt,
+              context: q.contextSentence,
+              analysis: q.explanation || null,
+              ...toQuestionOptionsAndAnswer(q.options),
+              sortOrder: q.order,
+            })),
           },
         },
-        questions: {
-          create: normalizedQuestions.map((q) => ({
-            questionType: q.questionType,
-            content: encodeQuestionContent(
-              toQuestionRecordPayload(
-                q.prompt,
-                q.contextSentence,
-                null,
-                q.explanation || null,
-              ),
-            ),
-            prompt: q.prompt,
-            context: q.contextSentence,
-            analysis: q.explanation || null,
-            ...toQuestionOptionsAndAnswer(q.options),
-            sortOrder: q.order,
-          })),
-        },
-      },
+      })
     })
     return {
       success: true,
@@ -293,13 +305,116 @@ export async function createArticle(data: CreateArticlePayload) {
   }
 }
 
+export async function moveReadingMaterialToPaper(input: {
+  materialId?: string | null
+  sourcePaperId?: string | null
+  targetPaperId?: string | null
+}) {
+  try {
+    const materialId = (input.materialId || '').trim()
+    const sourcePaperId = (input.sourcePaperId || '').trim()
+    const targetPaperId = (input.targetPaperId || '').trim()
+    if (!materialId || !sourcePaperId || !targetPaperId) {
+      return { success: false, message: '请选择目标试卷。' }
+    }
+    if (sourcePaperId === targetPaperId) {
+      return { success: false, message: '目标试卷不能是当前试卷。' }
+    }
+
+    const [sourceRelation, targetPaper, targetRelation] = await Promise.all([
+      prisma.collectionMaterial.findUnique({
+        where: {
+          collectionId_materialId: {
+            collectionId: sourcePaperId,
+            materialId,
+          },
+        },
+        select: { material: { select: { type: true } } },
+      }),
+      prisma.collection.findFirst({
+        where: {
+          id: targetPaperId,
+          collectionType: CollectionType.PAPER,
+        },
+        select: { id: true, title: true },
+      }),
+      prisma.collectionMaterial.findUnique({
+        where: {
+          collectionId_materialId: {
+            collectionId: targetPaperId,
+            materialId,
+          },
+        },
+        select: { materialId: true },
+      }),
+    ])
+    if (!sourceRelation || sourceRelation.material.type !== MaterialType.READING) {
+      return { success: false, message: '该阅读内容不属于当前试卷。' }
+    }
+    if (!targetPaper) {
+      return { success: false, message: '目标试卷不存在或不支持阅读题。' }
+    }
+
+    await prisma.$transaction(async tx => {
+      await tx.collection.update({
+        where: { id: targetPaperId },
+        data: { acceptedMaterialTypes: PAPER_ACCEPTED_MATERIAL_TYPES },
+      })
+      if (targetRelation) {
+        await tx.collectionMaterial.delete({
+          where: {
+            collectionId_materialId: {
+              collectionId: sourcePaperId,
+              materialId,
+            },
+          },
+        })
+        return
+      }
+      const lastMaterial = await tx.collectionMaterial.aggregate({
+        where: { collectionId: targetPaperId },
+        _max: { sortOrder: true },
+      })
+      await tx.collectionMaterial.update({
+        where: {
+          collectionId_materialId: {
+            collectionId: sourcePaperId,
+            materialId,
+          },
+        },
+        data: {
+          collectionId: targetPaperId,
+          sortOrder: (lastMaterial._max.sortOrder || 0) + 1,
+        },
+      })
+    })
+
+    revalidatePath('/manage/practice')
+    revalidatePath(`/manage/practice/${sourcePaperId}`)
+    revalidatePath(`/manage/practice/${targetPaperId}`)
+    revalidatePath(`/practice/${sourcePaperId}`)
+    revalidatePath(`/practice/${sourcePaperId}/do`)
+    revalidatePath(`/practice/${targetPaperId}`)
+    revalidatePath(`/practice/${targetPaperId}/do`)
+    revalidatePath('/manage/reading')
+    revalidatePath(`/manage/reading/${materialId}`)
+    return {
+      success: true,
+      message: `已移动到“${targetPaper.title}”。`,
+    }
+  } catch (error: unknown) {
+    console.error('moveReadingMaterialToPaper failed:', getErrorMessage(error), error)
+    return { success: false, message: '移动失败，请重试。' }
+  }
+}
+
 export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
   try {
     if (!data.paperId) return { success: false, message: '请选择所属集合！' }
 
     const collection = await prisma.collection.findUnique({
       where: { id: data.paperId },
-      select: { id: true, title: true },
+      select: { id: true, title: true, acceptedMaterialTypes: true },
     })
     if (!collection)
       return { success: false, message: '集合不存在，请刷新后重试。' }
@@ -393,6 +508,22 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
     const normalizedContext = supportsSeparateQuestionContext(questionType)
       ? questionText.context
       : null
+
+    if (
+      !collection.acceptedMaterialTypes.includes(MaterialType.VOCAB_GRAMMAR)
+    ) {
+      await prisma.collection.update({
+        where: { id: collection.id },
+        data: {
+          acceptedMaterialTypes: {
+            set: [
+              ...collection.acceptedMaterialTypes,
+              MaterialType.VOCAB_GRAMMAR,
+            ],
+          },
+        },
+      })
+    }
 
     await prisma.question.create({
       data: {
@@ -1001,19 +1132,36 @@ export async function createCategory(data: {
         ? CollectionType.CUSTOM_GROUP
         : CollectionType.PAPER
     const typeLabel = collectionType === CollectionType.PAPER ? '试卷' : '分组'
+    const paperAttributes = normalizePaperAttributes({
+      title,
+      language: data.language,
+    })
 
     const newCategory = await prisma.collection.create({
       data: {
         title,
         collectionType,
-        acceptedMaterialTypes: data.materialType ? [data.materialType] : [],
-        language: data.language?.trim().toLowerCase() || null,
+        acceptedMaterialTypes:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.acceptedMaterialTypes
+            : data.materialType
+              ? [data.materialType]
+              : [],
+        language:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.language
+            : data.language?.trim().toLowerCase() || null,
+        level:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.level
+            : null,
       },
       select: {
         id: true,
         title: true,
         collectionType: true,
         acceptedMaterialTypes: true,
+        level: true,
       },
     })
 
@@ -1024,7 +1172,7 @@ export async function createCategory(data: {
         name: newCategory.title,
         collectionType: newCategory.collectionType,
         acceptedMaterialTypes: newCategory.acceptedMaterialTypes,
-        level: { title: typeLabel },
+        level: { title: newCategory.level || typeLabel },
       },
     }
   } catch (error) {

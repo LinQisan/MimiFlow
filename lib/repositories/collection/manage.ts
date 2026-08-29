@@ -72,8 +72,30 @@ export async function getReadingEditData(maybeId: string) {
     include: {
       collectionMaterials: {
         take: 1,
+        orderBy: { sortOrder: 'asc' },
         include: {
-          collection: { select: { id: true, collectionType: true } },
+          collection: {
+            select: {
+              id: true,
+              title: true,
+              collectionType: true,
+              materials: {
+                where: { material: { type: MaterialType.READING } },
+                orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                select: {
+                  material: {
+                    select: {
+                      id: true,
+                      type: true,
+                      title: true,
+                      contentPayload: true,
+                      _count: { select: { questions: true } },
+                    },
+                  },
+                },
+              },
+            },
+          },
         },
       },
       questions: {
@@ -86,6 +108,7 @@ export async function getReadingEditData(maybeId: string) {
     material.type,
     material.contentPayload,
   )
+  const collection = material.collectionMaterials[0]?.collection
   return {
     id: material.id,
     title: getMaterialDisplayTitle(
@@ -101,9 +124,19 @@ export async function getReadingEditData(maybeId: string) {
     pageNumber: readString(payload.pageNumber),
     audioFile: readString(payload.audioFile),
     category: {
-      levelId: material.collectionMaterials[0]?.collection.id || null,
-      collectionType:
-        material.collectionMaterials[0]?.collection.collectionType || null,
+      levelId: collection?.id || null,
+      title: collection?.title || '',
+      collectionType: collection?.collectionType || null,
+      siblings: (collection?.materials || []).map(item => ({
+        id: item.material.id,
+        title: getMaterialDisplayTitle(
+          item.material.type,
+          item.material.title,
+          item.material.contentPayload,
+          item.material.id,
+        ),
+        questionCount: item.material._count.questions,
+      })),
     },
     questions: material.questions.map((question) => ({
       id: question.id,

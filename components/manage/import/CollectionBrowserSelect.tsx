@@ -3,6 +3,11 @@
 // Shared import collection selector.
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
 
 export type CollectionBrowserOption = {
   value: string
@@ -38,12 +43,16 @@ const compareNodes = (a: CollectionBrowserNode, b: CollectionBrowserNode) =>
   (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label, 'zh-CN')
 
 function useRecentValues(recentKey?: string) {
+  const currentUser = useCurrentUser()
+  const scopedRecentKey = recentKey
+    ? userStorageKey(currentUser.id, recentKey)
+    : undefined
   const [recentValues, setRecentValues] = useState<string[]>([])
 
   useEffect(() => {
     if (!recentKey || typeof window === 'undefined') return
     try {
-      const raw = window.localStorage.getItem(recentKey)
+      const raw = readUserStorageValue(currentUser.id, recentKey)
       if (!raw) return
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed)) {
@@ -52,7 +61,7 @@ function useRecentValues(recentKey?: string) {
     } catch {
       setRecentValues([])
     }
-  }, [recentKey])
+  }, [currentUser.id, recentKey])
 
   const pushRecentValue = (nextValue: string) => {
     if (!recentKey) return
@@ -62,7 +71,7 @@ function useRecentValues(recentKey?: string) {
         MAX_RECENTS,
       )
       try {
-        window.localStorage.setItem(recentKey, JSON.stringify(next))
+        window.localStorage.setItem(scopedRecentKey!, JSON.stringify(next))
       } catch {
         // ignore storage failures
       }

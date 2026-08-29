@@ -31,6 +31,7 @@ import { selectListeningQuestionEntriesForFile } from '@/modules/import/domain/l
 import { encodeQuestionContent } from '@/lib/codecs/question-content'
 import { toQuestionOptionsAndAnswer } from '@/modules/practice/domain/question-record'
 import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
+import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
 
 function assTimeToSeconds(timeStr: string): number {
   const [h, m, s] = timeStr.split(':')
@@ -464,12 +465,26 @@ async function ensureTargetCollections(
       materialType,
       rawCollectionType,
     )
+    const paperAttributes = normalizePaperAttributes({
+      title: collectionName,
+      language: collectionLanguage,
+    })
     const created = await prisma.collection.create({
       data: {
         title: collectionName,
         collectionType,
-        acceptedMaterialTypes: [materialType],
-        language: collectionLanguage,
+        acceptedMaterialTypes:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.acceptedMaterialTypes
+            : [materialType],
+        language:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.language
+            : collectionLanguage,
+        level:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.level
+            : null,
       },
       select: { id: true },
     })

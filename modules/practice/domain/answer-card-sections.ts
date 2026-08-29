@@ -4,6 +4,7 @@ import {
   getVocabGrammarQuestionSection,
 } from "../../../features/questions/domain/paper-editor.ts";
 import { getToeicPartByQuestionType } from "../../../features/questions/domain/toeic.ts";
+import { buildPracticeQuestionNumberMap } from "./question-numbering.ts";
 
 export type AnswerCardQuestion = {
   id: string;
@@ -16,7 +17,7 @@ export type AnswerCardQuestion = {
   } | null;
 };
 
-export type AnswerCardItem = {
+type AnswerCardItem = {
   question: AnswerCardQuestion;
   questionIndex: number;
   localNumber: number;
@@ -52,9 +53,14 @@ const getQuestionSection = (
   const isEnglish = isEnglishLanguage(paperLanguage);
 
   if (toeicPart) {
+    const isListeningPart = toeicPart.materialType === "LISTENING";
     return {
-      materialKey: "LISTENING" as const,
-      materialTitle: isEnglish ? "Listening" : "TOEIC",
+      materialKey: isListeningPart ? ("LISTENING" as const) : ("READING" as const),
+      materialTitle: isEnglish
+        ? isListeningPart
+          ? "Listening"
+          : "Reading"
+        : "TOEIC",
       sectionNumber: toeicPart.part,
       sectionTitle: `Part ${toeicPart.part} · ${toeicPart.title}`,
     };
@@ -119,9 +125,26 @@ export function buildAnswerCardSections(
     });
   });
 
-  return [...sections.values()].sort(
+  const orderedSections = [...sections.values()].sort(
     (a, b) =>
       MATERIAL_ORDER[a.materialKey] - MATERIAL_ORDER[b.materialKey] ||
       a.sectionNumber - b.sectionNumber,
   );
+  const numberMap = buildPracticeQuestionNumberMap(
+    orderedSections.flatMap(section =>
+      section.items.map(item => ({
+        id: item.question.id,
+        isListening: section.materialKey === "LISTENING",
+        sectionKey: section.key,
+      })),
+    ),
+    paperLanguage,
+  );
+  orderedSections.forEach(section => {
+    section.items.forEach(item => {
+      item.localNumber = numberMap.get(item.question.id) || item.localNumber;
+    });
+  });
+
+  return orderedSections;
 }

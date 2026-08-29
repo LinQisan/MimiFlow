@@ -19,6 +19,8 @@ export type ReadingFilterState = {
   newsColumn: string
   newsEdition: string
   newsTopic: string
+  examLevel: string
+  examPaper: string
   page: number
 }
 
@@ -31,6 +33,8 @@ export type ReadingFilterItem = {
   newsColumn: NewsColumn
   newsEdition: string
   newsTopic: string
+  examLevel: string
+  examPaper: string
 }
 
 export type NewsFilterKey =
@@ -50,6 +54,8 @@ const NEWS_FILTER_KEYS: NewsFilterKey[] = [
   'newsTopic',
 ]
 
+const EXAM_FILTER_KEYS = ['examLevel', 'examPaper'] as const
+
 export const DEFAULT_READING_FILTERS: ReadingFilterState = {
   query: '',
   kind: 'all',
@@ -61,6 +67,8 @@ export const DEFAULT_READING_FILTERS: ReadingFilterState = {
   newsColumn: 'all',
   newsEdition: 'all',
   newsTopic: 'all',
+  examLevel: 'all',
+  examPaper: 'all',
   page: 1,
 }
 
@@ -94,6 +102,8 @@ export const parseReadingFilters = (
     newsColumn: firstParam(params.column) || 'all',
     newsEdition: firstParam(params.edition) || 'all',
     newsTopic: firstParam(params.topic) || 'all',
+    examLevel: firstParam(params.level) || 'all',
+    examPaper: firstParam(params.paper) || 'all',
     page: Number.isFinite(page) && page > 0 ? page : 1,
   }
 }
@@ -110,10 +120,15 @@ export const normalizeReadingFilters = (
 ): ReadingFilterState => {
   const next = { ...filters }
   const newsItems = items.filter(item => item.kind === 'news')
+  const examItems = items.filter(item => item.kind === 'exam')
 
   if (isActiveNewsFilter(next)) next.kind = 'news'
+  if (EXAM_FILTER_KEYS.some(key => next[key] !== 'all')) next.kind = 'exam'
   if (next.kind !== 'news') {
     for (const key of NEWS_FILTER_KEYS) next[key] = 'all'
+  }
+  if (next.kind !== 'exam') {
+    for (const key of EXAM_FILTER_KEYS) next[key] = 'all'
   }
 
   if (next.newsColumn !== 'all') {
@@ -130,9 +145,25 @@ export const normalizeReadingFilters = (
     }
   }
 
+  if (
+    next.examLevel !== 'all' &&
+    !examItems.some(item => item.examLevel === next.examLevel)
+  ) next.examLevel = 'all'
+  if (
+    next.examPaper !== 'all' &&
+    !examItems.some(item =>
+      item.examPaper === next.examPaper &&
+      (next.examLevel === 'all' || item.examLevel === next.examLevel) &&
+      (next.year === 'all' || item.year === next.year),
+    )
+  ) next.examPaper = 'all'
+
   const availableYears = new Set(
     items
-      .filter(item => next.kind === 'all' || item.kind === next.kind)
+      .filter(item =>
+        (next.kind === 'all' || item.kind === next.kind) &&
+        (next.kind !== 'exam' || next.examLevel === 'all' || item.examLevel === next.examLevel),
+      )
       .map(item => item.year)
       .filter(Boolean),
   )
@@ -155,8 +186,30 @@ export const changeReadingFilter = (
   if (key === 'kind' && value !== 'news') {
     for (const newsKey of NEWS_FILTER_KEYS) next[newsKey] = 'all'
   }
+  if (key === 'kind' && value !== 'exam') {
+    for (const examKey of EXAM_FILTER_KEYS) next[examKey] = 'all'
+  }
   if (NEWS_FILTER_KEYS.includes(key as NewsFilterKey) && value !== 'all') {
     next.kind = 'news'
+  }
+  if (EXAM_FILTER_KEYS.includes(key as (typeof EXAM_FILTER_KEYS)[number]) && value !== 'all') {
+    next.kind = 'exam'
+  }
+  if (key === 'examLevel' && next.examPaper !== 'all') {
+    const selectedPaperExists = items.some(item =>
+      item.kind === 'exam' &&
+      item.examPaper === next.examPaper &&
+      (value === 'all' || item.examLevel === value),
+    )
+    if (!selectedPaperExists) next.examPaper = 'all'
+  }
+  if (key === 'year' && next.kind === 'exam' && next.examPaper !== 'all') {
+    const selectedPaperExists = items.some(item =>
+      item.kind === 'exam' &&
+      item.examPaper === next.examPaper &&
+      (value === 'all' || item.year === value),
+    )
+    if (!selectedPaperExists) next.examPaper = 'all'
   }
   if (key === 'newsSource' && value !== 'all') {
     if (value === '日経' && next.newsColumn === '天声人語') next.newsColumn = 'all'
@@ -210,6 +263,8 @@ export const serializeReadingFilters = (filters: ReadingFilterState) => {
   if (filters.newsColumn !== 'all') params.set('column', filters.newsColumn)
   if (filters.newsEdition !== 'all') params.set('edition', filters.newsEdition)
   if (filters.newsTopic !== 'all') params.set('topic', filters.newsTopic)
+  if (filters.examLevel !== 'all') params.set('level', filters.examLevel)
+  if (filters.examPaper !== 'all') params.set('paper', filters.examPaper)
   if (filters.page > 1) params.set('page', String(filters.page))
   return params.toString()
 }

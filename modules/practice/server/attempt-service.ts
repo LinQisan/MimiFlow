@@ -1,7 +1,15 @@
 import prisma from '@/lib/prisma'
-import { CollectionType } from '@prisma/client'
+import { CollectionType, MaterialType } from '@prisma/client'
 import { normalizeQuestionOptions } from '@/lib/repositories/materials'
 import { evaluateSelectedOption } from '@/modules/practice/domain/evaluate-attempt'
+import { calculateJlptScore } from '@/modules/practice/domain/jlpt-scoring'
+import type { JlptScoreSummary } from '@/modules/practice/domain/jlpt-scoring'
+import { getPaperQuestionSectionNumber } from '@/features/questions/domain/paper-editor'
+import { decodeQuestionContent } from '@/lib/codecs/question-content'
+import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { readJsonRecord } from '@/lib/validation/schema'
+import { resolveListeningSection } from '@/lib/repositories/exam'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export type QuizAttemptInput = {
   questionId: string
@@ -9,11 +17,23 @@ export type QuizAttemptInput = {
   timeSpentMs: number
 }
 
-export type QuizAttemptResult = {
+type QuizAttemptResult = {
   questionId: string
   selectedOptionId: string
   correctOptionId: string | null
   isCorrect: boolean
+}
+
+type PracticeSubmissionResult = JlptScoreSummary & {
+  id: string
+  questionCount: number
+  correctCount: number
+  completedAt: Date
+}
+
+export type QuizAttemptRecordResult = {
+  results: QuizAttemptResult[]
+  submission: PracticeSubmissionResult | null
 }
 
 export type QuizAttemptResetScope =
@@ -35,12 +55,13 @@ const normalizeAttempt = (input: QuizAttemptInput): QuizAttemptInput => ({
 export async function recordQuizAttempts(
   inputs: QuizAttemptInput[],
   options: { completedPaperId?: string } = {},
-): Promise<QuizAttemptResult[]> {
+): Promise<QuizAttemptRecordResult> {
+  const userId = await getCurrentUserId()
   const normalized = inputs
     .map(normalizeAttempt)
     .filter(item => item.questionId && item.selectedOptionId)
 
-  if (normalized.length === 0) return []
+  if (normalized.length === 0) return { results: [], submission: null }
 
   const uniqueQuestionIds = Array.from(
     new Set(normalized.map(item => item.questionId)),
@@ -74,6 +95,7 @@ export async function recordQuizAttempts(
   })
 
   const completedPaperId = String(options.completedPaperId || '').trim()
+  let scoreSummary: JlptScoreSummary | null = null
   if (completedPaperId) {
     const paper = await prisma.collection.findFirst({
       where: {
@@ -81,21 +103,37 @@ export async function recordQuizAttempts(
         collectionType: CollectionType.PAPER,
       },
       select: {
+        level: true,
+        language: true,
         materials: {
           select: {
             material: {
               select: {
-                questions: { select: { id: true } },
+                type: true,
+                title: true,
+                chapterName: true,
+                contentPayload: true,
+                metadata: true,
+                questions: {
+                  select: {
+                    id: true,
+                    questionType: true,
+                    content: true,
+                  },
+                },
               },
             },
           },
         },
       },
     })
+    if (!paper) {
+      throw new Error('整套练习记录与试卷题目不一致')
+    }
     const paperQuestionIds = new Set(
-      paper?.materials.flatMap(item =>
+      paper.materials.flatMap(item =>
         item.material.questions.map(question => question.id),
-      ) || [],
+      ),
     )
     if (
       paperQuestionIds.size === 0 ||
@@ -104,12 +142,76 @@ export async function recordQuizAttempts(
     ) {
       throw new Error('整套练习记录与试卷题目不一致')
     }
+
+    const resultByQuestionId = new Map(
+      results.map(result => [result.questionId, result]),
+    )
+    const scoredAnswers = paper.materials.flatMap(({ material }) => {
+      const payload = decodeMaterialPayloadRecord(
+        material.type,
+        material.contentPayload,
+      )
+      const metadata = readJsonRecord(material.metadata)
+      return material.questions.map(question => {
+        const problemNumber =
+          material.type === MaterialType.LISTENING
+            ? resolveListeningSection({
+                content: decodeQuestionContent(question.content),
+                payload,
+                metadata,
+                chapterName: material.chapterName || material.title,
+                questionType: question.questionType,
+                language: paper.language,
+              }).partNumber || 1
+            : getPaperQuestionSectionNumber(
+                material.type,
+                question.questionType,
+              )
+        return {
+          section:
+            material.type === MaterialType.LISTENING
+              ? ('LISTENING' as const)
+              : problemNumber <= 7
+                ? ('LANGUAGE' as const)
+                : ('READING' as const),
+          problemNumber,
+          isCorrect:
+            resultByQuestionId.get(question.id)?.isCorrect || false,
+        }
+      })
+    })
+    scoreSummary =
+      (paper.level || '').trim().toUpperCase() === 'N1'
+        ? calculateJlptScore(scoredAnswers, paper.level)
+        : null
   }
 
-  await prisma.$transaction(async tx => {
+  const savedSubmission = await prisma.$transaction(async tx => {
+    const submission =
+      completedPaperId
+        ? await tx.practicePaperSubmission.create({
+            data: {
+              userId,
+              collectionId: completedPaperId,
+              questionCount: results.length,
+              correctCount: results.filter(result => result.isCorrect).length,
+              languageScore: scoreSummary?.language.score,
+              readingScore: scoreSummary?.reading.score,
+              listeningScore: scoreSummary?.listening.score,
+              totalScore: scoreSummary?.totalScore,
+              passLine: scoreSummary?.passLine,
+              passed: scoreSummary?.passed,
+            },
+          })
+        : null
+
     await tx.questionAttempt.createMany({
       data: results.map(result => ({
+        userId,
         questionId: result.questionId,
+        submissionId: submission?.id,
+        selectedOptionId: result.selectedOptionId,
+        correctOptionId: result.correctOptionId,
         isCorrect: result.isCorrect,
         timeSpentMs: result.timeSpentMs,
       })),
@@ -119,8 +221,11 @@ export async function recordQuizAttempts(
     for (const result of results) {
       if (result.isCorrect) continue
       await tx.questionRetry.upsert({
-        where: { questionId: result.questionId },
+        where: {
+          userId_questionId: { userId, questionId: result.questionId },
+        },
         create: {
+          userId,
           questionId: result.questionId,
           stage: 0,
           dueAt: firstRetryDueAt,
@@ -134,18 +239,10 @@ export async function recordQuizAttempts(
       })
     }
 
-    if (completedPaperId) {
-      await tx.practicePaperSubmission.create({
-        data: {
-          collectionId: completedPaperId,
-          questionCount: results.length,
-          correctCount: results.filter(result => result.isCorrect).length,
-        },
-      })
-    }
+    return submission
   })
 
-  return results.map(
+  const publicResults = results.map(
     (result): QuizAttemptResult => ({
       questionId: result.questionId,
       selectedOptionId: result.selectedOptionId,
@@ -153,15 +250,31 @@ export async function recordQuizAttempts(
       isCorrect: result.isCorrect,
     }),
   )
+  return {
+    results: publicResults,
+    submission:
+      savedSubmission && scoreSummary
+        ? {
+            id: savedSubmission.id,
+            questionCount: savedSubmission.questionCount,
+            correctCount: savedSubmission.correctCount,
+            completedAt: savedSubmission.completedAt,
+            ...scoreSummary,
+          }
+        : null,
+  }
 }
 
 export async function resetQuizAttemptHistory(
   scope: QuizAttemptResetScope = { type: 'all' },
 ) {
+  const userId = await getCurrentUserId()
   return prisma.$transaction(async tx => {
     if (scope.type === 'all') {
-      const attempts = await tx.questionAttempt.deleteMany()
-      const submissions = await tx.practicePaperSubmission.deleteMany()
+      const attempts = await tx.questionAttempt.deleteMany({ where: { userId } })
+      const submissions = await tx.practicePaperSubmission.deleteMany({
+        where: { userId },
+      })
       return {
         deletedAttemptCount: attempts.count,
         deletedSubmissionCount: submissions.count,
@@ -196,11 +309,11 @@ export async function resetQuizAttemptHistory(
     )
     const attempts = questionIds.length
       ? await tx.questionAttempt.deleteMany({
-          where: { questionId: { in: questionIds } },
+          where: { userId, questionId: { in: questionIds } },
         })
       : { count: 0 }
     const submissions = await tx.practicePaperSubmission.deleteMany({
-      where: { collectionId: { in: papers.map(paper => paper.id) } },
+      where: { userId, collectionId: { in: papers.map(paper => paper.id) } },
     })
     return {
       deletedAttemptCount: attempts.count,

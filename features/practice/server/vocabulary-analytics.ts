@@ -10,12 +10,17 @@ import {
 } from '@/features/questions/domain/paper-editor'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
 import {
+  applyPracticeVocabularyKnowledge,
+  buildPracticeVocabularyWordbookOptions,
   buildPracticeVocabularyAnalytics,
+  type PracticeVocabularyAnalytics,
   type PracticeVocabularyCategory,
   type PracticeVocabularyDocument,
 } from '@/features/practice/domain/vocabulary-analytics'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { parseJsonStringList } from '@/utils/text/jsonList'
 
-const TREND_YEARS = ['2022', '2023', '2024', '2025', '2026']
+const VOCABULARY_MATCH_BATCH_SIZE = 1_500
 
 const asArray = <T = unknown>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : []
@@ -52,6 +57,192 @@ const cleanAnalyticsText = (value: string) =>
   value
     .replace(/\[\[(?:sort(?::star)?|blank)\]\]/gi, ' ')
     .replace(/选项\s*\d*/g, ' ')
+
+export async function personalizePracticeVocabularyAnalytics(
+  analytics: PracticeVocabularyAnalytics,
+) {
+  const userId = await getCurrentUserId()
+  const candidateWords = Array.from(new Set(analytics.words.map(row => row.word)))
+  const wordBatches = Array.from(
+    { length: Math.ceil(candidateWords.length / VOCABULARY_MATCH_BATCH_SIZE) },
+    (_, index) => candidateWords.slice(
+      index * VOCABULARY_MATCH_BATCH_SIZE,
+      (index + 1) * VOCABULARY_MATCH_BATCH_SIZE,
+    ),
+  )
+  const activeWordbookWhere = {
+    userId,
+    NOT: { id: { startsWith: 'legacy-' } },
+  } as const
+  const [wordbookRows, masteredRows, vocabularyBatches] = await Promise.all([
+    prisma.wordbook.findMany({
+      where: activeWordbookWhere,
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        title: true,
+        parentId: true,
+        _count: { select: { entries: true } },
+      },
+    }),
+    prisma.practiceVocabularyPreference.findMany({
+      where: { userId, mastered: true },
+      select: { normalizedWord: true },
+    }),
+    Promise.all(wordBatches.map(words => prisma.vocabulary.findMany({
+      where: {
+        userId,
+        word: { in: words },
+        wordbooks: { some: { wordbook: activeWordbookWhere } },
+      },
+      select: {
+        word: true,
+        wordbooks: {
+          where: { wordbook: activeWordbookWhere },
+          select: { wordbookId: true },
+        },
+      },
+    }))),
+  ])
+  const wordbookById = new Map(wordbookRows.map(row => [row.id, row]))
+  const wordbookOptions = buildPracticeVocabularyWordbookOptions(
+    wordbookRows.map(row => ({
+      id: row.id,
+      title: row.title,
+      parentId: row.parentId,
+      count: row._count.entries,
+    })),
+  )
+  const pathById = new Map(wordbookOptions.map(option => [option.id, option.pathLabel]))
+  const ancestorIdsFor = (wordbookId: string) => {
+    const ids: string[] = []
+    let cursor: string | null = wordbookId
+    while (cursor) {
+      ids.push(cursor)
+      cursor = wordbookById.get(cursor)?.parentId || null
+    }
+    return ids
+  }
+  const wordbookMatches = vocabularyBatches.flat().map(vocabulary => {
+    const directIds = vocabulary.wordbooks.map(link => link.wordbookId)
+    return {
+      word: vocabulary.word,
+      wordbookIds: Array.from(new Set(directIds.flatMap(ancestorIdsFor))),
+      wordbookNames: Array.from(
+        new Set(directIds.map(id => pathById.get(id)).filter(Boolean)),
+      ) as string[],
+    }
+  })
+  return applyPracticeVocabularyKnowledge(
+    analytics,
+    wordbookMatches,
+    masteredRows.map(row => row.normalizedWord),
+    wordbookOptions,
+  )
+}
+
+export async function getPracticeVocabularyWordbookEntries(
+  requestedWordbookIds: string[],
+) {
+  const userId = await getCurrentUserId()
+  const selectedIds = Array.from(
+    new Set(requestedWordbookIds.map(id => id.trim()).filter(Boolean)),
+  ).slice(0, 50)
+  if (selectedIds.length === 0) return []
+
+  const wordbooks = await prisma.wordbook.findMany({
+    where: {
+      userId,
+      NOT: { id: { startsWith: 'legacy-' } },
+    },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { id: true, title: true, parentId: true },
+  })
+  const byId = new Map(wordbooks.map(row => [row.id, row]))
+  const validSelectedIds = selectedIds.filter(id => byId.has(id))
+  if (validSelectedIds.length === 0) return []
+
+  const childrenByParent = new Map<string, string[]>()
+  wordbooks.forEach(row => {
+    if (!row.parentId) return
+    childrenByParent.set(row.parentId, [
+      ...(childrenByParent.get(row.parentId) || []),
+      row.id,
+    ])
+  })
+  const descendantsFor = (id: string) => {
+    const result: string[] = []
+    const queue = [id]
+    while (queue.length > 0) {
+      const current = queue.shift()
+      if (!current || result.includes(current)) continue
+      result.push(current)
+      queue.push(...(childrenByParent.get(current) || []))
+    }
+    return result
+  }
+  const descendantsBySelectedId = new Map(
+    validSelectedIds.map(id => [id, new Set(descendantsFor(id))]),
+  )
+  const targetWordbookIds = Array.from(
+    new Set([...descendantsBySelectedId.values()].flatMap(ids => [...ids])),
+  )
+  const links = await prisma.wordbookVocabulary.findMany({
+    where: {
+      wordbookId: { in: targetWordbookIds },
+      wordbook: { userId },
+      vocabulary: { userId },
+    },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      wordbookId: true,
+      vocabulary: {
+        select: {
+          id: true,
+          word: true,
+          pronunciations: true,
+          partsOfSpeech: true,
+        },
+      },
+    },
+  })
+  const matchesByVocabulary = new Map<
+    string,
+    {
+      word: string
+      reading: string
+      partOfSpeech: string
+      wordbookIds: Set<string>
+      wordbookNames: Set<string>
+    }
+  >()
+  links.forEach(link => {
+    const matchedSelections = validSelectedIds.filter(id =>
+      descendantsBySelectedId.get(id)?.has(link.wordbookId),
+    )
+    if (matchedSelections.length === 0) return
+    const current = matchesByVocabulary.get(link.vocabulary.id) || {
+      word: link.vocabulary.word,
+      reading: parseJsonStringList(link.vocabulary.pronunciations)[0] || '',
+      partOfSpeech: parseJsonStringList(link.vocabulary.partsOfSpeech)[0] || '',
+      wordbookIds: new Set<string>(),
+      wordbookNames: new Set<string>(),
+    }
+    matchedSelections.forEach(id => {
+      current.wordbookIds.add(id)
+      current.wordbookNames.add(byId.get(id)?.title || '')
+    })
+    matchesByVocabulary.set(link.vocabulary.id, current)
+  })
+
+  return [...matchesByVocabulary.values()].map(row => ({
+    word: row.word,
+    reading: row.reading,
+    partOfSpeech: row.partOfSpeech,
+    wordbookIds: [...row.wordbookIds],
+    wordbookNames: [...row.wordbookNames].filter(Boolean),
+  }))
+}
 
 export async function getPracticeVocabularyAnalytics() {
   const collections = await prisma.collection.findMany({
@@ -211,6 +402,5 @@ export async function getPracticeVocabularyAnalytics() {
     documents,
     tokens: sudachi.tokens,
     totalPapers: papers.length,
-    years: TREND_YEARS,
   })
 }

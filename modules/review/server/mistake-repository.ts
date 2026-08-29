@@ -9,6 +9,7 @@ import {
 import { readString } from '@/lib/validation/schema'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 type AttemptLite = {
   id: string
@@ -56,10 +57,12 @@ function buildRetryStats(attemptsDesc: AttemptLite[]) {
 }
 
 export async function getRetryQueueSummarySnapshot(now: Date) {
+  const userId = await getCurrentUserId()
   const [dueCount, totalCount, nextDue] = await Promise.all([
-    prisma.questionRetry.count({ where: { dueAt: { lte: now } } }),
-    prisma.questionRetry.count(),
+    prisma.questionRetry.count({ where: { userId, dueAt: { lte: now } } }),
+    prisma.questionRetry.count({ where: { userId } }),
     prisma.questionRetry.findFirst({
+      where: { userId },
       orderBy: { dueAt: 'asc' },
       select: { dueAt: true },
     }),
@@ -77,8 +80,10 @@ export async function getDueRetryQuestionRows(
   limit: number,
   questionType?: QuestionType,
 ) {
+  const userId = await getCurrentUserId()
   const rows = await prisma.questionRetry.findMany({
     where: {
+      userId,
       dueAt: { lte: now },
       ...(questionType ? { question: { questionType } } : {}),
     },
@@ -111,6 +116,7 @@ export async function getDueRetryQuestionRows(
             },
           },
           attempts: {
+            where: { userId },
             orderBy: { createdAt: 'desc' },
             take: 60,
             select: {
@@ -191,8 +197,9 @@ export async function getDueRetryQuestionRows(
 }
 
 export async function getDueRetryQuestionTypeRows(now: Date) {
+  const userId = await getCurrentUserId()
   return prisma.questionRetry.findMany({
-    where: { dueAt: { lte: now } },
+    where: { userId, dueAt: { lte: now } },
     orderBy: [{ dueAt: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
@@ -202,8 +209,9 @@ export async function getDueRetryQuestionTypeRows(now: Date) {
 }
 
 export async function getRetryQuestionRowById(retryId: string) {
-  const row = await prisma.questionRetry.findUnique({
-    where: { id: retryId },
+  const userId = await getCurrentUserId()
+  const row = await prisma.questionRetry.findFirst({
+    where: { id: retryId, userId },
     include: {
       question: {
         select: {
@@ -231,6 +239,7 @@ export async function getRetryQuestionRowById(retryId: string) {
             },
           },
           attempts: {
+            where: { userId },
             orderBy: { createdAt: 'desc' },
             take: 60,
             select: {
@@ -312,8 +321,9 @@ export async function getRetryQuestionRowById(retryId: string) {
 }
 
 export async function softResetRetryAccuracy(questionId: string) {
+  const userId = await getCurrentUserId()
   const attemptsAsc = await prisma.questionAttempt.findMany({
-    where: { questionId },
+    where: { userId, questionId },
     orderBy: { createdAt: 'asc' },
     select: { id: true, isCorrect: true, createdAt: true },
   })
@@ -345,12 +355,13 @@ export async function softResetRetryAccuracy(questionId: string) {
 
   await prisma.questionAttempt.deleteMany({
     where: {
+      userId,
       id: { in: removeIds },
     },
   })
 
   const afterAttempts = await prisma.questionAttempt.findMany({
-    where: { questionId },
+    where: { userId, questionId },
     orderBy: { createdAt: 'desc' },
     take: 60,
     select: { id: true, isCorrect: true, createdAt: true },
@@ -380,8 +391,9 @@ export async function submitRetryAnswerWithSchedule({
   now,
   retryHours,
 }: SubmitRetryAnswerInput) {
-  const row = await prisma.questionRetry.findUnique({
-    where: { id: retryId },
+  const userId = await getCurrentUserId()
+  const row = await prisma.questionRetry.findFirst({
+    where: { id: retryId, userId },
     include: {
       question: {
         select: {
@@ -411,6 +423,7 @@ export async function submitRetryAnswerWithSchedule({
   await prisma.$transaction(async tx => {
     await tx.questionAttempt.create({
       data: {
+        userId,
         questionId: row.questionId,
         isCorrect,
         timeSpentMs: 0,

@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     }
 
     const completedPaperId = String(body.completedPaperId || '').trim()
-    const results = await recordQuizAttempts(normalized, {
+    const record = await recordQuizAttempts(normalized, {
       completedPaperId: completedPaperId || undefined,
     })
     revalidatePath('/')
@@ -48,7 +48,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: '做题数据已保存。',
-      results,
+      results: record.results,
+      submission: record.submission,
     })
   } catch (error) {
     console.error('保存做题数据失败:', error)

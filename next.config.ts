@@ -1,5 +1,14 @@
 import type { NextConfig } from 'next'
 
+const localDevelopmentOrigins = ['192.168.11.2', '192.168.11.12']
+const tunnelDevelopmentOrigins = ['*.trycloudflare.com']
+const developmentOrigins = [
+  ...localDevelopmentOrigins,
+  ...(process.env.NODE_ENV === 'development'
+    ? tunnelDevelopmentOrigins
+    : []),
+]
+
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'X-Frame-Options', value: 'DENY' },
@@ -26,10 +35,16 @@ const nextConfig: NextConfig = {
   },
   // Allow devices on the local network to load the dev client from this Mac.
   // This must contain the hostname in the page URL, not the client device IP.
-  allowedDevOrigins: ['192.168.11.2', '192.168.11.12'],
+  allowedDevOrigins: developmentOrigins,
   experimental: {
     serverActions: {
       bodySizeLimit: '100mb',
+      // Cloudflare Tunnel may forward a host that differs from the browser's
+      // public origin. Keep this exception development-only.
+      allowedOrigins:
+        process.env.NODE_ENV === 'development'
+          ? tunnelDevelopmentOrigins
+          : [],
     },
   },
   async headers() {

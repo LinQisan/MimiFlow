@@ -164,7 +164,9 @@ const createDraft = (
   options: string[],
   questionSerial: number | null = null,
 ): ParsedQuizDraft => {
-  const detectedType = detectQuestionType(prompt, options)
+  const targetWord = prompt.match(/\*\*([^*\n]+)\*\*/)?.[1]?.trim() || ''
+  const normalizedPrompt = prompt.replace(/\*\*([^*\n]+)\*\*/g, '$1')
+  const detectedType = detectQuestionType(normalizedPrompt, options)
   const questionType =
     detectedType === 'GRAMMAR' &&
     questionSerial !== null &&
@@ -174,9 +176,12 @@ const createDraft = (
       : detectedType
   return {
     questionType,
-    prompt: questionType === 'SORTING' ? normalizeSortingPrompt(prompt) : prompt,
+    prompt:
+      questionType === 'SORTING'
+        ? normalizeSortingPrompt(normalizedPrompt)
+        : normalizedPrompt,
     contextSentence: '',
-    targetWord: '',
+    targetWord,
     sortingOrder: [],
     explanation: '',
     sourceSerial: questionSerial ?? undefined,
@@ -191,6 +196,7 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
   const lines = input
     .replace(/^\uFEFF/, '')
     .replace(/\r\n?/g, '\n')
+    .replace(/\\[ \t]*(?=\n|$)/g, '')
     .split('\n')
     .flatMap(splitLineByOptionMarkers)
   const results: ParsedQuizDraft[] = []
@@ -232,8 +238,11 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
   const isOnlyQuestionSerial = (text: string) =>
     /^\s*\[?\d+\]?\s*[：:．.、)\-]?\s*$/.test(text)
   const readQuestionSerial = (line: string) => {
-    const matched = line.match(
-      /^\s*[（(]?(\d+)[）)]?(?:[．.、，:：)\-]|[\t　 ]+|\s*$)/,
+    const normalized = line.replace(/[０-９]/g, character =>
+      String.fromCharCode(character.charCodeAt(0) - 0xfee0),
+    )
+    const matched = normalized.match(
+      /^\s*(?:[（(\[［【「『]\s*)?(\d+)\s*(?:[）)\]］】」』])?(?:[．.、，:：)\-]|[\t　 ]+|\s*$)/,
     )
     return matched ? Number(matched[1]) : null
   }
@@ -244,7 +253,6 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
     const option = parseOptionLine(line)
     if (header.isHeader && !option)
       return { isHeader: true, text: header.text }
-    if (!option || option.index !== 0) return { isHeader: false, text: '' }
     let nextOptionIndex: number | null = null
     for (let index = lineIndex + 1; index < lines.length; index += 1) {
       const nextLine = lines[index].trim()
@@ -253,6 +261,14 @@ export const parseMultiQuizText = (input: string): ParsedQuizDraft[] => {
       break
     }
     const loose = stripLooseQuestionNumber(line)
+    if (
+      header.isHeader &&
+      nextOptionIndex === 0 &&
+      isLikelySentencePrompt(loose)
+    ) {
+      return { isHeader: true, text: loose || header.text }
+    }
+    if (!option || option.index !== 0) return { isHeader: false, text: '' }
     if (nextOptionIndex === 0)
       return { isHeader: true, text: loose || header.text || line.trim() }
     if (nextOptionIndex === 1) return { isHeader: false, text: '' }

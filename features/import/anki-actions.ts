@@ -4,6 +4,7 @@ import { SourceType } from '@prisma/client'
 import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
@@ -332,14 +333,14 @@ const normalizeFolderSegments = (value: string) =>
     .map(item => item.trim())
     .filter(Boolean)
 
-const resolveWordbookPath = async (rawPath: string) => {
+const resolveWordbookPath = async (rawPath: string, userId: string) => {
   const segments = normalizeFolderSegments(rawPath)
   if (segments.length === 0) return null
 
   let parentId: string | null = null
   for (const segment of segments) {
     const existing: { id: string } | null = await prisma.wordbook.findFirst({
-      where: { title: segment, parentId },
+      where: { userId, title: segment, parentId },
       select: { id: true },
     })
     if (existing) {
@@ -347,7 +348,7 @@ const resolveWordbookPath = async (rawPath: string) => {
       continue
     }
     const created: { id: string } = await prisma.wordbook.create({
-      data: { title: segment, parentId },
+      data: { userId, title: segment, parentId },
       select: { id: true },
     })
     parentId = created.id
@@ -355,16 +356,16 @@ const resolveWordbookPath = async (rawPath: string) => {
   return parentId
 }
 
-const resolveVocabularyTagIds = async (tagNames: string[]) => {
+const resolveVocabularyTagIds = async (tagNames: string[], userId: string) => {
   const uniqueNames = Array.from(
     new Set(tagNames.map(item => item.trim()).filter(Boolean)),
   )
   const ids: string[] = []
   for (const name of uniqueNames) {
     const tag = await prisma.vocabularyTag.upsert({
-      where: { name },
+      where: { userId_name: { userId, name } },
       update: {},
-      create: { name },
+      create: { userId, name },
       select: { id: true },
     })
     ids.push(tag.id)
@@ -529,6 +530,7 @@ async function uploadAudioFiles(files: File[], folderInput: string) {
 }
 
 export async function previewAnkiImport(formData: FormData) {
+  const userId = await getCurrentUserId()
   const tsv = formData.get('tsvFile') as File | null
   if (!tsv || tsv.size === 0) {
     return { success: false, message: '请先选择 Anki TSV 文件。' }
@@ -549,7 +551,7 @@ export async function previewAnkiImport(formData: FormData) {
 
   const uniqueWords = Array.from(new Set(validRows.map(item => item.word)))
   const existingWords = await prisma.vocabulary.findMany({
-    where: { word: { in: uniqueWords } },
+    where: { userId, word: { in: uniqueWords } },
     select: { word: true },
   })
   const existingWordSet = new Set(existingWords.map(item => item.word))
@@ -605,6 +607,7 @@ export async function previewAnkiImport(formData: FormData) {
 }
 
 export async function runAnkiImport(formData: FormData) {
+  const userId = await getCurrentUserId()
   const rowsJson = String(formData.get('rowsJson') || '')
   const audioFolder =
     String(formData.get('audioFolder') || DEFAULT_ANKI_AUDIO_FOLDER).trim() ||
@@ -621,17 +624,24 @@ export async function runAnkiImport(formData: FormData) {
   const audioFiles = (formData.getAll('audioFiles') as File[]).filter(file => file?.size > 0)
   const audioMap = await uploadAudioFiles(audioFiles, audioFolder)
   const sourceName = selectedWordbookTitle || notebookName || 'Anki导入'
+  const selectedWordbook = selectedWordbookId
+    ? await prisma.wordbook.findFirst({
+        where: { id: selectedWordbookId, userId },
+        select: { id: true },
+      })
+    : null
   const targetWordbookId = selectedWordbookId
-    ? selectedWordbookId
+    ? selectedWordbook?.id || null
     : notebookName
-      ? await resolveWordbookPath(notebookName)
+      ? await resolveWordbookPath(notebookName, userId)
       : null
-  const globalTagIds = await resolveVocabularyTagIds(globalTags)
+  const globalTagIds = await resolveVocabularyTagIds(globalTags, userId)
 
   let created = 0
   let updated = 0
   let linkedSentences = 0
   const allVocabularies = await prisma.vocabulary.findMany({
+    where: { userId },
     select: { id: true, word: true, pronunciations: true, meanings: true, wordAudio: true },
   })
 
@@ -673,6 +683,7 @@ export async function runAnkiImport(formData: FormData) {
     if (!existing) {
       const createdVocab = await prisma.vocabulary.create({
         data: {
+          userId,
           word: row.word,
           sourceType: SourceType.ARTICLE_TEXT,
           sourceId: 'anki-import',
@@ -730,7 +741,7 @@ export async function runAnkiImport(formData: FormData) {
 
     await attachVocabularyTags(vocabularyId, globalTagIds)
     if (row.tags.length > 0) {
-      const rowTagIds = await resolveVocabularyTagIds(row.tags)
+      const rowTagIds = await resolveVocabularyTagIds(row.tags, userId)
       await attachVocabularyTags(vocabularyId, rowTagIds)
     }
 
@@ -805,7 +816,9 @@ export async function runAnkiImport(formData: FormData) {
 }
 
 export async function syncWordbookSources() {
+  const userId = await getCurrentUserId()
   const entries = await prisma.wordbookVocabulary.findMany({
+    where: { wordbook: { userId } },
     orderBy: [{ createdAt: 'asc' }],
     include: {
       wordbook: {

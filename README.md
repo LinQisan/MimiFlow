@@ -16,7 +16,7 @@ Next.js 16, React 19, TypeScript, Tailwind CSS, Prisma, PostgreSQL, and ts-fsrs.
 
 ## Local Development
 
-Requirements: Node.js 22–24 and PostgreSQL.
+Requirements: Node.js 22–26 and PostgreSQL.
 
 ```bash
 npm install

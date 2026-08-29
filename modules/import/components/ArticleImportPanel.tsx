@@ -7,14 +7,10 @@ import type {
   RefObject,
   SetStateAction,
 } from 'react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 
 import { rebuildFillBlankPromptFromQuestion } from '../domain/article-question-builder'
-import type {
-  ArticleFormState,
-  ArticleImportedQuestionDraft,
-  ArticlePreviewRow,
-} from '../types'
+import type { ArticleFormState, ArticleImportedQuestionDraft } from '../types'
 import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
@@ -30,7 +26,11 @@ import {
   renderSafeArticleContentBlocksHtml,
 } from '@/features/reading/domain/article-blocks'
 import { escapeHtml } from '@/utils/language/japaneseRuby'
-import { ARTICLE_TABLE_TEMPLATE } from '@/features/reading/domain/article-editing'
+import {
+  ARTICLE_TABLE_TEMPLATE,
+  insertArticleFootnote,
+} from '@/features/reading/domain/article-editing'
+import ArticleBodyPreview from '@/features/reading/ui/ArticleBodyPreview'
 import {
   formatNewsDate,
   NEWS_COLUMN_OPTIONS,
@@ -45,6 +45,11 @@ import {
 } from '@/features/reading/domain/news-metadata'
 
 const STRUCTURED_QUESTION_PATTERN = /(?:^|\n)\s*\|.+\|\s*$/m
+const ARTICLE_FILL_BLANK_TOKEN_PATTERN =
+  /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』|__{2,}|[＿_]{2,}|[（(][\s　]*[）)]|～/g
+
+const extractFillBlankTokens = (text: string) =>
+  text.match(ARTICLE_FILL_BLANK_TOKEN_PATTERN) || []
 
 function StructuredQuestionPreview({ text }: { text: string }) {
   if (!STRUCTURED_QUESTION_PATTERN.test(text)) return null
@@ -88,13 +93,11 @@ export default function ArticleImportPanel({
   articleQuickInput,
   setArticleQuickInput,
   handleArticleAddQuestion,
-  articleParsedDrafts,
-  handleConfirmArticlePreviewImport,
-  articleParsedPreviewRows,
   isSubmitting,
   handleArticleSubmit,
   onRemoveQuestion,
   onUnderlineSelectionMissing,
+  onFootnoteSelectionMissing,
 }: {
   articleForm: ArticleFormState
   setArticleForm: Dispatch<SetStateAction<ArticleFormState>>
@@ -108,18 +111,20 @@ export default function ArticleImportPanel({
   onPaperQuestionTypeChange: (value: PaperReadingQuestionType) => void
   onNewsMetadataChange: (value: Partial<ArticleFormState>) => void
   handleMakeBlank: () => void
-  handleParseCardOptions: (questionIndex: number, text: string) => void
+  handleParseCardOptions: (questionIndex: number, text: string) => boolean
   articleQuickInput: string
   setArticleQuickInput: (value: string) => void
   handleArticleAddQuestion: () => void
-  articleParsedDrafts: ArticleImportedQuestionDraft[]
-  handleConfirmArticlePreviewImport: () => void
-  articleParsedPreviewRows: ArticlePreviewRow[]
   isSubmitting: boolean
   handleArticleSubmit: (event: FormEvent) => Promise<void>
   onRemoveQuestion: (index: number) => void
   onUnderlineSelectionMissing: () => void
+  onFootnoteSelectionMissing: () => void
 }) {
+  const [contentView, setContentView] = useState<'edit' | 'preview'>('edit')
+  const [optionQuickInputs, setOptionQuickInputs] = useState<
+    Record<number, string>
+  >({})
   const questionPromptRefs = useRef<Record<number, HTMLTextAreaElement | null>>(
     {},
   )
@@ -136,6 +141,15 @@ export default function ArticleImportPanel({
     source: articleForm.newsSource,
     type: articleForm.newsType,
   })
+  const fillBlankPreviewTokens = [
+    ...articleQuestions
+      .filter((question) =>
+        ['FILL_BLANK', 'TOEIC_TEXT_COMPLETION'].includes(question.questionType),
+      )
+      .flatMap((question) =>
+        extractFillBlankTokens(question.contextSentence || question.prompt),
+      ),
+  ]
 
   const applyUnderline = (
     textarea: HTMLTextAreaElement | null,
@@ -175,6 +189,26 @@ export default function ArticleImportPanel({
     window.requestAnimationFrame(() => {
       textarea?.focus()
       textarea?.setSelectionRange(cursor, cursor)
+    })
+  }
+
+  const insertFootnote = () => {
+    const textarea = articleTextareaRef.current
+    if (!textarea) return
+    const result = insertArticleFootnote(
+      articleForm.content,
+      textarea.selectionStart,
+      textarea.selectionEnd,
+    )
+    if (!result.changed) {
+      onFootnoteSelectionMissing()
+      return
+    }
+
+    setArticleForm((previous) => ({ ...previous, content: result.text }))
+    window.requestAnimationFrame(() => {
+      textarea.focus()
+      textarea.setSelectionRange(result.cursor, result.cursor)
     })
   }
 
@@ -282,28 +316,46 @@ export default function ArticleImportPanel({
             {articleForm.sourceKind === 'NEWS' ? (
               <div className="mb-6 space-y-5">
                 <fieldset>
-                  <legend className="mb-2 text-sm font-bold text-slate-900">类型</legend>
+                  <legend className="mb-2 text-sm font-bold text-slate-900">
+                    类型
+                  </legend>
                   <div className="grid gap-2 sm:grid-cols-3">
-                    {NEWS_TYPE_OPTIONS.map(option => (
-                      <button key={option.value} type="button"
+                    {NEWS_TYPE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
                         aria-pressed={articleForm.newsType === option.value}
-                        onClick={() => onNewsMetadataChange({ newsType: option.value })}
-                        className={`rounded-xl border px-3 py-3 text-left transition ${articleForm.newsType === option.value ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>
-                        <span className="block text-sm font-bold">{option.label}</span>
-                        <span className="mt-1 block text-[11px] font-medium opacity-65">{option.description}</span>
+                        onClick={() =>
+                          onNewsMetadataChange({ newsType: option.value })
+                        }
+                        className={`rounded-xl border px-3 py-3 text-left transition ${articleForm.newsType === option.value ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}
+                      >
+                        <span className="block text-sm font-bold">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-[11px] font-medium opacity-65">
+                          {option.description}
+                        </span>
                       </button>
                     ))}
                   </div>
                 </fieldset>
 
                 <fieldset>
-                  <legend className="mb-2 text-sm font-bold text-slate-900">来源</legend>
+                  <legend className="mb-2 text-sm font-bold text-slate-900">
+                    来源
+                  </legend>
                   <div className="flex gap-2">
-                    {NEWS_SOURCE_OPTIONS.map(option => (
-                      <button key={option.value} type="button"
+                    {NEWS_SOURCE_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
                         aria-pressed={articleForm.newsSource === option.value}
-                        onClick={() => onNewsMetadataChange({ newsSource: option.value })}
-                        className={`rounded-full border px-4 py-2 text-xs font-bold ${articleForm.newsSource === option.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500'}`}>
+                        onClick={() =>
+                          onNewsMetadataChange({ newsSource: option.value })
+                        }
+                        className={`rounded-full border px-4 py-2 text-xs font-bold ${articleForm.newsSource === option.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+                      >
                         {option.label}
                       </button>
                     ))}
@@ -312,13 +364,23 @@ export default function ArticleImportPanel({
 
                 {articleForm.newsType === 'column' ? (
                   <fieldset>
-                    <legend className="mb-2 text-sm font-bold text-slate-900">专栏</legend>
+                    <legend className="mb-2 text-sm font-bold text-slate-900">
+                      专栏
+                    </legend>
                     <div className="flex flex-wrap gap-2">
-                      {NEWS_COLUMN_OPTIONS.map(option => (
-                        <button key={option.value} type="button"
+                      {NEWS_COLUMN_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
                           aria-pressed={articleForm.newsColumn === option.value}
-                          onClick={() => onNewsMetadataChange({ newsColumn: option.value, newsSource: option.source })}
-                          className={`rounded-full border px-4 py-2 text-xs font-bold ${articleForm.newsColumn === option.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500'}`}>
+                          onClick={() =>
+                            onNewsMetadataChange({
+                              newsColumn: option.value,
+                              newsSource: option.source,
+                            })
+                          }
+                          className={`rounded-full border px-4 py-2 text-xs font-bold ${articleForm.newsColumn === option.value ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-500'}`}
+                        >
                           {option.value} · {option.source}
                         </button>
                       ))}
@@ -352,7 +414,8 @@ export default function ArticleImportPanel({
                   <span className="flex items-center justify-between gap-3">
                     <span>日期</span>
                     <span className="font-medium tabular-nums text-slate-400">
-                      {formatNewsDate(articleForm.publishedDate) || '自动使用今天'}
+                      {formatNewsDate(articleForm.publishedDate) ||
+                        '自动使用今天'}
                     </span>
                   </span>
                   <input
@@ -400,7 +463,9 @@ export default function ArticleImportPanel({
                         已自动对应朝刊
                       </span>
                     ) : null}
-                    {!morningEditionLocked && articleForm.newsSource === '日経' && articleForm.newsType !== 'news' ? (
+                    {!morningEditionLocked &&
+                    articleForm.newsSource === '日経' &&
+                    articleForm.newsType !== 'news' ? (
                       <span className="text-[11px] font-medium text-slate-400">
                         速報仅用于日経普通新闻
                       </span>
@@ -422,7 +487,9 @@ export default function ArticleImportPanel({
                     className="mt-1.5 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
                   />
                   <datalist id="news-section-options">
-                    {NEWS_SECTION_OPTIONS.map(option => <option key={option} value={option} />)}
+                    {NEWS_SECTION_OPTIONS.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
                   </datalist>
                   {frontPageSectionLocked ? (
                     <span className="mt-1.5 block text-[11px] font-medium text-slate-400">
@@ -431,13 +498,22 @@ export default function ArticleImportPanel({
                   ) : null}
                 </label>
                 <label className="text-xs font-bold text-slate-500">
-                  主题 <span className="font-medium text-slate-400">（可选）</span>
-                  <input type="text" list="news-topic-options" value={articleForm.newsTopic}
-                    onChange={event => onNewsMetadataChange({ newsTopic: event.target.value })}
+                  主题{' '}
+                  <span className="font-medium text-slate-400">（可选）</span>
+                  <input
+                    type="text"
+                    list="news-topic-options"
+                    value={articleForm.newsTopic}
+                    onChange={(event) =>
+                      onNewsMetadataChange({ newsTopic: event.target.value })
+                    }
                     placeholder="例：AI / 教育"
-                    className="mt-1.5 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200" />
+                    className="mt-1.5 w-full border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-900 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                  />
                   <datalist id="news-topic-options">
-                    {NEWS_TOPIC_OPTIONS.map(option => <option key={option} value={option} />)}
+                    {NEWS_TOPIC_OPTIONS.map((option) => (
+                      <option key={option} value={option} />
+                    ))}
                   </datalist>
                 </label>
               </div>
@@ -447,57 +523,118 @@ export default function ArticleImportPanel({
 
         <div className="border-b border-slate-200 py-6">
           <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-            <label className="text-sm font-bold text-slate-900">正文</label>
-            <div className="flex flex-wrap items-center gap-1">
-              <button
-                type="button"
-                onClick={() => insertArticleTemplate(ARTICLE_TABLE_TEMPLATE)}
-                className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
-              >
-                插入表格
-              </button>
-              <span className="mx-1 h-4 w-px bg-slate-200" />
-              <button
-                type="button"
-                onClick={() =>
-                  applyUnderline(articleTextareaRef.current, (text) =>
-                    setArticleForm((previous) => ({
-                      ...previous,
-                      content: text,
-                    })),
-                  )
-                }
-                className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
-              >
-                添加/取消下划线
-              </button>
-              {isPaperCollection &&
-              (!fixedQuestionTypeLabel ||
-                paperQuestionType === 'TOEIC_TEXT_COMPLETION') ? (
+            <div className="flex items-center gap-3">
+              <span className="text-sm font-bold text-slate-900">正文</span>
+              <div className="flex border border-slate-200 bg-white p-0.5">
+                {(['edit', 'preview'] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={contentView === mode}
+                    onClick={() => setContentView(mode)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold transition ${
+                      contentView === mode
+                        ? 'bg-slate-900 text-white'
+                        : 'text-slate-500 hover:text-slate-900'
+                    }`}
+                  >
+                    {mode === 'edit' ? '编辑' : '预览'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {contentView === 'edit' ? (
+              <div className="flex flex-wrap items-center gap-1">
                 <button
                   type="button"
-                  onClick={handleMakeBlank}
+                  onClick={() => insertArticleTemplate(ARTICLE_TABLE_TEMPLATE)}
                   className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
                 >
-                  {fixedQuestionTypeLabel ? '生成填空' : '生成問題7填空'}
+                  插入表格
                 </button>
-              ) : null}
-            </div>
+                <span className="mx-1 h-4 w-px bg-slate-200" />
+                <button
+                  type="button"
+                  onClick={() =>
+                    applyUnderline(articleTextareaRef.current, (text) =>
+                      setArticleForm((previous) => ({
+                        ...previous,
+                        content: text,
+                      })),
+                    )
+                  }
+                  className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
+                >
+                  添加/取消下划线
+                </button>
+                <button
+                  type="button"
+                  onClick={insertFootnote}
+                  className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
+                >
+                  插入注解
+                </button>
+                {isPaperCollection &&
+                (paperQuestionType === 'FILL_BLANK' ||
+                  paperQuestionType === 'TOEIC_TEXT_COMPLETION') ? (
+                  <button
+                    type="button"
+                    onClick={handleMakeBlank}
+                    className="px-2 py-1 text-xs font-bold text-slate-500 transition-colors hover:text-slate-950"
+                  >
+                    {fixedQuestionTypeLabel
+                      ? '选中文字生成填空'
+                      : '插入完形填空'}
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400">
+                预览正文、問題7填空、下划线、表格与注解效果
+              </span>
+            )}
           </div>
-          <textarea
-            required
-            ref={articleTextareaRef}
-            value={articleForm.content}
-            onChange={(e) =>
-              setArticleForm({ ...articleForm, content: e.target.value })
-            }
-            rows={10}
-            className="w-full resize-y border border-slate-300 bg-white px-4 py-3 leading-7 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-            placeholder="粘贴正文；表格使用 | 分隔"
-          />
-          <p className="mt-2 text-xs leading-5 text-slate-400">
-            仅表格会转换为结构化显示；其他文字保留原始内容与换行。
+          <p className="mb-2 text-[11px] leading-5 text-slate-400">
+            格式：<code className="text-slate-600">++下划线++</code>
+            <span className="mx-2 text-slate-300">·</span>
+            <code className="text-slate-600">正文[^1]</code>
+            <span className="mx-1">对应</span>
+            <code className="text-slate-600">[^1]: 注解内容</code>
+            <span className="mx-2 text-slate-300">·</span>
+            表格使用 <code className="text-slate-600">|</code> 分隔
           </p>
+          {contentView === 'edit' ? (
+            <textarea
+              required
+              ref={articleTextareaRef}
+              value={articleForm.content}
+              onChange={(e) =>
+                setArticleForm({ ...articleForm, content: e.target.value })
+              }
+              rows={10}
+              className="w-full resize-y border border-slate-300 bg-white px-4 py-3 leading-7 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              placeholder="支持正文[^1] 与 [^1]: 注解内容；表格使用 | 分隔"
+            />
+          ) : (
+            <div className="overflow-hidden border border-slate-300">
+              <ArticleBodyPreview
+                text={articleForm.content}
+                className="min-h-[18rem]"
+                fillBlankTokens={fillBlankPreviewTokens}
+              />
+            </div>
+          )}
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            粘贴已有脚注格式或选中文字插入注解，保存后会在正文显示注号，并在文末生成注解。
+          </p>
+          {isPaperCollection && paperQuestionType === 'FILL_BLANK' ? (
+            <div className="mt-3 border-l-2 border-slate-900 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+              <strong className="block text-slate-900">完形填空插入方法</strong>
+              在正文中选中正确答案，点击“插入完形填空”。系统会把原文替换为
+              <code className="mx-1 text-slate-900">[1]</code>
+              并自动建立题目、保留完整原句、把选中文字设为正确答案；随后只需补充干扰项。连续生成会自动编号，切换到“预览”可检查填空位置。
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -508,21 +645,13 @@ export default function ArticleImportPanel({
           {articleQuestions.length > 0 && (
             <div className="mb-6 border-t border-slate-200">
               {articleQuestions.map((q, qIndex) => (
-                <div
-                  key={qIndex}
-                  className="relative border-b border-slate-200 py-5"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onRemoveQuestion(qIndex)}
-                    className="absolute right-0 top-5 px-2 py-1 text-xs font-bold text-rose-500 hover:text-rose-700"
-                  >
-                    删除
-                  </button>
-
-                  <div className="mb-3 pr-16 text-sm font-bold text-slate-900">
-                    <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <span>
+                <div key={qIndex} className="border-b border-slate-200">
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-3">
+                    <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+                      <span className="text-sm font-black text-slate-900">
+                        题目 {qIndex + 1}
+                      </span>
+                      <span className="text-xs font-semibold text-slate-400">
                         {(() => {
                           const section = getReadingQuestionSection(
                             q.questionType,
@@ -533,15 +662,22 @@ export default function ArticleImportPanel({
                           )
                         })()}
                       </span>
-                      <span className="text-xs font-semibold text-slate-400">
-                        本文章第 {qIndex + 1} 题
-                      </span>
                     </div>
-                    <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => onRemoveQuestion(qIndex)}
+                      className="shrink-0 px-2 py-1 text-xs font-bold text-rose-600 hover:bg-rose-50"
+                    >
+                      删除
+                    </button>
+                  </div>
+
+                  <div className="space-y-5 py-4">
+                    <div>
                       <div className="mb-1 flex items-center justify-between gap-3">
                         <label
                           htmlFor={`article-question-prompt-${qIndex}`}
-                          className="text-xs font-semibold text-slate-500"
+                          className="text-xs font-semibold text-slate-600"
                         >
                           题干
                         </label>
@@ -598,173 +734,209 @@ export default function ArticleImportPanel({
                         }
                         rows={2}
                         placeholder="输入题干"
-                        className="w-full resize-y border border-slate-300 bg-white px-3 py-2 text-sm font-medium leading-relaxed text-slate-700 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+                        className="w-full resize-y border border-slate-200 bg-white p-3 text-sm font-medium leading-relaxed text-slate-700 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                       />
                       <StructuredQuestionPreview
                         text={q.contextSentence.trim() || q.prompt.trim()}
                       />
                     </div>
-                  </div>
 
-                  {!isPaperCollection ? (
-                    <div
-                      role="group"
-                      aria-label={`第 ${qIndex + 1} 题题型`}
-                      className="mb-4 flex border-b border-slate-200"
-                    >
-                      {(
-                        [
-                          ['FILL_BLANK', '問題 7｜文章の文法'],
-                          ['READING_COMPREHENSION', '問題 8｜内容理解'],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          aria-pressed={q.questionType === value}
-                          onClick={() =>
-                            setArticleQuestions((previous) =>
-                              previous.map((question, questionIndex) =>
-                                questionIndex === qIndex
-                                  ? { ...question, questionType: value }
-                                  : question,
-                              ),
-                            )
-                          }
-                          className={`!rounded-none border-b-2 px-3 py-2 text-xs font-bold transition-colors ${
-                            q.questionType === value
-                              ? 'border-slate-950 text-slate-950'
-                              : 'border-transparent text-slate-400 hover:text-slate-700'
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-500">
-                      {q.options.length} 个选项
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setArticleQuestions((previous) =>
-                          previous.map((question, questionIndex) =>
-                            questionIndex === qIndex
-                              ? {
-                                  ...question,
-                                  options: [
-                                    ...question.options,
-                                    { text: '', isCorrect: false },
-                                  ],
-                                }
-                              : question,
-                          ),
-                        )
-                      }
-                      className="px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-slate-950"
-                    >
-                      + 添加选项
-                    </button>
-                  </div>
-                  <div className="divide-y divide-slate-200 border-y border-slate-200">
-                    {q.options.map((opt, optIndex: number) => (
+                    {!isPaperCollection ? (
                       <div
-                        key={optIndex}
-                        className="flex min-w-0 items-center gap-3 py-3 text-sm"
+                        role="group"
+                        aria-label={`第 ${qIndex + 1} 题题型`}
+                        className="mb-4 flex border-b border-slate-200"
                       >
-                        <input
-                          type="radio"
-                          checked={opt.isCorrect}
-                          onChange={() => {
-                            setArticleQuestions((prev) =>
-                              prev.map((question, questionIndex) => {
-                                if (questionIndex !== qIndex) return question
-                                const nextQuestion = {
-                                  ...question,
-                                  options: question.options.map(
-                                    (option, i) => ({
-                                      ...option,
-                                      isCorrect: i === optIndex,
-                                    }),
-                                  ),
-                                }
-                                return rebuildFillBlankPromptFromQuestion(
-                                  nextQuestion,
-                                )
-                              }),
-                            )
-                          }}
-                          className="text-blue-600 focus:ring-blue-500 shrink-0 cursor-pointer"
-                        />
-                        <input
-                          type="text"
-                          value={opt.text}
-                          onChange={(e) => {
-                            setArticleQuestions((prev) =>
-                              prev.map((question, questionIndex) => {
-                                if (questionIndex !== qIndex) return question
-                                const nextQuestion = {
-                                  ...question,
-                                  options: question.options.map((option, i) =>
-                                    i === optIndex
-                                      ? {
-                                          ...option,
-                                          text: e.target.value,
-                                        }
-                                      : option,
-                                  ),
-                                }
-                                return rebuildFillBlankPromptFromQuestion(
-                                  nextQuestion,
-                                )
-                              }),
-                            )
-                          }}
-                          placeholder={`选项 ${optIndex + 1}`}
-                          className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-slate-700 outline-none focus:ring-0"
-                        />
+                        {(
+                          [
+                            ['FILL_BLANK', '問題 7｜文章の文法'],
+                            ['READING_COMPREHENSION', '問題 8｜内容理解'],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={q.questionType === value}
+                            onClick={() =>
+                              setArticleQuestions((previous) =>
+                                previous.map((question, questionIndex) =>
+                                  questionIndex === qIndex
+                                    ? { ...question, questionType: value }
+                                    : question,
+                                ),
+                              )
+                            }
+                            className={`!rounded-none border-b-2 px-3 py-2 text-xs font-bold transition-colors ${
+                              q.questionType === value
+                                ? 'border-slate-950 text-slate-950'
+                                : 'border-transparent text-slate-400 hover:text-slate-700'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <section className="!rounded-none border-0">
+                      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2.5">
+                        <div>
+                          <h4 className="text-xs font-bold text-slate-700">
+                            选项 · {q.options.length}
+                          </h4>
+                          <p className="mt-0.5 text-[11px] text-slate-400">
+                            选择圆点设置正确答案
+                          </p>
+                        </div>
                         <button
                           type="button"
-                          disabled={
-                            q.options.length <= MIN_QUESTION_OPTION_COUNT
-                          }
                           onClick={() =>
                             setArticleQuestions((previous) =>
                               previous.map((question, questionIndex) =>
                                 questionIndex === qIndex
-                                  ? rebuildFillBlankPromptFromQuestion({
+                                  ? {
                                       ...question,
-                                      options: removeQuestionOptionAt(
-                                        question.options,
-                                        optIndex,
-                                      ),
-                                    })
+                                      options: [
+                                        ...question.options,
+                                        { text: '', isCorrect: false },
+                                      ],
+                                    }
                                   : question,
                               ),
                             )
                           }
-                          aria-label={`删除选项 ${optIndex + 1}`}
-                          className="shrink-0 px-2 py-1 text-xs font-bold text-rose-500 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-25"
+                          className="ui-btn ui-btn-sm"
                         >
-                          删除
+                          添加选项
                         </button>
                       </div>
-                    ))}
-                  </div>
+                      <div className="divide-y divide-slate-200">
+                        {q.options.map((opt, optIndex: number) => (
+                          <div
+                            key={optIndex}
+                            className={`flex min-h-12 min-w-0 items-center gap-2 border-l-[3px] px-3 text-sm transition-colors ${
+                              opt.isCorrect
+                                ? 'border-l-slate-900 bg-slate-50'
+                                : 'border-l-transparent bg-white hover:bg-slate-50/60'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              checked={opt.isCorrect}
+                              onChange={() => {
+                                setArticleQuestions((prev) =>
+                                  prev.map((question, questionIndex) => {
+                                    if (questionIndex !== qIndex)
+                                      return question
+                                    const nextQuestion = {
+                                      ...question,
+                                      options: question.options.map(
+                                        (option, i) => ({
+                                          ...option,
+                                          isCorrect: i === optIndex,
+                                        }),
+                                      ),
+                                    }
+                                    return rebuildFillBlankPromptFromQuestion(
+                                      nextQuestion,
+                                    )
+                                  }),
+                                )
+                              }}
+                              className="shrink-0 cursor-pointer accent-slate-900"
+                            />
+                            <span className="w-5 shrink-0 text-center text-xs font-bold text-slate-400">
+                              {optIndex + 1}
+                            </span>
+                            <input
+                              type="text"
+                              value={opt.text}
+                              onChange={(e) => {
+                                setArticleQuestions((prev) =>
+                                  prev.map((question, questionIndex) => {
+                                    if (questionIndex !== qIndex)
+                                      return question
+                                    const nextQuestion = {
+                                      ...question,
+                                      options: question.options.map(
+                                        (option, i) =>
+                                          i === optIndex
+                                            ? {
+                                                ...option,
+                                                text: e.target.value,
+                                              }
+                                            : option,
+                                      ),
+                                    }
+                                    return rebuildFillBlankPromptFromQuestion(
+                                      nextQuestion,
+                                    )
+                                  }),
+                                )
+                              }}
+                              placeholder={`选项 ${optIndex + 1}`}
+                              className="min-w-0 flex-1 border-0 bg-transparent px-1 py-2 text-slate-700 outline-none focus:ring-0"
+                            />
+                            <button
+                              type="button"
+                              disabled={
+                                q.options.length <= MIN_QUESTION_OPTION_COUNT
+                              }
+                              onClick={() =>
+                                setArticleQuestions((previous) =>
+                                  previous.map((question, questionIndex) =>
+                                    questionIndex === qIndex
+                                      ? rebuildFillBlankPromptFromQuestion({
+                                          ...question,
+                                          options: removeQuestionOptionAt(
+                                            question.options,
+                                            optIndex,
+                                          ),
+                                        })
+                                      : question,
+                                  ),
+                                )
+                              }
+                              aria-label={`删除选项 ${optIndex + 1}`}
+                              className="shrink-0 px-2 py-1 text-base font-medium text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-25"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
 
-                  <div className="mt-3">
-                    <input
-                      type="text"
-                      placeholder="在此粘贴带序号的选项文本，系统将自动拆分并匹配正确答案。"
-                      onChange={(e) => {
-                        handleParseCardOptions(qIndex, e.target.value)
-                        e.target.value = ''
-                      }}
-                      className="w-full border-0 border-b border-slate-300 bg-transparent px-1 py-2 text-xs text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-600"
-                    />
+                    <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                      <textarea
+                        value={optionQuickInputs[qIndex] || ''}
+                        onChange={(event) =>
+                          setOptionQuickInputs((previous) => ({
+                            ...previous,
+                            [qIndex]: event.target.value,
+                          }))
+                        }
+                        rows={2}
+                        placeholder={
+                          '粘贴选项，例如：\n1　正确答案　2　干扰项A　3　干扰项B　4　干扰项C'
+                        }
+                        className="w-full resize-y border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:bg-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = optionQuickInputs[qIndex] || ''
+                          if (!handleParseCardOptions(qIndex, text)) return
+                          setOptionQuickInputs((previous) => ({
+                            ...previous,
+                            [qIndex]: '',
+                          }))
+                        }}
+                        className="ui-btn ui-btn-sm"
+                      >
+                        识别选项
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -773,13 +945,26 @@ export default function ArticleImportPanel({
 
           <div className="border-t border-slate-200 pt-5">
             <label className="mb-2 block text-sm font-bold text-slate-900">
-              批量粘贴
+              {paperQuestionType === 'FILL_BLANK'
+                ? '完形题批量录入（問題7）'
+                : '批量粘贴'}
             </label>
+            {paperQuestionType === 'FILL_BLANK' ? (
+              <p className="mb-3 text-xs leading-5 text-slate-500">
+                正文使用 <code>[1]</code>、<code>[2]</code>
+                标记空位；下方题号可以是 41、42
+                等原试卷编号。系统忽略题号差异，按粘贴顺序依次连接正文中的第1、第2个空位；已有完形题会直接补全选项，不会重复新增。默认把每题第1项设为正确答案，连接后仍可调整。
+              </p>
+            ) : null}
             <textarea
               value={articleQuickInput}
               onChange={(e) => setArticleQuickInput(e.target.value)}
               rows={3}
-              placeholder="粘贴含至少 2 个带序号选项的题目文本"
+              placeholder={
+                paperQuestionType === 'FILL_BLANK'
+                  ? '例如：\n[1]\n1　正しい答え\n2　選択肢A\n3　選択肢B\n4　選択肢C\n\n[2]\n1　正しい答え\n2　選択肢A\n3　選択肢B\n4　選択肢C'
+                  : '粘贴含至少 2 个带序号选项的题目文本'
+              }
               className="mb-3 w-full resize-y border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             />
             <button
@@ -787,77 +972,10 @@ export default function ArticleImportPanel({
               onClick={handleArticleAddQuestion}
               className="border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-slate-500"
             >
-              识别预览
+              {paperQuestionType === 'FILL_BLANK'
+                ? '识别并连接完形题'
+                : '识别并加入阅读题'}
             </button>
-            {articleParsedDrafts.length > 0 && (
-              <button
-                type="button"
-                onClick={handleConfirmArticlePreviewImport}
-                className="ml-2 border border-slate-900 bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"
-              >
-                确认导入（{articleParsedDrafts.length}）
-              </button>
-            )}
-
-            {articleParsedPreviewRows.length > 0 && (
-              <div className="mt-4 overflow-x-auto border border-blue-100">
-                {articleParsedPreviewRows.some(
-                  (row) => row.isDuplicateToken,
-                ) && (
-                  <div className="border-b border-rose-100 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                    检测到重号：同一占位符在正文中出现多次，已标红。请先修正编号再导入。
-                  </div>
-                )}
-                <table className="min-w-full text-left text-xs">
-                  <thead className="bg-blue-50 text-blue-900">
-                    <tr>
-                      <th className="px-3 py-2 font-bold">Q序号</th>
-                      <th className="px-3 py-2 font-bold">命中文章占位符</th>
-                      <th className="px-3 py-2 font-bold">生成题干</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {articleParsedPreviewRows.map((row, index) => (
-                      <tr
-                        key={`article-preview-${index}`}
-                        className={`border-t ${
-                          row.isDuplicateToken
-                            ? 'border-rose-100 bg-rose-50/70'
-                            : 'border-blue-100'
-                        }`}
-                      >
-                        <td className="px-3 py-2 font-semibold text-gray-700">
-                          {row.serial}
-                        </td>
-                        <td
-                          className={`px-3 py-2 font-semibold ${
-                            row.isDuplicateToken ||
-                            row.placeholderToken === '未命中'
-                              ? 'text-rose-600'
-                              : 'text-blue-700'
-                          }`}
-                        >
-                          {row.isDuplicateToken
-                            ? `${row.placeholderToken}（重号）`
-                            : row.placeholderToken}
-                        </td>
-                        <td className="min-w-[24rem] px-3 py-2 text-gray-700">
-                          {STRUCTURED_QUESTION_PATTERN.test(
-                            row.generatedPrompt,
-                          ) ? (
-                            <StructuredQuestionPreview
-                              text={row.generatedPrompt}
-                            />
-                          ) : (
-                            row.generatedPrompt
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </div>
         </section>
       ) : null}

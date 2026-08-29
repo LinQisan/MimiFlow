@@ -4,6 +4,7 @@ import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
 
 async function isCollectionMoveValid(
   collectionId: string,
@@ -115,14 +116,25 @@ export async function updateCollectionAttributes(formData: FormData) {
     if (!validMove) {
       return { success: false, message: '不能移动到自身或子集合下。' }
     }
+    const paperAttributes = normalizePaperAttributes({ title, language, level })
 
     await prisma.collection.update({
       where: { id: collectionId },
       data: {
         title,
         description: description || null,
-        language: language || null,
-        level: level || null,
+        language:
+          current.collectionType === CollectionType.PAPER
+            ? paperAttributes.language
+            : language || null,
+        level:
+          current.collectionType === CollectionType.PAPER
+            ? paperAttributes.level
+            : level || null,
+        acceptedMaterialTypes:
+          current.collectionType === CollectionType.PAPER
+            ? paperAttributes.acceptedMaterialTypes
+            : undefined,
         parentId: nextParentId,
         sortOrder,
       },

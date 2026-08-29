@@ -10,6 +10,13 @@ export const escapeHtml = (text: string) =>
 
 const isKanjiChar = (ch: string) => KANJI_REGEX.test(ch)
 const hasKanji = (text: string) => KANJI_REGEX.test(text)
+const hasNumber = (text: string) => /\p{Number}/u.test(text)
+const INLINE_KANA_READING_PATTERN =
+  /([\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]+)([（(])([\u3040-\u30ffー]+)([）)])/gu
+const hasInlineKanaReading = (text: string) => {
+  INLINE_KANA_READING_PATTERN.lastIndex = 0
+  return INLINE_KANA_READING_PATTERN.test(text)
+}
 const hasJapanese = (text: string) => /[\u3040-\u30ffー\u4e00-\u9fff]/.test(text)
 const normalizeKanaComparable = (value: string) =>
   Array.from(value.normalize('NFKC'))
@@ -53,6 +60,72 @@ const splitPronunciationForKanji = (kanjiRun: string, pronRun: string) => {
   return result
 }
 
+const NUMERIC_UNIT_READINGS: Record<string, string> = {
+  十: 'じゅう',
+  百: 'ひゃく',
+  千: 'せん',
+  万: 'まん',
+  億: 'おく',
+  兆: 'ちょう',
+}
+
+const resolveMixedNumericReading = (word: string, pronunciation: string) => {
+  const match = word.match(/^(\p{Number}+(?:[.,，．]\p{Number}+)*)([十百千万億兆]+)$/u)
+  if (!match) return null
+  const unitReading = Array.from(match[2])
+    .map(character => NUMERIC_UNIT_READINGS[character] || '')
+    .join('')
+  const comparablePronunciation = normalizeKanaComparable(pronunciation)
+  if (!unitReading || !comparablePronunciation.endsWith(unitReading)) return null
+  return { number: match[1], units: match[2], reading: unitReading }
+}
+
+const findPronunciationBoundary = (
+  wordChars: string[],
+  runEnd: number,
+  pronChars: string[],
+  pronCursor: number,
+) => {
+  const literalRun: string[] = []
+  for (let index = runEnd; index < wordChars.length; index += 1) {
+    const character = wordChars[index]
+    if (isKanjiChar(character)) break
+    if (character.trim()) literalRun.push(character)
+  }
+  if (literalRun.length === 0) return pronChars.length
+
+  // The first matching kana can still belong to the kanji reading itself.
+  // Keep at least one pronunciation character for the kanji run before
+  // looking for the following okurigana. For example:
+  // 聞き分け / ききわけ -> 聞(き) + き + 分(わ) + け
+  // 示し / しめし       -> 示(しめ) + し
+  const searchStart = Math.min(pronChars.length, pronCursor + 1)
+  for (
+    let index = searchStart;
+    index <= pronChars.length - literalRun.length;
+    index += 1
+  ) {
+    const matches = literalRun.every(
+      (character, offset) =>
+        normalizeKanaComparable(pronChars[index + offset]) ===
+        normalizeKanaComparable(character),
+    )
+    if (matches) return index
+  }
+
+  // Sudachi may return only the current inflected stem. Matching the first
+  // okurigana still keeps a trailing small っ outside the ruby in that case.
+  for (let index = searchStart; index < pronChars.length; index += 1) {
+    if (
+      normalizeKanaComparable(pronChars[index]) ===
+      normalizeKanaComparable(literalRun[0])
+    ) {
+      return index
+    }
+  }
+  return pronChars.length
+}
+
 export const buildJapaneseRubyHtml = (
   word: string,
   pronunciation: string,
@@ -73,6 +146,33 @@ export const buildJapaneseRubyHtml = (
   const rtClass = options?.rtClassName ? ` class="${options.rtClassName}"` : ''
   const buildRuby = (base: string, pron: string) =>
     `<ruby${rubyClass}>${escapeHtml(base)}<rt${rtClass} aria-hidden="true" data-context-ignore="true">${escapeHtml(pron)}</rt></ruby>`
+
+  // Sudachi keeps an authored reading such as 辿（たど）っ inside one token and
+  // may report たどっ for the whole token. Use the authored kana for the kanji
+  // ruby so the following small っ is not pulled into the annotation.
+  if (hasInlineKanaReading(cleanWord)) {
+    INLINE_KANA_READING_PATTERN.lastIndex = 0
+    let inlineCursor = 0
+    let inlineOutput = ''
+    for (const match of cleanWord.matchAll(INLINE_KANA_READING_PATTERN)) {
+      const start = match.index
+      inlineOutput += escapeHtml(cleanWord.slice(inlineCursor, start))
+      inlineOutput += buildRuby(match[1], match[3])
+      inlineOutput += escapeHtml(`${match[2]}${match[3]}${match[4]}`)
+      inlineCursor = start + match[0].length
+    }
+    inlineOutput += escapeHtml(cleanWord.slice(inlineCursor))
+    return inlineOutput
+  }
+
+  // Sudachi combines numeric units such as １０万 into one token. Keep the
+  // digits unannotated while retaining the useful reading on the unit kanji.
+  if (hasKanji(cleanWord) && hasNumber(cleanWord)) {
+    const mixedNumeric = resolveMixedNumericReading(cleanWord, compactPron)
+    return mixedNumeric
+      ? `${escapeHtml(mixedNumeric.number)}${buildRuby(mixedNumeric.units, mixedNumeric.reading)}`
+      : escapeHtml(cleanWord)
+  }
 
   const tryBuildFromMixedTokens = () => {
     const tokens = splitPronunciationTokens(cleanPron)
@@ -221,22 +321,12 @@ export const buildJapaneseRubyHtml = (
     }
     const kanjiRun = wordChars.slice(wordCursor, runEnd).join('')
 
-    const nextLiteral = wordChars
-      .slice(runEnd)
-      .find(char => !isKanjiChar(char) && char.trim().length > 0)
-    let pronBoundary = pronChars.length
-    if (nextLiteral) {
-      const searchStart = pronCursor
-      for (let i = searchStart; i < pronChars.length; i += 1) {
-        if (
-          normalizeKanaComparable(pronChars[i]) ===
-          normalizeKanaComparable(nextLiteral)
-        ) {
-          pronBoundary = i
-          break
-        }
-      }
-    }
+    const pronBoundary = findPronunciationBoundary(
+      wordChars,
+      runEnd,
+      pronChars,
+      pronCursor,
+    )
     const pronRun = pronChars.slice(pronCursor, pronBoundary).join('')
     if (options?.groupKanji && pronRun) {
       output += buildRuby(kanjiRun, pronRun)
@@ -314,7 +404,9 @@ export type JapaneseRubyLexeme = {
 const shouldShowSudachiRuby = (
   lexeme: JapaneseRubyLexeme,
   pronunciation: string,
-) => hasKanji(lexeme.surface) && Boolean(pronunciation.trim())
+) =>
+  hasKanji(lexeme.surface) &&
+  Boolean(pronunciation.trim())
 
 const buildBestLexemeMatches = (
   text: string,
@@ -415,6 +507,24 @@ export const formatJapaneseTextWithSudachiRubyNotation = (
 }
 
 const buildJapaneseRubyNotation = (word: string, pronunciation: string) => {
+  if (hasInlineKanaReading(word)) {
+    INLINE_KANA_READING_PATTERN.lastIndex = 0
+    let cursor = 0
+    let output = ''
+    for (const match of word.matchAll(INLINE_KANA_READING_PATTERN)) {
+      const start = match.index
+      output += word.slice(cursor, start)
+      output += `{${match[1]}|${match[3]}}${match[2]}${match[3]}${match[4]}`
+      cursor = start + match[0].length
+    }
+    return output + word.slice(cursor)
+  }
+  if (hasKanji(word) && hasNumber(word)) {
+    const mixedNumeric = resolveMixedNumericReading(word, pronunciation)
+    return mixedNumeric
+      ? `${mixedNumeric.number}{${mixedNumeric.units}|${mixedNumeric.reading}}`
+      : word
+  }
   const wordChars = Array.from(word)
   const pronunciationChars = Array.from(pronunciation.replace(/[\s\u3000]+/g, ''))
   let output = ''
@@ -440,18 +550,12 @@ const buildJapaneseRubyNotation = (word: string, pronunciation: string) => {
       runEnd += 1
     }
     const kanjiRun = wordChars.slice(wordCursor, runEnd).join('')
-    const nextLiteral = wordChars
-      .slice(runEnd)
-      .find(item => !isKanjiChar(item) && item.trim())
-    let pronunciationEnd = pronunciationChars.length
-    if (nextLiteral) {
-      const boundary = pronunciationChars.findIndex(
-        (item, index) =>
-          index >= pronunciationCursor &&
-          normalizeKanaComparable(item) === normalizeKanaComparable(nextLiteral),
-      )
-      if (boundary >= 0) pronunciationEnd = boundary
-    }
+    const pronunciationEnd = findPronunciationBoundary(
+      wordChars,
+      runEnd,
+      pronunciationChars,
+      pronunciationCursor,
+    )
     const reading = pronunciationChars
       .slice(pronunciationCursor, pronunciationEnd)
       .join('')

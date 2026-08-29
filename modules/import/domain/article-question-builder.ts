@@ -1,4 +1,4 @@
-import { parseMultiQuizText } from './quiz-text-parser'
+import { parseMultiQuizText } from './quiz-text-parser.ts'
 import type {
   ArticleImportedQuestionDraft,
   ArticlePreviewRow,
@@ -83,6 +83,10 @@ export const rebuildFillBlankPromptFromQuestion = (
 export const buildArticleQuestionsFromQuickInput = (
   input: string,
   articleContent: string,
+  options?: {
+    questionType?: string
+    matchFillBlanksByOrder?: boolean
+  },
 ) => {
   const parsed = parseMultiQuizText(input)
   if (parsed.length === 0) {
@@ -167,6 +171,16 @@ export const buildArticleQuestionsFromQuickInput = (
     return { token: '', index: -1, matchCount }
   }
 
+  const findOrderedPlaceholderTokens = (content: string) => {
+    const pattern =
+      /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』|__{2,}|[＿_]{2,}|[（(][\s　]*[）)]|～/g
+    return Array.from(content.matchAll(pattern), match => ({
+      token: match[0],
+      index: match.index,
+      matchCount: 1,
+    }))
+  }
+
   const replaceBlankWithAnswer = (sentence: string, answer: string) => {
     const blankRegex =
       /\[\d+\]|［\d+］|\(\d+\)|（\d+）|【\d+】|「\d+」|『\d+』|__{2,}|[＿_]{2,}|[（(][\s　]*[）)]|～/
@@ -175,7 +189,16 @@ export const buildArticleQuestionsFromQuickInput = (
     return sentence.replace(blankRegex, answer)
   }
 
-  const newQuestions = parsed.map(item => {
+  const forcedFillBlankType =
+    options?.questionType === 'FILL_BLANK' ||
+    options?.questionType === 'TOEIC_TEXT_COMPLETION'
+      ? options.questionType
+      : ''
+  const orderedPlaceholderHits = options?.matchFillBlanksByOrder
+    ? findOrderedPlaceholderTokens(articleContent || '')
+    : []
+
+  const newQuestions = parsed.map((item, itemIndex) => {
     const promptText = (item.prompt || '').trim()
     // 仅去掉“题号前缀”，保留填空占位符 [12]
     const normalizedPrompt = promptText.replace(
@@ -192,10 +215,12 @@ export const buildArticleQuestionsFromQuickInput = (
       promptPlaceholder ||
       (item.sourceSerial ? String(item.sourceSerial) : '') ||
       extractSerialNumber(promptText)
-    const placeholderHit = findPlaceholderTokenBySerial(
+    const serialPlaceholderHit = findPlaceholderTokenBySerial(
       articleContent || '',
       serialNumber,
     )
+    const placeholderHit =
+      orderedPlaceholderHits[itemIndex] || serialPlaceholderHit
     const matchedToken = placeholderHit.token
     const matchedSentence =
       matchedToken && articleContent && placeholderHit.index >= 0
@@ -206,9 +231,10 @@ export const buildArticleQuestionsFromQuickInput = (
           )
         : ''
 
-    const detectedType =
-      /[（(][\s　]*[）)]|__{2,}|～|\[\d+\]/.test(normalizedPrompt) ||
-      Boolean(matchedToken)
+    const detectedType = forcedFillBlankType
+      ? forcedFillBlankType
+      : /[（(][\s　]*[）)]|__{2,}|～|\[\d+\]/.test(normalizedPrompt) ||
+          Boolean(matchedToken)
         ? 'FILL_BLANK'
         : 'READING_COMPREHENSION'
 
@@ -282,6 +308,9 @@ export const buildArticleQuestionsFromQuickInput = (
       serial: question.__previewSerial || `${idx + 1}`,
       placeholderToken: question.__previewToken || '未命中',
       generatedPrompt: question.prompt || '（空题干）',
+      questionType: question.questionType,
+      correctAnswer:
+        question.options.find(option => option.isCorrect)?.text || '未识别',
       isDuplicateToken: Boolean(question.__previewDuplicateToken),
     }),
   )

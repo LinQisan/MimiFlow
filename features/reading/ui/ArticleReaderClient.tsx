@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
 import { SourceType } from '@prisma/client'
-import WordTooltip from '@/components/exam/WordTooltip'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { saveReadingProgress } from '@/features/reading/progress-actions'
 import {
@@ -21,13 +21,32 @@ import {
   parseArticleContentBlocks,
   type ArticleContentBlock,
 } from '@/features/reading/domain/article-blocks'
-import MathExpression from '@/features/reading/ui/MathExpression'
-import ExtractVocabularyPanel from '@/features/reading/ui/ExtractVocabularyPanel'
+import {
+  parseArticleFootnotes,
+  type ArticleFootnote,
+} from '@/features/reading/domain/article-footnotes'
 import { copyText } from '@/features/reading/ui/copy-text'
 import type {
   SudachiLexeme,
   VocabularyCandidate,
 } from '@/features/reading/domain/sudachi'
+import PronunciationSourceSelector, {
+  PRONUNCIATION_SOURCE_STORAGE_KEY,
+  type PronunciationSource,
+} from '@/features/reading/ui/PronunciationSourceSelector'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
+
+const MathExpression = dynamic(
+  () => import('@/features/reading/ui/MathExpression'),
+)
+const ExtractVocabularyPanel = dynamic(
+  () => import('@/features/reading/ui/ExtractVocabularyPanel'),
+)
+const WordTooltip = dynamic(() => import('@/components/exam/WordTooltip'))
 
 type ReaderChapter = {
   id: string
@@ -35,10 +54,6 @@ type ReaderChapter = {
   text: string
   href: string
 }
-
-type PronunciationSource = 'sudachi' | 'personal'
-
-const PRONUNCIATION_SOURCE_KEY = 'mimiflow_article_pronunciation_source'
 
 const splitParagraphs = (text: string) =>
   text
@@ -71,6 +86,11 @@ export default function ArticleReaderClient({
   mode?: 'article' | 'ebook'
   documentTitle?: string
 }) {
+  const currentUser = useCurrentUser()
+  const pronunciationStorageKey = userStorageKey(
+    currentUser.id,
+    PRONUNCIATION_SOURCE_STORAGE_KEY,
+  )
   const initialChapterIndex =
     chapters.length > 1
       ? Math.min(
@@ -97,7 +117,7 @@ export default function ArticleReaderClient({
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] = useState(
     initialVocabularyMetaMap,
   )
-  const { selection, closeSelection } = useTextSelection()
+  const { selection, closeSelection } = useTextSelection(selectionEnabled)
   const readerChapters =
     chapters.length > 0
       ? chapters
@@ -107,16 +127,19 @@ export default function ArticleReaderClient({
 
   useEffect(() => {
     if (mode !== 'article') return
-    const stored = window.localStorage.getItem(PRONUNCIATION_SOURCE_KEY)
+    const stored = readUserStorageValue(
+      currentUser.id,
+      PRONUNCIATION_SOURCE_STORAGE_KEY,
+    )
     if (stored === 'personal' || (stored === 'sudachi' && sudachiAvailable)) {
       setPronunciationSourceState(stored)
     }
-  }, [mode, sudachiAvailable])
+  }, [currentUser.id, mode, pronunciationStorageKey, sudachiAvailable])
 
   const setPronunciationSource = (source: PronunciationSource) => {
     if (source === 'sudachi' && !sudachiAvailable) return
     setPronunciationSourceState(source)
-    window.localStorage.setItem(PRONUNCIATION_SOURCE_KEY, source)
+    window.localStorage.setItem(pronunciationStorageKey, source)
   }
 
   const handleCopyContent = async () => {
@@ -228,8 +251,82 @@ export default function ArticleReaderClient({
       ? initialSudachiPronunciationMap
       : basePronMap
 
+  const footnoteDocument = useMemo(
+    () => parseArticleFootnotes(activeChapter?.text || ''),
+    [activeChapter],
+  )
+  const footnoteById = useMemo(
+    () =>
+      new Map(
+        footnoteDocument.footnotes.map(footnote => [footnote.id, footnote]),
+      ),
+    [footnoteDocument.footnotes],
+  )
+  const footnoteAnchorPrefix = `article-${articleId}-${activeChapterIndex}-note`
+  const annotationAnchorPrefix = `article-${articleId}-${activeChapterIndex}-annotation`
+
+  const activeChapterAnnotations = useMemo(() => {
+    const chapterText = footnoteDocument.body
+    const aliasMap = buildSurfaceAliasMapForText(
+      chapterText,
+      Object.keys(localVocabularyMetaMap),
+    )
+    const firstOccurrenceByWord = new Map<
+      string,
+      { word: string; surface: string; position: number; meta: VocabularyMeta }
+    >()
+
+    Object.entries(aliasMap).forEach(([surface, word]) => {
+      const position = chapterText.indexOf(surface)
+      const meta = localVocabularyMetaMap[word]
+      if (position < 0 || !meta) return
+      const current = firstOccurrenceByWord.get(word)
+      if (
+        !current ||
+        position < current.position ||
+        (position === current.position && surface.length > current.surface.length)
+      ) {
+        firstOccurrenceByWord.set(word, { word, surface, position, meta })
+      }
+    })
+
+    const selected: Array<{
+      word: string
+      surface: string
+      position: number
+      meta: VocabularyMeta
+    }> = []
+    Array.from(firstOccurrenceByWord.values())
+      .sort(
+        (left, right) =>
+          left.position - right.position || right.surface.length - left.surface.length,
+      )
+      .forEach(candidate => {
+        const candidateEnd = candidate.position + candidate.surface.length
+        const overlaps = selected.some(item => {
+          const itemEnd = item.position + item.surface.length
+          return candidate.position < itemEnd && candidateEnd > item.position
+        })
+        if (!overlaps) selected.push(candidate)
+      })
+
+    return selected.map((item, index) => ({ ...item, label: index + 1 }))
+  }, [footnoteDocument.body, localVocabularyMetaMap])
+
+  const annotatedChapterBody = useMemo(() => {
+    if (!noteEnabled) return footnoteDocument.body
+    let next = footnoteDocument.body
+    ;[...activeChapterAnnotations]
+      .sort((left, right) => right.position - left.position)
+      .forEach(annotation => {
+        const markerPosition = annotation.position + annotation.surface.length
+        next = `${next.slice(0, markerPosition)}[[ARTICLE_ANNOTATION_${annotation.label}]]${next.slice(markerPosition)}`
+      })
+    return next
+  }, [activeChapterAnnotations, footnoteDocument.body, noteEnabled])
+
   const contentBlocks = useMemo(() => {
-    const items = splitParagraphs(activeChapter?.text || '')
+    const items = splitParagraphs(annotatedChapterBody)
     const visibleItems = mode !== 'ebook'
       ? items
       : removeRepeatedEbookHeadings(
@@ -238,21 +335,7 @@ export default function ArticleReaderClient({
           activeChapter?.title || '',
         )
     return parseArticleContentBlocks(visibleItems)
-  }, [activeChapter, documentTitle, mode])
-
-  const activeChapterMetaMap = useMemo(() => {
-    const aliasMap = buildSurfaceAliasMapForText(
-      activeChapter?.text || '',
-      Object.keys(localVocabularyMetaMap),
-    )
-    const baseWords = new Set(Object.values(aliasMap))
-    return Object.entries(localVocabularyMetaMap).reduce<
-      Record<string, VocabularyMeta>
-    >((acc, [word, meta]) => {
-      if (baseWords.has(word)) acc[word] = meta
-      return acc
-    }, {})
-  }, [activeChapter, localVocabularyMetaMap])
+  }, [activeChapter?.title, annotatedChapterBody, documentTitle, mode])
 
   const renderInlineText = (text: string) => {
     const pattern = /\\\(([^\n]+?)\\\)|(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g
@@ -266,59 +349,92 @@ export default function ArticleReaderClient({
       underlined = false,
     ) => {
       if (!value) return
-      if (mode === 'article' && Object.keys(initialSudachiLexicon).length > 0) {
-        const personalPronunciationMap = buildPronunciationMapForText(
-          value,
-          basePronMap,
-        )
+      const annotationPattern = /\[\[ARTICLE_ANNOTATION_(\d+)\]\]/g
+      let annotationCursor = 0
+      let annotationMatch: RegExpExecArray | null
+      let annotationIndex = 0
+      const pushJapaneseSegment = (segment: string, segmentKey: string) => {
+        if (!segment) return
+        if (mode === 'article' && Object.keys(initialSudachiLexicon).length > 0) {
+          const personalPronunciationMap = buildPronunciationMapForText(
+            segment,
+            basePronMap,
+          )
+          parts.push(
+            <span
+              key={segmentKey}
+              className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
+              dangerouslySetInnerHTML={{
+                __html: annotateJapaneseTextWithSudachi(
+                  segment,
+                  initialSudachiLexicon,
+                  {
+                    pronunciationMap: personalPronunciationMap,
+                    useSudachiReading: pronunciationSource === 'sudachi',
+                    rubyEnabled,
+                    rubyClassName: 'text-slate-900',
+                    rtClassName: 'text-slate-500',
+                  },
+                ),
+              }}
+            />,
+          )
+          return
+        }
+        if (!rubyEnabled) {
+          parts.push(
+            <span
+              key={segmentKey}
+              className={underlined ? 'exam-text-underline' : ''}>
+              {segment}
+            </span>,
+          )
+          return
+        }
+        const pronMap =
+          pronunciationSource === 'sudachi'
+            ? initialSudachiPronunciationMap
+            : buildPronunciationMapForText(segment, selectedPronunciationMap)
         parts.push(
           <span
-            key={key}
+            key={segmentKey}
             className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
             dangerouslySetInnerHTML={{
-              __html: annotateJapaneseTextWithSudachi(
-                value,
-                initialSudachiLexicon,
-                {
-                  pronunciationMap: personalPronunciationMap,
-                  useSudachiReading: pronunciationSource === 'sudachi',
-                  rubyEnabled,
-                  rubyClassName: 'text-slate-900',
-                  rtClassName: 'text-slate-500',
-                },
-              ),
+              __html: annotateJapaneseText(segment, pronMap, {
+                rubyClassName: 'text-slate-900',
+                rtClassName: 'text-slate-500',
+                groupKanji: pronunciationSource === 'sudachi',
+              }),
             }}
           />,
         )
-        return
       }
-      if (!rubyEnabled) {
-        parts.push(
-          <span key={key} className={underlined ? 'exam-text-underline' : ''}>
-            {value}
-          </span>,
+
+      while ((annotationMatch = annotationPattern.exec(value)) !== null) {
+        pushJapaneseSegment(
+          value.slice(annotationCursor, annotationMatch.index),
+          `${key}-text-${annotationIndex}`,
         )
-        return
+        const label = Number(annotationMatch[1])
+        parts.push(
+          <sup key={`${key}-annotation-${annotationIndex}`} className='mx-0.5'>
+            <a
+              id={`${annotationAnchorPrefix}-${label}-ref`}
+              href={`#${annotationAnchorPrefix}-${label}`}
+              className='rounded px-0.5 text-[0.65em] font-semibold text-slate-500 no-underline transition hover:bg-slate-100 hover:text-slate-950'>
+              释{label}
+            </a>
+          </sup>,
+        )
+        annotationCursor = annotationMatch.index + annotationMatch[0].length
+        annotationIndex += 1
       }
-      const pronMap =
-        pronunciationSource === 'sudachi'
-          ? initialSudachiPronunciationMap
-          : buildPronunciationMapForText(value, selectedPronunciationMap)
-      parts.push(
-        <span
-          key={key}
-          className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
-          dangerouslySetInnerHTML={{
-            __html: annotateJapaneseText(value, pronMap, {
-              rubyClassName: 'text-slate-900',
-              rtClassName: 'text-slate-500',
-              groupKanji: pronunciationSource === 'sudachi',
-            }),
-          }}
-        />,
+      pushJapaneseSegment(
+        value.slice(annotationCursor),
+        `${key}-text-${annotationIndex}`,
       )
     }
-    const pushText = (value: string, key: string) => {
+    const pushMarkedText = (value: string, key: string) => {
       if (!value) return
       const markerPattern = /\+\+([\s\S]+?)\+\+/g
       let markerCursor = 0
@@ -338,6 +454,49 @@ export default function ArticleReaderClient({
         markerIndex += 1
       }
       pushTextSegment(value.slice(markerCursor), `${key}-plain-${markerIndex}`)
+    }
+    const pushText = (value: string, key: string) => {
+      if (!value) return
+      const referencePattern = /\[\^([A-Za-z0-9_-]+)\]/g
+      let referenceCursor = 0
+      let referenceMatch: RegExpExecArray | null
+      let referenceIndex = 0
+      while ((referenceMatch = referencePattern.exec(value)) !== null) {
+        pushMarkedText(
+          value.slice(referenceCursor, referenceMatch.index),
+          `${key}-content-${referenceIndex}`,
+        )
+        const footnote = footnoteById.get(referenceMatch[1])
+        if (footnote) {
+          const noteLabel = `注${footnote.label}`
+          parts.push(
+            <sup key={`${key}-note-${referenceIndex}`} className='mx-0.5'>
+              <a
+                id={`${footnoteAnchorPrefix}-${footnote.id}-ref`}
+                href={`#${footnoteAnchorPrefix}-${footnote.id}`}
+                title={
+                  footnote.term
+                    ? `${footnote.term}：${footnote.definition}`
+                    : footnote.definition
+                }
+                className='rounded px-0.5 text-[0.65em] font-semibold text-slate-500 no-underline transition hover:bg-slate-100 hover:text-slate-950'>
+                {noteLabel}
+              </a>
+            </sup>,
+          )
+        } else if (!footnote) {
+          pushTextSegment(
+            referenceMatch[0],
+            `${key}-unknown-note-${referenceIndex}`,
+          )
+        }
+        referenceCursor = referenceMatch.index + referenceMatch[0].length
+        referenceIndex += 1
+      }
+      pushMarkedText(
+        value.slice(referenceCursor),
+        `${key}-content-${referenceIndex}`,
+      )
     }
 
     while ((match = pattern.exec(text)) !== null) {
@@ -462,36 +621,12 @@ export default function ArticleReaderClient({
             注音
           </button>
           {mode === 'article' && rubyEnabled ? (
-            <div
-              role='radiogroup'
-              aria-label='注音来源'
-              className='flex items-center gap-1 px-2'>
-              <button
-                type='button'
-                role='radio'
-                aria-checked={pronunciationSource === 'sudachi'}
-                disabled={!sudachiAvailable}
-                title={sudachiAvailable ? '显示 SudachiPy 自动注音' : 'SudachiPy 当前不可用'}
-                onClick={() => setPronunciationSource('sudachi')}
-                className={`rounded-full px-2 py-1 text-[11px] font-medium transition ${
-                  pronunciationSource === 'sudachi'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                } disabled:cursor-not-allowed disabled:opacity-40`}>
-                SudachiPy
-              </button>
-              <button
-                type='button'
-                role='radio'
-                aria-checked={pronunciationSource === 'personal'}
-                onClick={() => setPronunciationSource('personal')}
-                className={`rounded-full px-2 py-1 text-[11px] font-medium transition ${
-                  pronunciationSource === 'personal'
-                    ? 'bg-slate-900 text-white'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                }`}>
-                我的
-              </button>
+            <div className='px-1'>
+              <PronunciationSourceSelector
+                value={pronunciationSource}
+                onChange={setPronunciationSource}
+                sudachiAvailable={sudachiAvailable}
+              />
             </div>
           ) : null}
           {mode === 'article' ? (
@@ -622,24 +757,74 @@ export default function ArticleReaderClient({
             )}
           </div>
 
-          {noteEnabled && Object.keys(activeChapterMetaMap).length > 0 ? (
-            <div className='mt-12 border-y border-slate-200 py-6'>
-              <h3 className='text-sm font-semibold text-slate-900'>本篇注释</h3>
-              <div className='mt-4 divide-y divide-slate-200'>
-                {Object.entries(activeChapterMetaMap).map(([word, meta]) => (
-                  <div
-                    key={word}
-                    className='grid gap-1 py-3 sm:grid-cols-[9rem_minmax(0,1fr)]'>
-                    <p className='text-sm font-black text-slate-900'>{word}</p>
-                    <p className='mt-1 text-xs text-slate-500'>
-                      {[meta.pronunciations[0], meta.meanings[0]]
-                        .filter(Boolean)
-                        .join(' · ') || '暂无注释'}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {footnoteDocument.footnotes.length > 0 ? (
+            <aside aria-label='文章脚注' className='mt-12'>
+              <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
+                {footnoteDocument.footnotes.map(
+                  (footnote: ArticleFootnote) => (
+                    <li
+                      key={footnote.id}
+                      id={`${footnoteAnchorPrefix}-${footnote.id}`}
+                      className='scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2.5 last:border-b-0'>
+                      <span className='text-xs font-semibold tabular-nums text-slate-400'>
+                        注{footnote.label}
+                      </span>
+                      <span>
+                        {footnote.term ? (
+                          <strong className='font-semibold text-slate-800'>
+                            {renderInlineText(footnote.term)}：
+                          </strong>
+                        ) : null}
+                        {renderInlineText(footnote.definition)}
+                      </span>
+                      {footnoteDocument.body.includes(`[^${footnote.id}]`) ? (
+                        <a
+                          href={`#${footnoteAnchorPrefix}-${footnote.id}-ref`}
+                          aria-label={`返回注${footnote.label}在正文中的位置`}
+                          className='text-xs text-slate-400 transition hover:text-slate-900'>
+                          ↩
+                        </a>
+                      ) : null}
+                    </li>
+                  ),
+                )}
+              </ol>
+            </aside>
+          ) : null}
+
+          {noteEnabled && activeChapterAnnotations.length > 0 ? (
+            <aside aria-label='文章注释' className='mt-12'>
+              <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
+                {activeChapterAnnotations.map(
+                  ({ word, meta, label }) => (
+                    <li
+                      key={word}
+                      id={`${annotationAnchorPrefix}-${label}`}
+                      className='scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2.5 last:border-b-0'>
+                      <span className='text-xs font-semibold tabular-nums text-slate-400'>
+                        释{label}
+                      </span>
+                      <span>
+                        <strong className='font-semibold text-slate-800'>
+                          {word}
+                        </strong>
+                        <span className='ml-2 text-slate-500'>
+                          {[meta.pronunciations[0], meta.meanings[0]]
+                            .filter(Boolean)
+                            .join(' · ') || '暂无注释'}
+                        </span>
+                      </span>
+                      <a
+                        href={`#${annotationAnchorPrefix}-${label}-ref`}
+                        aria-label={`返回释${label}在正文中的位置`}
+                        className='text-xs text-slate-400 transition hover:text-slate-900'>
+                        ↩
+                      </a>
+                    </li>
+                  ),
+                )}
+              </ol>
+            </aside>
           ) : null}
         </article>
       </div>

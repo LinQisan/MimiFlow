@@ -3,17 +3,11 @@ import Link from 'next/link'
 
 import {
   findLevelsWithPapersAndCounts,
-  getPracticePerformanceGroups,
 } from '@/lib/repositories/exam'
 import PapersListClient from './PapersListClient'
-import { getPracticeVocabularyAnalytics } from '@/features/practice/server/vocabulary-analytics'
 
 export default async function AllPapersPage() {
-  const [levels, performanceGroups, vocabularyAnalytics] = await Promise.all([
-    findLevelsWithPapersAndCounts(),
-    getPracticePerformanceGroups(),
-    getPracticeVocabularyAnalytics(),
-  ])
+  const levels = await findLevelsWithPapersAndCounts()
 
   if (levels.length === 0) {
     return (
@@ -42,8 +36,6 @@ export default async function AllPapersPage() {
     <PapersListClient
       levels={levels}
       totalPaperCount={totalPaperCount}
-      performanceGroups={performanceGroups}
-      vocabularyAnalytics={vocabularyAnalytics}
     />
   )
 }

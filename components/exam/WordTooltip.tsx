@@ -9,19 +9,24 @@ import {
   useRef,
   useState,
 } from 'react'
+import {
+  LearningPointCategory,
+  LearningRecordKind,
+  SourceType,
+} from '@prisma/client'
+
+import { saveLearningRecord } from '@/modules/knowledge/learning-records/actions'
+import { LEARNING_POINT_CATEGORY_LABELS } from '@/modules/knowledge/learning-records/domain'
 import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
-import { SourceType } from '@prisma/client'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
-// --- 预设的常用词性选项 (可根据需要修改) ---
 const POS_OPTIONS = ['名词', '动词', '形容词', '副词', '助词', '接续词']
-
-// --- UI 样式常量 ---
-const TOOLTIP_WIDTH_CLASS = 'w-[260px]'
-const SECTION_TITLE_CLASS = 'text-xs font-bold text-slate-700'
-const SECTION_HINT_CLASS = 'mt-1 text-[10px] leading-relaxed text-slate-400'
 const BASE_INPUT_CLASS =
-  'w-full h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs outline-none transition-all placeholder:text-slate-300 focus:border-slate-400 focus:ring-1 focus:ring-slate-200'
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
+const LABEL_CLASS = 'text-xs font-bold text-slate-700'
+
+type RecordMode = 'word' | 'learning-point' | 'sentence'
+type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 const splitListInput = (value: string) =>
   Array.from(
@@ -37,12 +42,14 @@ const splitPronunciationInput = (value: string) =>
   Array.from(
     new Set(
       value
-        // 不按空格和 | 分割，避免把「にん げん / にん|げん」这种单个注音误拆。
         .split(/[\/／\n,，；;]+/)
         .map(item => item.trim())
         .filter(Boolean),
     ),
   )
+
+const defaultModeForSelection = (detectedWord: unknown): RecordMode =>
+  detectedWord ? 'word' : 'learning-point'
 
 export default function WordTooltip({
   word,
@@ -75,26 +82,28 @@ export default function WordTooltip({
   onClose?: () => void
   onSaved?: (payload: { word: string; meta: VocabularyMeta }) => void
 }) {
-  // --- 1. 内部状态管理 ---
-  const [saveState, setSaveState] = useState<
-    'idle' | 'saving' | 'saved' | 'error'
-  >('idle')
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [mode, setMode] = useState<RecordMode>(() =>
+    defaultModeForSelection(detectedWord),
+  )
+  const [saveState, setSaveState] = useState<SaveState>('idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [headwordValue, setHeadwordValue] = useState('')
   const [pronunciationValue, setPronunciationValue] = useState('')
   const [meaningValue, setMeaningValue] = useState('')
   const [partOfSpeechValue, setPartOfSpeechValue] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(true)
+  const [pointTitle, setPointTitle] = useState('')
+  const [fragmentsValue, setFragmentsValue] = useState('')
+  const [pointNote, setPointNote] = useState('')
+  const [category, setCategory] = useState<LearningPointCategory>(
+    LearningPointCategory.GRAMMAR,
+  )
   const popupRef = useRef<HTMLDivElement>(null)
-  const headwordInputRef = useRef<HTMLInputElement>(null)
-  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const primaryInputRef = useRef<HTMLInputElement>(null)
   const closeTimerRef = useRef<number | null>(null)
-  const headwordInputId = useId()
-  const pronunciationInputId = useId()
-  const partOfSpeechInputId = useId()
-  const meaningInputId = useId()
+  const titleInputId = useId()
   const contextId = useId()
-  const [popupHeight, setPopupHeight] = useState(320)
+  const [popupHeight, setPopupHeight] = useState(42)
   const [viewport, setViewport] = useState(() => ({
     width: typeof window === 'undefined' ? 1024 : window.innerWidth,
     height: typeof window === 'undefined' ? 768 : window.innerHeight,
@@ -103,46 +112,29 @@ export default function WordTooltip({
   }))
 
   useEffect(() => {
+    const detectedHeadword = detectedWord?.dictionaryForm?.trim() || word
+    setPanelOpen(false)
+    setMode(defaultModeForSelection(detectedWord))
     setSaveState('idle')
     setStatusMessage('')
-    const detectedHeadword = detectedWord?.dictionaryForm?.trim() || word
     setHeadwordValue(detectedHeadword)
-    const initialPron =
-      (initialMeta?.pronunciations || []).join(' / ') ||
-      detectedWord?.reading ||
-      ''
-    setPronunciationValue(initialPron)
+    setPronunciationValue(
+      (initialMeta?.pronunciations || []).join(' / ') || detectedWord?.reading || '',
+    )
     setPartOfSpeechValue(
       initialMeta?.partsOfSpeech?.[0] || detectedWord?.partOfSpeech || '',
     )
     setMeaningValue((initialMeta?.meanings || []).join('; '))
-  }, [word, initialMeta, detectedWord])
+    setPointTitle(word)
+    setFragmentsValue(word)
+    setPointNote('')
+    setCategory(LearningPointCategory.GRAMMAR)
+  }, [word, sourceType, sourceId, initialMeta, detectedWord])
 
   const requestClose = useCallback(() => {
-    if (closeTimerRef.current != null) {
-      window.clearTimeout(closeTimerRef.current)
-      closeTimerRef.current = null
-    }
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
     onClose?.()
   }, [onClose])
-
-  useLayoutEffect(() => {
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null
-    const focusFrame = window.requestAnimationFrame(() => {
-      headwordInputRef.current?.focus({ preventScroll: true })
-      headwordInputRef.current?.select()
-    })
-    return () => {
-      window.cancelAnimationFrame(focusFrame)
-      if (closeTimerRef.current != null) {
-        window.clearTimeout(closeTimerRef.current)
-      }
-      previousFocusRef.current?.focus({ preventScroll: true })
-    }
-  }, [])
 
   useLayoutEffect(() => {
     const popup = popupRef.current
@@ -152,7 +144,13 @@ export default function WordTooltip({
     const observer = new ResizeObserver(measure)
     observer.observe(popup)
     return () => observer.disconnect()
-  }, [showAdvanced])
+  }, [panelOpen, mode])
+
+  useEffect(() => {
+    if (!panelOpen) return
+    const frame = window.requestAnimationFrame(() => primaryInputRef.current?.focus())
+    return () => window.cancelAnimationFrame(frame)
+  }, [panelOpen, mode])
 
   useEffect(() => {
     const updateViewport = () => {
@@ -179,19 +177,24 @@ export default function WordTooltip({
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       event.preventDefault()
-      requestClose()
+      if (panelOpen) setPanelOpen(false)
+      else requestClose()
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [requestClose])
+  }, [panelOpen, requestClose])
 
-  // --- 2. 动态计算样式与位置 ---
+  useEffect(
+    () => () => {
+      if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
+    },
+    [],
+  )
+
+  const panelWidth = panelOpen ? Math.min(380, viewport.width - 24) : 68
   const viewportPadding = 12
-  const tooltipWidth = Math.min(260, Math.max(160, viewport.width - 24))
-  const tooltipHalfWidth = tooltipWidth / 2
-  const minX = viewport.offsetLeft + tooltipHalfWidth + viewportPadding
-  const maxX =
-    viewport.offsetLeft + viewport.width - tooltipHalfWidth - viewportPadding
+  const minX = viewport.offsetLeft + panelWidth / 2 + viewportPadding
+  const maxX = viewport.offsetLeft + viewport.width - panelWidth / 2 - viewportPadding
   const clampedX = Math.min(Math.max(x, minX), maxX)
   const viewportBottom = viewport.offsetTop + viewport.height
   const spaceAbove = y - viewport.offsetTop
@@ -208,78 +211,86 @@ export default function WordTooltip({
         Math.max(y - 8, viewport.offsetTop + popupHeight + viewportPadding),
       )
 
-  const saveBtnConfig = useMemo(() => {
-    switch (saveState) {
-      case 'saving':
-        return {
-          text: '保存中...',
-          bg: 'bg-slate-100 text-slate-500 cursor-wait',
-          disabled: true,
-        }
-      case 'saved':
-        return {
-          text: '已保存',
-          bg: 'bg-slate-100 text-slate-700',
-          disabled: true,
-        }
-      case 'error':
-        return {
-          text: '重试',
-          bg: 'bg-rose-100 text-rose-700 hover:bg-rose-200',
-          disabled: false,
-        }
-      default:
-        return {
-          text: '保存',
-          bg: 'bg-slate-900 text-white hover:bg-slate-800 shadow-sm',
-          disabled: false,
-        }
-    }
+  const saveButton = useMemo(() => {
+    if (saveState === 'saving') return { label: '保存中…', disabled: true }
+    if (saveState === 'saved') return { label: '已保存', disabled: true }
+    if (saveState === 'error') return { label: '重试', disabled: false }
+    return { label: '保存', disabled: false }
   }, [saveState])
 
-  // --- 3. 核心：处理保存逻辑 ---
+  const changeMode = (nextMode: RecordMode) => {
+    setMode(nextMode)
+    setSaveState('idle')
+    setStatusMessage('')
+  }
+
   const handleSave = async () => {
     if (saveState === 'saving' || saveState === 'saved') return
-    const normalizedHeadword = headwordValue.trim()
-    if (!normalizedHeadword) {
-      setSaveState('error')
-      setStatusMessage('请填写要保存的单词或原形。')
-      return
-    }
     setSaveState('saving')
-    setStatusMessage('正在保存词条…')
-
-    const pronList = splitPronunciationInput(pronunciationValue)
-    const meaningList = splitListInput(meaningValue)
-    const posList = splitListInput(partOfSpeechValue)
+    setStatusMessage('正在保存…')
 
     try {
-      const res = await saveVocabulary(
-        normalizedHeadword,
-        word,
-        contextSentence,
-        sourceType,
-        sourceId,
-        pronList[0],
-        pronList,
-        meaningList,
-        posList[0],
-        posList,
-      )
-
-      if (
-        (res.state === 'success' || res.state === 'already_exists') &&
-        res.word &&
-        res.meta
-      ) {
-        onSaved?.({ word: res.word, meta: res.meta })
-        setSaveState('saved')
-        setStatusMessage(res.message || '已保存到生词本。')
-        closeTimerRef.current = window.setTimeout(requestClose, 1000)
+      if (mode === 'word') {
+        const normalizedHeadword = headwordValue.trim()
+        if (!normalizedHeadword) {
+          setSaveState('error')
+          setStatusMessage('请填写单词或原形。')
+          return
+        }
+        const pronunciations = splitPronunciationInput(pronunciationValue)
+        const meanings = splitListInput(meaningValue)
+        const partsOfSpeech = splitListInput(partOfSpeechValue)
+        const result = await saveVocabulary(
+          normalizedHeadword,
+          word,
+          contextSentence,
+          sourceType,
+          sourceId,
+          pronunciations[0],
+          pronunciations,
+          meanings,
+          partsOfSpeech[0],
+          partsOfSpeech,
+        )
+        if (
+          (result.state === 'success' || result.state === 'already_exists') &&
+          result.word &&
+          result.meta
+        ) {
+          onSaved?.({ word: result.word, meta: result.meta })
+          setSaveState('saved')
+          setStatusMessage(result.message || '已保存到生词本。')
+        } else {
+          setSaveState('error')
+          setStatusMessage(result.message || '保存失败，请重试。')
+          return
+        }
       } else {
-        setSaveState('error')
-        setStatusMessage(res.message || '保存失败，请重试。')
+        const result = await saveLearningRecord({
+          kind:
+            mode === 'sentence'
+              ? LearningRecordKind.SENTENCE
+              : LearningRecordKind.LEARNING_POINT,
+          category: mode === 'learning-point' ? category : null,
+          title: mode === 'sentence' ? pointTitle || contextSentence : pointTitle,
+          fragments:
+            mode === 'learning-point' ? splitListInput(fragmentsValue) : [],
+          sentenceText: contextSentence || word,
+          note: pointNote,
+          sourceType,
+          sourceId,
+        })
+        if (!result.success) {
+          setSaveState('error')
+          setStatusMessage(result.message)
+          return
+        }
+        setSaveState('saved')
+        setStatusMessage(
+          mode === 'sentence' ? '已保存为句子记录。' : result.message,
+        )
       }
+      closeTimerRef.current = window.setTimeout(requestClose, 900)
     } catch (error) {
       console.error('Save failed:', error)
       setSaveState('error')
@@ -287,188 +298,193 @@ export default function WordTooltip({
     }
   }
 
-  // --- 4. 辅助函数：点击快捷词性标签 ---
-  const handleTogglePosOption = (pos: string) => {
-    setPartOfSpeechValue(prev => (prev === pos ? '' : pos))
-  }
-
   return (
     <div
       ref={popupRef}
-      role='dialog'
-      aria-modal='false'
-      aria-label={`保存词条：${word}`}
-      aria-describedby={contextId}
-      onClick={e => e.stopPropagation()} // 阻止冒泡，防止点击弹窗内部导致弹窗关闭
-      onPointerDown={e => e.stopPropagation()}
-      onMouseDown={e => e.stopPropagation()}
+      role={panelOpen ? 'dialog' : undefined}
+      aria-label={panelOpen ? `记录所选内容：${word}` : undefined}
+      aria-describedby={panelOpen ? contextId : undefined}
+      onClick={event => event.stopPropagation()}
+      onPointerDown={event => event.stopPropagation()}
+      onMouseDown={event => event.stopPropagation()}
       style={{
         top: topOffset,
         left: clampedX,
-        width: tooltipWidth,
+        width: panelWidth,
         maxHeight: Math.max(180, viewport.height - viewportPadding * 2),
         transform:
-          shouldOpenDown || !isTop
-            ? 'translate(-50%, 0)'
-            : 'translate(-50%, -100%)',
+          shouldOpenDown || !isTop ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
       }}
-      className={`ui-pop fixed z-50 ${TOOLTIP_WIDTH_CLASS} overflow-y-auto overscroll-contain rounded-xl border border-gray-100 bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200`}>
-      {/* --- 头部区块 --- */}
-      <div className='flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50 px-3 py-2.5'>
-        <span className='max-w-[60%] truncate text-base font-bold tracking-tight text-slate-900'>
-          {headwordValue || word}
-        </span>
-        <div className='flex items-center gap-1.5'>
-          <button
-            type='button'
-            onClick={handleSave}
-            disabled={saveBtnConfig.disabled}
-            className={`inline-flex h-7 items-center justify-center gap-1.5 rounded-md px-3 text-xs font-semibold transition-colors duration-200 ${saveBtnConfig.bg}`}>
-            {saveBtnConfig.text}
-          </button>
-          <button
-            type='button'
-            onClick={requestClose}
-            aria-label='关闭词条编辑'
-            className='inline-flex h-7 w-7 items-center justify-center rounded-md border border-slate-200 bg-white text-sm font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-900'>
-            ×
-          </button>
-        </div>
-      </div>
-
-      {/* --- 内容区块 --- */}
-      <div
-        className='space-y-4 overflow-y-auto px-3 py-3 custom-scrollbar'
-        style={{ maxHeight: Math.max(120, viewport.height - 88) }}>
-        <p
-          id={contextId}
-          className='line-clamp-2 rounded-md bg-slate-50 px-2 py-1.5 text-[10px] leading-4 text-slate-500'>
-          例句：{contextSentence || word}
-        </p>
-        {/* 1. 读音/注音模块 */}
-        <section className='space-y-2'>
-          <label htmlFor={headwordInputId} className={SECTION_TITLE_CLASS}>
-            单词 / 原形
-          </label>
-          <input
-            ref={headwordInputRef}
-            id={headwordInputId}
-            value={headwordValue}
-            onChange={e => setHeadwordValue(e.target.value)}
-            placeholder='如: ののしる'
-            className={BASE_INPUT_CLASS}
-          />
-          <p className={SECTION_HINT_CLASS}>
-            {detectedWord
-              ? `SudachiPy：${detectedWord.surface}${detectedWord.surface !== detectedWord.dictionaryForm ? ` → ${detectedWord.dictionaryForm}` : ''}`
-              : '可修改为词典形。'}
-          </p>
-        </section>
-
-        <section className='space-y-2'>
-          <label htmlFor={pronunciationInputId} className={SECTION_TITLE_CLASS}>
-            读音 / 注音
-          </label>
-          <input
-            id={pronunciationInputId}
-            value={pronunciationValue}
-            onChange={e => setPronunciationValue(e.target.value)}
-            placeholder='如: 言:い い 訳:わけ / にん げん（或 にん|げん）'
-            className={BASE_INPUT_CLASS}
-          />
-          <p className={SECTION_HINT_CLASS}>
-            多个读音用 / 分隔。
-          </p>
-        </section>
-
-        {/* 2. 展开高级选项按钮 */}
-        <div className='border-t border-slate-100 pt-3'>
-          <button
-            type='button'
-            onClick={() => setShowAdvanced(v => !v)}
-            className='inline-flex h-7 w-full items-center justify-center rounded-md border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800'>
-            {showAdvanced ? '收起释义与词性' : '添加释义与词性 (可选)'}
-          </button>
-        </div>
-
-        {/* 3. 高级选项 (词性 & 释义) */}
-        {showAdvanced && (
-          <div className='animate-in slide-in-from-top-2 space-y-4 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 duration-200'>
-            {/* 词性 */}
-            <section className='space-y-2'>
-              <label htmlFor={partOfSpeechInputId} className={SECTION_TITLE_CLASS}>
-                词性
-              </label>
-              <div className='flex flex-wrap gap-1.5'>
-                {POS_OPTIONS.map(option => {
-                  const active = partOfSpeechValue === option
-                  return (
-                    <button
-                      key={`pos-option-${option}`}
-                      type='button'
-                      onClick={() => handleTogglePosOption(option)}
-                      className={`rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
-                        active
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-                      }`}>
-                      {option}
-                    </button>
-                  )
-                })}
+      className={`ui-pop fixed z-50 overflow-y-auto overscroll-contain border border-slate-200 bg-white shadow-2xl transition-[width] ${
+        panelOpen ? 'rounded-2xl' : 'rounded-full'
+      }`}>
+      {!panelOpen ? (
+        <button
+          type='button'
+          onClick={() => setPanelOpen(true)}
+          className='flex h-9 w-full items-center justify-center text-xs font-bold text-slate-900 hover:bg-slate-50'>
+          划词
+        </button>
+      ) : (
+        <>
+          <header className='sticky top-0 z-10 border-b border-slate-100 bg-white px-3 pt-3'>
+            <div className='flex items-center justify-between gap-3'>
+              <div>
+                <p className='text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400'>记录选区</p>
+                <p className='mt-0.5 max-w-[15rem] truncate text-sm font-bold text-slate-950'>{word}</p>
               </div>
-              <input
-                id={partOfSpeechInputId}
-                value={partOfSpeechValue}
-                onChange={e => setPartOfSpeechValue(e.target.value)}
-                placeholder='手动输入其他词性'
-                className={BASE_INPUT_CLASS}
-              />
-            </section>
+              <button
+                type='button'
+                onClick={requestClose}
+                aria-label='关闭记录面板'
+                className='flex size-8 items-center justify-center rounded-full text-lg text-slate-400 hover:bg-slate-100 hover:text-slate-900'>
+                ×
+              </button>
+            </div>
+            <div className='mt-3 grid grid-cols-3 gap-1' role='tablist' aria-label='记录层级'>
+              {[
+                { value: 'word' as const, label: '单词' },
+                { value: 'learning-point' as const, label: '学习点' },
+                { value: 'sentence' as const, label: '句子' },
+              ].map(item => (
+                <button
+                  key={item.value}
+                  type='button'
+                  role='tab'
+                  aria-selected={mode === item.value}
+                  onClick={() => changeMode(item.value)}
+                  className={`border-b-2 px-2 py-2 text-xs font-bold transition ${
+                    mode === item.value
+                      ? 'border-slate-900 text-slate-950'
+                      : 'border-transparent text-slate-400 hover:text-slate-700'
+                  }`}>
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </header>
 
-            {/* 释义 */}
-            <section className='space-y-2'>
-              <label htmlFor={meaningInputId} className={SECTION_TITLE_CLASS}>
-                释义
-              </label>
-              <input
-                id={meaningInputId}
-                value={meaningValue}
-                onChange={e => setMeaningValue(e.target.value)}
-                placeholder='如: 学习; 用功'
-                className={BASE_INPUT_CLASS}
-              />
-              <p className={SECTION_HINT_CLASS}>
-                多个释义用分号隔开。
+          <div className='space-y-4 px-4 py-4'>
+            <p id={contextId} className='rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600'>
+              {contextSentence || word}
+            </p>
+
+            {mode === 'word' ? (
+              <>
+                <label className='block space-y-1.5'>
+                  <span className={LABEL_CLASS}>单词 / 原形</span>
+                  <input ref={primaryInputRef} value={headwordValue} onChange={event => setHeadwordValue(event.target.value)} className={BASE_INPUT_CLASS} />
+                </label>
+                <label className='block space-y-1.5'>
+                  <span className={LABEL_CLASS}>读音 / 注音</span>
+                  <input value={pronunciationValue} onChange={event => setPronunciationValue(event.target.value)} placeholder='多个读音用 / 分隔' className={BASE_INPUT_CLASS} />
+                </label>
+                <section className='space-y-2'>
+                  <span className={LABEL_CLASS}>词性</span>
+                  <div className='flex flex-wrap gap-1.5'>
+                    {POS_OPTIONS.map(option => (
+                      <button
+                        key={option}
+                        type='button'
+                        onClick={() => setPartOfSpeechValue(current => current === option ? '' : option)}
+                        className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                          partOfSpeechValue === option
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 text-slate-500'
+                        }`}>
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                  <input value={partOfSpeechValue} onChange={event => setPartOfSpeechValue(event.target.value)} placeholder='或手动输入' className={BASE_INPUT_CLASS} />
+                </section>
+                <label className='block space-y-1.5'>
+                  <span className={LABEL_CLASS}>释义</span>
+                  <input value={meaningValue} onChange={event => setMeaningValue(event.target.value)} placeholder='多个释义用分号分隔' className={BASE_INPUT_CLASS} />
+                </label>
+              </>
+            ) : (
+              <>
+                <label className='block space-y-1.5'>
+                  <span className={LABEL_CLASS}>{mode === 'sentence' ? '句子标题' : '学习点名称'}</span>
+                  <input
+                    ref={primaryInputRef}
+                    id={titleInputId}
+                    value={pointTitle}
+                    onChange={event => setPointTitle(event.target.value)}
+                    placeholder={mode === 'sentence' ? '可选，方便以后检索' : '如：～ざるを得ない'}
+                    className={BASE_INPUT_CLASS}
+                  />
+                </label>
+                {mode === 'learning-point' ? (
+                  <>
+                    <section className='space-y-2'>
+                      <span className={LABEL_CLASS}>类型</span>
+                      <div className='flex flex-wrap gap-1.5'>
+                        {Object.values(LearningPointCategory).map(option => (
+                          <button
+                            key={option}
+                            type='button'
+                            onClick={() => setCategory(option)}
+                            className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
+                              category === option
+                                ? 'border-slate-900 bg-slate-900 text-white'
+                                : 'border-slate-200 text-slate-500'
+                            }`}>
+                            {LEARNING_POINT_CATEGORY_LABELS[option]}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                    <label className='block space-y-1.5'>
+                      <span className={LABEL_CLASS}>句内片段</span>
+                      <textarea
+                        value={fragmentsValue}
+                        onChange={event => setFragmentsValue(event.target.value)}
+                        rows={3}
+                        placeholder='每行一个片段，可记录不连续的多个位置'
+                        className={`${BASE_INPUT_CLASS} resize-y`}
+                      />
+                      <span className='block text-[10px] leading-4 text-slate-400'>每行一个片段；保存的是文本与原句，不保存 DOM 节点。</span>
+                    </label>
+                  </>
+                ) : null}
+                <label className='block space-y-1.5'>
+                  <span className={LABEL_CLASS}>笔记</span>
+                  <textarea
+                    value={pointNote}
+                    onChange={event => setPointNote(event.target.value)}
+                    rows={4}
+                    placeholder={mode === 'sentence' ? '拆解长难句结构、逻辑或翻译' : '写下规则、含义、对比或易错原因'}
+                    className={`${BASE_INPUT_CLASS} resize-y`}
+                  />
+                </label>
+              </>
+            )}
+
+            <div className='flex items-center justify-between gap-3 border-t border-slate-100 pt-3'>
+              <p
+                aria-live='polite'
+                className={`min-h-4 text-[11px] font-semibold ${
+                  saveState === 'error'
+                    ? 'text-rose-700'
+                    : saveState === 'saved'
+                      ? 'text-emerald-700'
+                      : 'text-slate-500'
+                }`}>
+                {statusMessage}
               </p>
-            </section>
+              <button
+                type='button'
+                onClick={handleSave}
+                disabled={saveButton.disabled}
+                className='h-9 shrink-0 rounded-lg bg-slate-900 px-4 text-xs font-bold text-white hover:bg-slate-700 disabled:cursor-wait disabled:bg-slate-200 disabled:text-slate-500'>
+                {saveButton.label}
+              </button>
+            </div>
           </div>
-        )}
-        <p
-          className={`min-h-4 text-[11px] font-semibold ${
-            saveState === 'error'
-              ? 'text-rose-700'
-              : saveState === 'saved'
-                ? 'text-emerald-700'
-                : 'text-slate-500'
-          }`}
-          aria-live='polite'>
-          {statusMessage}
-        </p>
-      </div>
-
-      {/* --- 小箭头 (Triangle) --- */}
-      <div
-        className={`absolute left-1/2 h-2.5 w-2.5 rotate-45 -translate-x-1/2 border border-slate-100 bg-white ${
-          shouldOpenDown || !isTop ? '-top-1' : '-bottom-1'
-        }`}
-        style={{
-          borderBottom: shouldOpenDown || !isTop ? 'none' : '',
-          borderRight: shouldOpenDown || !isTop ? 'none' : '',
-          borderTop: shouldOpenDown || !isTop ? '' : 'none',
-          borderLeft: shouldOpenDown || !isTop ? '' : 'none',
-        }}
-      />
+        </>
+      )}
     </div>
   )
 }

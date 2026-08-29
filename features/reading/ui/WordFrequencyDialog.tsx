@@ -5,7 +5,9 @@ import { useEffect, useMemo, useState } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
 import {
   mergeWordFrequencyRows,
+  sortWordFrequencyRows,
   type WordFrequencyRow,
+  type WordFrequencySortMode,
 } from '@/features/reading/domain/sudachi'
 
 export type FrequencyMaterial = {
@@ -18,48 +20,79 @@ export type FrequencyMaterial = {
 type FrequencyScope = 'all' | FrequencyMaterial['kind']
 
 const PAGE_SIZE = 50
+const EMPTY_MATERIALS: FrequencyMaterial[] = []
 
 export default function WordFrequencyDialog({
-  materials,
+  materialCount,
 }: {
-  materials: FrequencyMaterial[]
+  materialCount: number
 }) {
   const [isOpen, setIsOpen] = useState(false)
+  const [materials, setMaterials] = useState<FrequencyMaterial[] | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
   const [scope, setScope] = useState<FrequencyScope>('all')
   const [year, setYear] = useState('all')
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
+  const [sortMode, setSortMode] = useState<WordFrequencySortMode>('learning')
+  const availableMaterials = materials || EMPTY_MATERIALS
+
+  const loadMaterials = async () => {
+    if (isLoading) return
+    setIsLoading(true)
+    setLoadError('')
+    try {
+      const response = await fetch('/api/reading/word-frequency', {
+        cache: 'no-store',
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      setMaterials((await response.json()) as FrequencyMaterial[])
+    } catch {
+      setLoadError('词频统计加载失败，请重试。')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const openDialog = () => {
+    setIsOpen(true)
+    if (materials == null) void loadMaterials()
+  }
 
   const years = useMemo(
     () =>
-      Array.from(new Set(materials.map(item => item.year).filter(Boolean))).sort(
+      Array.from(new Set(availableMaterials.map(item => item.year).filter(Boolean))).sort(
         (left, right) => right.localeCompare(left, 'zh-CN', { numeric: true }),
       ),
-    [materials],
+    [availableMaterials],
   )
   const totalRows = useMemo(
-    () => mergeWordFrequencyRows(materials.map(item => item.rows)),
-    [materials],
+    () => mergeWordFrequencyRows(availableMaterials.map(item => item.rows)),
+    [availableMaterials],
   )
   const filteredMaterials = useMemo(
     () =>
-      materials.filter(
+      availableMaterials.filter(
         item =>
           (scope === 'all' || item.kind === scope) &&
           (year === 'all' || item.year === year),
       ),
-    [materials, scope, year],
+    [availableMaterials, scope, year],
   )
   const filteredRows = useMemo(() => {
     const keyword = query.normalize('NFKC').trim().toLowerCase()
-    const rows = mergeWordFrequencyRows(filteredMaterials.map(item => item.rows))
+    const rows = sortWordFrequencyRows(
+      mergeWordFrequencyRows(filteredMaterials.map(item => item.rows)),
+      sortMode,
+    )
     if (!keyword) return rows
     return rows.filter(item =>
       `${item.word} ${item.reading} ${item.partOfSpeech}`
         .toLowerCase()
         .includes(keyword),
     )
-  }, [filteredMaterials, query])
+  }, [filteredMaterials, query, sortMode])
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const normalizedPage = Math.min(page, totalPages)
   const visibleRows = filteredRows.slice(
@@ -71,7 +104,7 @@ export default function WordFrequencyDialog({
     0,
   )
 
-  useEffect(() => setPage(1), [query, scope, year])
+  useEffect(() => setPage(1), [query, scope, sortMode, year])
 
   useEffect(() => {
     if (!isOpen) return
@@ -92,15 +125,15 @@ export default function WordFrequencyDialog({
         type='button'
         aria-haspopup='dialog'
         aria-expanded={isOpen}
-        onClick={() => setIsOpen(true)}
-        disabled={materials.length === 0}
+        onClick={openDialog}
+        disabled={materialCount === 0}
         className='group mt-1 inline-flex items-baseline gap-2 text-left disabled:cursor-default'>
         <span className='text-xl font-semibold tabular-nums text-slate-950'>
-          {totalRows.length || '—'}
+          {materials ? totalRows.length || '—' : materialCount || '—'}
         </span>
-        {materials.length > 0 ? (
+        {materialCount > 0 ? (
           <span className='text-[11px] font-semibold text-slate-400 transition group-hover:text-slate-700'>
-            查看详情
+            {materials ? '个词 · 查看详情' : '篇材料 · 查看词频'}
           </span>
         ) : null}
       </button>
@@ -126,7 +159,7 @@ export default function WordFrequencyDialog({
                   阅读词频
                 </h2>
                 <p className='mt-1 text-xs text-slate-500'>
-                  按原形合并，可按材料类型和年份筛选。
+                  按原形合并；默认降低基础词权重，也可查看纯词频。
                 </p>
               </div>
               <button
@@ -138,7 +171,7 @@ export default function WordFrequencyDialog({
             </header>
 
             <div className='min-h-0 overflow-y-auto px-5 py-5 md:px-6'>
-              <div className='grid gap-3 border-b border-slate-200 pb-5 sm:grid-cols-3'>
+              <div className='grid gap-3 border-b border-slate-200 pb-5 sm:grid-cols-2 lg:grid-cols-4'>
                 <label className='text-xs font-semibold text-slate-500'>
                   材料范围
                   <CustomSelect
@@ -166,6 +199,19 @@ export default function WordFrequencyDialog({
                   </CustomSelect>
                 </label>
                 <label className='text-xs font-semibold text-slate-500'>
+                  排序方式
+                  <CustomSelect
+                    aria-label='阅读词频排序方式'
+                    value={sortMode}
+                    onChange={event =>
+                      setSortMode(event.currentTarget.value as WordFrequencySortMode)
+                    }
+                    className='mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none'>
+                    <option value='learning'>学习优先（推荐）</option>
+                    <option value='frequency'>出现次数</option>
+                  </CustomSelect>
+                </label>
+                <label className='text-xs font-semibold text-slate-500'>
                   查找词语
                   <input
                     type='search'
@@ -185,7 +231,21 @@ export default function WordFrequencyDialog({
                 <p>{totalOccurrences} 次出现</p>
               </div>
 
-              {visibleRows.length > 0 ? (
+              {isLoading ? (
+                <p className='border-y border-slate-200 py-12 text-center text-sm text-slate-500'>
+                  正在按需统计词频…
+                </p>
+              ) : loadError ? (
+                <div className='border-y border-slate-200 py-10 text-center'>
+                  <p className='text-sm text-rose-600'>{loadError}</p>
+                  <button
+                    type='button'
+                    onClick={() => void loadMaterials()}
+                    className='ui-btn ui-btn-sm mt-4'>
+                    重新加载
+                  </button>
+                </div>
+              ) : visibleRows.length > 0 ? (
                 <div className='overflow-x-auto border-y border-slate-200'>
                   <table className='w-full min-w-[38rem] border-collapse text-left'>
                     <thead>

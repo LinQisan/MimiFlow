@@ -1,17 +1,17 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useDeferredValue, useMemo } from 'react'
 import Link from 'next/link'
 
 import type {
   ExamHubLevelSummary,
-  PracticePerformanceGroup,
 } from '@/lib/repositories/exam'
 import CustomSelect from '@/components/ui/CustomSelect'
 import PaperLibraryItem from '@/features/practice/ui/PaperLibraryItem'
-import PerformanceStatsDialog from '@/features/practice/ui/PerformanceStatsDialog'
-import PracticeVocabularyAnalyticsDialog from '@/features/practice/ui/PracticeVocabularyAnalyticsDialog'
-import type { PracticeVocabularyAnalytics } from '@/features/practice/domain/vocabulary-analytics'
+import {
+  PerformanceStatsLauncher,
+  VocabularyAnalyticsLauncher,
+} from '@/features/practice/ui/PracticeInsightsLaunchers'
 import { usePaperLibraryState } from '@/features/practice/hooks/usePaperLibraryState'
 import {
   filterPaperLevels,
@@ -23,15 +23,11 @@ import {
 type Props = {
   levels: ExamHubLevelSummary[]
   totalPaperCount: number
-  performanceGroups: PracticePerformanceGroup[]
-  vocabularyAnalytics: PracticeVocabularyAnalytics
 }
 
 export default function PapersListClient({
   levels,
   totalPaperCount,
-  performanceGroups,
-  vocabularyAnalytics,
 }: Props) {
   const {
     query,
@@ -44,12 +40,19 @@ export default function PapersListClient({
     setSort,
     reset,
   } = usePaperLibraryState()
+  const deferredQuery = useDeferredValue(query)
   const allPapers = useMemo(() => levels.flatMap(item => item.papers), [levels])
   const stats = useMemo(() => getPaperLibraryStats(allPapers), [allPapers])
   const filterOptions = useMemo(() => getPaperFilterOptions(allPapers), [allPapers])
   const filteredLevels = useMemo(
-    () => filterPaperLevels(levels, { query, language, level, sort }),
-    [language, level, levels, query, sort],
+    () =>
+      filterPaperLevels(levels, {
+        query: deferredQuery,
+        language,
+        level,
+        sort,
+      }),
+    [deferredQuery, language, level, levels, sort],
   )
   const filteredPaperCount = filteredLevels.reduce(
     (sum, item) => sum + item.papers.length,
@@ -60,6 +63,7 @@ export default function PapersListClient({
     language !== 'all' ||
     level !== 'all' ||
     sort !== 'newest'
+  const showLevelFilter = paperLanguageUsesLevels(language)
 
   return (
     <div className='min-h-screen bg-[#f6f5f1] pb-16 font-sans text-slate-900'>
@@ -82,8 +86,7 @@ export default function PapersListClient({
             <div className='mt-4 pl-4 md:mt-0'>
               <dt className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>平均正确率</dt>
               <dd>
-                <PerformanceStatsDialog
-                  groups={performanceGroups}
+                <PerformanceStatsLauncher
                   averageAccuracy={stats.averageAccuracy}
                   papers={allPapers}
                 />
@@ -91,7 +94,7 @@ export default function PapersListClient({
             </div>
           </dl>
           <div className='flex flex-col gap-2 sm:flex-row'>
-            <PracticeVocabularyAnalyticsDialog analytics={vocabularyAnalytics} />
+            <VocabularyAnalyticsLauncher disabled={totalPaperCount === 0} />
             <Link
               href='/practice/custom'
               className='inline-flex h-11 w-full items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 lg:w-auto'>
@@ -104,23 +107,35 @@ export default function PapersListClient({
 
       <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 md:px-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
         <aside className='lg:sticky lg:top-24 lg:self-start'>
-          <div className='rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)]'>
+          <div className='rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm md:p-5 lg:p-4'>
             <div className='flex items-center justify-between gap-3'>
-              <h2 className='text-sm font-semibold text-slate-950'>筛选试卷</h2>
-              {hasActiveFilter ? (
-                <button type='button' onClick={reset} className='text-xs font-semibold text-slate-400 transition hover:text-slate-900'>
-                  重置
-                </button>
-              ) : null}
+              <div>
+                <p className='text-[10px] font-bold tracking-[0.14em] text-slate-400'>试卷库</p>
+                <h2 className='mt-0.5 text-sm font-semibold text-slate-950'>快速筛选</h2>
+              </div>
+              <div className='flex items-center gap-2'>
+                <span className='rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white'>
+                  {filteredPaperCount} 套
+                </span>
+                {hasActiveFilter ? (
+                  <button type='button' onClick={reset} className='text-xs font-semibold text-slate-400 transition hover:text-slate-900'>
+                    清除
+                  </button>
+                ) : null}
+              </div>
             </div>
-            <div className='mt-4 space-y-4'>
-              <label className='block'>
+            <div className={`mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:gap-4 ${
+              showLevelFilter
+                ? 'md:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))]'
+                : 'md:grid-cols-[minmax(0,1.35fr)_repeat(2,minmax(0,1fr))]'
+            }`}>
+              <label className='block sm:col-span-2 md:col-span-1 lg:col-span-1'>
                 <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>关键词</span>
                 <input
                   value={query}
                   onChange={event => setQuery(event.currentTarget.value)}
                   placeholder='试卷名或年份'
-                  className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200'
+                  className='h-10 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 text-sm font-medium text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-slate-400 focus:bg-white'
                 />
               </label>
               <label className='block'>
@@ -129,30 +144,27 @@ export default function PapersListClient({
                   const nextLanguage = event.currentTarget.value
                   setLanguage(nextLanguage)
                   if (!paperLanguageUsesLevels(nextLanguage)) setLevel('all')
-                }} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
+                }} className='h-10 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
                   <option value='all'>全部语言</option>
                   {filterOptions.languages.map(item => <option key={item} value={item}>{item}</option>)}
                 </CustomSelect>
               </label>
-              {paperLanguageUsesLevels(language) ? <label className='block'>
+              {showLevelFilter ? <label className='block'>
                 <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>等级</span>
-                <CustomSelect value={level} onChange={event => setLevel(event.currentTarget.value)} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
+                <CustomSelect value={level} onChange={event => setLevel(event.currentTarget.value)} className='h-10 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
                   <option value='all'>全部等级</option>
                   {filterOptions.levels.map(item => <option key={item} value={item}>{item}</option>)}
                 </CustomSelect>
               </label> : null}
               <label className='block'>
                 <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>排序方式</span>
-                <CustomSelect value={sort} onChange={event => setSort(event.currentTarget.value as typeof sort)} className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
+                <CustomSelect value={sort} onChange={event => setSort(event.currentTarget.value as typeof sort)} className='h-10 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-3 text-sm font-semibold text-slate-700 outline-none'>
                   <option value='newest'>最新试卷优先</option>
                   <option value='oldest'>最早试卷优先</option>
                   <option value='name'>按名称排序</option>
                 </CustomSelect>
               </label>
             </div>
-            <p className='mt-5 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500'>
-              当前显示 <strong className='font-semibold text-slate-900'>{filteredPaperCount}</strong> 套试卷
-            </p>
           </div>
 
           {filteredLevels.length > 1 ? (

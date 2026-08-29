@@ -17,8 +17,8 @@ import {
   toFsrsCard,
   toStoredFsrsUpdate,
 } from '@/modules/review/domain/fsrs-card'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
-const PROFILE_ID = 'default'
 const DAY_MS = 24 * 60 * 60 * 1000
 const FIT_INTERVAL_MS = 12 * 60 * 60 * 1000
 const FIT_LOOKBACK_DAYS = 180
@@ -120,19 +120,11 @@ const defaultParamSet = (): FsrsParamSet => ({
   w: [...default_w],
 })
 
-const ensureLearnerProfile = async () =>
-  prisma.learnerProfile.upsert({
-    where: { id: PROFILE_ID },
-    create: { id: PROFILE_ID },
-    update: {},
-  })
-
-const ensureFsrsProfile = async () => {
-  await ensureLearnerProfile()
+const ensureFsrsProfile = async (profileId: string) => {
   return prisma.fSRSProfile.upsert({
-    where: { profileId: PROFILE_ID },
+    where: { profileId },
     create: {
-      profileId: PROFILE_ID,
+      profileId,
       requestRetention: 0.9,
       maximumInterval: 36500,
       weights: JSON.stringify([...default_w]),
@@ -260,8 +252,8 @@ const fitParamsFromEvents = (events: ReviewFitEvent[]): FsrsParamSet | null => {
   }
 }
 
-const maybeRefitFsrsProfile = async () => {
-  const profile = await ensureFsrsProfile()
+const maybeRefitFsrsProfile = async (profileId: string) => {
+  const profile = await ensureFsrsProfile(profileId)
   const now = new Date()
 
   const lastFittedAt = profile.lastFittedAt
@@ -272,7 +264,7 @@ const maybeRefitFsrsProfile = async () => {
 
   const totalInWindow = await prisma.reviewEvent.count({
     where: {
-      profileId: PROFILE_ID,
+      profileId,
       reviewedAt: { gte: lookbackStart },
     },
   })
@@ -282,7 +274,7 @@ const maybeRefitFsrsProfile = async () => {
   if (lastFittedAt) {
     const newEvents = await prisma.reviewEvent.count({
       where: {
-        profileId: PROFILE_ID,
+        profileId,
         reviewedAt: { gt: lastFittedAt },
       },
     })
@@ -291,7 +283,7 @@ const maybeRefitFsrsProfile = async () => {
 
   const events = await prisma.reviewEvent.findMany({
     where: {
-      profileId: PROFILE_ID,
+      profileId,
       reviewedAt: { gte: lookbackStart },
     },
     orderBy: { reviewedAt: 'desc' },
@@ -313,7 +305,7 @@ const maybeRefitFsrsProfile = async () => {
   if (!fitted) return profile
 
   await prisma.fSRSProfile.update({
-    where: { profileId: PROFILE_ID },
+    where: { profileId },
     data: {
       requestRetention: fitted.request_retention,
       maximumInterval: fitted.maximum_interval,
@@ -325,18 +317,18 @@ const maybeRefitFsrsProfile = async () => {
     },
   })
 
-  return prisma.fSRSProfile.findUnique({ where: { profileId: PROFILE_ID } })
+  return prisma.fSRSProfile.findUnique({ where: { profileId } })
 }
 
-const getEngineWithAutoFit = async () => {
-  const profile = await maybeRefitFsrsProfile()
-  const finalProfile = profile || (await ensureFsrsProfile())
+const getEngineWithAutoFit = async (profileId: string) => {
+  const profile = await maybeRefitFsrsProfile(profileId)
+  const finalProfile = profile || (await ensureFsrsProfile(profileId))
   const custom = toEngineParams(finalProfile)
   const now = new Date()
 
   if (!custom) {
     await prisma.fSRSProfile.update({
-      where: { profileId: PROFILE_ID },
+      where: { profileId },
       data: {
         lastEngineMode: 'fallback',
         lastFallbackReason: 'invalid_or_disabled_profile_params',
@@ -357,7 +349,7 @@ const getEngineWithAutoFit = async () => {
 
   if (finalProfile.lastEngineMode !== 'custom') {
     await prisma.fSRSProfile.update({
-      where: { profileId: PROFILE_ID },
+      where: { profileId },
       data: {
         lastEngineMode: 'custom',
       },
@@ -373,12 +365,13 @@ const getEngineWithAutoFit = async () => {
 
 export async function rateSentenceFluency(reviewId: string, rating: Rating) {
   try {
-    const record = await prisma.sentenceReview.findUnique({
-      where: { id: reviewId },
+    const userId = await getCurrentUserId()
+    const record = await prisma.sentenceReview.findFirst({
+      where: { id: reviewId, userId },
     })
     if (!record) throw new Error('找不到复习记录')
 
-    const { engine, usingFallback } = await getEngineWithAutoFit()
+    const { engine, usingFallback } = await getEngineWithAutoFit(userId)
 
     const currentCard = toFsrsCard(record)
 
@@ -401,7 +394,7 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
 
       await tx.reviewEvent.create({
         data: {
-          profileId: PROFILE_ID,
+          profileId: userId,
           reviewId,
           sourceType: record.sourceType,
           sourceId: record.sourceId,
@@ -422,7 +415,7 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
       })
 
       await tx.fSRSProfile.update({
-        where: { profileId: PROFILE_ID },
+        where: { profileId: userId },
         data: { lastEventAt: now },
       })
     })
@@ -440,6 +433,7 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
 
 export async function addSentenceToReview(dialogueId: number) {
   try {
+    const userId = await getCurrentUserId()
     const dialogue = (await getListeningDialoguesByIds([dialogueId]))[0]
 
     if (!dialogue) {
@@ -448,8 +442,25 @@ export async function addSentenceToReview(dialogueId: number) {
 
     const emptyCard = createEmptyCard()
 
+    const existing = await prisma.sentenceReview.findFirst({
+      where: {
+        userId,
+        sourceType: 'AUDIO_DIALOGUE',
+        sourceId: String(dialogueId),
+      },
+      select: { id: true },
+    })
+    if (existing) {
+      return {
+        success: false,
+        state: 'already_exists',
+        message: '已在复习库中',
+      }
+    }
+
     await prisma.sentenceReview.create({
       data: {
+        userId,
         sourceId: String(dialogueId),
         text: dialogue.text,
         sourceType: 'AUDIO_DIALOGUE',
@@ -489,14 +500,14 @@ export async function addSentenceToReview(dialogueId: number) {
   }
 }
 
-const ensureVocabularyReviewCard = async (vocabularyId: string) => {
+const ensureVocabularyReviewCard = async (vocabularyId: string, userId: string) => {
   const existing = await prisma.vocabularyReview.findUnique({
     where: { vocabularyId },
   })
   if (existing) return existing
 
-  const vocabulary = await prisma.vocabulary.findUnique({
-    where: { id: vocabularyId },
+  const vocabulary = await prisma.vocabulary.findFirst({
+    where: { id: vocabularyId, userId },
     select: { id: true },
   })
   if (!vocabulary) throw new Error('找不到单词记录')
@@ -521,14 +532,15 @@ const ensureVocabularyReviewCard = async (vocabularyId: string) => {
 
 export async function rateVocabularyMemory(vocabularyId: string, rating: Rating) {
   try {
-    const vocabulary = await prisma.vocabulary.findUnique({
-      where: { id: vocabularyId },
+    const userId = await getCurrentUserId()
+    const vocabulary = await prisma.vocabulary.findFirst({
+      where: { id: vocabularyId, userId },
       select: { id: true, sourceType: true },
     })
     if (!vocabulary) throw new Error('找不到单词记录')
 
-    const record = await ensureVocabularyReviewCard(vocabularyId)
-    const { engine, usingFallback } = await getEngineWithAutoFit()
+    const record = await ensureVocabularyReviewCard(vocabularyId, userId)
+    const { engine, usingFallback } = await getEngineWithAutoFit(userId)
     const now = new Date()
 
     const currentCard = toFsrsCard(record)
@@ -550,7 +562,7 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
 
       await tx.reviewEvent.create({
         data: {
-          profileId: PROFILE_ID,
+          profileId: userId,
           reviewId: record.id,
           sourceType: vocabulary.sourceType,
           sourceId: vocabulary.id,
@@ -571,7 +583,7 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
       })
 
       await tx.fSRSProfile.update({
-        where: { profileId: PROFILE_ID },
+        where: { profileId: userId },
         data: { lastEventAt: now },
       })
     })
@@ -602,8 +614,8 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
   }
 }
 
-async function getFsrsProfileSnapshot() {
-  const profile = await ensureFsrsProfile()
+async function getFsrsProfileSnapshot(profileId: string) {
+  const profile = await ensureFsrsProfile(profileId)
   const parsedWeights = parseWeights(profile.weights) || [...default_w]
   return {
     requestRetention: profile.requestRetention,
@@ -629,10 +641,11 @@ const toDateKey = (date: Date) =>
   }).format(date)
 
 export async function getFsrsAdminDashboard() {
-  const profile = await getFsrsProfileSnapshot()
+  const userId = await getCurrentUserId()
+  const profile = await getFsrsProfileSnapshot(userId)
   const now = new Date()
   const recent = await prisma.reviewEvent.findMany({
-    where: { profileId: PROFILE_ID },
+    where: { profileId: userId },
     orderBy: { reviewedAt: 'desc' },
     take: 500,
     select: {

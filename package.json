@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=22 <25"
+    "node": ">=22 <27"
   },
   "scripts": {
     "predev": "node scripts/ensure-database.mjs",
@@ -15,49 +15,45 @@
     "start": "next start",
     "lint": "eslint",
     "test": "node --test scripts/*.test.mjs",
+    "perf:baseline": "node scripts/performance-baseline.mjs",
     "typecheck": "tsc --noEmit",
     "clean:next": "rm -rf .next",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate --config prisma.config.ts",
-    "db:migrate:deploy": "prisma migrate deploy --config prisma.config.ts",
     "db:push": "prisma db push --config prisma.config.ts",
-    "db:report:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs",
-    "db:migrate:material-ids": "node scripts/migrate-material-ids-to-uuid.mjs --apply",
-    "db:migrate:dialogue-source-ids": "node scripts/migrate-dialogue-source-ids.mjs --apply",
+    "db:import:red-book": "node scripts/import-red-book-vocabulary.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
-    "predev:turbopack": "node scripts/ensure-database.mjs",
-    "dev:turbopack": "next dev --turbopack",
     "sudachi:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@prisma/adapter-pg": "^7.9.1",
-    "@prisma/client": "^7.9.1",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "archiver": "^8.0.0",
     "dotenv": "^17.4.2",
     "jszip": "^3.10.1",
-    "katex": "^0.18.3",
-    "next": "^16.3.0",
+    "katex": "^0.18.4",
+    "next": "^16.3.3",
     "pg": "^8.23.0",
     "playwright-core": "^1.62.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "server-only": "^0.0.1",
     "ts-fsrs": "^5.4.1",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@prisma/config": "^7.9.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/archiver": "^8.0.0",
-    "@types/node": "^20.19.43",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "eslint": "^9",
-    "eslint-config-next": "^16.3.0",
-    "prisma": "^7.9.1",
+    "@types/react-dom": "^19.2.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.3",
+    "prisma": "^7.10.0",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5"
+    "typescript": "^6.0.3"
   }
 }

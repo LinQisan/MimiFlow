@@ -23,6 +23,76 @@ export type PaperFrequencySourceStats = {
   listeningTranscriptCount: number
 }
 
+type PaperWordbookDistributionItem = {
+  id: string
+  name: string
+  pathLabel: string
+  depth: number
+  matchedCount: number
+  coverageRate: number
+}
+
+export type PaperWordbookDistribution = {
+  totalWords: number
+  outsideCount: number
+  outsideRate: number
+  wordbooks: PaperWordbookDistributionItem[]
+}
+
+const normalizeWord = (word: string) =>
+  word.normalize('NFKC').trim().toLocaleLowerCase('ja')
+
+export const buildPaperWordbookDistribution = ({
+  words,
+  wordbooks,
+  memberships,
+}: {
+  words: string[]
+  wordbooks: Array<{
+    id: string
+    name: string
+    pathLabel: string
+    depth: number
+  }>
+  memberships: Array<{ word: string; wordbookIds: string[] }>
+}): PaperWordbookDistribution => {
+  const paperWords = new Set(words.map(normalizeWord).filter(Boolean))
+  const matchesByWordbook = new Map<string, Set<string>>()
+  const matchedWords = new Set<string>()
+
+  memberships.forEach(membership => {
+    const word = normalizeWord(membership.word)
+    if (!paperWords.has(word) || membership.wordbookIds.length === 0) return
+    matchedWords.add(word)
+    membership.wordbookIds.forEach(wordbookId => {
+      const matches = matchesByWordbook.get(wordbookId) || new Set<string>()
+      matches.add(word)
+      matchesByWordbook.set(wordbookId, matches)
+    })
+  })
+
+  const totalWords = paperWords.size
+  const rate = (count: number) =>
+    totalWords > 0 ? Math.round((count / totalWords) * 1_000) / 10 : 0
+  const outsideCount = Math.max(0, totalWords - matchedWords.size)
+
+  return {
+    totalWords,
+    outsideCount,
+    outsideRate: rate(outsideCount),
+    wordbooks: wordbooks
+      .map(wordbook => {
+        const matchedCount = matchesByWordbook.get(wordbook.id)?.size || 0
+        return {
+          ...wordbook,
+          matchedCount,
+          coverageRate: rate(matchedCount),
+        }
+      })
+      .filter(wordbook => wordbook.matchedCount > 0),
+  }
+}
+
 const questionText = (question: FrequencyQuestion) =>
   Array.from(
     new Set(

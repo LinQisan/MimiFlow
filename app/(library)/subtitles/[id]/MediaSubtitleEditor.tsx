@@ -1012,6 +1012,7 @@ export default function MediaSubtitleEditor({
           contextSentence={selection.contextSentence}
           sourceType={selection.sourceType}
           sourceId={selection.sourceId}
+          detectedWord={selection.detectedWord}
           initialMeta={localVocabularyMetaMap[selection.text]}
           onSaved={({ word, meta }) => {
             setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))

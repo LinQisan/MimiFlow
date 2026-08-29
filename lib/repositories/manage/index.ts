@@ -50,9 +50,15 @@ export async function getUploadPageSeedData({
   dbLevels: UploadPageLevelLite[]
   dbCollections: UploadPageCollectionLite[]
 }> {
+  const isPaperQuizImport =
+    materialType === MaterialType.VOCAB_GRAMMAR &&
+    collectionTypes?.length === 1 &&
+    collectionTypes[0] === CollectionType.PAPER
   const collections = await prisma.collection.findMany({
     where: {
-      ...(materialType ? { acceptedMaterialTypes: { has: materialType } } : {}),
+      ...(materialType && !isPaperQuizImport
+        ? { acceptedMaterialTypes: { has: materialType } }
+        : {}),
       ...(collectionTypes?.length
         ? { collectionType: { in: collectionTypes } }
         : {}),

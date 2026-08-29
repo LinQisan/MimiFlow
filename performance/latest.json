@@ -1,0 +1,533 @@
+{
+  "generatedAt": "2026-08-25T16:08:55.216Z",
+  "system": {
+    "node": "v24.14.1",
+    "platform": "darwin",
+    "arch": "x64",
+    "release": "24.6.0",
+    "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
+    "cpuCount": 12,
+    "totalMemoryMiB": 16384,
+    "freeMemoryMiB": 339
+  },
+  "configuration": {
+    "runs": 3,
+    "routes": [
+      "/",
+      "/listening",
+      "/reading",
+      "/practice",
+      "/vocabulary"
+    ],
+    "longListRoutes": [
+      "/listening",
+      "/practice",
+      "/vocabulary",
+      "/manage/vocabulary",
+      "/subtitles/1e2d815d-24f8-459a-91e2-1af9f72aa57f"
+    ]
+  },
+  "dataset": {
+    "materials": 185,
+    "questions": 238,
+    "vocabularies": 289,
+    "subtitleLines": 1726,
+    "attempts": 191,
+    "audioMaterials": 140,
+    "largestSubtitle": {
+      "materialId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f",
+      "lines": 909
+    }
+  },
+  "build": {
+    "durationMs": 15775.9,
+    "output": "\n> my-app@0.1.0 build\n> next build\n\n▲ Next.js 16.3.0 (Turbopack)\n- Environments: .env.local, .env\n✓ Running next.config.ts took 42ms\n- Experiments (use with caution):\n  · serverActions\n\n  Creating an optimized production build ...\n✓ Compiled successfully in 2.9s\n  Running TypeScript ...\n  Finished TypeScript in 6.1s ...\n  Collecting page data using 11 workers ...\n  Generating static pages using 11 workers (0/21) ...\n  Generating static pages using 11 workers (5/21) \r\n  Generating static pages using 11 workers (10/21) \r\n  Generating static pages using 11 workers (15/21) \r\n✓ Generating static pages using 11 workers (21/21) in 1121ms\n  Finalizing page optimization ...\n\nRoute (app)\n┌ ƒ /\n├ ƒ /_not-found\n├ ƒ /api/manage/practice/[id]/export\n├ ƒ /api/quiz-attempts\n├ ƒ /api/reading/word-frequency\n├ ƒ /grammar\n├ ○ /icon.svg\n├ ƒ /listening\n├ ƒ /listening/[id]\n├ ƒ /manage\n├ ƒ /manage/grammar\n├ ƒ /manage/import\n├ ƒ /manage/listening\n├ ƒ /manage/listening/[id]\n├ ƒ /manage/practice\n├ ƒ /manage/practice/[id]\n├ ƒ /manage/questions/[id]\n├ ƒ /manage/reading\n├ ƒ /manage/reading/[id]\n├ ƒ /manage/shadowing\n├ ƒ /manage/shadowing/[id]\n├ ƒ /manage/system\n├ ƒ /manage/system/audio\n├ ƒ /manage/system/review\n├ ƒ /manage/vocabulary\n├ ƒ /practice\n├ ƒ /practice/[id]\n├ ƒ /practice/[id]/do\n├ ƒ /practice/[id]/submissions/[submissionId]\n├ ƒ /practice/custom\n├ ƒ /practice/custom/do\n├ ƒ /reading\n├ ƒ /reading/articles/[id]\n├ ƒ /reading/ebooks/[id]\n├ ƒ /review\n├ ƒ /review/[id]\n├ ƒ /review/memory\n├ ƒ /review/mistakes\n├ ƒ /search\n├ ƒ /subtitles\n├ ƒ /subtitles/[id]\n├ ƒ /vocabulary\n└ ƒ /vocabulary/wordbooks/[id]\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n"
+  },
+  "startup": {
+    "readyLogMs": 925.6,
+    "httpReadyMs": 1926.4,
+    "pid": 30266,
+    "serverRssMiB": 52.2
+  },
+  "hardLoads": {
+    "/": {
+      "runs": [
+        {
+          "ttfbMs": 51.899999998509884,
+          "domContentLoadedMs": 475.5,
+          "loadMs": 502.80000000447035,
+          "firstPaintMs": 428,
+          "firstContentfulPaintMs": 428,
+          "transferBytes": 188712,
+          "domNodes": 146
+        },
+        {
+          "ttfbMs": 28.599999994039536,
+          "domContentLoadedMs": 345.8999999985099,
+          "loadMs": 423.8999999985099,
+          "firstPaintMs": 360,
+          "firstContentfulPaintMs": 360,
+          "transferBytes": 188712,
+          "domNodes": 142
+        },
+        {
+          "ttfbMs": 40.20000000298023,
+          "domContentLoadedMs": 394.5,
+          "loadMs": 416.70000000298023,
+          "firstPaintMs": 344,
+          "firstContentfulPaintMs": 344,
+          "transferBytes": 189185,
+          "domNodes": 146
+        }
+      ],
+      "ttfb": {
+        "minMs": 28.6,
+        "medianMs": 40.2,
+        "p95Ms": 51.9,
+        "maxMs": 51.9
+      },
+      "contentLoaded": {
+        "minMs": 345.9,
+        "medianMs": 394.5,
+        "p95Ms": 475.5,
+        "maxMs": 475.5
+      },
+      "load": {
+        "minMs": 416.7,
+        "medianMs": 423.9,
+        "p95Ms": 502.8,
+        "maxMs": 502.8
+      },
+      "fcp": {
+        "minMs": 344,
+        "medianMs": 360,
+        "p95Ms": 428,
+        "maxMs": 428
+      },
+      "medianTransferKiB": 184.3,
+      "medianDomNodes": 146
+    },
+    "/listening": {
+      "runs": [
+        {
+          "ttfbMs": 42.900000005960464,
+          "domContentLoadedMs": 348.5,
+          "loadMs": 428.6000000014901,
+          "firstPaintMs": 344,
+          "firstContentfulPaintMs": 344,
+          "transferBytes": 203596,
+          "domNodes": 201
+        },
+        {
+          "ttfbMs": 15,
+          "domContentLoadedMs": 395.3999999985099,
+          "loadMs": 418.70000000298023,
+          "firstPaintMs": 336,
+          "firstContentfulPaintMs": 336,
+          "transferBytes": 204545,
+          "domNodes": 201
+        },
+        {
+          "ttfbMs": 17.399999998509884,
+          "domContentLoadedMs": 414.20000000298023,
+          "loadMs": 436.30000000447035,
+          "firstPaintMs": 356,
+          "firstContentfulPaintMs": 356,
+          "transferBytes": 203596,
+          "domNodes": 201
+        }
+      ],
+      "ttfb": {
+        "minMs": 15,
+        "medianMs": 17.4,
+        "p95Ms": 42.9,
+        "maxMs": 42.9
+      },
+      "contentLoaded": {
+        "minMs": 348.5,
+        "medianMs": 395.4,
+        "p95Ms": 414.2,
+        "maxMs": 414.2
+      },
+      "load": {
+        "minMs": 418.7,
+        "medianMs": 428.6,
+        "p95Ms": 436.3,
+        "maxMs": 436.3
+      },
+      "fcp": {
+        "minMs": 336,
+        "medianMs": 344,
+        "p95Ms": 356,
+        "maxMs": 356
+      },
+      "medianTransferKiB": 198.8,
+      "medianDomNodes": 201
+    },
+    "/reading": {
+      "runs": [
+        {
+          "ttfbMs": 20,
+          "domContentLoadedMs": 437.1000000014901,
+          "loadMs": 457.5,
+          "firstPaintMs": 344,
+          "firstContentfulPaintMs": 344,
+          "transferBytes": 213614,
+          "domNodes": 346
+        },
+        {
+          "ttfbMs": 12,
+          "domContentLoadedMs": 421.19999999552965,
+          "loadMs": 441.69999999552965,
+          "firstPaintMs": 332,
+          "firstContentfulPaintMs": 332,
+          "transferBytes": 213614,
+          "domNodes": 346
+        },
+        {
+          "ttfbMs": 13,
+          "domContentLoadedMs": 166.5,
+          "loadMs": 437.40000000596046,
+          "firstPaintMs": 396,
+          "firstContentfulPaintMs": 396,
+          "transferBytes": 213614,
+          "domNodes": 346
+        }
+      ],
+      "ttfb": {
+        "minMs": 12,
+        "medianMs": 13,
+        "p95Ms": 20,
+        "maxMs": 20
+      },
+      "contentLoaded": {
+        "minMs": 166.5,
+        "medianMs": 421.2,
+        "p95Ms": 437.1,
+        "maxMs": 437.1
+      },
+      "load": {
+        "minMs": 437.4,
+        "medianMs": 441.7,
+        "p95Ms": 457.5,
+        "maxMs": 457.5
+      },
+      "fcp": {
+        "minMs": 332,
+        "medianMs": 344,
+        "p95Ms": 396,
+        "maxMs": 396
+      },
+      "medianTransferKiB": 208.6,
+      "medianDomNodes": 346
+    },
+    "/practice": {
+      "runs": [
+        {
+          "ttfbMs": 36.599999994039536,
+          "domContentLoadedMs": 2501.1999999955297,
+          "loadMs": 2511.6999999955297,
+          "firstPaintMs": 348,
+          "firstContentfulPaintMs": 348,
+          "transferBytes": 266616,
+          "domNodes": 240
+        },
+        {
+          "ttfbMs": 13,
+          "domContentLoadedMs": 491.1000000014901,
+          "loadMs": 507.3999999985099,
+          "firstPaintMs": 400,
+          "firstContentfulPaintMs": 400,
+          "transferBytes": 255449,
+          "domNodes": 244
+        },
+        {
+          "ttfbMs": 26.69999999552965,
+          "domContentLoadedMs": 407.8999999985099,
+          "loadMs": 498.29999999701977,
+          "firstPaintMs": 384,
+          "firstContentfulPaintMs": 384,
+          "transferBytes": 255449,
+          "domNodes": 244
+        }
+      ],
+      "ttfb": {
+        "minMs": 13,
+        "medianMs": 26.7,
+        "p95Ms": 36.6,
+        "maxMs": 36.6
+      },
+      "contentLoaded": {
+        "minMs": 407.9,
+        "medianMs": 491.1,
+        "p95Ms": 2501.2,
+        "maxMs": 2501.2
+      },
+      "load": {
+        "minMs": 498.3,
+        "medianMs": 507.4,
+        "p95Ms": 2511.7,
+        "maxMs": 2511.7
+      },
+      "fcp": {
+        "minMs": 348,
+        "medianMs": 384,
+        "p95Ms": 400,
+        "maxMs": 400
+      },
+      "medianTransferKiB": 249.5,
+      "medianDomNodes": 244
+    },
+    "/vocabulary": {
+      "runs": [
+        {
+          "ttfbMs": 25.5,
+          "domContentLoadedMs": 405.1000000014901,
+          "loadMs": 427.1000000014901,
+          "firstPaintMs": 348,
+          "firstContentfulPaintMs": 348,
+          "transferBytes": 222661,
+          "domNodes": 606
+        },
+        {
+          "ttfbMs": 14.400000005960464,
+          "domContentLoadedMs": 415.6000000014901,
+          "loadMs": 439.30000000447035,
+          "firstPaintMs": 360,
+          "firstContentfulPaintMs": 360,
+          "transferBytes": 222661,
+          "domNodes": 606
+        },
+        {
+          "ttfbMs": 17.200000002980232,
+          "domContentLoadedMs": 250.40000000596046,
+          "loadMs": 676,
+          "firstPaintMs": 584,
+          "firstContentfulPaintMs": 584,
+          "transferBytes": 224559,
+          "domNodes": 602
+        }
+      ],
+      "ttfb": {
+        "minMs": 14.4,
+        "medianMs": 17.2,
+        "p95Ms": 25.5,
+        "maxMs": 25.5
+      },
+      "contentLoaded": {
+        "minMs": 250.4,
+        "medianMs": 405.1,
+        "p95Ms": 415.6,
+        "maxMs": 415.6
+      },
+      "load": {
+        "minMs": 427.1,
+        "medianMs": 439.3,
+        "p95Ms": 676,
+        "maxMs": 676
+      },
+      "fcp": {
+        "minMs": 348,
+        "medianMs": 360,
+        "p95Ms": 584,
+        "maxMs": 584
+      },
+      "medianTransferKiB": 217.4,
+      "medianDomNodes": 606
+    }
+  },
+  "clientNavigation": {
+    "/listening": {
+      "runsMs": [
+        256.2,
+        178.6,
+        181.4
+      ],
+      "minMs": 178.6,
+      "medianMs": 181.4,
+      "p95Ms": 256.2,
+      "maxMs": 256.2
+    },
+    "/reading": {
+      "runsMs": [
+        169.6,
+        199.7,
+        161.1
+      ],
+      "minMs": 161.1,
+      "medianMs": 169.6,
+      "p95Ms": 199.7,
+      "maxMs": 199.7
+    },
+    "/practice": {
+      "runsMs": [
+        183.6,
+        182.7,
+        180.1
+      ],
+      "minMs": 180.1,
+      "medianMs": 182.7,
+      "p95Ms": 183.6,
+      "maxMs": 183.6
+    },
+    "/vocabulary": {
+      "runsMs": [
+        196.5,
+        199.1,
+        166
+      ],
+      "minMs": 166,
+      "medianMs": 196.5,
+      "p95Ms": 199.1,
+      "maxMs": 199.1
+    }
+  },
+  "longLists": {
+    "/listening": {
+      "domNodes": 197,
+      "rowLikeNodes": 0,
+      "scrollHeight": 1070,
+      "maxScroll": 350,
+      "averageFrameMs": 16.7,
+      "p95FrameMs": 17.4,
+      "framesOver20Ms": 0,
+      "framesOver50Ms": 0
+    },
+    "/practice": {
+      "domNodes": 240,
+      "rowLikeNodes": 4,
+      "scrollHeight": 962,
+      "maxScroll": 0,
+      "averageFrameMs": 17,
+      "p95FrameMs": 17.6,
+      "framesOver20Ms": 3,
+      "framesOver50Ms": 0
+    },
+    "/vocabulary": {
+      "domNodes": 602,
+      "rowLikeNodes": 0,
+      "scrollHeight": 1982,
+      "maxScroll": 1262,
+      "averageFrameMs": 16.7,
+      "p95FrameMs": 17.7,
+      "framesOver20Ms": 2,
+      "framesOver50Ms": 0
+    },
+    "/manage/vocabulary": {
+      "domNodes": 609,
+      "rowLikeNodes": 30,
+      "scrollHeight": 3449,
+      "maxScroll": 261,
+      "averageFrameMs": 17.2,
+      "p95FrameMs": 18.1,
+      "framesOver20Ms": 3,
+      "framesOver50Ms": 1
+    },
+    "/subtitles/1e2d815d-24f8-459a-91e2-1af9f72aa57f": {
+      "domNodes": 627,
+      "rowLikeNodes": 40,
+      "scrollHeight": 5134,
+      "maxScroll": 0,
+      "averageFrameMs": 16.8,
+      "p95FrameMs": 17.5,
+      "framesOver20Ms": 1,
+      "framesOver50Ms": 1
+    }
+  },
+  "ruby": {
+    "textCharacters": 8699,
+    "document": {
+      "runsMs": [
+        17.4,
+        23.6,
+        14.9,
+        15.4,
+        23.7,
+        14.9,
+        15.2,
+        15.9,
+        15.6,
+        15.1,
+        14.8,
+        16.9,
+        14.9,
+        15.2,
+        19.3,
+        15.4,
+        14.8,
+        15,
+        16.2,
+        15.4,
+        15.3,
+        17.1,
+        15.3,
+        15.3,
+        18.3,
+        15.1,
+        14.6,
+        14.4,
+        15.7,
+        14.8
+      ],
+      "minMs": 14.4,
+      "medianMs": 15.3,
+      "p95Ms": 23.6,
+      "maxMs": 23.7
+    },
+    "singleToken": {
+      "iterations": 25000,
+      "medianUs": 3.7,
+      "p95Us": 4.4
+    }
+  },
+  "audio": {
+    "available": true,
+    "webPath": "/audios/listening/collections/TOEIC-L%26R-%E5%95%8F%E9%A1%8C%E9%9B%86-11-T1/LR11-T1-Pt1-Q1.mp3",
+    "fileSizeMiB": 0.6,
+    "status": 206,
+    "acceptRanges": "bytes",
+    "contentRange": "bytes 0-262143/663141",
+    "bytesRead": 262144,
+    "rangeMs": 65.9,
+    "metadataMs": 52,
+    "metadata": {
+      "durationSeconds": 24.629067
+    },
+    "resource": {
+      "name": "http://127.0.0.1:61359/audios/listening/collections/TOEIC-L%26R-%E5%95%8F%E9%A1%8C%E9%9B%86-11-T1/LR11-T1-Pt1-Q1.mp3",
+      "entryType": "resource",
+      "startTime": 582.1999999955297,
+      "duration": 26.600000001490116,
+      "navigationId": 8413,
+      "initiatorType": "audio",
+      "deliveryType": "",
+      "nextHopProtocol": "",
+      "renderBlockingStatus": "non-blocking",
+      "contentType": "audio/mpeg",
+      "contentEncoding": "",
+      "workerStart": 0,
+      "workerRouterEvaluationStart": 0,
+      "workerCacheLookupStart": 0,
+      "workerMatchedSourceType": "",
+      "workerFinalSourceType": "",
+      "redirectStart": 0,
+      "redirectEnd": 0,
+      "fetchStart": 582.1999999955297,
+      "domainLookupStart": 582.1999999955297,
+      "domainLookupEnd": 582.1999999955297,
+      "connectStart": 582.1999999955297,
+      "secureConnectionStart": 0,
+      "connectEnd": 582.1999999955297,
+      "requestStart": 583.5999999940395,
+      "responseStart": 586.0999999940395,
+      "firstInterimResponseStart": 0,
+      "finalResponseHeadersStart": 586.0999999940395,
+      "responseEnd": 608.7999999970198,
+      "transferSize": 401297,
+      "encodedBodySize": 400997,
+      "decodedBodySize": 663141,
+      "responseStatus": 206,
+      "serverTiming": []
+    }
+  }
+}

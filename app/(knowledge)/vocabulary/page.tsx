@@ -9,7 +9,7 @@ import {
 } from '@/modules/knowledge/vocabulary/domain/language'
 import {
   findVocabularyDetail,
-  listVocabularyDetails,
+  listVocabularyDetailsByWords,
   listVocabularyGroups,
   listVocabularySentenceLinks,
   resolveAudioDialogueClips,
@@ -51,6 +51,17 @@ type GroupedVocabItem = {
   tags?: string[]
   folderId?: string | null
   folderName?: string | null
+  recordIds: string[]
+  wordbooks: Array<{ id: string; name: string; pathLabel: string }>
+  wordbookSources: Array<{
+    id: string
+    name: string
+    pathLabel: string
+    pronunciations: string[]
+    partsOfSpeech: string[]
+    meanings: string[]
+    sentences: SentenceSource[]
+  }>
   createdAt: Date
   sourceType: string
   sentences: SentenceSource[]
@@ -73,12 +84,19 @@ type FolderItem = {
   id: string
   name: string
   parentId: string | null
+  count?: number
 }
 
 const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
   ).slice(0, 1)
+
+const vocabularyWordKey = (word: string) =>
+  word.normalize('NFKC').trim().toLocaleLowerCase('ja')
+
+const uniqueStrings = (values: string[]) =>
+  Array.from(new Set(values.map(value => value.trim()).filter(Boolean)))
 
 export default async function VocabularyPage({
   searchParams,
@@ -137,44 +155,64 @@ export default async function VocabularyPage({
     wordbookFilter === 'all'
       ? {}
       : wordbookFilter === 'none'
-        ? { wordbooks: { none: {} } }
+        ? {
+            wordbooks: {
+              none: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } },
+            },
+          }
         : { wordbooks: { some: { wordbookId: { in: wordbookFilterIds } } } }
 
   const vocabularyGroupRows = await listVocabularyGroups(whereClause)
 
   const groupedTotals: Record<string, number> = {}
-  const filteredVocabularyIds: string[] = []
-
+  const vocabularyGroups = new Map<
+    string,
+    { word: string; groupName: string; ids: string[] }
+  >()
   vocabularyGroupRows.forEach(vocab => {
     const finalGroupName = resolveVocabularyGroupName({
       word: vocab.word,
       pronunciations: parseJsonStringList(vocab.pronunciations),
       sourceType: vocab.sourceType,
     })
-    groupedTotals[finalGroupName] = (groupedTotals[finalGroupName] || 0) + 1
-    if (!groupValue || finalGroupName === groupValue) {
-      filteredVocabularyIds.push(vocab.id)
-    }
+    const key = vocabularyWordKey(vocab.word)
+    const current = vocabularyGroups.get(key)
+    if (current) current.ids.push(vocab.id)
+    else vocabularyGroups.set(key, {
+      word: vocab.word,
+      groupName: finalGroupName,
+      ids: [vocab.id],
+    })
   })
+  vocabularyGroups.forEach(group => {
+    groupedTotals[group.groupName] = (groupedTotals[group.groupName] || 0) + 1
+  })
+  const filteredVocabularyGroups = [...vocabularyGroups.values()].filter(
+    group => !groupValue || group.groupName === groupValue,
+  )
 
-  const totalCount = filteredVocabularyIds.length
+  const totalCount = filteredVocabularyGroups.length
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
   const normalizedPage = Math.min(currentPage, totalPages)
   const skip = (normalizedPage - 1) * PAGE_SIZE
 
-  const pageVocabularyIds = filteredVocabularyIds.slice(skip, skip + PAGE_SIZE)
+  const pageVocabularyGroups = filteredVocabularyGroups.slice(skip, skip + PAGE_SIZE)
+  const pageWords = pageVocabularyGroups.map(group => group.word)
   let pageVocabularies: VocabularyDetailRow[] =
-    pageVocabularyIds.length === 0
+    pageWords.length === 0
       ? []
-      : await listVocabularyDetails(pageVocabularyIds)
+      : await listVocabularyDetailsByWords(pageWords)
 
   const pageVocabularyOrder = new Map(
-    pageVocabularyIds.map((id, index) => [id, index] as const),
+    pageVocabularyGroups.map((group, index) => [
+      vocabularyWordKey(group.word),
+      index,
+    ] as const),
   )
   pageVocabularies.sort(
     (left, right) =>
-      (pageVocabularyOrder.get(left.id) ?? Number.MAX_SAFE_INTEGER) -
-      (pageVocabularyOrder.get(right.id) ?? Number.MAX_SAFE_INTEGER),
+      (pageVocabularyOrder.get(vocabularyWordKey(left.word)) ?? Number.MAX_SAFE_INTEGER) -
+      (pageVocabularyOrder.get(vocabularyWordKey(right.word)) ?? Number.MAX_SAFE_INTEGER),
   )
 
   if (focusId && !pageVocabularies.some(item => item.id === focusId)) {
@@ -188,28 +226,58 @@ export default async function VocabularyPage({
           sourceType: focusedVocabulary.sourceType,
         }) === groupValue)
     ) {
-      pageVocabularies = [focusedVocabulary, ...pageVocabularies]
+      const focusedGroup = await listVocabularyDetailsByWords([
+        focusedVocabulary.word,
+      ])
+      const existingIds = new Set(pageVocabularies.map(item => item.id))
+      pageVocabularies = [
+        ...focusedGroup.filter(item => !existingIds.has(item.id)),
+        ...pageVocabularies,
+      ]
     }
   }
   const folders = allWordbooks.map(item => ({
     id: item.id,
     name: item.title,
     parentId: item.parentId,
+    count: item._count.entries,
   }))
+  const wordbookById = new Map(allWordbooks.map(item => [item.id, item]))
+  const getWordbookPath = (wordbookId: string) => {
+    const path: Array<{ id: string; title: string }> = []
+    const visited = new Set<string>()
+    let cursor: string | null = wordbookId
+    while (cursor && !visited.has(cursor)) {
+      visited.add(cursor)
+      const wordbook = wordbookById.get(cursor)
+      if (!wordbook) break
+      path.unshift({ id: wordbook.id, title: wordbook.title })
+      cursor = wordbook.parentId
+    }
+    return path
+  }
+  const getWordbookPriority = (wordbookId: string) => {
+    const rootTitle = getWordbookPath(wordbookId)[0]?.title || ''
+    if (rootTitle.includes('N2語彙トレーニング')) return 0
+    if (rootTitle === '红宝书') return 1
+    return 2
+  }
   const vocabularyIds = pageVocabularies.map(item => item.id)
   const sentenceLinks = await listVocabularySentenceLinks(vocabularyIds)
-  const audioDialogueClips = await resolveAudioDialogueClips(
-    sentenceLinks
-      .filter(link => link.sentence.sourceType === 'AUDIO_DIALOGUE')
-      .map(link => link.sentence.sourceId || '')
-      .filter(Boolean),
-  )
-  const resolvedSentenceSources = await resolveVocabularySentenceSources(
-    sentenceLinks.map(link => ({
-      sourceType: link.sentence.sourceType,
-      sourceId: link.sentence.sourceId,
-    })),
-  )
+  const [audioDialogueClips, resolvedSentenceSources] = await Promise.all([
+    resolveAudioDialogueClips(
+      sentenceLinks
+        .filter(link => link.sentence.sourceType === 'AUDIO_DIALOGUE')
+        .map(link => link.sentence.sourceId || '')
+        .filter(Boolean),
+    ),
+    resolveVocabularySentenceSources(
+      sentenceLinks.map(link => ({
+        sourceType: link.sentence.sourceType,
+        sourceId: link.sentence.sourceId,
+      })),
+    ),
+  ])
   const sentenceLinksByVocabularyId = sentenceLinks.reduce<
     Record<string, SentenceSource[]>
   >((acc, link) => {
@@ -237,51 +305,152 @@ export default async function VocabularyPage({
   }, {})
 
   const groupedData: Record<string, GroupedVocabItem[]> = {}
-
-  // 组装页面数据
+  const recordsByWord = new Map<string, VocabularyDetailRow[]>()
   pageVocabularies.forEach(vocab => {
-    let parsedSentences: SentenceSource[] = []
-    const linkedSentences = sentenceLinksByVocabularyId[vocab.id] || []
-    if (linkedSentences.length > 0) {
-      parsedSentences = dedupeAndRankSentences(linkedSentences, 16)
-    }
+    const key = vocabularyWordKey(vocab.word)
+    recordsByWord.set(key, [...(recordsByWord.get(key) || []), vocab])
+  })
+  let resolvedFocusId = focusId
 
-    // 分组
-    const meta = toVocabularyMeta(vocab)
+  recordsByWord.forEach(records => {
+    const recordPriority = (vocab: VocabularyDetailRow) =>
+      Math.min(
+        3,
+        ...vocab.wordbooks.map(link => getWordbookPriority(link.wordbook.id)),
+      )
+    const orderedRecords = [...records].sort(
+      (left, right) =>
+        recordPriority(left) - recordPriority(right) ||
+        left.createdAt.getTime() - right.createdAt.getTime(),
+    )
+    const primary = orderedRecords[0]
+    if (focusId && orderedRecords.some(record => record.id === focusId)) {
+      resolvedFocusId = primary.id
+    }
+    const sourceMap = new Map<
+      string,
+      {
+        id: string
+        name: string
+        pathLabel: string
+        priority: number
+        pronunciations: Set<string>
+        partsOfSpeech: Set<string>
+        meanings: Set<string>
+        sentences: SentenceSource[]
+      }
+    >()
+    const allPronunciations: string[] = []
+    const allPartsOfSpeech: string[] = []
+    const allMeanings: string[] = []
+    const allSentences: SentenceSource[] = []
+    const allTags: string[] = []
+
+    orderedRecords.forEach(vocab => {
+      const meta = toVocabularyMeta(vocab)
+      const parsedSentences = dedupeAndRankSentences(
+        sentenceLinksByVocabularyId[vocab.id] || [],
+        16,
+      )
+      allPronunciations.push(...meta.pronunciations)
+      allPartsOfSpeech.push(...meta.partsOfSpeech)
+      allMeanings.push(...meta.meanings)
+      allSentences.push(...parsedSentences)
+      allTags.push(
+        ...(vocab.tags || [])
+          .map(item => (item.tag?.name || '').trim())
+          .filter(Boolean),
+      )
+      const memberships = vocab.wordbooks
+        .map(link => {
+          const path = getWordbookPath(link.wordbook.id)
+          return {
+            id: link.wordbook.id,
+            name: link.wordbook.title,
+            pathLabel: path.map(item => item.title).join(' / '),
+            priority: getWordbookPriority(link.wordbook.id),
+          }
+        })
+        .sort(
+          (left, right) =>
+            left.priority - right.priority ||
+            left.pathLabel.localeCompare(right.pathLabel, 'ja'),
+        )
+      memberships.forEach((membership, membershipIndex) => {
+        const source = sourceMap.get(membership.id) || {
+          ...membership,
+          pronunciations: new Set<string>(),
+          partsOfSpeech: new Set<string>(),
+          meanings: new Set<string>(),
+          sentences: [],
+        }
+        meta.pronunciations.forEach(value => source.pronunciations.add(value))
+        meta.partsOfSpeech.forEach(value => source.partsOfSpeech.add(value))
+        // A shared database row keeps its rich content with the highest-priority
+        // wordbook, so it is not repeated under every membership.
+        if (membershipIndex === 0) {
+          meta.meanings.forEach(value => source.meanings.add(value))
+          source.sentences.push(...parsedSentences)
+        }
+        sourceMap.set(membership.id, source)
+      })
+    })
+
+    const wordbookSources = [...sourceMap.values()]
+      .sort(
+        (left, right) =>
+          left.priority - right.priority ||
+          left.pathLabel.localeCompare(right.pathLabel, 'ja'),
+      )
+      .map(source => ({
+        id: source.id,
+        name: source.name,
+        pathLabel: source.pathLabel,
+        pronunciations: [...source.pronunciations],
+        partsOfSpeech: [...source.partsOfSpeech],
+        meanings: [...source.meanings],
+        sentences: dedupeAndRankSentences(source.sentences, 16),
+      }))
+    const pronunciations = uniqueStrings(allPronunciations)
+    const partsOfSpeech = uniqueStrings(allPartsOfSpeech)
+    const meanings = uniqueStrings(allMeanings)
+    const parsedSentences = dedupeAndRankSentences(allSentences, 16)
+    const primaryWordbook = wordbookSources[0]
     const defaultLang = resolveVocabularyLanguageCode({
-      word: vocab.word,
-      pronunciations: meta.pronunciations,
-      sourceType: vocab.sourceType,
+      word: primary.word,
+      pronunciations,
+      sourceType: primary.sourceType,
     })
     const finalGroupName = resolveVocabularyGroupName({
-      word: vocab.word,
-      pronunciations: meta.pronunciations,
-      sourceType: vocab.sourceType,
+      word: primary.word,
+      pronunciations,
+      sourceType: primary.sourceType,
     })
     if (!groupedData[finalGroupName]) groupedData[finalGroupName] = []
     groupedData[finalGroupName].push({
-      id: vocab.id,
-      word: vocab.word,
+      id: primary.id,
+      word: primary.word,
       languageCode: defaultLang,
-      wordAudio: vocab.wordAudio || null,
-      pronunciation: meta.pronunciations[0] || null,
-      pronunciations: meta.pronunciations,
-      partOfSpeech: meta.partsOfSpeech[0] || null,
-      partsOfSpeech: meta.partsOfSpeech,
-      meanings: meta.meanings,
-      tags: Array.from(
-        new Set(
-          (vocab.tags || [])
-            .map(item => (item.tag?.name || '').trim())
-            .filter(Boolean),
-        ),
-      ),
-      folderId: vocab.wordbooks[0]?.wordbook?.id || null,
-      folderName: vocab.wordbooks[0]?.wordbook?.title || null,
-      createdAt: vocab.createdAt,
-      sourceType: vocab.sourceType,
+      wordAudio: orderedRecords.find(record => record.wordAudio)?.wordAudio || null,
+      pronunciation: pronunciations[0] || null,
+      pronunciations,
+      partOfSpeech: partsOfSpeech[0] || null,
+      partsOfSpeech,
+      meanings,
+      tags: uniqueStrings(allTags),
+      folderId: primaryWordbook?.id || null,
+      folderName: primaryWordbook?.name || null,
+      recordIds: orderedRecords.map(record => record.id),
+      wordbooks: wordbookSources.map(source => ({
+        id: source.id,
+        name: source.name,
+        pathLabel: source.pathLabel,
+      })),
+      wordbookSources,
+      createdAt: primary.createdAt,
+      sourceType: primary.sourceType,
       sentences: parsedSentences,
-      review: vocab.review || null,
+      review: orderedRecords.find(record => record.review)?.review || null,
     })
   })
 
@@ -294,7 +463,7 @@ export default async function VocabularyPage({
           folders={folders as FolderItem[]}
           initialFolderFilter={wordbookFilter}
           initialGroupFilter={groupValue || undefined}
-          initialFocusId={focusId || undefined}
+          initialFocusId={resolvedFocusId || undefined}
           initialFocusGroup={initialFocusGroup || undefined}
           totalCount={totalCount}
           currentPage={normalizedPage}

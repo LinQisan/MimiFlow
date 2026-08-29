@@ -33,7 +33,7 @@ export interface SelectionState {
   } | null
 }
 
-export function useTextSelection() {
+export function useTextSelection(enabled = true) {
   const selectedRangeRef = useRef<Range | null>(null)
   const pointerActiveRef = useRef(false)
   const pointerStartSelectionRef = useRef('')
@@ -53,6 +53,15 @@ export function useTextSelection() {
   })
 
   useEffect(() => {
+    if (!enabled) {
+      selectedRangeRef.current = null
+      window.getSelection()?.removeAllRanges()
+      setSelection(prev =>
+        prev.isVisible ? { ...prev, rects: [], isVisible: false } : prev,
+      )
+      return
+    }
+
     let selectionTimer: number | null = null
 
     const extractCleanTextFromElement = (element: HTMLElement | null) => {
@@ -343,7 +352,7 @@ export function useTextSelection() {
         updateSelectionPosition,
       )
     }
-  }, [])
+  }, [enabled])
 
   const closeSelection = () => {
     selectedRangeRef.current = null

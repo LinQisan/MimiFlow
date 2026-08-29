@@ -19,6 +19,7 @@ import {
   sortByScore,
   tokenizeKeyword,
 } from './domain'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export type GlobalSearchResult = {
   id: string
@@ -35,7 +36,6 @@ export type GlobalSearchType = GlobalSearchResult['type']
 
 const DEFAULT_TYPES: GlobalSearchType[] = [
   'vocabulary',
-  'sentence',
   'passage',
   'quiz',
   'question',
@@ -49,6 +49,7 @@ export async function searchGlobalContent(
   keyword: string,
   options?: { types?: GlobalSearchType[] },
 ): Promise<GlobalSearchResult[]> {
+  const userId = await getCurrentUserId()
   const q = normalizeKeyword(keyword)
   const tokens = tokenizeKeyword(q)
   if (!q) return []
@@ -70,6 +71,7 @@ export async function searchGlobalContent(
     typeSet.has('vocabulary')
       ? prisma.vocabulary.findMany({
           where: {
+            userId,
             OR: [
               { word: { contains: primaryToken } },
               { pronunciations: { contains: primaryToken } },
@@ -81,7 +83,7 @@ export async function searchGlobalContent(
             sentenceLinks: {
               include: { sentence: true },
               orderBy: { createdAt: 'asc' },
-              take: 1,
+              take: 8,
             },
           },
           orderBy: { createdAt: 'desc' },
@@ -89,13 +91,30 @@ export async function searchGlobalContent(
         })
       : Promise.resolve([]),
 
-    typeSet.has('sentence')
+    typeSet.has('vocabulary')
       ? prisma.vocabularySentence.findMany({
           where: {
+            links: { some: { vocabulary: { userId } } },
             OR: [
               { text: { contains: primaryToken } },
               { source: { contains: primaryToken } },
             ],
+          },
+          include: {
+            links: {
+              where: { vocabulary: { userId } },
+              include: {
+                vocabulary: {
+                  select: {
+                    id: true,
+                    word: true,
+                    pronunciations: true,
+                    partsOfSpeech: true,
+                    meanings: true,
+                  },
+                },
+              },
+            },
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -176,6 +195,7 @@ export async function searchGlobalContent(
           where: {
             sourceType: 'AUDIO_DIALOGUE',
             text: { contains: primaryToken },
+            links: { some: { vocabulary: { userId } } },
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -208,11 +228,23 @@ export async function searchGlobalContent(
 
   const rankedVocabRows = sortByScore(
     vocabRows,
-    item => [item.word, item.pronunciations, item.partsOfSpeech, item.meanings],
+    item => [
+      item.word,
+      item.pronunciations,
+      item.partsOfSpeech,
+      item.meanings,
+      ...item.sentenceLinks.map(link => link.sentence.text),
+    ],
     q,
   ).filter(item =>
     includesAllTokens(
-      [item.word, item.pronunciations, item.partsOfSpeech, item.meanings],
+      [
+        item.word,
+        item.pronunciations,
+        item.partsOfSpeech,
+        item.meanings,
+        ...item.sentenceLinks.map(link => link.sentence.text),
+      ],
       tokens,
     ),
   )
@@ -314,7 +346,10 @@ export async function searchGlobalContent(
   )
 
   const vocabularyResults: GlobalSearchResult[] = rankedVocabRows.map(item => {
-    const firstSentence = item.sentenceLinks[0]?.sentence
+    const matchingSentence = item.sentenceLinks.find(link =>
+      includesAllTokens([link.sentence.text, link.sentence.source], tokens),
+    )?.sentence
+    const firstSentence = matchingSentence || item.sentenceLinks[0]?.sentence
     const meanings = parseJsonStringList(item.meanings).slice(0, 2)
     const pronunciations = parseJsonStringList(item.pronunciations).slice(0, 1)
 
@@ -327,30 +362,54 @@ export async function searchGlobalContent(
       type: 'vocabulary',
       title: item.word,
       snippet:
-        meanings.length > 0
+        matchingSentence
+          ? shortText(matchingSentence.text, 100)
+          : meanings.length > 0
           ? meanings.join('；')
           : shortText(firstSentence?.text || '暂无释义', 80),
       href: buildSearchDetailHref(`vocab-${item.id}`, 'vocabulary', q),
       targetHref: `/vocabulary?${focusParams.toString()}`,
       meta: pronunciations.length > 0 ? pronunciations.join(' / ') : '单词',
+      keyword: q,
     }
   })
 
-  const sentenceResults: GlobalSearchResult[] = rankedSentenceRows.map(
-    item => ({
-      id: `sentence-${item.id}`,
-      type: 'sentence',
-      title: item.text,
-      snippet: '',
-      href: buildSearchDetailHref(`sentence-${item.id}`, 'sentence', q),
-      targetHref:
-        item.sourceUrl && item.sourceUrl !== '#'
-          ? item.sourceUrl
-          : `/vocabulary?q=${encodeURIComponent(q)}`,
-      meta: item.source || '句子来源',
-      keyword: q,
-    }),
+  const vocabularyResultsById = new Map(
+    vocabularyResults.map(result => [result.id, result]),
   )
+  const sentenceMergedVocabularyIds = new Set<string>()
+  rankedSentenceRows.forEach(sentence => {
+    sentence.links.forEach(link => {
+      const vocabulary = link.vocabulary
+      const resultId = `vocab-${vocabulary.id}`
+      if (sentenceMergedVocabularyIds.has(resultId)) return
+      sentenceMergedVocabularyIds.add(resultId)
+      const existing = vocabularyResultsById.get(resultId)
+      if (existing) {
+        existing.snippet = shortText(sentence.text, 100)
+        existing.keyword = q
+        return
+      }
+      const meanings = parseJsonStringList(vocabulary.meanings).slice(0, 2)
+      const pronunciations = parseJsonStringList(vocabulary.pronunciations).slice(0, 1)
+      const focusParams = new URLSearchParams()
+      focusParams.set('focus', vocabulary.id)
+      focusParams.set('q', vocabulary.word)
+      vocabularyResultsById.set(resultId, {
+        id: resultId,
+        type: 'vocabulary',
+        title: vocabulary.word,
+        snippet: shortText(sentence.text, 100),
+        href: buildSearchDetailHref(resultId, 'vocabulary', q),
+        targetHref: `/vocabulary?${focusParams.toString()}`,
+        meta:
+          pronunciations.length > 0
+            ? pronunciations.join(' / ')
+            : meanings.join('；') || '例句命中',
+        keyword: q,
+      })
+    })
+  })
 
   const passageResults: GlobalSearchResult[] = rankedPassageRows.map(item => {
     const content = extractMaterialSearchText(
@@ -451,8 +510,7 @@ export async function searchGlobalContent(
   )
 
   return [
-    ...vocabularyResults,
-    ...sentenceResults,
+    ...vocabularyResultsById.values(),
     ...passageResults,
     ...quizResults,
     ...questionResults,

@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { MaterialType } from '@prisma/client'
 import {
   getMaterialDisplayTitle,
@@ -16,6 +17,7 @@ import {
 } from '@/lib/validation/schema'
 import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
+import { normalizeNewsMetadata } from '@/features/reading/domain/news-metadata'
 
 type JsonRecord = Record<string, unknown>
 
@@ -89,8 +91,10 @@ const buildVocabularyMetaMapForText = async (
   text: string,
   sourceIds: string[],
 ) => {
+  const userId = await getCurrentUserId()
   const rows = await prisma.vocabulary.findMany({
     where: {
+      userId,
       OR: [
         { sourceType: 'ARTICLE_TEXT', sourceId: { in: sourceIds } },
         { pronunciations: { not: null } },
@@ -127,6 +131,7 @@ const buildVocabularyMetaMapForText = async (
 }
 
 export async function getArticleById(id: string) {
+  const userId = await getCurrentUserId()
   const material = await prisma.material.findFirst({
     where: { type: MaterialType.READING, id },
     include: {
@@ -146,13 +151,13 @@ export async function getArticleById(id: string) {
         orderBy: { sortOrder: 'asc' },
         include: {
           _count: {
-            select: { attempts: true },
+            select: { attempts: { where: { userId } } },
           },
         },
       },
       studyProgresses: {
         where: {
-          profileId: 'default',
+          profileId: userId,
           learningMode: 'article-reading',
         },
         take: 1,
@@ -206,7 +211,7 @@ export async function getArticleById(id: string) {
     chapters: asChapterArray(payload.chapters),
     vocabularyMetaMap,
     category: category
-      ? { name: category.title, collectionType: category.collectionType }
+      ? { id: category.id, name: category.title, collectionType: category.collectionType }
       : null,
     progress: material.studyProgresses[0]
       ? {
@@ -236,7 +241,116 @@ export async function getArticleById(id: string) {
   }
 }
 
+export async function listRelatedReadingArticles(input: {
+  articleId: string
+  collectionId?: string
+  collectionType?: string
+  newsSource?: string
+  newsColumn?: string
+  newsSection?: string
+  newsType?: string
+}) {
+  const paperScoped =
+    input.collectionType === 'PAPER' && Boolean(input.collectionId)
+  const rows = await prisma.material.findMany({
+    where: {
+      type: MaterialType.READING,
+      ...(paperScoped
+        ? { collectionMaterials: { some: { collectionId: input.collectionId } } }
+        : {}),
+    },
+    select: {
+      id: true,
+      title: true,
+      contentPayload: true,
+      collectionMaterials: {
+        orderBy: { sortOrder: 'asc' },
+        take: 1,
+        select: {
+          sortOrder: true,
+          collection: {
+            select: {
+              id: true,
+              title: true,
+              collectionType: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  const candidates = rows.map(material => {
+    const payload = decodeMaterialPayload(
+      MaterialType.READING,
+      material.contentPayload,
+    )
+    const relation = material.collectionMaterials[0]
+    const category = relation?.collection
+    const content = readString(payload.text) || readString(payload.transcript)
+    const title = getMaterialDisplayTitle(
+      MaterialType.READING,
+      material.title,
+      material.contentPayload,
+      material.id,
+    )
+    const news = normalizeNewsMetadata({
+      newsSource: readString(payload.newsSource),
+      newsType: readString(payload.newsType),
+      newsSection: readString(payload.newsSection),
+      newsColumn: readString(payload.newsColumn),
+      newsTopic: readString(payload.newsTopic),
+      newsSeries: readString(payload.newsSeries),
+      pageNumber: readString(payload.pageNumber),
+      collectionName: category?.title,
+    })
+    return {
+      id: material.id,
+      title,
+      shortTitle: getReadingCardTitle(title),
+      hasAuthenticTitle: !(
+        category?.collectionType === 'PAPER' &&
+        isReadingTitleDerivedFromContent(title, content)
+      ),
+      sourceKind: readString(payload.sourceKind),
+      publishedDate: readString(payload.publishedDate),
+      paperOrder: relation?.sortOrder ?? 0,
+      categoryId: category?.id || '',
+      news,
+    }
+  })
+
+  const related = paperScoped
+    ? candidates.filter(item => item.categoryId === input.collectionId)
+    : candidates.filter(item => {
+        if (item.sourceKind !== 'NEWS' || item.news.source !== input.newsSource) {
+          return false
+        }
+        if (input.newsColumn) return item.news.column === input.newsColumn
+        if (input.newsSection) return item.news.section === input.newsSection
+        if (input.newsType) return item.news.type === input.newsType
+        return true
+      })
+
+  related.sort((left, right) =>
+    paperScoped
+      ? left.paperOrder - right.paperOrder
+      : right.publishedDate.localeCompare(left.publishedDate) ||
+        left.shortTitle.localeCompare(right.shortTitle, 'ja'),
+  )
+
+  return related.map((item, index) => ({
+    id: item.id,
+    title: item.hasAuthenticTitle
+      ? item.shortTitle
+      : `阅读文章 ${String(index + 1).padStart(2, '0')}`,
+    publishedDate: item.publishedDate,
+    current: item.id === input.articleId,
+  }))
+}
+
 export async function listReadingMaterials() {
+  const userId = await getCurrentUserId()
   const rows = await prisma.material.findMany({
     where: { type: MaterialType.READING },
     orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
@@ -249,6 +363,8 @@ export async function listReadingMaterials() {
             select: {
               id: true,
               title: true,
+              level: true,
+              language: true,
               collectionType: true,
             },
           },
@@ -259,7 +375,7 @@ export async function listReadingMaterials() {
       },
       studyProgresses: {
         where: {
-          profileId: 'default',
+          profileId: userId,
           learningMode: 'article-reading',
         },
         take: 1,
@@ -272,7 +388,8 @@ export async function listReadingMaterials() {
       material.type,
       material.contentPayload,
     )
-    const category = material.collectionMaterials[0]?.collection
+    const collectionMaterial = material.collectionMaterials[0]
+    const category = collectionMaterial?.collection
     const content =
       readString(payload.text) || readString(payload.transcript) || ''
     const displayTitle = getMaterialDisplayTitle(
@@ -318,7 +435,9 @@ export async function listReadingMaterials() {
         ? {
             id: category.id,
             name: category.title,
-            level: null,
+            level: category.level,
+            language: category.language,
+            sortOrder: collectionMaterial.sortOrder,
             collectionType: category.collectionType,
           }
         : null,

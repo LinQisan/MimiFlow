@@ -1,22 +1,24 @@
 import { MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export async function getHomeDashboardData(input: {
   weekStartKey: string
   todayKey: string
 }) {
+  const userId = await getCurrentUserId()
   const [vocabCount, weekStudyAgg, paperCount, questionCount, recentStudyRows, recentPlaytimeRows] =
     await Promise.all([
-      prisma.vocabulary.count(),
+      prisma.vocabulary.count({ where: { userId } }),
       prisma.studyTimeDaily.aggregate({
         _sum: { seconds: true },
-        where: { dateKey: { gte: input.weekStartKey, lte: input.todayKey } },
+        where: { userId, dateKey: { gte: input.weekStartKey, lte: input.todayKey } },
       }),
       prisma.collection.count({ where: { collectionType: 'PAPER' } }),
       prisma.question.count(),
       prisma.materialStudyProgress.findMany({
-        where: { profileId: 'default' },
+        where: { profileId: userId },
         orderBy: { updatedAt: 'desc' },
         take: 6,
         include: {
@@ -25,7 +27,7 @@ export async function getHomeDashboardData(input: {
       }),
       prisma.materialPlaytimeStat.findMany({
         where: {
-          profileId: 'default',
+          profileId: userId,
           material: { type: MaterialType.LISTENING },
         },
         orderBy: { updatedAt: 'desc' },

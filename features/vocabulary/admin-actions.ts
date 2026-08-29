@@ -10,6 +10,7 @@ import {
 } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 type VocabularyMetaPayload = {
   pronunciations: string[]
@@ -174,6 +175,7 @@ export async function getVocabulariesPagedAdmin(
   page: number
   pageSize: number
 }> {
+  const userId = await getCurrentUserId()
   const safePageSize = Math.min(120, Math.max(10, Math.floor(pageSize)))
   const safePage = Math.max(1, Math.floor(page))
   const search = keyword.trim()
@@ -199,13 +201,14 @@ export async function getVocabulariesPagedAdmin(
       }
     : {}
 
-  const total = await prisma.vocabulary.count({ where })
+  const ownedWhere = { AND: [{ userId }, where] }
+  const total = await prisma.vocabulary.count({ where: ownedWhere })
   const totalPages = Math.max(1, Math.ceil(total / safePageSize))
   const normalizedPage = Math.min(safePage, totalPages)
   const skip = (normalizedPage - 1) * safePageSize
 
   const rows = await prisma.vocabulary.findMany({
-    where,
+    where: ownedWhere,
     orderBy: { createdAt: 'desc' },
     skip,
     take: safePageSize,
@@ -257,7 +260,11 @@ export async function getVocabulariesPagedAdmin(
 // ==========================================
 export async function deleteVocabularyAdmin(vocabId: string) {
   try {
-    await prisma.vocabulary.delete({ where: { id: vocabId } })
+    const userId = await getCurrentUserId()
+    const deleted = await prisma.vocabulary.deleteMany({
+      where: { id: vocabId, userId },
+    })
+    if (deleted.count === 0) return { success: false, message: '词条不存在' }
     revalidatePath('/')
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
@@ -273,18 +280,20 @@ export async function updateVocabularyMetaAdmin(
   payload: VocabularyMetaPayload,
 ) {
   try {
+    const userId = await getCurrentUserId()
     const pronunciations = normalizeStringList(payload.pronunciations)
     const partsOfSpeech = normalizeStringList(payload.partsOfSpeech)
     const meanings = normalizeStringList(payload.meanings)
 
-    await prisma.vocabulary.update({
-      where: { id: vocabId },
+    const updated = await prisma.vocabulary.updateMany({
+      where: { id: vocabId, userId },
       data: {
         pronunciations: toJsonStringList(pronunciations),
         partsOfSpeech: toJsonStringList(partsOfSpeech),
         meanings: toJsonStringList(meanings),
       },
     })
+    if (updated.count === 0) return { success: false, message: '词条不存在' }
 
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
@@ -301,9 +310,16 @@ export async function updateVocabularyTagsAdmin(
   tagNames: string[],
 ) {
   try {
+    const userId = await getCurrentUserId()
     const normalizedTags = Array.from(
       new Set(tagNames.map(t => t.trim()).filter(Boolean)),
     )
+
+    const ownedVocabulary = await prisma.vocabulary.findFirst({
+      where: { id: vocabId, userId },
+      select: { id: true },
+    })
+    if (!ownedVocabulary) return { success: false, message: '词条不存在' }
 
     // 删除所有现有标签关联
     await prisma.vocabularyTagOnVocabulary.deleteMany({
@@ -315,10 +331,10 @@ export async function updateVocabularyTagsAdmin(
       for (const tagName of normalizedTags) {
         // 查找或创建标签
         let tag = await prisma.vocabularyTag.findUnique({
-          where: { name: tagName },
+          where: { userId_name: { userId, name: tagName } },
         })
         if (!tag) {
-          tag = await prisma.vocabularyTag.create({ data: { name: tagName } })
+          tag = await prisma.vocabularyTag.create({ data: { userId, name: tagName } })
         }
         // 创建关联
         await prisma.vocabularyTagOnVocabulary.create({
@@ -342,6 +358,7 @@ export async function batchUpdateVocabularyMetaAdmin(
   mode: BatchMetaUpdateMode = 'append',
 ) {
   try {
+    const userId = await getCurrentUserId()
     const targetIds = Array.from(
       new Set(vocabIds.map(id => id.trim()).filter(Boolean)),
     )
@@ -358,7 +375,7 @@ export async function batchUpdateVocabularyMetaAdmin(
     }
 
     const rows = await prisma.vocabulary.findMany({
-      where: { id: { in: targetIds } },
+      where: { userId, id: { in: targetIds } },
       select: {
         id: true,
         pronunciations: true,
@@ -410,7 +427,9 @@ export async function batchUpdateVocabularyMetaAdmin(
 }
 
 export async function getVocabularyMergePreviewAdmin() {
+  const userId = await getCurrentUserId()
   const rows = await prisma.vocabulary.findMany({
+    where: { userId },
     select: {
       id: true,
       word: true,
@@ -449,6 +468,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
   mergeIds: string[],
 ) {
   try {
+    const userId = await getCurrentUserId()
     const uniqMergeIds = Array.from(
       new Set(mergeIds.filter(id => id !== keepId)),
     )
@@ -456,7 +476,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
 
     await prisma.$transaction(async tx => {
       const all = await tx.vocabulary.findMany({
-        where: { id: { in: [keepId, ...uniqMergeIds] } },
+        where: { userId, id: { in: [keepId, ...uniqMergeIds] } },
         include: { sentenceLinks: true, wordbooks: true },
       })
 
@@ -543,7 +563,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
       }
 
       await tx.vocabulary.deleteMany({
-        where: { id: { in: uniqMergeIds } },
+        where: { userId, id: { in: uniqMergeIds } },
       })
     })
 

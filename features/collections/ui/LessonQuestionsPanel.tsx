@@ -3,6 +3,7 @@
 
 import type { QuestionType } from '@prisma/client'
 import Image from 'next/image'
+import { useId } from 'react'
 
 import {
   SortableList,
@@ -98,12 +99,24 @@ export default function LessonQuestionsPanel({
   listeningSectionLabel?: string
   batchFileNames?: string[]
 }) {
+  const draftIdPrefix = useId().replaceAll(':', '')
   const practiceAppearance = appearance === 'practice'
   const importAppearance = appearance === 'import'
   const isToeicImport = importAppearance && language === 'en'
   const hasFixedListeningSection =
     importAppearance &&
     Boolean(defaultListeningSectionNumber && listeningSectionLabel)
+  const shouldShuffleOptionsByDefault = (sectionNumber: string) => {
+    const normalizedSectionNumber = Number(sectionNumber)
+    return (
+      !isToeicImport &&
+      normalizedSectionNumber !== 3 &&
+      !(
+        language === 'ja' &&
+        (normalizedSectionNumber === 4 || normalizedSectionNumber === 5)
+      )
+    )
+  }
   const toeicQuestionType = (defaultQuestionType ||
     'TOEIC_PHOTOGRAPH') as QuestionType
   const toeicPart = getToeicPartByQuestionType(toeicQuestionType)
@@ -117,7 +130,7 @@ export default function LessonQuestionsPanel({
     sourceFileName: string | null = null,
     sequence = 0,
   ): EditableQuestion => {
-    const id = `new_${Date.now()}_${sequence}`
+    const id = `new_${draftIdPrefix}_${sequence}`
     const defaultOptionCount =
       toeicQuestionType === 'TOEIC_QUESTION_RESPONSE'
         ? 3
@@ -138,8 +151,9 @@ export default function LessonQuestionsPanel({
       listeningSectionNumber: defaultListeningSectionNumber,
       optionLabelFormat: isToeicImport ? 'upper-alpha' : 'numeric',
       customOptionLabels: '',
-      shuffleOptions:
-        !isToeicImport && Number(defaultListeningSectionNumber) !== 3,
+      shuffleOptions: shouldShuffleOptionsByDefault(
+        defaultListeningSectionNumber,
+      ),
       sourceFileName,
       options: createDefaultQuestionOptions(
         `${id}_opt`,
@@ -216,7 +230,7 @@ export default function LessonQuestionsPanel({
       listeningSectionNumber,
       optionLabelFormat: isToeicImport ? 'upper-alpha' : 'numeric',
       customOptionLabels: '',
-      shuffleOptions: !isToeicImport && Number(listeningSectionNumber) !== 3,
+      shuffleOptions: shouldShuffleOptionsByDefault(listeningSectionNumber),
       sourceFileName: null,
       options: createDefaultQuestionOptions(
         `${id}_opt`,
@@ -354,8 +368,7 @@ export default function LessonQuestionsPanel({
       listeningSectionNumber,
       optionLabelFormat: isToeicImport ? 'upper-alpha' : 'numeric',
       customOptionLabels: '',
-      shuffleOptions:
-        !isToeicImport && Number(listeningSectionNumber) !== 3,
+      shuffleOptions: shouldShuffleOptionsByDefault(listeningSectionNumber),
       sourceFileName: batchMode
         ? batchFileNames[Math.floor(i / questionsPerMaterial)]
         : null,
@@ -400,6 +413,17 @@ export default function LessonQuestionsPanel({
   // ─── Update / reorder / remove ───
   const handleUpdateQuestion = (id: string, field: EditableQuestionField, value: string) => {
     setQuestions(current => updateQuestionField(current, id, field, value))
+    setIsDirty(true)
+  }
+
+  const handleSetAllShuffleOptions = (shuffleOptions: boolean) => {
+    if (shuffleOptions && Number(listeningSectionNumber) === 3) return
+    if (questions.every(question => question.shuffleOptions === shuffleOptions)) {
+      return
+    }
+    setQuestions(current =>
+      current.map(question => ({ ...question, shuffleOptions })),
+    )
     setIsDirty(true)
   }
 
@@ -759,6 +783,45 @@ export default function LessonQuestionsPanel({
           )}
         </div>
       )}
+
+      {batchMode && questions.length > 0 ? (
+        <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-3'>
+          <div>
+            <p className='text-xs font-bold text-slate-700'>统一设置选项顺序</p>
+            <p className='mt-0.5 text-[11px] text-slate-400'>应用到本次上传的全部题目</p>
+          </div>
+          <div className='flex border border-slate-200 bg-white p-0.5'>
+            <button
+              type='button'
+              aria-pressed={questions.every(question => !question.shuffleOptions)}
+              onClick={() => handleSetAllShuffleOptions(false)}
+              className={`px-3 py-1.5 text-xs font-bold transition-colors ${
+                questions.every(question => !question.shuffleOptions)
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}>
+              不乱序
+            </button>
+            <button
+              type='button'
+              aria-pressed={questions.every(question => question.shuffleOptions)}
+              disabled={Number(listeningSectionNumber) === 3}
+              title={
+                Number(listeningSectionNumber) === 3
+                  ? '問題3固定为不乱序'
+                  : undefined
+              }
+              onClick={() => handleSetAllShuffleOptions(true)}
+              className={`px-3 py-1.5 text-xs font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                questions.every(question => question.shuffleOptions)
+                  ? 'bg-slate-900 text-white'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+              }`}>
+              乱序
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* Question list */}
       <div className={importAppearance ? 'p-0' : 'p-4 md:p-5'}>

@@ -2,28 +2,38 @@
 
 import { useEffect, useState } from 'react'
 import { annotateJapaneseText, buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
-import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
+import {
+  buildPronunciationMapForText,
+  buildSurfaceAliasMapForText,
+} from '@/utils/vocabulary/japaneseInflection'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
 
 const SHOW_KEY = 'mimiflow_show_pronunciation'
 const SHOW_MEANING_KEY = 'mimiflow_show_meaning'
 
-const loadShowPronunciation = () => {
+const loadShowPronunciation = (userId: string) => {
   if (typeof window === 'undefined') return true
-  const raw = localStorage.getItem(SHOW_KEY)
+  const raw = readUserStorageValue(userId, SHOW_KEY)
   return raw == null ? true : raw === '1'
 }
 
 export function useShowPronunciation() {
+  const currentUser = useCurrentUser()
+  const storageKey = userStorageKey(currentUser.id, SHOW_KEY)
   const [showPronunciation, setShowPronunciationState] = useState(true)
 
   useEffect(() => {
-    setShowPronunciationState(loadShowPronunciation())
-  }, [])
+    setShowPronunciationState(loadShowPronunciation(currentUser.id))
+  }, [currentUser.id])
 
   const setShowPronunciation = (value: boolean) => {
     setShowPronunciationState(value)
     if (typeof window !== 'undefined') {
-      localStorage.setItem(SHOW_KEY, value ? '1' : '0')
+      localStorage.setItem(storageKey, value ? '1' : '0')
     }
   }
 
@@ -33,23 +43,25 @@ export function useShowPronunciation() {
   }
 }
 
-const loadShowMeaning = () => {
+const loadShowMeaning = (userId: string) => {
   if (typeof window === 'undefined') return true
-  const raw = localStorage.getItem(SHOW_MEANING_KEY)
+  const raw = readUserStorageValue(userId, SHOW_MEANING_KEY)
   return raw == null ? true : raw === '1'
 }
 
 export function useShowMeaning() {
+  const currentUser = useCurrentUser()
+  const storageKey = userStorageKey(currentUser.id, SHOW_MEANING_KEY)
   const [showMeaning, setShowMeaningState] = useState(true)
 
   useEffect(() => {
-    setShowMeaningState(loadShowMeaning())
-  }, [])
+    setShowMeaningState(loadShowMeaning(currentUser.id))
+  }, [currentUser.id])
 
   const setShowMeaning = (value: boolean) => {
     setShowMeaningState(value)
     if (typeof window !== 'undefined') {
-      localStorage.setItem(SHOW_MEANING_KEY, value ? '1' : '0')
+      localStorage.setItem(storageKey, value ? '1' : '0')
     }
   }
 
@@ -72,6 +84,7 @@ type SentenceMeaningRef = {
 
 type AnnotateMetaOptions = {
   showMeaning?: boolean
+  groupKanji?: boolean
   vocabularyMetaMap?: Record<string, VocabularyMetaLike>
   sentenceMeaningMap?: Record<string, SentenceMeaningRef[]>
 }
@@ -154,6 +167,9 @@ const annotateChunkWithMeta = (
 ) => {
   if (!text) return ''
   const showMeaning = Boolean(options.showMeaning)
+  const surfacePronunciationMap = pronunciationEnabled
+    ? buildPronunciationMapForText(text, pronMap)
+    : {}
   const meaningWords = showMeaning
     ? Object.entries(options.vocabularyMetaMap || {})
         .filter(([, meta]) => (meta.meanings || []).some(item => item.trim()))
@@ -171,7 +187,11 @@ const annotateChunkWithMeta = (
   const words = Object.keys(surfaceAliasMap).sort((a, b) => b.length - a.length)
 
   if (words.length === 0) {
-    return pronunciationEnabled ? annotateJapaneseText(text, pronMap) : escapeHtml(text)
+    return pronunciationEnabled
+      ? annotateJapaneseText(text, pronMap, {
+          groupKanji: options.groupKanji,
+        })
+      : escapeHtml(text)
   }
 
   const bestByStart = new Map<number, { word: string; length: number }>()
@@ -200,10 +220,17 @@ const annotateChunkWithMeta = (
 
     const word = match.word
     const baseWord = surfaceAliasMap[word] || word
-    const pronunciation = (pronMap[word] || pronMap[baseWord] || '').trim()
+    const pronunciation = (
+      surfacePronunciationMap[word] ||
+      pronMap[word] ||
+      pronMap[baseWord] ||
+      ''
+    ).trim()
     const baseWordHtml =
       pronunciationEnabled && pronunciation
-        ? buildJapaneseRubyHtml(word, pronunciation)
+        ? buildJapaneseRubyHtml(word, pronunciation, {
+            groupKanji: options.groupKanji,
+          })
         : escapeHtml(word)
 
     const meaningText = showMeaning

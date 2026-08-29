@@ -4,6 +4,7 @@ import { MaterialType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 const LEARNING_MODE = 'article-reading'
 
 export async function saveReadingProgress(input: {
@@ -11,6 +12,7 @@ export async function saveReadingProgress(input: {
   progressPercent: number
   lastPosition: string
 }) {
+  const userId = await getCurrentUserId()
   const material = await prisma.material.findFirst({
     where: { type: MaterialType.READING, id: input.articleId.trim() },
     select: { id: true },
@@ -25,21 +27,16 @@ export async function saveReadingProgress(input: {
   const lastPosition = input.lastPosition.trim().slice(0, 120)
 
   await prisma.$transaction(async tx => {
-    await tx.learnerProfile.upsert({
-      where: { id: 'default' },
-      create: { id: 'default' },
-      update: {},
-    })
     await tx.materialStudyProgress.upsert({
       where: {
         profileId_materialId_learningMode: {
-          profileId: 'default',
+          profileId: userId,
           materialId: material.id,
           learningMode: LEARNING_MODE,
         },
       },
       create: {
-        profileId: 'default',
+        profileId: userId,
         materialId: material.id,
         learningMode: LEARNING_MODE,
         progressPercent,

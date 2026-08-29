@@ -14,8 +14,7 @@ const SEARCH_TYPES: Array<{
   label: string
   description: string
 }> = [
-  { key: 'vocabulary', label: '单词', description: '释义、读音' },
-  { key: 'sentence', label: '句子', description: '例句、来源' },
+  { key: 'vocabulary', label: '单词', description: '释义、读音、关联例句' },
   { key: 'passage', label: '阅读', description: '文章正文' },
   { key: 'quiz', label: '题集', description: '练习材料' },
   { key: 'question', label: '题目', description: '题干、选项' },

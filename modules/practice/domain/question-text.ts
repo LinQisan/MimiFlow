@@ -90,9 +90,9 @@ const SORTING_STAR_SLOT_TOKEN = '[[sort:star]]'
 
 const CANONICAL_SORTING_SLOT_PATTERN = /\[\[sort(?::star)?\]\]/g
 const LEGACY_SORTING_SLOT_PATTERN =
-  /[★＊][ \u3000]*(?:[＿_]{2,})?|[＿_]{2,}|[（(][\s　]*[）)]|[（(]\s*\d+\s*[）)]|\[\s*\d+\s*\]|［\s*\d+\s*］/g
+  /[＿_]{2,}[★＊][＿_]{2,}|[★＊][ \u3000]*(?:[＿_]{2,})?|[＿_]{2,}|[（(][\s　]*[）)]|[（(]\s*\d+\s*[）)]|\[\s*\d+\s*\]|［\s*\d+\s*］/g
 
-export type SortingPromptSegment = {
+type SortingPromptSegment = {
   text: string
   slotIndex: number | null
   isStar: boolean

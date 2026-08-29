@@ -2,30 +2,117 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import type { WordFrequencyRow } from '@/features/reading/domain/sudachi'
-import type { PaperFrequencySourceStats } from '@/features/practice/domain/paper-word-frequency'
+import CustomSelect from '@/components/ui/CustomSelect'
+import {
+  sortWordFrequencyRows,
+  type WordFrequencyRow,
+  type WordFrequencySortMode,
+} from '@/features/reading/domain/sudachi'
+import type {
+  PaperFrequencySourceStats,
+  PaperWordbookDistribution,
+} from '@/features/practice/domain/paper-word-frequency'
 
 const PAGE_SIZE = 50
+const EMPTY_ROWS: WordFrequencyRow[] = []
+const EMPTY_STATS: PaperFrequencySourceStats = {
+  questionCount: 0,
+  optionCount: 0,
+  readingTextCount: 0,
+  listeningTranscriptCount: 0,
+}
+const EMPTY_DISTRIBUTION: PaperWordbookDistribution = {
+  totalWords: 0,
+  outsideCount: 0,
+  outsideRate: 0,
+  wordbooks: [],
+}
+
+function WordbookDistribution({
+  distribution,
+}: {
+  distribution: PaperWordbookDistribution
+}) {
+  if (distribution.totalWords === 0) return null
+  const rows = [
+    ...distribution.wordbooks,
+    {
+      id: 'outside-wordbooks',
+      name: '未加入任何单词书',
+      pathLabel: '未加入任何单词书',
+      depth: 0,
+      matchedCount: distribution.outsideCount,
+      coverageRate: distribution.outsideRate,
+    },
+  ]
+
+  return (
+    <section className='border-b border-slate-200 py-5'>
+      <div className='flex flex-wrap items-end justify-between gap-2'>
+        <div>
+          <h3 className='text-sm font-bold text-slate-950'>单词书分布</h3>
+          <p className='mt-1 text-xs text-slate-500'>
+            按 {distribution.totalWords} 个去重词统计；父级包含子级，同一个词可能命中多个单词书。
+          </p>
+        </div>
+      </div>
+      <div className='mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2'>
+        {rows.map(row => (
+          <div key={row.id} title={row.pathLabel}>
+            <div
+              className='flex items-center justify-between gap-3 text-xs'
+              style={{ paddingLeft: `${row.depth * 0.9}rem` }}>
+              <span className='min-w-0 truncate font-semibold text-slate-700'>
+                {row.name}
+              </span>
+              <span className='shrink-0 tabular-nums text-slate-500'>
+                <strong className='text-slate-900'>{row.matchedCount}</strong> 个 · {row.coverageRate}%
+              </span>
+            </div>
+            <div
+              className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200'
+              style={{ marginLeft: `${row.depth * 0.9}rem` }}>
+              <div
+                className={`h-full rounded-full ${row.id === 'outside-wordbooks' ? 'bg-slate-400' : 'bg-violet-500'}`}
+                style={{ width: `${Math.min(100, row.coverageRate)}%` }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
 
 export default function PaperWordFrequencyDialog({
-  rows,
-  stats,
+  paperId,
 }: {
-  rows: WordFrequencyRow[]
-  stats: PaperFrequencySourceStats
+  paperId: string
 }) {
+  const [data, setData] = useState<{
+    rows: WordFrequencyRow[]
+    stats: PaperFrequencySourceStats
+    wordbookDistribution: PaperWordbookDistribution
+  } | null>(null)
+  const [loadState, setLoadState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
+  const [sortMode, setSortMode] = useState<WordFrequencySortMode>('learning')
+  const rows = data?.rows || EMPTY_ROWS
+  const stats = data?.stats || EMPTY_STATS
+  const wordbookDistribution =
+    data?.wordbookDistribution || EMPTY_DISTRIBUTION
   const filteredRows = useMemo(() => {
     const keyword = query.normalize('NFKC').trim().toLowerCase()
-    if (!keyword) return rows
-    return rows.filter(item =>
+    const sortedRows = sortWordFrequencyRows(rows, sortMode)
+    if (!keyword) return sortedRows
+    return sortedRows.filter(item =>
       `${item.word} ${item.reading} ${item.partOfSpeech}`
         .toLowerCase()
         .includes(keyword),
     )
-  }, [query, rows])
+  }, [query, rows, sortMode])
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const normalizedPage = Math.min(page, totalPages)
   const visibleRows = filteredRows.slice(
@@ -37,7 +124,7 @@ export default function PaperWordFrequencyDialog({
     0,
   )
 
-  useEffect(() => setPage(1), [query])
+  useEffect(() => setPage(1), [query, sortMode])
 
   useEffect(() => {
     if (!isOpen) return
@@ -52,16 +139,46 @@ export default function PaperWordFrequencyDialog({
     }
   }, [isOpen])
 
+  const openDialog = async () => {
+    if (data) {
+      setIsOpen(true)
+      return
+    }
+    setLoadState('loading')
+    try {
+      const response = await fetch(
+        `/api/practice/${encodeURIComponent(paperId)}/word-frequency?v=2`,
+      )
+      if (!response.ok) throw new Error('request failed')
+      const result = (await response.json()) as {
+        rows: WordFrequencyRow[]
+        stats: PaperFrequencySourceStats
+        wordbookDistribution: PaperWordbookDistribution
+      }
+      setData(result)
+      setLoadState('idle')
+      setIsOpen(true)
+    } catch {
+      setLoadState('error')
+    }
+  }
+
   return (
     <>
       <button
         type='button'
         aria-haspopup='dialog'
         aria-expanded={isOpen}
-        onClick={() => setIsOpen(true)}
-        disabled={rows.length === 0}
+        onClick={() => void openDialog()}
+        disabled={loadState === 'loading'}
         className='ui-btn disabled:cursor-default disabled:opacity-40'>
-        词频 {rows.length || '—'}
+        {loadState === 'loading'
+          ? '词频分析中…'
+          : loadState === 'error'
+            ? '词频加载失败，重试'
+            : data
+              ? `词频 ${rows.length}`
+              : '词频'}
       </button>
 
       {isOpen ? (
@@ -85,7 +202,7 @@ export default function PaperWordFrequencyDialog({
                   试卷词频
                 </h2>
                 <p className='mt-1 text-xs text-slate-500'>
-                  统计阅读原文、听力原文、题干和全部选项，并按原形合并。
+                  统计阅读原文、听力原文、题干和全部选项；默认降低基础词权重。
                 </p>
               </div>
               <button
@@ -116,7 +233,9 @@ export default function PaperWordFrequencyDialog({
                 </div>
               </dl>
 
-              <div className='flex flex-col gap-3 py-4 sm:flex-row sm:items-end sm:justify-between'>
+              <WordbookDistribution distribution={wordbookDistribution} />
+
+              <div className='grid gap-3 py-4 sm:grid-cols-[minmax(0,18rem)_minmax(0,13rem)_auto] sm:items-end'>
                 <label className='text-xs font-semibold text-slate-500 sm:w-72'>
                   查找词语
                   <input
@@ -127,7 +246,20 @@ export default function PaperWordFrequencyDialog({
                     className='mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
                   />
                 </label>
-                <p className='text-xs text-slate-500'>
+                <label className='text-xs font-semibold text-slate-500'>
+                  排序方式
+                  <CustomSelect
+                    aria-label='词频排序方式'
+                    value={sortMode}
+                    onChange={event =>
+                      setSortMode(event.currentTarget.value as WordFrequencySortMode)
+                    }
+                    className='mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none'>
+                    <option value='learning'>学习优先（推荐）</option>
+                    <option value='frequency'>出现次数</option>
+                  </CustomSelect>
+                </label>
+                <p className='pb-1 text-xs text-slate-500 sm:text-right'>
                   <strong className='font-semibold text-slate-900'>{filteredRows.length}</strong> 个词 · {totalOccurrences} 次出现
                 </p>
               </div>

@@ -3,6 +3,7 @@
 import { annotateExamText } from './annotate'
 import { OptionsList } from './OptionsList'
 import { SortingQuestion } from './SortingQuestion'
+import { WrongQuestionBadge } from './WrongQuestionBadge'
 import type {
   ExamAnnotationSettings,
   ExamQuestion,
@@ -26,6 +27,7 @@ type StandardQuestionProps = {
   onSortingOrderChange?: (order: Array<string | null>) => void
   isSubmitted?: boolean
   isInteractionLocked?: boolean
+  isWrongReview?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -39,6 +41,7 @@ export function StandardQuestion({
   onSortingOrderChange,
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
+  isWrongReview = false,
   isJapanesePaper = false,
   annotation,
 }: StandardQuestionProps) {
@@ -60,6 +63,11 @@ export function StandardQuestion({
   if (questionType === 'SORTING') {
     return (
       <div className='mx-auto w-full max-w-3xl py-6 md:py-10'>
+        {isWrongReview ? (
+          <div className='mb-4'>
+            <WrongQuestionBadge />
+          </div>
+        ) : null}
         <SortingQuestion
           question={question}
           currentAnswer={currentAnswer}
@@ -79,6 +87,11 @@ export function StandardQuestion({
   if (isReadingFillBlank) {
     return (
       <div className='mx-auto w-full max-w-3xl py-6 md:py-10'>
+        {isWrongReview ? (
+          <div className='mb-4'>
+            <WrongQuestionBadge />
+          </div>
+        ) : null}
         <OptionsList
           options={question.options || []}
           currentAnswer={currentAnswer}
@@ -125,6 +138,11 @@ export function StandardQuestion({
 
   return (
     <div className='mx-auto w-full max-w-3xl py-6 md:py-10'>
+      {isWrongReview ? (
+        <div className='mb-4'>
+          <WrongQuestionBadge />
+        </div>
+      ) : null}
       <div
         data-source-type='QUIZ_QUESTION'
         data-source-id={question.id}

@@ -2,6 +2,12 @@ import { annotateExamText } from './annotate'
 import { createTrustedMarkupSlots } from './trustedMarkup'
 import type { ExamAnnotationSettings, ExamQuestion } from './types'
 import { renderSafeStructuredText } from './structuredText'
+import {
+  parseArticleFootnotes,
+  replaceArticleFootnoteReferences,
+} from '@/features/reading/domain/article-footnotes'
+import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
+import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -66,36 +72,159 @@ const replaceBySerialToken = (
   return { next: source, replaced: false }
 }
 
-export const buildReadingPassageHtml = ({
-  question,
-  fillBlankQuestions,
-  answerMap,
-  submittedQuestionIds,
-  annotation,
-}: {
+const resolvePassageAnnotations = (
+  text: string,
+  vocabularyMetaMap: Record<string, VocabularyMeta>,
+) => {
+  const wordsWithMeanings = Object.entries(vocabularyMetaMap)
+    .filter(([, meta]) => meta.meanings.some(meaning => meaning.trim()))
+    .map(([word]) => word)
+  const aliasMap = buildSurfaceAliasMapForText(text, wordsWithMeanings)
+  const firstOccurrenceByWord = new Map<
+    string,
+    { word: string; surface: string; position: number; meta: VocabularyMeta }
+  >()
+
+  Object.entries(aliasMap).forEach(([surface, word]) => {
+    const position = text.indexOf(surface)
+    const meta = vocabularyMetaMap[word]
+    if (position < 0 || !meta) return
+    const current = firstOccurrenceByWord.get(word)
+    if (
+      !current ||
+      position < current.position ||
+      (position === current.position && surface.length > current.surface.length)
+    ) {
+      firstOccurrenceByWord.set(word, { word, surface, position, meta })
+    }
+  })
+
+  const selected: Array<{
+    word: string
+    surface: string
+    position: number
+    meta: VocabularyMeta
+  }> = []
+  Array.from(firstOccurrenceByWord.values())
+    .sort(
+      (left, right) =>
+        left.position - right.position ||
+        right.surface.length - left.surface.length,
+    )
+    .forEach(candidate => {
+      const candidateEnd = candidate.position + candidate.surface.length
+      const overlaps = selected.some(item => {
+        const itemEnd = item.position + item.surface.length
+        return candidate.position < itemEnd && candidateEnd > item.position
+      })
+      if (!overlaps) selected.push(candidate)
+    })
+
+  return selected.map((item, index) => ({ ...item, label: index + 1 }))
+}
+
+type ReadingPassageBuildOptions = {
   question: ExamQuestion
   fillBlankQuestions: ExamQuestion[]
   answerMap: Record<string, string>
   submittedQuestionIds: string[]
   annotation: ExamAnnotationSettings
-}) => {
-  let htmlContent = question.passage?.content || ''
-  if (!htmlContent) return ''
+}
+
+export const buildReadingPassageParts = ({
+  question,
+  fillBlankQuestions,
+  answerMap,
+  submittedQuestionIds,
+  annotation,
+}: ReadingPassageBuildOptions) => {
+  const sourceContent = question.passage?.content || ''
+  if (!sourceContent) {
+    return { bodyHtml: '', footnotesHtml: '', annotationsHtml: '' }
+  }
+
+  const document = parseArticleFootnotes(sourceContent)
+  let htmlContent = document.body
+  const trustedMarkup = createTrustedMarkupSlots(htmlContent)
+  const passageScope = `passage-${(
+    question.passage?.id || question.id
+  ).replace(/[^A-Za-z0-9_-]/g, '-')}`
+  const footnoteScope = `${passageScope}-note`
+  const annotationScope = `${passageScope}-annotation`
+  const passageAnnotations = annotation.showMeaning
+    ? resolvePassageAnnotations(document.body, annotation.vocabularyMetaMap)
+    : []
+
+  htmlContent = replaceArticleFootnoteReferences(
+    htmlContent,
+    document.footnotes,
+    footnote =>
+      trustedMarkup.add(
+        `<sup class="mx-0.5"><a id="${footnoteScope}-${footnote.id}-ref" href="#${footnoteScope}-${footnote.id}" class="rounded px-0.5 text-[0.65em] font-semibold text-slate-500 no-underline hover:bg-slate-100 hover:text-slate-950">注${footnote.label}</a></sup>`,
+      ),
+  )
+
+  const renderBody = () =>
+    trustedMarkup.restore(
+      renderSafeStructuredText(
+        annotateExamText({
+          text: htmlContent,
+          preserveNewlines: true,
+          settings: { ...annotation, showMeaning: false },
+        }),
+        { force: true },
+      ),
+    )
+  const footnotesHtml = document.footnotes.length
+    ? `<aside aria-label="文章脚注" class="mt-10"><ol class="space-y-2 text-sm leading-7 text-slate-600">${document.footnotes
+        .map(footnote => {
+          const noteText = footnote.term
+            ? `${footnote.term}：${footnote.definition}`
+            : footnote.definition
+          const backLink = document.body.includes(`[^${footnote.id}]`)
+            ? `<a href="#${footnoteScope}-${footnote.id}-ref" aria-label="返回正文" class="text-xs text-slate-400 hover:text-slate-900">↩</a>`
+            : ''
+          return `<li id="${footnoteScope}-${footnote.id}" class="scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2 last:border-b-0"><span class="text-xs font-semibold tabular-nums text-slate-400">注${footnote.label}</span><span>${annotateExamText({ text: noteText, settings: { ...annotation, showMeaning: false } })}</span>${backLink}</li>`
+        })
+        .join('')}</ol></aside>`
+    : ''
+
+  const attachPassageAnnotations = () => {
+    const attached = passageAnnotations.filter(item => {
+      const surfacePosition = htmlContent.indexOf(item.surface)
+      if (surfacePosition < 0) return false
+      const marker = trustedMarkup.add(
+        `<sup class="mx-0.5"><a id="${annotationScope}-${item.label}-ref" href="#${annotationScope}-${item.label}" class="rounded px-0.5 text-[0.65em] font-semibold text-slate-500 no-underline hover:bg-slate-100 hover:text-slate-950">释${item.label}</a></sup>`,
+      )
+      const markerPosition = surfacePosition + item.surface.length
+      htmlContent = `${htmlContent.slice(0, markerPosition)}${marker}${htmlContent.slice(markerPosition)}`
+      return true
+    })
+    return attached
+  }
+
+  const buildAnnotationsHtml = (
+    attachedAnnotations: typeof passageAnnotations,
+  ) =>
+    attachedAnnotations.length
+      ? `<aside aria-label="用户注释" class="mt-8"><ol class="space-y-2 text-sm leading-7 text-slate-600">${attachedAnnotations
+        .map(item => {
+          const meaning = item.meta.meanings
+            .map(value => value.trim())
+            .filter(Boolean)
+            .join('；')
+          return `<li id="${annotationScope}-${item.label}" class="scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2 last:border-b-0"><span class="text-xs font-semibold tabular-nums text-slate-400">释${item.label}</span><span>${annotateExamText({ text: `${item.word}：${meaning}`, settings: { ...annotation, showMeaning: false } })}</span><a href="#${annotationScope}-${item.label}-ref" aria-label="返回正文" class="text-xs text-slate-400 hover:text-slate-900">↩</a></li>`
+        })
+        .join('')}</ol></aside>`
+      : ''
 
   if (fillBlankQuestions.length === 0) {
-    return renderSafeStructuredText(
-      annotateExamText({
-        text: htmlContent,
-        preserveNewlines: true,
-        settings: annotation,
-      }),
-      { force: true },
-    )
+    const annotationsHtml = buildAnnotationsHtml(attachPassageAnnotations())
+    return { bodyHtml: renderBody(), footnotesHtml, annotationsHtml }
   }
 
   let counter = 1
   const submittedQuestionIdSet = new Set(submittedQuestionIds)
-  const trustedMarkup = createTrustedMarkupSlots(htmlContent)
 
   const annotateOptionText = (text: string) =>
     annotateExamText({ text, settings: annotation })
@@ -166,14 +295,6 @@ export const buildReadingPassageHtml = ({
     if (replaced) counter += 1
   })
 
-  return trustedMarkup.restore(
-    renderSafeStructuredText(
-      annotateExamText({
-        text: htmlContent,
-        preserveNewlines: true,
-        settings: annotation,
-      }),
-      { force: true },
-    ),
-  )
+  const annotationsHtml = buildAnnotationsHtml(attachPassageAnnotations())
+  return { bodyHtml: renderBody(), footnotesHtml, annotationsHtml }
 }

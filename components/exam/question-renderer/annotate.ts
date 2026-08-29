@@ -59,6 +59,7 @@ export const annotateExamText = ({
     settings.showPronunciation,
     {
       showMeaning: settings.showMeaning,
+      groupKanji: settings.groupKanji,
       vocabularyMetaMap: settings.vocabularyMetaMap,
       sentenceMeaningMap: {},
     },

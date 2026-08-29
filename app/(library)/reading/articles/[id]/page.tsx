@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
 
-import { getArticleById } from '@/lib/repositories/materials'
+import {
+  getArticleById,
+  listRelatedReadingArticles,
+} from '@/lib/repositories/materials'
 import ArticleReaderClient from '@/features/reading/ui/ArticleReaderClient'
 import ArticleQuestionsPanel from './ArticleQuestionsPanel'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
@@ -14,6 +17,7 @@ import {
   getNewsTypeLabel,
   normalizeNewsMetadata,
 } from '@/features/reading/domain/news-metadata'
+import ArticleSiblingNav from '@/features/reading/ui/ArticleSiblingNav'
 
 export const revalidate = 0
 
@@ -37,16 +41,36 @@ export default async function ArticleDetailPage({
     article.chapters.length > 0
       ? article.chapters.map(chapter => chapter.text)
       : [article.content]
-  const sudachiPronunciation = await getSudachiPronunciationMap(articleTexts)
-  const vocabularyCandidates = buildVocabularyCandidates(
-    sudachiPronunciation.tokens,
-    Object.keys(article.vocabularyMetaMap),
-  )
   const news = normalizeNewsMetadata({
     ...article,
     collectionName: article.category?.name,
   })
   const newsEditionLabel = getNewsEditionLabel(article.edition)
+  const isPaperArticle = article.category?.collectionType === 'PAPER'
+  const siblingLabel = isPaperArticle
+    ? article.category?.name || '同一试卷'
+    : [
+        news.source,
+        news.column || news.section || getNewsTypeLabel(news.type),
+      ].filter(Boolean).join(' · ')
+  const [sudachiPronunciation, relatedArticles] = await Promise.all([
+    getSudachiPronunciationMap(articleTexts),
+    isPaperArticle || article.sourceKind === 'NEWS'
+      ? listRelatedReadingArticles({
+          articleId: article.id,
+          collectionId: article.category?.id,
+          collectionType: article.category?.collectionType,
+          newsSource: news.source,
+          newsColumn: news.column,
+          newsSection: news.column ? '' : news.section,
+          newsType: news.column || news.section ? '' : news.type,
+        })
+      : Promise.resolve([]),
+  ])
+  const vocabularyCandidates = buildVocabularyCandidates(
+    sudachiPronunciation.tokens,
+    Object.keys(article.vocabularyMetaMap),
+  )
 
   return (
     <main className="min-h-screen bg-[#f8f7f3] px-4 py-6 md:px-6 md:py-10">
@@ -100,6 +124,11 @@ export default async function ArticleDetailPage({
             </div>
           </div>
         </header>
+
+        <ArticleSiblingNav
+          label={siblingLabel || '同组'}
+          articles={relatedArticles}
+        />
 
         {article.audioFile ? (
           <section

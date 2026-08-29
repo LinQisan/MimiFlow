@@ -148,6 +148,10 @@ export default function UploadForm({
   const usesCombinedListeningUpload =
     materialType === 'LISTENING' && audioSourceType === 'upload'
   const usesPaperDestination = collectionScope === 'paper'
+  const usesAutomaticListeningTitle =
+    usesPaperDestination &&
+    defaultLanguage === 'ja' &&
+    materialType === 'LISTENING'
   const destinationName = usesPaperDestination ? '试卷' : '学习内容'
   const isBatchAss = selectedFileNames.length > 1
   const autoSuggestedTitleRef = useRef<string | null>(null)
@@ -934,47 +938,56 @@ export default function UploadForm({
             )}
           </div>
 
-          <div className='mb-4'>
-            <label
-              className={
-                usesPracticeMaterialLayout
-                  ? 'sr-only'
-                  : 'mb-1.5 block text-sm font-semibold text-slate-700'
-              }>
-              {isBatchAss
-                ? '标题前缀（可选）'
-                : isMediaSubtitleVariant
-                  ? '字幕标题（可选）'
-                  : '标题'}
-            </label>
-            <input
-              name='title'
-              value={title}
-              onChange={e => {
-                autoSuggestedTitleRef.current = null
-                setTitle(e.target.value)
-              }}
-              placeholder={
-                isBatchAss
-                  ? '例：N1 听力（留空则直接用字幕文件名）'
-                  : isMediaSubtitleVariant
-                    ? '留空则使用字幕文件名'
-                    : materialType === 'SPEAKING'
-                      ? '例：会話 01（可留空，不填则用字幕文件名）'
-                      : '例：问题 1-01（可留空，不填则用字幕文件名）'
-              }
-              className={
-                usesPracticeMaterialLayout
-                  ? 'w-full border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
-                  : 'w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
-              }
-            />
-            {isBatchAss && !title.trim() && (
-              <p className='mt-1 text-xs font-semibold text-amber-600'>
-                未填写标题前缀：将直接使用每个字幕文件名作为标题。
+          {usesAutomaticListeningTitle ? (
+            <div className='mb-4 border-y border-slate-200 py-3'>
+              <p className='text-sm font-bold text-slate-800'>标题自动生成</p>
+              <p className='mt-1 text-xs leading-5 text-slate-500'>
+                无需填写标题。系统会优先识别文件名中的問題编号；无法识别时使用字幕文件名。
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className='mb-4'>
+              <label
+                className={
+                  usesPracticeMaterialLayout
+                    ? 'sr-only'
+                    : 'mb-1.5 block text-sm font-semibold text-slate-700'
+                }>
+                {isBatchAss
+                  ? '标题前缀（可选）'
+                  : isMediaSubtitleVariant
+                    ? '字幕标题（可选）'
+                    : '标题'}
+              </label>
+              <input
+                name='title'
+                value={title}
+                onChange={e => {
+                  autoSuggestedTitleRef.current = null
+                  setTitle(e.target.value)
+                }}
+                placeholder={
+                  isBatchAss
+                    ? '例：N1 听力（留空则直接用字幕文件名）'
+                    : isMediaSubtitleVariant
+                      ? '留空则使用字幕文件名'
+                      : materialType === 'SPEAKING'
+                        ? '例：会話 01（可留空，不填则用字幕文件名）'
+                        : '例：问题 1-01（可留空，不填则用字幕文件名）'
+                }
+                className={
+                  usesPracticeMaterialLayout
+                    ? 'w-full border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+                    : 'w-full border border-gray-200 bg-gray-50 p-4 text-sm font-bold text-gray-800 outline-none transition-colors focus:ring-2 focus:ring-blue-400'
+                }
+              />
+              {isBatchAss && !title.trim() && (
+                <p className='mt-1 text-xs font-semibold text-amber-600'>
+                  未填写标题前缀：将直接使用每个字幕文件名作为标题。
+                </p>
+              )}
+            </div>
+          )}
 
           <div>
             {isMediaSubtitleVariant && (

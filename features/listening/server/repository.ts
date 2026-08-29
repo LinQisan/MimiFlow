@@ -1,6 +1,7 @@
 import { StudyTimeKind, type CollectionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export function listCollectionsByTypes(types: CollectionType[]) {
   return prisma.collection.findMany({
@@ -21,18 +22,19 @@ export function listCollectionsByTypes(types: CollectionType[]) {
 }
 
 export async function getListeningStudySummary(materialIds: string[]) {
+  const userId = await getCurrentUserId()
   const [studySummary, studyDays, stats] = await Promise.all([
     prisma.studyTimeDaily.aggregate({
-      where: { kind: StudyTimeKind.LESSON_SPEAKING },
+      where: { userId, kind: StudyTimeKind.LESSON_SPEAKING },
       _sum: { seconds: true },
     }),
     prisma.studyTimeDaily.count({
-      where: { kind: StudyTimeKind.LESSON_SPEAKING, seconds: { gt: 0 } },
+      where: { userId, kind: StudyTimeKind.LESSON_SPEAKING, seconds: { gt: 0 } },
     }),
     materialIds.length === 0
       ? Promise.resolve([])
       : prisma.materialPlaytimeStat.findMany({
-          where: { profileId: 'default', materialId: { in: materialIds } },
+          where: { profileId: userId, materialId: { in: materialIds } },
           select: {
             materialId: true,
             totalSeconds: true,
@@ -52,9 +54,11 @@ export async function getListeningDetailSupport(
   materialId: string,
   sourceIds: string[],
 ) {
+  const userId = await getCurrentUserId()
   const [relatedVocab, playtimeStat] = await Promise.all([
     prisma.vocabulary.findMany({
       where: {
+        userId,
         sentenceLinks: {
           some: {
             sentence: {
@@ -72,7 +76,7 @@ export async function getListeningDetailSupport(
       },
     }),
     prisma.materialPlaytimeStat.findUnique({
-      where: { profileId_materialId: { profileId: 'default', materialId } },
+      where: { profileId_materialId: { profileId: userId, materialId } },
       select: { totalSeconds: true, playedDays: true },
     }),
   ])

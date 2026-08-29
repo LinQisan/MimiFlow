@@ -6,6 +6,7 @@ import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { executeAction } from '@/lib/actions/result'
 import { parseInput } from '@/lib/validation/schema'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'
@@ -17,10 +18,20 @@ export async function updateQuestionNote(questionId: string, note: string) {
       return { success: false, message: '题目不存在' }
     }
     const normalizedNote = (note || '').trim()
-    await prisma.question.update({
-      where: { id: normalizedQuestionId },
-      data: { note: normalizedNote || null },
-    })
+    const userId = await getCurrentUserId()
+    if (!normalizedNote) {
+      await prisma.userQuestionNote.deleteMany({
+        where: { userId, questionId: normalizedQuestionId },
+      })
+    } else {
+      await prisma.userQuestionNote.upsert({
+        where: {
+          userId_questionId: { userId, questionId: normalizedQuestionId },
+        },
+        create: { userId, questionId: normalizedQuestionId, note: normalizedNote },
+        update: { note: normalizedNote },
+      })
+    }
     return { success: true, message: '笔记已保存' }
   } catch (error: unknown) {
     console.error('保存题目笔记失败:', getErrorMessage(error), error)

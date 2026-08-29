@@ -228,6 +228,43 @@ export const resolveJapaneseTargetSurface = (
   return bestMatch?.surface || target
 }
 
+const resolveInflectedPronunciation = (
+  surface: string,
+  base: string,
+  pronunciation: string,
+) => {
+  if (surface === base) return pronunciation
+
+  const replaceReadingEnding = (baseEnding: string, surfaceEnding: string) => {
+    if (!baseEnding || !pronunciation.endsWith(baseEnding)) return ''
+    return `${pronunciation.slice(0, -baseEnding.length)}${surfaceEnding}`
+  }
+
+  // Irregular verbs whose conjugating ending contains more than one kana.
+  for (const ending of ['する', 'くる']) {
+    if (!base.endsWith(ending)) continue
+    const stem = base.slice(0, -ending.length)
+    if (!surface.startsWith(stem)) continue
+    const resolved = replaceReadingEnding(ending, surface.slice(stem.length))
+    if (resolved) return resolved
+  }
+
+  // Godan verbs, ichidan verbs and i-adjectives all expose their changing
+  // kana at the end of the dictionary form. Replace that kana in the reading
+  // with the surface ending generated for the inflected form.
+  const baseEnding = base.slice(-1)
+  const stem = base.slice(0, -1)
+  if (baseEnding && surface.startsWith(stem)) {
+    const resolved = replaceReadingEnding(
+      baseEnding,
+      surface.slice(stem.length),
+    )
+    if (resolved) return resolved
+  }
+
+  return pronunciation
+}
+
 export const buildPronunciationMapForText = (
   text: string,
   pronunciationMap: Record<string, string>,
@@ -237,10 +274,12 @@ export const buildPronunciationMapForText = (
   const aliasMap = buildSurfaceAliasMapForText(text, words)
   const out: Record<string, string> = {}
   Object.entries(aliasMap).forEach(([surface, base]) => {
-    const pronunciation =
+    const basePronunciation =
       (pronunciationMap[surface] || pronunciationMap[base] || '').trim()
-    if (!pronunciation) return
-    out[surface] = pronunciation
+    if (!basePronunciation) return
+    out[surface] = pronunciationMap[surface]
+      ? basePronunciation
+      : resolveInflectedPronunciation(surface, base, basePronunciation)
   })
   return out
 }

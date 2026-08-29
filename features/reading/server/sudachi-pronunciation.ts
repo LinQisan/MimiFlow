@@ -17,6 +17,8 @@ export type SudachiPronunciationResult = {
 
 const MAX_CACHE_ENTRIES = 100
 const MAX_OUTPUT_BYTES = 10 * 1024 * 1024
+const MIN_ANALYSIS_TIMEOUT_MS = 15_000
+const MAX_ANALYSIS_TIMEOUT_MS = 60_000
 const cache = new Map<string, SudachiPronunciationResult>()
 const pending = new Map<string, Promise<SudachiPronunciationResult>>()
 let didWarn = false
@@ -85,10 +87,15 @@ const runSudachi = (texts: string[]) =>
       handler()
     }
 
+    const characterCount = texts.reduce((sum, text) => sum + text.length, 0)
+    const analysisTimeoutMs = Math.min(
+      MAX_ANALYSIS_TIMEOUT_MS,
+      Math.max(MIN_ANALYSIS_TIMEOUT_MS, 10_000 + characterCount * 2),
+    )
     const timeout = setTimeout(() => {
       child.kill()
       finish(() => reject(new Error('SudachiPy annotation timed out')))
-    }, 10_000)
+    }, analysisTimeoutMs)
 
     child.stdout.on('data', (chunk: Buffer) => {
       outputBytes += chunk.length
@@ -207,7 +214,7 @@ export async function getSudachiPronunciationMap(
       if (!didWarn) {
         didWarn = true
         console.warn(
-          'SudachiPy is unavailable; article reading will use personal pronunciations.',
+          'SudachiPy is unavailable; Japanese text will use personal pronunciations.',
           error,
         )
       }

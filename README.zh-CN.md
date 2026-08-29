@@ -16,7 +16,7 @@ Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL 和 ts-f
 
 ## 本地运行
 
-需要 Node.js 22–24、Python 3 和 PostgreSQL。
+需要 Node.js 22–26、Python 3 和 PostgreSQL。
 
 ```bash
 npm install

@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
   useShowMeaning,
@@ -9,29 +10,63 @@ import {
 import { usePracticeSession } from '@/hooks/usePracticeSession'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { QuestionRenderer } from './QuestionRenderer'
-import WordTooltip from './WordTooltip'
 import QuestionNoteEditor from './QuestionNoteEditor'
 import type { ExamQuestion } from './question-renderer/types'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import {
+  formatOptionLabel,
+  normalizeOptionLabelFormat,
+} from '@/utils/questions/optionLabels'
 import {
   buildPracticeQuestionGroups,
   findPracticeQuestionGroupIndex,
 } from '@/modules/practice/domain/question-groups'
 import { buildAnswerCardSections } from '@/modules/practice/domain/answer-card-sections'
+import PronunciationSourceSelector, {
+  PRONUNCIATION_SOURCE_STORAGE_KEY,
+  type PronunciationSource,
+} from '@/features/reading/ui/PronunciationSourceSelector'
+import JlptScoreSummary from '@/features/practice/ui/JlptScoreSummary'
+import type { JlptScoreSummary as JlptScoreSummaryData } from '@/modules/practice/domain/jlpt-scoring'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
+import { copyText } from '@/features/reading/ui/copy-text'
+import {
+  formatJapaneseTextWithRubyNotation,
+  formatJapaneseTextWithSudachiRubyNotation,
+} from '@/utils/language/japaneseRuby'
+import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
+import type { SudachiLexeme } from '@/features/reading/domain/sudachi'
+import { buildExamAnnotationTexts } from '@/features/practice/domain/exam-annotation-texts'
+
+const WordTooltip = dynamic(() => import('./WordTooltip'))
 
 interface PracticePlayerProps {
   questions: ExamQuestion[]
   paperTitle?: string
   paperLanguage?: string | null
-  mode?: 'exam' | 'random' | 'single'
+  mode?: 'exam' | 'random' | 'single' | 'history'
   initialIndex?: number
   exitHref?: string
   exitLabel?: string
   paperId?: string
   draftKey?: string
   restoreDraftIndex?: boolean
+  historyPositionKey?: string
+  restoreHistoryPosition?: boolean
   pronunciationMap: Record<string, string>
+  sudachiPronunciationMap?: Record<string, string>
+  sudachiLexicon?: Record<string, SudachiLexeme>
+  sudachiAvailable?: boolean
+  loadSudachiInBackground?: boolean
   vocabularyMetaMap: Record<string, VocabularyMeta>
+  initialAnswers?: Record<string, string>
+  initialSubmitted?: boolean
+  historyCorrectQuestionIds?: string[]
+  historyWrongQuestionIds?: string[]
 }
 
 type AttemptStats = {
@@ -48,6 +83,11 @@ const initAttemptStats = (questions: ExamQuestion[]) =>
     }
     return acc
   }, {})
+
+const restoreAuthoredOptionOrder = (question: ExamQuestion): ExamQuestion =>
+  question.authoredOptions
+    ? { ...question, options: question.authoredOptions }
+    : question
 
 const isEditableKeyboardTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false
@@ -79,15 +119,41 @@ export function PracticePlayer({
   paperId,
   draftKey,
   restoreDraftIndex = true,
+  historyPositionKey,
+  restoreHistoryPosition = false,
   pronunciationMap,
+  sudachiPronunciationMap: initialSudachiPronunciationMap = {},
+  sudachiLexicon: initialSudachiLexicon = {},
+  sudachiAvailable: initialSudachiAvailable = false,
+  loadSudachiInBackground = false,
   vocabularyMetaMap,
+  initialAnswers = {},
+  initialSubmitted = false,
+  historyCorrectQuestionIds = [],
+  historyWrongQuestionIds = [],
 }: PracticePlayerProps) {
+  const currentUser = useCurrentUser()
+  const pronunciationStorageKey = userStorageKey(
+    currentUser.id,
+    PRONUNCIATION_SOURCE_STORAGE_KEY,
+  )
   const router = useRouter()
-  const { selection, closeSelection } = useTextSelection()
+  const [selectionEnabled, setSelectionEnabled] = React.useState(true)
+  const { selection, closeSelection } = useTextSelection(selectionEnabled)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
   const [localPronunciationMap, setLocalPronunciationMap] =
     React.useState(pronunciationMap)
+  const [sudachiPronunciationMap, setSudachiPronunciationMap] =
+    React.useState(initialSudachiPronunciationMap)
+  const [sudachiLexicon, setSudachiLexicon] =
+    React.useState(initialSudachiLexicon)
+  const [sudachiAvailable, setSudachiAvailable] =
+    React.useState(initialSudachiAvailable)
+  const [pronunciationSource, setPronunciationSourceState] =
+    React.useState<PronunciationSource>(
+      sudachiAvailable ? 'sudachi' : 'personal',
+    )
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     React.useState(vocabularyMetaMap)
   const [attemptStatsByQuestion, setAttemptStatsByQuestion] = React.useState<
@@ -96,13 +162,30 @@ export function PracticePlayer({
   const [persistState, setPersistState] = React.useState<
     'idle' | 'saving' | 'saved' | 'error'
   >('idle')
+  const [scoreSummary, setScoreSummary] =
+    React.useState<JlptScoreSummaryData | null>(null)
   const [copyState, setCopyState] = React.useState<'idle' | 'copied' | 'error'>(
     'idle',
+  )
+  const historyPositionScope = historyPositionKey
+    ? userStorageKey(currentUser.id, historyPositionKey)
+    : null
+  const [restoredHistoryPositionScope, setRestoredHistoryPositionScope] =
+    React.useState<string | null>(null)
+  const [savedNotesByQuestionId, setSavedNotesByQuestionId] = React.useState<
+    Record<string, string>
+  >(() =>
+    questions.reduce<Record<string, string>>((notes, question) => {
+      notes[question.id] = (question.note || '').trim()
+      return notes
+    }, {}),
   )
 
   const session = usePracticeSession(questions, initialIndex, {
     draftKey,
     restoreDraftIndex,
+    initialAnswers,
+    initialSubmitted,
   })
   const questionGroups = React.useMemo(
     () => buildPracticeQuestionGroups(questions),
@@ -111,6 +194,23 @@ export function PracticePlayer({
   const answerCardSections = React.useMemo(
     () => buildAnswerCardSections(questions, paperLanguage),
     [paperLanguage, questions],
+  )
+  const questionNumberMap = React.useMemo(
+    () =>
+      Object.fromEntries(
+        answerCardSections.flatMap(section =>
+          section.items.map(item => [item.question.id, item.localNumber]),
+        ),
+      ),
+    [answerCardSections],
+  )
+  const historyCorrectQuestionIdSet = React.useMemo(
+    () => new Set(historyCorrectQuestionIds),
+    [historyCorrectQuestionIds],
+  )
+  const historyWrongQuestionIdSet = React.useMemo(
+    () => new Set(historyWrongQuestionIds),
+    [historyWrongQuestionIds],
   )
   const currentGroupIndex = findPracticeQuestionGroupIndex(
     questionGroups,
@@ -123,12 +223,154 @@ export function PracticePlayer({
     normalizedPaperLanguage.startsWith('ja-') ||
     normalizedPaperLanguage.includes('japanese') ||
     /日语|日文|日本语|日本語/.test(paperLanguage || '')
+  const isEnglishPaper =
+    normalizedPaperLanguage === 'en' ||
+    normalizedPaperLanguage.startsWith('en-') ||
+    normalizedPaperLanguage.includes('english')
+
+  React.useEffect(() => {
+    const stored = readUserStorageValue(
+      currentUser.id,
+      PRONUNCIATION_SOURCE_STORAGE_KEY,
+    )
+    if (stored === 'personal' || (stored === 'sudachi' && sudachiAvailable)) {
+      setPronunciationSourceState(stored)
+    }
+  }, [currentUser.id, pronunciationStorageKey, sudachiAvailable])
+
+  React.useEffect(() => {
+    if (!loadSudachiInBackground || sudachiAvailable) return
+    const controller = new AbortController()
+    const texts = buildExamAnnotationTexts(questions)
+    if (texts.length === 0) return
+
+    void fetch('/api/practice/pronunciation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts }),
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) return null
+        return (await response.json()) as {
+          available?: boolean
+          pronunciationMap?: Record<string, string>
+          lexicon?: Record<string, SudachiLexeme>
+        }
+      })
+      .then(result => {
+        if (!result?.available) return
+        setSudachiPronunciationMap(result.pronunciationMap || {})
+        setSudachiLexicon(result.lexicon || {})
+        setSudachiAvailable(true)
+        const stored = readUserStorageValue(
+          currentUser.id,
+          PRONUNCIATION_SOURCE_STORAGE_KEY,
+        )
+        if (stored !== 'personal') setPronunciationSourceState('sudachi')
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      })
+
+    return () => controller.abort()
+  }, [
+    currentUser.id,
+    loadSudachiInBackground,
+    questions,
+    sudachiAvailable,
+  ])
+
+  React.useEffect(() => {
+    if (
+      mode !== 'history' ||
+      !historyPositionKey ||
+      !historyPositionScope ||
+      !restoreHistoryPosition ||
+      restoredHistoryPositionScope === historyPositionScope
+    ) {
+      return
+    }
+
+    const storedQuestionId = readUserStorageValue(
+      currentUser.id,
+      historyPositionKey,
+    )
+    const storedQuestionIndex = storedQuestionId
+      ? questions.findIndex(question => question.id === storedQuestionId)
+      : -1
+
+    if (storedQuestionIndex >= 0) {
+      session.setCurrentIndex(storedQuestionIndex)
+    }
+    setRestoredHistoryPositionScope(historyPositionScope)
+  }, [
+    currentUser.id,
+    historyPositionKey,
+    historyPositionScope,
+    mode,
+    questions,
+    restoreHistoryPosition,
+    restoredHistoryPositionScope,
+    session,
+  ])
+
+  React.useEffect(() => {
+    if (mode !== 'history') return
+    if (
+      historyPositionScope &&
+      restoreHistoryPosition &&
+      restoredHistoryPositionScope !== historyPositionScope
+    ) {
+      return
+    }
+
+    const currentQuestionId = questions[session.currentIndex]?.id
+    if (!currentQuestionId) return
+
+    if (historyPositionKey) {
+      window.localStorage.setItem(historyPositionScope!, currentQuestionId)
+    }
+
+    const url = new URL(window.location.href)
+    if (url.searchParams.get('qid') === currentQuestionId) return
+    url.searchParams.set('qid', currentQuestionId)
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${url.pathname}${url.search}${url.hash}`,
+    )
+  }, [
+    historyPositionKey,
+    historyPositionScope,
+    mode,
+    questions,
+    restoreHistoryPosition,
+    restoredHistoryPositionScope,
+    session.currentIndex,
+  ])
+
+  const setPronunciationSource = (source: PronunciationSource) => {
+    if (source === 'sudachi' && !sudachiAvailable) return
+    setPronunciationSourceState(source)
+    window.localStorage.setItem(pronunciationStorageKey, source)
+  }
 
   const handleSelectOption = React.useCallback(
     (questionId: string, optionId: string) => {
       session.selectOption(questionId, optionId)
     },
     [session],
+  )
+
+  const handleQuestionNoteSaved = React.useCallback(
+    (questionId: string, savedNote: string) => {
+      setSavedNotesByQuestionId(previous => ({
+        ...previous,
+        [questionId]: savedNote,
+      }))
+    },
+    [],
   )
 
   const goToPreviousGroup = React.useCallback(() => {
@@ -237,11 +479,51 @@ export function PracticePlayer({
   }
 
   const currentQuestion = currentGroup.questions[0]
+  const displayedCurrentQuestion = session.isSubmitted
+    ? restoreAuthoredOptionOrder(currentQuestion)
+    : currentQuestion
+  const displayedAllQuestions = session.isSubmitted
+    ? (currentQuestion.lessonId ? currentGroup.questions : questions).map(
+        restoreAuthoredOptionOrder,
+      )
+    : currentQuestion.lessonId
+      ? currentGroup.questions
+      : questions
+  const reviewWrongQuestionIds =
+    mode === 'history'
+      ? historyWrongQuestionIds
+      : session.isSubmitted
+        ? session.wrongIndexes
+            .map(index => questions[index]?.id)
+            .filter((id): id is string => Boolean(id))
+        : []
   const currentCardSection = answerCardSections.find(section =>
     section.items.some(item => item.question.id === currentQuestion.id),
   )
   const currentSectionItems = currentCardSection?.items.filter(item =>
     currentGroup.questions.some(question => question.id === item.question.id),
+  )
+  const currentNumberingItems = currentCardSection
+    ? answerCardSections
+        .filter(section => {
+          if (isJapanesePaper) {
+            return currentCardSection.materialKey === 'LISTENING'
+              ? section.key === currentCardSection.key
+              : section.materialKey !== 'LISTENING'
+          }
+          if (isEnglishPaper) {
+            return (
+              (section.materialKey === 'LISTENING') ===
+              (currentCardSection.materialKey === 'LISTENING')
+            )
+          }
+          return section.key === currentCardSection.key
+        })
+        .flatMap(section => section.items)
+    : []
+  const currentNumberTotal = Math.max(
+    0,
+    ...currentNumberingItems.map(item => item.localNumber),
   )
   const currentLocalRange = currentSectionItems?.length
     ? currentSectionItems.length === 1
@@ -250,8 +532,8 @@ export function PracticePlayer({
     : `${currentGroup.startIndex + 1}`
   const currentQuestionRange = currentCardSection
     ? isJapanesePaper
-      ? `問題${currentCardSection.sectionNumber}｜${currentCardSection.sectionTitle} · ${currentLocalRange}/${currentCardSection.items.length}`
-      : `${currentCardSection.sectionTitle} · ${currentLocalRange}/${currentCardSection.items.length}`
+      ? `問題${currentCardSection.sectionNumber}｜${currentCardSection.sectionTitle} · ${currentLocalRange}/${currentNumberTotal}`
+      : `${currentCardSection.sectionTitle} · ${currentLocalRange}/${currentNumberTotal}`
     : `第 ${currentGroup.startIndex + 1} 题`
   const isSingleMode = questionGroups.length === 1
   const currentWrongPosition = session.wrongIndexes.indexOf(
@@ -283,9 +565,10 @@ export function PracticePlayer({
     currentStats.total > 0
       ? Math.round((currentStats.correct / currentStats.total) * 100)
       : 0
-  const answeredProgress = Math.round(
-    (session.answeredCount / questions.length) * 100,
-  )
+  const answeredProgress =
+    mode === 'history'
+      ? Math.round(((currentGroupIndex + 1) / questionGroups.length) * 100)
+      : Math.round((session.answeredCount / questions.length) * 100)
 
   const handleSubmit = async () => {
     if (session.isSubmitted || persistState === 'saving') return
@@ -327,6 +610,7 @@ export function PracticePlayer({
     const result = (await response.json()) as {
       success?: boolean
       results?: Array<{ questionId: string; isCorrect: boolean }>
+      submission?: JlptScoreSummaryData | null
     }
     if (!result.success) {
       setPersistState('error')
@@ -345,34 +629,58 @@ export function PracticePlayer({
       return next
     })
     session.clearDraft()
+    setScoreSummary(result.submission || null)
     setPersistState('saved')
   }
 
-  const buildCopyPayload = (question: ExamQuestion, questionIndex: number) => {
+  const formatCopyText = (value: string) => {
+    if (!showPronunciation || !isJapanesePaper) return value
+    if (pronunciationSource === 'sudachi') {
+      return Object.keys(sudachiLexicon).length > 0
+        ? formatJapaneseTextWithSudachiRubyNotation(value, sudachiLexicon)
+        : formatJapaneseTextWithRubyNotation(
+            value,
+            buildPronunciationMapForText(value, sudachiPronunciationMap),
+          )
+    }
+    return formatJapaneseTextWithRubyNotation(
+      value,
+      buildPronunciationMapForText(value, localPronunciationMap),
+    )
+  }
+
+  const buildCopyPayload = (question: ExamQuestion) => {
     const sections: string[] = []
-    sections.push(`第 ${questionIndex + 1} 题`)
     if (question.lesson?.sectionTitle) {
-      sections.push(`听力部分：${question.lesson.sectionTitle}`)
+      sections.push(`听力部分：${formatCopyText(question.lesson.sectionTitle)}`)
     }
     if (question.lesson?.audioFile) {
       sections.push(`音频：${question.lesson.audioFile}`)
     }
 
-    const context = (question.contextSentence || '').trim()
-    const prompt = (question.prompt || '').trim()
-    if (prompt) sections.push(`题目：${prompt}`)
-    else if (context) sections.push(`题目：${context}`)
-
     if (question.passageId) {
       const passage = (question.passage?.content || '').trim()
-      if (passage) sections.push(`阅读正文：\n${passage}`)
+      if (passage) sections.push(`阅读正文：\n${formatCopyText(passage)}`)
     }
 
+    const context = (question.contextSentence || '').trim()
+    const prompt = (question.prompt || '').trim()
+    if (prompt) sections.push(`题目：${formatCopyText(prompt)}`)
+    else if (context) sections.push(`题目：${formatCopyText(context)}`)
+
+    const optionLabelFormat = normalizeOptionLabelFormat(
+      question.optionLabelFormat,
+      'numeric',
+    )
     const optionLines = (question.options || [])
       .map((option, index) => {
-        const marker = String.fromCharCode(65 + index)
+        const marker = formatOptionLabel(
+          index,
+          optionLabelFormat,
+          question.customOptionLabels,
+        )
         const text = (option.text || '').trim()
-        return text ? `${marker}. ${text}` : ''
+        return text ? `${marker}. ${formatCopyText(text)}` : ''
       })
       .filter(Boolean)
     if (optionLines.length > 0) {
@@ -382,37 +690,52 @@ export function PracticePlayer({
     return sections.join('\n\n').trim()
   }
 
-  const writeClipboard = async (text: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-      return
-    }
+  const buildListeningTranscriptCopyPayload = (copyQuestions: ExamQuestion[]) => {
+    const lessonQuestion = copyQuestions.find(
+      question => (question.lesson?.dialogues || []).length > 0,
+    )
+    if (!lessonQuestion?.lesson) return ''
 
-    if (typeof document === 'undefined') {
-      throw new Error('clipboard api unavailable')
-    }
-
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', 'true')
-    textarea.style.position = 'fixed'
-    textarea.style.left = '-9999px'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const copied = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    if (!copied) throw new Error('copy fallback failed')
+    const lessonId = lessonQuestion.lessonId || lessonQuestion.lesson.id
+    const lessonQuestions = copyQuestions.filter(
+      question => (question.lessonId || question.lesson?.id) === lessonId,
+    )
+    const transcriptText = [...(lessonQuestion.lesson.dialogues || [])]
+      .filter(line => (line.text || '').trim())
+      .sort(
+        (left, right) =>
+          left.start - right.start ||
+          (left.sequenceId || 0) - (right.sequenceId || 0),
+      )
+      .map(line => formatCopyText((line.text || '').trim()))
+      .join('\n')
+    const optionsText = lessonQuestions
+      .flatMap(question => question.options || [])
+      .map((option, index) => {
+        const text = (option.text || '').trim()
+        return text ? `${index + 1}. ${formatCopyText(text)}` : ''
+      })
+      .filter(Boolean)
+      .join('\n')
+    const sections = [
+      transcriptText,
+      optionsText ? `选项：\n${optionsText}` : '',
+    ].filter(Boolean)
+    return sections.join('\n\n').trim()
   }
 
   const handleCopyCurrentQuestion = async () => {
-    const payload = currentGroup.questions
-      .map((question, index) =>
-        buildCopyPayload(question, currentGroup.startIndex + index),
-      )
-      .join('\n\n---\n\n')
+    const copyQuestions = session.isSubmitted
+      ? currentGroup.questions.map(restoreAuthoredOptionOrder)
+      : currentGroup.questions
+    const listeningPayload = buildListeningTranscriptCopyPayload(copyQuestions)
+    const payload = listeningPayload ||
+      copyQuestions
+        .map(question => buildCopyPayload(question))
+        .join('\n\n---\n\n')
     if (!payload) return
     try {
-      await writeClipboard(payload)
+      await copyText(payload)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1800)
     } catch {
@@ -442,8 +765,8 @@ export function PracticePlayer({
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
       <header className='sticky top-0 z-40 border-b border-slate-200 bg-[#f7f7f5]/95 backdrop-blur'>
-        <div className='mx-auto flex h-14 max-w-7xl items-center gap-2 px-2 sm:px-3 md:px-6'>
-          <div className='flex min-w-0 flex-1 items-center gap-2'>
+        <div className='mx-auto grid min-h-14 max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 md:flex md:h-14 md:gap-2 md:px-6'>
+          <div className='flex h-12 min-w-0 items-center gap-2 md:h-auto md:flex-1'>
             {mode !== 'single' && (
               <>
                 <button
@@ -467,7 +790,15 @@ export function PracticePlayer({
               </p>
               {!isSingleMode && (
                 <p className='mt-0.5 hidden truncate text-[10px] text-slate-500 md:block'>
-                  {session.isSubmitted ? (
+                  {mode === 'history' ? (
+                    <>
+                      整套 {questions.length} 题
+                      <span className='mx-1 text-slate-300'>·</span>
+                      错题 {historyWrongQuestionIds.length}
+                      <span className='mx-1 text-slate-300'>·</span>
+                      第 {currentGroupIndex + 1}/{questionGroups.length} 页
+                    </>
+                  ) : session.isSubmitted ? (
                     <>
                       本次答对 {session.correctCount}/{session.submittedCount}
                       {session.unansweredCount > 0 && (
@@ -492,7 +823,42 @@ export function PracticePlayer({
             </div>
           </div>
 
-          <div className='flex shrink-0 items-center gap-0.5 sm:gap-1'>
+          {!isSingleMode ? (
+            <div className='flex shrink-0 items-center gap-1 md:hidden'>
+              <button
+                type='button'
+                aria-label='上一题'
+                disabled={currentGroupIndex === 0}
+                onClick={goToPreviousGroup}
+                className='inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-semibold text-slate-600 transition-colors active:bg-slate-200 disabled:opacity-25'>
+                ←
+              </button>
+              <button
+                type='button'
+                aria-label='下一题'
+                disabled={currentGroupIndex === questionGroups.length - 1}
+                onClick={goToNextGroup}
+                className='inline-flex h-9 w-9 items-center justify-center rounded-md bg-slate-900 text-sm font-semibold text-white transition-colors active:bg-slate-700 disabled:opacity-25'>
+                →
+              </button>
+            </div>
+          ) : null}
+
+          <div className='col-span-2 flex min-w-0 items-center justify-between gap-2 border-t border-slate-200/80 py-1.5 md:col-span-1 md:shrink-0 md:justify-start md:gap-1 md:border-0 md:py-0'>
+            <div className='flex min-w-0 items-center gap-0.5 sm:gap-1'>
+            <button
+              type='button'
+              aria-pressed={selectionEnabled}
+              aria-label='切换划词'
+              onClick={() => setSelectionEnabled(value => !value)}
+              className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
+                selectionEnabled
+                  ? 'bg-slate-200 text-slate-900'
+                  : 'text-slate-500 hover:bg-slate-200/70'
+              }`}>
+              <span className='sm:hidden'>划</span>
+              <span className='hidden sm:inline'>划词</span>
+            </button>
             {isJapanesePaper ? (
               <>
                 <button
@@ -508,6 +874,13 @@ export function PracticePlayer({
                   <span className='sm:hidden'>注</span>
                   <span className='hidden sm:inline'>注音</span>
                 </button>
+                {showPronunciation ? (
+                  <PronunciationSourceSelector
+                    value={pronunciationSource}
+                    onChange={setPronunciationSource}
+                    sudachiAvailable={sudachiAvailable}
+                  />
+                ) : null}
                 <button
                   type='button'
                   aria-pressed={showMeaning}
@@ -523,10 +896,12 @@ export function PracticePlayer({
                 </button>
               </>
             ) : null}
+            </div>
 
+            <div className='flex shrink-0 items-center gap-0.5 sm:gap-1'>
             {!isSingleMode && (
               <>
-                <span className='mx-0.5 h-5 w-px bg-slate-300' />
+                <span className='mx-0.5 hidden h-5 w-px bg-slate-300 md:block' />
                 <button
                   type='button'
                   onClick={() => session.setShowSheet(!session.showSheet)}
@@ -554,7 +929,13 @@ export function PracticePlayer({
                 <button
                   type='button'
                   onClick={() => void handleCopyCurrentQuestion()}
-                  aria-label='复制题目和选项'
+                  aria-label={
+                    currentGroup.questions.some(
+                      question => (question.lesson?.dialogues || []).length > 0,
+                    )
+                      ? '复制听力原文和选项'
+                      : '复制题目和选项'
+                  }
                   className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
                     copyState === 'copied'
                       ? 'bg-slate-200 text-slate-900'
@@ -582,24 +963,26 @@ export function PracticePlayer({
                         : '复制'}
                   </span>
                 </button>
-                <button
-                  type='button'
-                  aria-label='上一题'
-                  title='上一题（←）'
-                  disabled={currentGroupIndex === 0}
-                  onClick={goToPreviousGroup}
-                  className='inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30'>
-                  ←
-                </button>
-                <button
-                  type='button'
-                  aria-label='下一题'
-                  title='下一题（→）'
-                  disabled={currentGroupIndex === questionGroups.length - 1}
-                  onClick={goToNextGroup}
-                  className='inline-flex h-9 min-w-8 items-center justify-center rounded-md bg-slate-900 px-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30'>
-                  →
-                </button>
+                <div className='hidden items-center gap-0.5 md:flex'>
+                  <button
+                    type='button'
+                    aria-label='上一题'
+                    title='上一题（←）'
+                    disabled={currentGroupIndex === 0}
+                    onClick={goToPreviousGroup}
+                    className='inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30'>
+                    ←
+                  </button>
+                  <button
+                    type='button'
+                    aria-label='下一题'
+                    title='下一题（→）'
+                    disabled={currentGroupIndex === questionGroups.length - 1}
+                    onClick={goToNextGroup}
+                    className='inline-flex h-9 min-w-8 items-center justify-center rounded-md bg-slate-900 px-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-30'>
+                    →
+                  </button>
+                </div>
               </>
             )}
 
@@ -612,6 +995,7 @@ export function PracticePlayer({
                 {persistState === 'saving' ? '保存中' : '交卷'}
               </button>
             ) : null}
+            </div>
           </div>
         </div>
 
@@ -643,14 +1027,16 @@ export function PracticePlayer({
             role='dialog'
             aria-modal='true'
             aria-label='答题卡'
-            className='fixed inset-x-3 top-[4.25rem] z-50 mx-auto max-h-[calc(100vh-5.25rem)] max-w-6xl overflow-hidden rounded-xl border border-slate-200 bg-[#f7f7f5] shadow-[0_24px_70px_-28px_rgba(15,23,42,0.55)]'>
+            className='fixed inset-x-3 top-[6.5rem] z-50 mx-auto max-h-[calc(100vh-7.5rem)] max-w-6xl overflow-hidden rounded-xl border border-slate-200 bg-[#f7f7f5] shadow-[0_24px_70px_-28px_rgba(15,23,42,0.55)] md:top-[4.25rem] md:max-h-[calc(100vh-5.25rem)]'>
             <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3 md:px-5'>
               <div>
                 <h4 className='text-sm font-bold tracking-tight text-slate-900 md:text-base'>
                   答题卡
                 </h4>
                 <p className='mt-0.5 text-[11px] text-slate-500'>
-                  已答 {session.answeredCount}/{questions.length}
+                  {mode === 'history'
+                    ? `整套 ${questions.length} 题 · 答对 ${historyCorrectQuestionIds.length} · 答错 ${historyWrongQuestionIds.length}`
+                    : `已答 ${session.answeredCount}/${questions.length}`}
                 </p>
               </div>
               <button
@@ -661,7 +1047,7 @@ export function PracticePlayer({
               </button>
             </div>
 
-            <div className='custom-scrollbar grid max-h-[calc(100vh-9.5rem)] gap-x-8 gap-y-5 overflow-y-auto p-4 md:grid-cols-2 md:p-5'>
+            <div className='custom-scrollbar grid max-h-[calc(100vh-11.75rem)] gap-x-8 gap-y-5 overflow-y-auto p-4 md:max-h-[calc(100vh-9.5rem)] md:grid-cols-2 md:p-5'>
               {answerCardSections.map((section, sectionIndex) => (
                 <React.Fragment key={section.key}>
                   {(sectionIndex === 0 ||
@@ -690,11 +1076,16 @@ export function PracticePlayer({
                         const isCurrent =
                           session.currentIndex === item.questionIndex
                         const isAnswered = !!session.answers[question.id]
+                        const isHistoryCorrect =
+                          mode === 'history' &&
+                          historyCorrectQuestionIdSet.has(question.id)
                         const isWrong =
-                          session.isQuestionSubmitted(question.id) &&
-                          !!session.getCorrectOptionId(question) &&
-                          session.answers[question.id] !==
-                            session.getCorrectOptionId(question)
+                          mode === 'history'
+                            ? historyWrongQuestionIdSet.has(question.id)
+                            : session.isQuestionSubmitted(question.id) &&
+                              !!session.getCorrectOptionId(question) &&
+                              session.answers[question.id] !==
+                                session.getCorrectOptionId(question)
 
                         return (
                           <button
@@ -714,6 +1105,8 @@ export function PracticePlayer({
                                 ? 'border-slate-900 bg-slate-900 text-white'
                                 : isWrong
                                   ? 'border-rose-300 bg-rose-50 text-rose-700'
+                                  : isHistoryCorrect
+                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
                                   : isAnswered
                                     ? 'border-slate-400 bg-slate-200/70 text-slate-900'
                                     : 'border-slate-300 bg-white text-slate-600 hover:border-slate-600 hover:text-slate-900'
@@ -734,7 +1127,7 @@ export function PracticePlayer({
       <main
         onMouseDown={handleQuestionAreaMouseDown}
         className='flex w-full flex-1 flex-col px-5 py-4 md:px-10 md:py-6'>
-        {session.isSubmitted && (
+        {session.isSubmitted && mode !== 'history' && (
           <div className='mx-auto mb-3 flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 text-xs text-slate-500'>
             <div className='flex flex-wrap items-center gap-x-3 gap-y-1.5'>
               <span className='font-semibold text-slate-900'>答题结果</span>
@@ -783,15 +1176,19 @@ export function PracticePlayer({
           </div>
         )}
 
+        {scoreSummary ? (
+          <div className='mx-auto mb-5 w-full max-w-5xl'>
+            <JlptScoreSummary summary={scoreSummary} />
+          </div>
+        ) : null}
+
         <QuestionRenderer
           key={currentGroup.key}
-          question={currentQuestion}
+          question={displayedCurrentQuestion}
           currentAnswer={session.answers[currentQuestion.id]}
           currentSortingOrder={session.sortingDrafts[currentQuestion.id]}
           answerMap={session.answers}
-          allQuestions={
-            currentQuestion.lessonId ? currentGroup.questions : questions
-          }
+          allQuestions={displayedAllQuestions}
           onSelect={optionId =>
             handleSelectOption(currentQuestion.id, optionId)
           }
@@ -803,11 +1200,17 @@ export function PracticePlayer({
           isSubmitted={session.isQuestionSubmitted(currentQuestion.id)}
           isInteractionLocked={session.isSubmitted}
           submittedQuestionIds={session.submittedQuestionIds}
+          wrongQuestionIds={reviewWrongQuestionIds}
+          questionNumberMap={questionNumberMap}
           isJapanesePaper={isJapanesePaper}
           annotation={{
             showPronunciation,
             showMeaning,
-            pronunciationMap: localPronunciationMap,
+            groupKanji: pronunciationSource === 'sudachi',
+            pronunciationMap:
+              pronunciationSource === 'sudachi'
+                ? sudachiPronunciationMap
+                : localPronunciationMap,
             vocabularyMetaMap: localVocabularyMetaMap,
           }}
         />
@@ -817,12 +1220,13 @@ export function PracticePlayer({
             <QuestionNoteEditor
               key={question.id}
               questionId={question.id}
-              initialNote={(question.note || '').trim()}
+              initialNote={savedNotesByQuestionId[question.id] ?? question.note}
+              onSaved={handleQuestionNoteSaved}
             />
           ) : null,
         )}
 
-        {selection.isVisible && selection.sourceType !== '' && (
+        {selectionEnabled && selection.isVisible && selection.sourceType !== '' && (
           <WordTooltip
             word={selection.text}
             x={selection.x}
@@ -831,6 +1235,7 @@ export function PracticePlayer({
             contextSentence={selection.contextSentence}
             sourceType={selection.sourceType}
             sourceId={selection.sourceId}
+            detectedWord={selection.detectedWord}
             initialMeta={localVocabularyMetaMap[selection.text]}
             onSaved={({ word, meta }) => {
               setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))

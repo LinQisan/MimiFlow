@@ -1,6 +1,7 @@
 import { MaterialType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 export function listMediaSubtitleMaterials() {
   return prisma.material.findMany({
@@ -28,10 +29,12 @@ export function findMediaSubtitleById(id: string) {
   })
 }
 
-export function listVocabularyBySentenceSourceIds(sourceIds: string[]) {
+export async function listVocabularyBySentenceSourceIds(sourceIds: string[]) {
   if (sourceIds.length === 0) return Promise.resolve([])
+  const userId = await getCurrentUserId()
   return prisma.vocabulary.findMany({
     where: {
+      userId,
       sentenceLinks: {
         some: {
           sentence: {

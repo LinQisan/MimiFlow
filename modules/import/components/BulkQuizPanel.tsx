@@ -3,10 +3,6 @@
 import type { RefObject } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
 import { MIN_QUESTION_OPTION_COUNT } from '@/features/questions/domain/editor'
-import {
-  IMPORT_QUESTION_TYPES,
-  getImportQuestionTypeLabel,
-} from '../domain/question-type-options'
 import type { ParsedQuizDraft } from '../types'
 import {
   supportsSeparateQuestionContext,
@@ -23,11 +19,8 @@ type Props = {
   bulkEditingIndex: number
   setBulkEditingIndex: (index: number) => void
   handleBulkRemoveQuestion: (index: number) => void
-  handleBulkQuestionTypeChange: (
-    index: number,
-    value: ParsedQuizDraft['questionType'],
-  ) => void
   handleBulkPromptChange: (index: number, value: string) => void
+  handleBulkExplanationChange: (index: number, value: string) => void
   bulkContextTextareaRef: RefObject<HTMLTextAreaElement | null>
   handleBulkContextSentenceChange: (index: number, value: string) => void
   handleBulkPickTargetWordFromSelection: () => void
@@ -45,7 +38,7 @@ type Props = {
   ) => void
   handleBulkAddOption: (questionIndex: number) => void
   handleBulkRemoveOption: (questionIndex: number, optionIndex: number) => void
-  fixedQuestionTypeLabel?: string
+  questionTypeLabel: string
 }
 
 export default function BulkQuizPanel({
@@ -58,8 +51,8 @@ export default function BulkQuizPanel({
   bulkEditingIndex,
   setBulkEditingIndex,
   handleBulkRemoveQuestion,
-  handleBulkQuestionTypeChange,
   handleBulkPromptChange,
+  handleBulkExplanationChange,
   bulkContextTextareaRef,
   handleBulkContextSentenceChange,
   handleBulkPickTargetWordFromSelection,
@@ -70,7 +63,7 @@ export default function BulkQuizPanel({
   handleBulkOptionTextChange,
   handleBulkAddOption,
   handleBulkRemoveOption,
-  fixedQuestionTypeLabel,
+  questionTypeLabel,
 }: Props) {
   const currentQuestion = bulkParsedQuestions[bulkEditingIndex]
   const canPickTargetWord = currentQuestion
@@ -91,13 +84,13 @@ export default function BulkQuizPanel({
         <label
           id='bulk-import-heading'
           className='mb-3 block text-sm font-bold text-slate-900'>
-          粘贴题目
+          粘贴题目（单题或多题）
         </label>
         <textarea
           value={bulkQuickInput}
           onChange={event => setBulkQuickInput(event.target.value)}
           rows={7}
-          placeholder={'粘贴多道题目，可连续排列或用空行分隔\n支持 1、①、A 等选项序号'}
+          placeholder={'粘贴一题或多题，系统会自动识别数量\n支持 1．题干、1/①/A 选项以及 **目标词**'}
           className='w-full resize-y border border-slate-300 bg-white px-4 py-3 text-sm leading-6 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
         />
         <div className='mt-3 flex flex-wrap items-center gap-3'>
@@ -123,7 +116,9 @@ export default function BulkQuizPanel({
           </button>
           {bulkParsedQuestions.length > 0 ? (
             <span className='text-xs font-semibold text-slate-500'>
-              已识别 {bulkParsedQuestions.length} 题
+              {bulkParsedQuestions.length === 1
+                ? '已识别为单题'
+                : `已识别为 ${bulkParsedQuestions.length} 题`}
             </span>
           ) : null}
         </div>
@@ -131,14 +126,29 @@ export default function BulkQuizPanel({
 
       {currentQuestion ? (
         <div className='border-t border-slate-200 pt-6'>
-          <div className='flex items-center gap-1 overflow-x-auto border-b border-slate-200'>
-            {bulkParsedQuestions.map((question, questionIndex) => (
+          <div className='border-b border-slate-200 pb-3 md:hidden'>
+            <CustomSelect
+              value={String(bulkEditingIndex)}
+              onChange={event =>
+                setBulkEditingIndex(Number(event.target.value))
+              }
+              aria-label='选择要编辑的题目'
+              className='h-10 w-full border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700'>
+              {bulkParsedQuestions.map((_, questionIndex) => (
+                <option key={`bulk-question-option-${questionIndex}`} value={questionIndex}>
+                  第 {questionIndex + 1} 题
+                </option>
+              ))}
+            </CustomSelect>
+          </div>
+          <div className='hidden items-center gap-1 overflow-x-auto border-b border-slate-200 md:flex'>
+            {bulkParsedQuestions.map((_, questionIndex) => (
               <button
                 key={`bulk-question-${questionIndex}`}
                 type='button'
                 onClick={() => setBulkEditingIndex(questionIndex)}
                 aria-current={bulkEditingIndex === questionIndex ? 'step' : undefined}
-                title={getImportQuestionTypeLabel(question.questionType)}
+                title={questionTypeLabel}
                 className={`shrink-0 !rounded-none border-b-2 px-3 py-2.5 text-xs font-bold outline-none transition-colors focus-visible:border-slate-950 focus-visible:text-slate-950 ${
                   bulkEditingIndex === questionIndex
                     ? 'border-slate-900 text-slate-950'
@@ -156,8 +166,7 @@ export default function BulkQuizPanel({
                   第 {bulkEditingIndex + 1} 题
                 </span>
                 <span className='ml-2 text-xs font-semibold text-slate-400'>
-                  {fixedQuestionTypeLabel ||
-                    getImportQuestionTypeLabel(currentQuestion.questionType)}
+                  {questionTypeLabel}
                 </span>
               </div>
               <button
@@ -168,38 +177,7 @@ export default function BulkQuizPanel({
               </button>
             </div>
 
-            <div className='grid gap-5 md:grid-cols-[220px_minmax(0,1fr)]'>
-              {fixedQuestionTypeLabel ? (
-                <div>
-                  <span className='mb-2 block text-xs font-bold text-slate-500'>
-                    题型
-                  </span>
-                  <div className='flex h-11 items-center border-b border-slate-950 px-1 text-sm font-bold text-slate-950'>
-                    {fixedQuestionTypeLabel}
-                  </div>
-                </div>
-              ) : (
-              <label className='block'>
-                <span className='mb-2 block text-xs font-bold text-slate-500'>
-                  题型
-                </span>
-                <CustomSelect
-                  value={currentQuestion.questionType}
-                  onChange={event =>
-                    handleBulkQuestionTypeChange(
-                      bulkEditingIndex,
-                      event.target.value as ParsedQuizDraft['questionType'],
-                    )
-                  }
-                  className='h-11 w-full border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-slate-200'>
-                  {IMPORT_QUESTION_TYPES.map(type => (
-                    <option key={type.value} value={type.value}>
-                      問題 {type.number}｜{type.label}
-                    </option>
-                  ))}
-                </CustomSelect>
-              </label>
-              )}
+            <div>
               <label className='block'>
                 <span className='mb-2 block text-xs font-bold text-slate-500'>
                   题干
@@ -359,6 +337,23 @@ export default function BulkQuizPanel({
                 </div>
               ))}
             </div>
+            <label className='mt-6 block'>
+              <span className='mb-2 block text-xs font-bold text-slate-500'>
+                解析（可选）
+              </span>
+              <textarea
+                value={currentQuestion.explanation}
+                onChange={event =>
+                  handleBulkExplanationChange(
+                    bulkEditingIndex,
+                    event.target.value,
+                  )
+                }
+                rows={2}
+                className='w-full resize-y border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
+                placeholder='可补充解题思路或易错点'
+              />
+            </label>
           </div>
         </div>
       ) : null}

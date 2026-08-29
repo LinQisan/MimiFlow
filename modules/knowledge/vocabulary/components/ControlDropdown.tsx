@@ -5,6 +5,9 @@ import { useEffect, useRef, useState } from 'react'
 type DropdownOption = {
   value: string
   label: string
+  selectedLabel?: string
+  depth?: number
+  count?: number
 }
 
 export default function ControlDropdown({
@@ -43,7 +46,9 @@ export default function ControlDropdown({
         aria-expanded={open}
         onClick={() => setOpen(previous => !previous)}
         className='flex h-10 w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold text-gray-700 shadow-sm outline-none transition-[background-color,border-color,color,box-shadow] hover:border-gray-300 hover:shadow focus-visible:border-slate-300 focus-visible:ring-2 focus-visible:ring-slate-100'>
-        <span className='truncate'>{selected?.label || ''}</span>
+        <span className='truncate'>
+          {selected?.selectedLabel || selected?.label || ''}
+        </span>
         <span
           className={`ml-2 text-[11px] font-black text-gray-400 transition-transform ${
             open ? 'rotate-180' : ''
@@ -62,12 +67,26 @@ export default function ControlDropdown({
                   onChange(option.value)
                   setOpen(false)
                 }}
-                className={`flex w-full items-center rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm font-semibold transition-colors ${
                   option.value === value
                     ? 'bg-slate-100 text-slate-800'
                     : 'text-gray-700 hover:bg-gray-50'
-                }`}>
-                {option.label}
+                  }`}>
+                <span
+                  className='flex min-w-0 items-center gap-2'
+                  style={{ paddingLeft: `${(option.depth || 0) * 14}px` }}>
+                  {option.depth ? (
+                    <span aria-hidden='true' className='shrink-0 text-slate-300'>
+                      ↳
+                    </span>
+                  ) : null}
+                  <span className='truncate'>{option.label}</span>
+                </span>
+                {typeof option.count === 'number' ? (
+                  <span className='shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500'>
+                    {option.count}
+                  </span>
+                ) : null}
               </button>
             ))}
           </div>

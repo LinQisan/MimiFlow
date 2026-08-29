@@ -20,6 +20,7 @@ export type ExamQuestion = {
   contextSentence?: string | null
   targetWord?: string | null
   options?: ExamQuestionOption[]
+  authoredOptions?: ExamQuestionOption[]
   optionLabelFormat?: OptionLabelFormat | null
   customOptionLabels?: string[]
   shuffleOptions?: boolean
@@ -52,6 +53,7 @@ export type OnSelectOption = (optionId: string) => void
 export type ExamAnnotationSettings = {
   showPronunciation: boolean
   showMeaning: boolean
+  groupKanji?: boolean
   pronunciationMap: Record<string, string>
   vocabularyMetaMap: Record<string, VocabularyMeta>
 }

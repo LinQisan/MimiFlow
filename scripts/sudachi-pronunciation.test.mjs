@@ -9,6 +9,7 @@ import {
   buildWordFrequency,
   isSudachiContentWord,
   mergeWordFrequencyRows,
+  sortWordFrequencyRows,
 } from '../features/reading/domain/sudachi.ts'
 import {
   annotateJapaneseTextWithSudachi,
@@ -31,6 +32,13 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
     path.join(ROOT, 'features/reading/ui/ArticleReaderClient.tsx'),
     'utf8',
   )
+  const sourceSelector = await readFile(
+    path.join(
+      ROOT,
+      'features/reading/ui/PronunciationSourceSelector.tsx',
+    ),
+    'utf8',
+  )
   const readingCenter = await readFile(
     path.join(ROOT, 'app/(library)/reading/page.tsx'),
     'utf8',
@@ -43,6 +51,14 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
     path.join(ROOT, 'features/reading/ui/WordFrequencyDialog.tsx'),
     'utf8',
   )
+  const frequencyServer = await readFile(
+    path.join(ROOT, 'features/reading/server/word-frequency.ts'),
+    'utf8',
+  )
+  const frequencyRoute = await readFile(
+    path.join(ROOT, 'app/api/reading/word-frequency/route.ts'),
+    'utf8',
+  )
   const selectionHook = await readFile(
     path.join(ROOT, 'hooks/useTextSelection.ts'),
     'utf8',
@@ -53,17 +69,23 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
   assert.doesNotMatch(requirements, /SudachiDict-core==/)
   assert.match(articlePage, /getSudachiPronunciationMap/)
   assert.doesNotMatch(ebookPage, /getSudachiPronunciationMap/)
-  assert.match(reader, /SudachiPy/)
-  assert.match(reader, />\s*我的\s*</)
+  assert.match(reader, /PronunciationSourceSelector/)
+  assert.match(sourceSelector, />\s*默认\s*</)
+  assert.match(sourceSelector, />\s*我的\s*</)
   assert.match(reader, /annotateJapaneseTextWithSudachi/)
   assert.match(reader, /ExtractVocabularyPanel/)
   assert.match(selectionHook, /data-sudachi-lemma/)
-  assert.match(readingCenter, /buildWordFrequency/)
-  assert.match(readingCenter, /frequencySource\.map/)
+  assert.doesNotMatch(readingCenter, /getSudachiPronunciationMap/)
+  assert.match(readingCenter, /frequencyMaterialCount/)
   assert.match(readingCenter, /collectionType === 'PAPER'/)
   assert.match(readingCenterClient, /WordFrequencyDialog/)
   assert.match(readingCenterClient, /筛选阅读/)
+  assert.match(frequencyServer, /getSudachiPronunciationMap/)
+  assert.match(frequencyServer, /buildWordFrequency/)
+  assert.match(frequencyRoute, /buildReadingFrequencyMaterials/)
   assert.match(frequencyDialog, /阅读词频/)
+  assert.match(frequencyDialog, /api\/reading\/word-frequency/)
+  assert.match(frequencyDialog, /正在按需统计词频/)
   assert.match(frequencyDialog, /仅新闻/)
   assert.match(frequencyDialog, /仅真题文章/)
   assert.match(frequencyDialog, /全部年份/)
@@ -170,6 +192,70 @@ test('mixed katakana and kanji annotate only the kanji reading', () => {
   )
 })
 
+test('Sudachi ruby annotates numeric units and excludes okurigana', () => {
+  const lexicon = Object.fromEntries(
+    [
+      ['１０万', 'いちれいまん', ['名詞', '数詞']],
+      ['人', 'にん', ['接尾辞']],
+      ['辿っ', 'たどっ', ['動詞']],
+      ['て', 'て', ['助詞']],
+    ].map(([surface, reading, partsOfSpeech]) => [
+      surface,
+      {
+        surface,
+        dictionaryForm: surface === '辿っ' ? '辿る' : surface,
+        normalizedForm: surface,
+        reading,
+        dictionaryReading: surface === '辿っ' ? 'たどる' : reading,
+        partsOfSpeech,
+      },
+    ]),
+  )
+  const text = '１０万人が辿ってきた。'
+  const html = annotateJapaneseTextWithSudachi(text, lexicon, {
+    useSudachiReading: true,
+    rubyEnabled: true,
+  })
+
+  assert.doesNotMatch(html, /<ruby[^>]*>１０万/)
+  assert.match(
+    html,
+    /１０<ruby>万<rt[^>]*>まん<\/rt><\/ruby><\/span><span[^>]*><ruby>人<rt[^>]*>にん<\/rt><\/ruby>/,
+  )
+  assert.match(html, /<ruby>辿<rt[^>]*>たど<\/rt><\/ruby>っ/)
+  assert.doesNotMatch(html, /<rt[^>]*>たどっ<\/rt>/)
+  assert.equal(
+    formatJapaneseTextWithSudachiRubyNotation(text, lexicon),
+    '１０{万|まん}{人|にん}が{辿|たど}ってきた。',
+  )
+})
+
+test('Sudachi ruby adopts an inline parenthetical reading without the okurigana', () => {
+  const surface = '辿（たど）っ'
+  const lexicon = {
+    [surface]: {
+      surface,
+      dictionaryForm: '辿る',
+      normalizedForm: '辿る',
+      reading: 'たどっ',
+      dictionaryReading: 'たどる',
+      partsOfSpeech: ['動詞'],
+    },
+  }
+  const text = '道を辿（たど）っている。'
+  const html = annotateJapaneseTextWithSudachi(text, lexicon, {
+    useSudachiReading: true,
+    rubyEnabled: true,
+  })
+
+  assert.match(html, /<ruby>辿<rt[^>]*>たど<\/rt><\/ruby>（たど）っ/)
+  assert.doesNotMatch(html, /<rt[^>]*>たどっ<\/rt>/)
+  assert.equal(
+    formatJapaneseTextWithSudachiRubyNotation(text, lexicon),
+    '道を{辿|たど}（たど）っている。',
+  )
+})
+
 test('word extraction and frequency merge inflections by dictionary form', () => {
   assert.equal(
     isSudachiContentWord({
@@ -223,7 +309,7 @@ test('word extraction and frequency merge inflections by dictionary form', () =>
       word: '考える',
       surface: '考え',
       reading: 'かんがえる',
-      partOfSpeech: '動詞',
+      partOfSpeech: '动词',
       count: 2,
     },
   ])
@@ -232,7 +318,7 @@ test('word extraction and frequency merge inflections by dictionary form', () =>
       word: '考える',
       surface: '考え',
       reading: 'かんがえる',
-      partOfSpeech: '動詞',
+      partOfSpeech: '动词',
       count: 2,
       documentCount: 2,
     },
@@ -243,4 +329,32 @@ test('word extraction and frequency merge inflections by dictionary form', () =>
   ])
   assert.equal(merged[0].count, 4)
   assert.equal(merged[0].documentCount, 2)
+})
+
+test('learning ranking lowers foundational words and ignores internal markers', () => {
+  const makeToken = (word, count, partsOfSpeech = ['名詞']) =>
+    Array.from({ length: count }, (_, index) => ({
+      surface: word,
+      dictionaryForm: word,
+      normalizedForm: word,
+      reading: word,
+      dictionaryReading: word,
+      partsOfSpeech,
+      textIndex: index,
+      begin: 0,
+      end: word.length,
+    }))
+  const rows = buildWordFrequency([
+    ...makeToken('こと', 20),
+    ...makeToken('頑丈', 3, ['形状詞']),
+    ...makeToken('sort', 10),
+    ...makeToken('注', 10),
+  ])
+
+  assert.deepEqual(rows.map(row => row.word), ['頑丈', 'こと'])
+  assert.deepEqual(rows.map(row => row.partOfSpeech), ['形容动词', '名词'])
+  assert.deepEqual(
+    sortWordFrequencyRows(rows, 'frequency').map(row => row.word),
+    ['こと', '頑丈'],
+  )
 })

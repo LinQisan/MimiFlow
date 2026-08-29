@@ -6,6 +6,7 @@ import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
 
 export async function updatePaperAttributes(formData: FormData) {
   try {
@@ -28,14 +29,29 @@ export async function updatePaperAttributes(formData: FormData) {
 
     const parsedSortOrder = Number.parseInt(sortOrderRaw || '0', 10)
     const sortOrder = Number.isFinite(parsedSortOrder) ? parsedSortOrder : 0
+    const paperAttributes = normalizePaperAttributes({
+      title,
+      language: languageRaw,
+      level: levelRaw,
+    })
 
     await prisma.collection.update({
       where: { id: paperId },
       data: {
         title,
         description: descriptionRaw || null,
-        language: languageRaw || null,
-        level: levelRaw || null,
+        language:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.language
+            : languageRaw || null,
+        level:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.level
+            : levelRaw || null,
+        acceptedMaterialTypes:
+          collectionType === CollectionType.PAPER
+            ? paperAttributes.acceptedMaterialTypes
+            : undefined,
         parentId: parentIdRaw || null,
         sortOrder,
         collectionType,

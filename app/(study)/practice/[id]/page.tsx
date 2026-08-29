@@ -10,10 +10,9 @@ import {
 } from "@/features/questions/domain/paper-editor";
 import { getToeicPartByQuestionType } from "@/features/questions/domain/toeic";
 import { groupQuestionsByMaterial } from "@/modules/practice/domain/material-question-groups";
-import { buildPaperFrequencyDocuments } from "@/features/practice/domain/paper-word-frequency";
+import { buildAnswerCardSections } from "@/modules/practice/domain/answer-card-sections";
 import PaperWordFrequencyDialog from "@/features/practice/ui/PaperWordFrequencyDialog";
-import { getSudachiPronunciationMap } from "@/features/reading/server/sudachi-pronunciation";
-import { buildWordFrequency } from "@/features/reading/domain/sudachi";
+import { formatTokyoDateTime } from "@/utils/time/format";
 
 export default async function PaperPage({
   params,
@@ -26,10 +25,6 @@ export default async function PaperPage({
   if (!paper) {
     notFound();
   }
-  const frequencySource = buildPaperFrequencyDocuments(paper);
-  const paperFrequency = buildWordFrequency(
-    (await getSudachiPronunciationMap(frequencySource.texts)).tokens,
-  );
   const normalizedPaperLanguage = (paper.language || "").trim().toLowerCase();
   const isJapanesePaper =
     normalizedPaperLanguage === "ja" ||
@@ -212,6 +207,26 @@ export default async function PaperPage({
       }, new Map())
       .values(),
   ).sort((a, b) => a.sectionNumber - b.sectionNumber);
+  const questionNumberMap = new Map(
+    buildAnswerCardSections(
+      [
+        ...quizTypeSections.flatMap(section => section.questions),
+        ...passageQuestions,
+        ...listeningSections.flatMap(section =>
+          section.questions.map(question => ({
+            ...question,
+            lesson: {
+              sectionNumber: section.sectionNumber,
+              sectionTitle: section.title,
+            },
+          })),
+        ),
+      ],
+      paper.language,
+    ).flatMap(section =>
+      section.items.map(item => [item.question.id, item.localNumber] as const),
+    ),
+  );
   const totalQuestionCount =
     quizTypeSections.reduce(
       (total, section) => total + section.questions.length,
@@ -246,10 +261,7 @@ export default async function PaperPage({
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <PaperWordFrequencyDialog
-                rows={paperFrequency}
-                stats={frequencySource.stats}
-              />
+              <PaperWordFrequencyDialog paperId={paper.id} />
               <Link
                 href={`/practice/${encodeURIComponent(paper.id)}/do`}
                 className="ui-btn ui-btn-primary"
@@ -259,6 +271,92 @@ export default async function PaperPage({
             </div>
           </div>
         </header>
+
+        {paper.practiceSubmissions.length > 0 && (
+          <section className="mb-10">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold tracking-tight text-slate-950">
+                  做题记录
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  最近 {paper.practiceSubmissions.length} 次完整作答
+                </p>
+              </div>
+              <span className="text-xs text-slate-400">满分 180</span>
+            </div>
+            <div className="overflow-x-auto border-y border-slate-200">
+              <table className="w-full min-w-[44rem] text-left text-sm">
+                <thead className="border-b border-slate-200 text-[11px] font-semibold text-slate-500">
+                  <tr>
+                    <th className="px-3 py-3">完成时间</th>
+                    <th className="px-3 py-3 text-center">文字・词汇・语法</th>
+                    <th className="px-3 py-3 text-center">阅读</th>
+                    <th className="px-3 py-3 text-center">听力</th>
+                    <th className="px-3 py-3 text-center">总分</th>
+                    <th className="px-3 py-3 text-right">结果</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {paper.practiceSubmissions.map(submission => {
+                    const reviewHref = `/practice/${encodeURIComponent(paper.id)}/submissions/${encodeURIComponent(submission.id)}`;
+                    return (
+                    <tr key={submission.id} className="hover:bg-white/70">
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">
+                        <Link href={reviewHref} className="block hover:text-slate-950">
+                          {formatTokyoDateTime(submission.completedAt)}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold tabular-nums text-slate-800">
+                        {submission.languageScore ?? "—"}
+                        {submission.languageScore !== null && (
+                          <span className="font-normal text-slate-400">/60</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold tabular-nums text-slate-800">
+                        {submission.readingScore ?? "—"}
+                        {submission.readingScore !== null && (
+                          <span className="font-normal text-slate-400">/60</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold tabular-nums text-slate-800">
+                        {submission.listeningScore ?? "—"}
+                        {submission.listeningScore !== null && (
+                          <span className="font-normal text-slate-400">/60</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-center font-black tabular-nums text-slate-950">
+                        {submission.totalScore ?? "—"}
+                        {submission.totalScore !== null && (
+                          <span className="font-normal text-slate-400">/180</span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3 text-right text-xs font-bold">
+                        <Link href={reviewHref} className="inline-flex items-center gap-2 hover:underline">
+                          {submission.passed === null ? (
+                            <span className="text-slate-400">
+                              答对 {submission.correctCount}/{submission.questionCount}
+                            </span>
+                          ) : submission.passed ? (
+                            <span className="text-emerald-700">合格</span>
+                          ) : (
+                            <span className="text-rose-700">未合格</span>
+                          )}
+                          <span className="text-slate-600">
+                            查看错题（{submission.questionCount - submission.correctCount}）→
+                          </span>
+                        </Link>
+                      </td>
+                    </tr>
+                  )})}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 text-[11px] text-slate-500">
+              N1 合格条件：总分至少 100 分，且三个部分均至少 19 分。
+            </p>
+          </section>
+        )}
 
         {languageQuestionGroups.map((languageGroup) => (
           <section key={languageGroup.key} className="mt-8">
@@ -297,7 +395,7 @@ export default async function PaperPage({
                           className="group flex gap-3 border-t border-slate-100 py-3 text-sm transition first:border-t-0 hover:text-slate-950"
                         >
                           <span className="w-6 shrink-0 font-semibold tabular-nums text-slate-400 group-hover:text-slate-700">
-                            {question.questionNumber}
+                            {questionNumberMap.get(question.id) || question.questionNumber}
                           </span>
                           <span className="line-clamp-2 font-medium text-slate-700 group-hover:text-slate-950">
                             {question.prompt ||
@@ -322,14 +420,14 @@ export default async function PaperPage({
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {languageGroup.readingGrammarQuestions.map(
-                      (question, index) => (
+                      question => (
                         <Link
                           href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
                           key={question.id}
-                          aria-label={`文章の文法第 ${index + 1} 题`}
+                          aria-label={`文章の文法第 ${questionNumberMap.get(question.id) || 1} 题`}
                           className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                         >
-                          {index + 1}
+                          {questionNumberMap.get(question.id) || 1}
                         </Link>
                       ),
                     )}
@@ -375,10 +473,10 @@ export default async function PaperPage({
                               <Link
                                 key={passageGroup.materialId}
                                 href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
-                                aria-label={`${section.title}第 ${passageIndex + 1} 篇，${question.passageTitle}`}
+                                aria-label={`${section.title}第 ${questionNumberMap.get(question.id) || passageIndex + 1} 题，${question.passageTitle}`}
                                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                               >
-                                {passageIndex + 1}
+                                {questionNumberMap.get(question.id) || passageIndex + 1}
                               </Link>
                             );
                           }
@@ -400,10 +498,10 @@ export default async function PaperPage({
                                     <Link
                                       key={question.id}
                                       href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
-                                      aria-label={`小问 ${questionIndex + 1}`}
+                                      aria-label={`第 ${questionNumberMap.get(question.id) || questionIndex + 1} 题`}
                                       className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                                     >
-                                      {questionIndex + 1}
+                                      {questionNumberMap.get(question.id) || questionIndex + 1}
                                     </Link>
                                   ),
                                 )}
@@ -470,10 +568,10 @@ export default async function PaperPage({
                               <Link
                                 href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
                                 key={lessonGroup.materialId}
-                                aria-label={`${section.title}第 ${lessonIndex + 1} 段音频`}
+                                aria-label={`${section.title}第 ${questionNumberMap.get(question.id) || lessonIndex + 1} 题`}
                                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                               >
-                                {lessonIndex + 1}
+                                {questionNumberMap.get(question.id) || lessonIndex + 1}
                               </Link>
                             );
                           }
@@ -495,10 +593,10 @@ export default async function PaperPage({
                                     <Link
                                       key={question.id}
                                       href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
-                                      aria-label={`小问 ${questionIndex + 1}`}
+                                      aria-label={`第 ${questionNumberMap.get(question.id) || questionIndex + 1} 题`}
                                       className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                                     >
-                                      {questionIndex + 1}
+                                      {questionNumberMap.get(question.id) || questionIndex + 1}
                                     </Link>
                                   ),
                                 )}

@@ -10,10 +10,23 @@ export type SentenceItem = {
   posTags?: string[]
 }
 
-export type AudioData = {
+type AudioData = {
   audioFile: string
   start: number
   end: number
+}
+
+type VocabularyWordbookMembership = {
+  id: string
+  name: string
+  pathLabel: string
+}
+
+type VocabularyWordbookSource = VocabularyWordbookMembership & {
+  pronunciations: string[]
+  partsOfSpeech: string[]
+  meanings: string[]
+  sentences: SentenceItem[]
 }
 
 export type VocabItem = {
@@ -30,6 +43,9 @@ export type VocabItem = {
   createdAt: Date
   folderId?: string | null
   folderName?: string | null
+  recordIds?: string[]
+  wordbooks?: VocabularyWordbookMembership[]
+  wordbookSources?: VocabularyWordbookSource[]
   sourceType: string
   sentences: SentenceItem[]
   review?: {
@@ -51,6 +67,7 @@ export type FolderItem = {
   id: string
   name: string
   parentId: string | null
+  count?: number
 }
 
 export type InflectionVariant = {

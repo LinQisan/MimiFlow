@@ -3,10 +3,12 @@
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const isWordbookMoveValid = async (
   wordbookId: string,
   nextParentId: string | null,
+  userId: string,
 ) => {
   if (!nextParentId) return true
   if (nextParentId === wordbookId) return false
@@ -14,8 +16,8 @@ const isWordbookMoveValid = async (
   let cursor: string | null = nextParentId
   while (cursor) {
     if (cursor === wordbookId) return false
-    const parent: { parentId: string | null } | null = await prisma.wordbook.findUnique({
-        where: { id: cursor },
+    const parent: { parentId: string | null } | null = await prisma.wordbook.findFirst({
+        where: { id: cursor, userId },
         select: { parentId: true },
       })
     cursor = parent?.parentId || null
@@ -28,14 +30,15 @@ export async function createWordbook(
   parentId?: string | null,
 ) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedTitle = title.trim()
     if (!trimmedTitle) {
       return { success: false, message: '单词书名称不能为空' }
     }
     const nextParentId = parentId?.trim() || null
     if (nextParentId) {
-      const parent = await prisma.wordbook.findUnique({
-        where: { id: nextParentId },
+      const parent = await prisma.wordbook.findFirst({
+        where: { id: nextParentId, userId },
         select: { id: true },
       })
       if (!parent) {
@@ -44,6 +47,7 @@ export async function createWordbook(
     }
     const wordbook = await prisma.wordbook.create({
       data: {
+        userId,
         title: trimmedTitle,
         parentId: nextParentId,
       },
@@ -72,12 +76,18 @@ export async function createWordbook(
 
 export async function renameWordbook(wordbookId: string, title: string) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
     const trimmedTitle = title.trim()
     if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
     if (!trimmedTitle) return { success: false, message: '名称不能为空' }
+    const existing = await prisma.wordbook.findFirst({
+      where: { id: trimmedWordbookId, userId },
+      select: { id: true },
+    })
+    if (!existing) return { success: false, message: '单词书不存在' }
     const updated = await prisma.wordbook.update({
-      where: { id: trimmedWordbookId },
+      where: { id: existing.id },
       data: { title: trimmedTitle },
       select: { id: true, title: true, parentId: true },
     })
@@ -99,22 +109,23 @@ export async function moveWordbook(
   parentId: string | null,
 ) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
     const nextParentId = parentId?.trim() || null
     if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
-    const wordbook = await prisma.wordbook.findUnique({
-      where: { id: trimmedWordbookId },
+    const wordbook = await prisma.wordbook.findFirst({
+      where: { id: trimmedWordbookId, userId },
       select: { id: true },
     })
     if (!wordbook) return { success: false, message: '单词书不存在' }
     if (nextParentId) {
-      const target = await prisma.wordbook.findUnique({
-        where: { id: nextParentId },
+      const target = await prisma.wordbook.findFirst({
+        where: { id: nextParentId, userId },
         select: { id: true },
       })
       if (!target) return { success: false, message: '目标单词书不存在' }
     }
-    const valid = await isWordbookMoveValid(trimmedWordbookId, nextParentId)
+    const valid = await isWordbookMoveValid(trimmedWordbookId, nextParentId, userId)
     if (!valid) return { success: false, message: '不能移动到自身或子单词书下' }
     const updated = await prisma.wordbook.update({
       where: { id: trimmedWordbookId },
@@ -136,10 +147,11 @@ export async function moveWordbook(
 
 export async function deleteWordbook(wordbookId: string) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
     if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
-    const existing = await prisma.wordbook.findUnique({
-      where: { id: trimmedWordbookId },
+    const existing = await prisma.wordbook.findFirst({
+      where: { id: trimmedWordbookId, userId },
       select: { id: true },
     })
     if (!existing) return { success: false, message: '单词书不存在' }
@@ -161,6 +173,7 @@ export async function removeVocabularyFromWordbook(
   wordbookId: string,
 ) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
     if (!trimmedWordbookId) {
       return { success: false, message: '单词书无效' }
@@ -169,6 +182,8 @@ export async function removeVocabularyFromWordbook(
       where: {
         vocabularyId,
         wordbookId: trimmedWordbookId,
+        wordbook: { userId },
+        vocabulary: { userId },
       },
     })
     revalidatePath('/vocabulary')
@@ -181,7 +196,9 @@ export async function removeVocabularyFromWordbook(
 }
 
 export async function listWordbooksTree() {
+  const userId = await getCurrentUserId()
   const rows = await prisma.wordbook.findMany({
+    where: { userId },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
@@ -201,11 +218,12 @@ export async function listWordbooksTree() {
 }
 
 export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
+  const userId = await getCurrentUserId()
   const trimmedWordbookId = (wordbookId || '').trim()
   if (!trimmedWordbookId) return { success: false, updatedCount: 0 }
 
-  const wordbook = await prisma.wordbook.findUnique({
-    where: { id: trimmedWordbookId },
+  const wordbook = await prisma.wordbook.findFirst({
+    where: { id: trimmedWordbookId, userId },
     select: { id: true, title: true },
   })
   if (!wordbook) return { success: false, updatedCount: 0 }
@@ -272,6 +290,7 @@ export async function addVocabulariesToWordbook(
   wordbookId: string,
 ) {
   try {
+    const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
     if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
     const uniqueIds = Array.from(
@@ -281,8 +300,8 @@ export async function addVocabulariesToWordbook(
       return { success: false, message: '请先选择词条' }
     }
 
-    const existingWordbook = await prisma.wordbook.findUnique({
-      where: { id: trimmedWordbookId },
+    const existingWordbook = await prisma.wordbook.findFirst({
+      where: { id: trimmedWordbookId, userId },
       select: { id: true },
     })
     if (!existingWordbook) return { success: false, message: '单词书不存在' }
@@ -295,7 +314,14 @@ export async function addVocabulariesToWordbook(
       select: { vocabularyId: true },
     })
     const existingIds = new Set(existingEntries.map(row => row.vocabularyId))
-    const missingIds = uniqueIds.filter(id => !existingIds.has(id))
+    const ownedVocabularies = await prisma.vocabulary.findMany({
+      where: { userId, id: { in: uniqueIds } },
+      select: { id: true },
+    })
+    const ownedIds = new Set(ownedVocabularies.map(row => row.id))
+    const missingIds = uniqueIds.filter(
+      id => ownedIds.has(id) && !existingIds.has(id),
+    )
     const result = await prisma.wordbookVocabulary.createMany({
       data: missingIds.map(vocabularyId => ({
         wordbookId: trimmedWordbookId,

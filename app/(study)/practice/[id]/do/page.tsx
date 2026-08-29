@@ -20,6 +20,12 @@ export default async function ExamDoingPage({
   }
 
   const questions = examData.questions
+  const normalizedLanguage = (examData.paperLanguage || '').trim().toLowerCase()
+  const isJapanesePaper =
+    normalizedLanguage === 'ja' ||
+    normalizedLanguage.startsWith('ja-') ||
+    normalizedLanguage.includes('japanese') ||
+    /日语|日文|日本语|日本語/.test(examData.paperLanguage || '')
   let initialIndex = 0
   if (qid) {
     const foundIndex = questions.findIndex(q => q.id === qid)
@@ -45,6 +51,7 @@ export default async function ExamDoingPage({
         draftKey={`practice:draft:paper:${id}`}
         restoreDraftIndex={!qid}
         pronunciationMap={examData.pronunciationMap}
+        loadSudachiInBackground={isJapanesePaper}
         vocabularyMetaMap={examData.vocabularyMetaMap}
       />
     </div>

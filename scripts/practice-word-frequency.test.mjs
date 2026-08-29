@@ -3,7 +3,10 @@ import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
 
-import { buildPaperFrequencyDocuments } from '../features/practice/domain/paper-word-frequency.ts'
+import {
+  buildPaperFrequencyDocuments,
+  buildPaperWordbookDistribution,
+} from '../features/practice/domain/paper-word-frequency.ts'
 
 const ROOT = process.cwd()
 
@@ -46,22 +49,58 @@ test('paper frequency includes passages, listening transcripts, prompts and ever
   })
 })
 
+test('paper frequency reports hierarchical wordbook coverage and outside words', () => {
+  const distribution = buildPaperWordbookDistribution({
+    words: ['環境', '環境', '語彙', '未収録'],
+    wordbooks: [
+      { id: 'red', name: '红宝书', pathLabel: '红宝书', depth: 0 },
+      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 1 },
+      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 1 },
+    ],
+    memberships: [
+      { word: '環境', wordbookIds: ['red', 'n1'] },
+      { word: '語彙', wordbookIds: ['red', 'n2'] },
+    ],
+  })
+
+  assert.equal(distribution.totalWords, 3)
+  assert.equal(distribution.outsideCount, 1)
+  assert.equal(distribution.outsideRate, 33.3)
+  assert.deepEqual(
+    distribution.wordbooks.map(row => [row.id, row.matchedCount]),
+    [['red', 2], ['n1', 1], ['n2', 1]],
+  )
+})
+
 test('paper overview exposes Sudachi word frequency in a dialog', async () => {
-  const [page, repository, dialog, nextConfig] = await Promise.all([
+  const [page, repository, dialog, route, server, nextConfig] = await Promise.all([
     readFile(path.join(ROOT, 'app/(study)/practice/[id]/page.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'lib/repositories/exam/index.ts'), 'utf8'),
     readFile(
       path.join(ROOT, 'features/practice/ui/PaperWordFrequencyDialog.tsx'),
       'utf8',
     ),
+    readFile(
+      path.join(ROOT, 'app/api/practice/[id]/word-frequency/route.ts'),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'features/practice/server/paper-wordbook-distribution.ts'),
+      'utf8',
+    ),
     readFile(path.join(ROOT, 'next.config.ts'), 'utf8'),
   ])
 
-  assert.match(page, /buildPaperFrequencyDocuments/)
-  assert.match(page, /getSudachiPronunciationMap/)
   assert.match(page, /PaperWordFrequencyDialog/)
+  assert.match(route, /buildPaperFrequencyDocuments/)
+  assert.match(route, /getSudachiPronunciationMap/)
+  assert.match(route, /getPaperWordbookDistribution/)
   assert.match(repository, /dialogueTranscript/)
   assert.match(repository, /options: asArray/)
   assert.match(dialog, /听力原文、题干和全部选项/)
+  assert.match(dialog, /单词书分布/)
+  assert.match(dialog, /未加入任何单词书/)
+  assert.match(server, /word: \{ in: batch \}/)
+  assert.match(server, /ancestorIdsFor/)
   assert.match(nextConfig, /'\/practice\/\*'/)
 })

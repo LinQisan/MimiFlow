@@ -1,7 +1,6 @@
 'use server'
 import prisma from '@/lib/prisma'
-
-const PROFILE_ID = 'default'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const toDateKey = (date: Date) =>
   new Intl.DateTimeFormat('en-CA', {
@@ -18,13 +17,14 @@ export async function logMaterialPlaytime(materialId: string, seconds: number) {
 
     const safeSeconds = Math.max(0, Math.min(180, Math.round(seconds)))
     if (safeSeconds <= 0) return { success: true, totalSeconds: 0 }
+    const userId = await getCurrentUserId()
 
     const now = new Date()
     const todayKey = toDateKey(now)
     const previous = await prisma.materialPlaytimeStat.findUnique({
       where: {
         profileId_materialId: {
-          profileId: PROFILE_ID,
+          profileId: userId,
           materialId: normalizedMaterialId,
         },
       },
@@ -37,12 +37,12 @@ export async function logMaterialPlaytime(materialId: string, seconds: number) {
     const stat = await prisma.materialPlaytimeStat.upsert({
       where: {
         profileId_materialId: {
-          profileId: PROFILE_ID,
+          profileId: userId,
           materialId: normalizedMaterialId,
         },
       },
       create: {
-        profileId: PROFILE_ID,
+        profileId: userId,
         materialId: normalizedMaterialId,
         totalSeconds: safeSeconds,
         playedDays: 1,

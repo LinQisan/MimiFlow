@@ -381,8 +381,8 @@ test('content import keeps one task visible at a time', async () => {
   assert.match(uploadCenter, /collectionScope/)
   assert.match(uploadForm, /name='collectionLanguage'/)
   assert.equal(uploadCenter.includes('Step 2-4'), false)
-  assert.match(uploadCenter, /quizEntryMode === 'bulk'/)
-  assert.match(uploadCenter, /题目录入方式/)
+  assert.match(uploadCenter, /handleBulkQuickParse/)
+  assert.match(uploadCenter, /粘贴一题或多题后自动识别并进入校对/)
   assert.match(importPage, /speaking: 'audio'/)
   assert.equal(uploadCenter.includes('AudioTimingStudio'), false)
   assert.equal(uploadCenter.includes('补充语言与等级'), false)
@@ -390,6 +390,8 @@ test('content import keeps one task visible at a time', async () => {
   assert.match(uploadForm, /字幕语言/)
   assert.match(uploadForm, /章节名称/)
   assert.match(uploadForm, /const resolvedType = defaultMaterialType/)
+  assert.match(uploadForm, /usesAutomaticListeningTitle/)
+  assert.match(uploadForm, /无需填写标题。系统会优先识别文件名中的問題编号/)
   assert.equal(uploadForm.includes('paper.materialType === materialType'), false)
   assert.match(uploadForm, /name='collectionIds'/)
   assert.equal(uploadForm.includes('扩展材料属性（可选）'), false)
@@ -459,22 +461,10 @@ test('content import filters collections by explicit material capabilities', asy
     path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
     'utf8',
   )
-  const capabilityMigration = await readFile(
-    path.join(
-      ROOT,
-      'prisma/migrations/20260810000200_add_collection_material_capabilities/migration.sql',
-    ),
-    'utf8',
-  )
-
   assert.match(schema, /provider = "postgresql"/)
   assert.match(schema, /acceptedMaterialTypes MaterialType\[\]/)
   assert.match(repository, /acceptedMaterialTypes: \{ has: materialType \}/)
   assert.match(importPage, /reading: 'READING'/)
-  assert.match(
-    capabilityMigration,
-    /ARRAY\['READING', 'SPEAKING'\].*title = '天声人语'/s,
-  )
 })
 
 test('management pages keep classification, exams, and audio responsibilities separate', async () => {
@@ -575,5 +565,45 @@ test('schema keeps one vocabulary organization model and a typed question', asyn
     schema,
     /templateType\s+QuestionTemplate\s+@default\(CHOICE_QUIZ\)\s+@map\("template_type"\)/,
   )
-  assert.match(schema, /model LearnerProfile/)
+  assert.match(schema, /model User/)
+  assert.match(schema, /model UserQuestionNote/)
+  assert.match(schema, /userId\s+String\s+@map\("user_id"\)/)
+})
+
+test('local users own learning records and can be created or switched', async () => {
+  const schema = await readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8')
+  const currentUser = await readFile(
+    path.join(ROOT, 'modules/users/server/current-user.ts'),
+    'utf8',
+  )
+  const userActions = await readFile(
+    path.join(ROOT, 'modules/users/actions.ts'),
+    'utf8',
+  )
+  const attemptService = await readFile(
+    path.join(ROOT, 'modules/practice/server/attempt-service.ts'),
+    'utf8',
+  )
+  const navigation = await readFile(
+    path.join(ROOT, 'components/layout/StudyNavigation.tsx'),
+    'utf8',
+  )
+  const practiceSession = await readFile(
+    path.join(ROOT, 'hooks/usePracticeSession.ts'),
+    'utf8',
+  )
+
+  assert.match(schema, /model User \{/)
+  assert.match(schema, /model UserQuestionNote \{/)
+  assert.match(schema, /questionAttempts\s+QuestionAttempt\[\]/)
+  assert.match(schema, /practiceSubmissions\s+PracticePaperSubmission\[\]/)
+  assert.match(currentUser, /CURRENT_USER_COOKIE/)
+  assert.match(currentUser, /await cookies\(\)/)
+  assert.match(userActions, /export async function createUser/)
+  assert.match(userActions, /export async function switchUser/)
+  assert.match(userActions, /cookieStore\.set\(CURRENT_USER_COOKIE/)
+  assert.match(attemptService, /const userId = await getCurrentUserId\(\)/)
+  assert.match(attemptService, /userId_questionId/)
+  assert.match(navigation, /<UserSwitcher currentUser=\{currentUser\} users=\{users\} \/>/)
+  assert.match(practiceSession, /userStorageKey\(currentUser\.id, draftKey\)/)
 })

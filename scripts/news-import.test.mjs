@@ -86,12 +86,10 @@ test('news import requires structured choices and reading offers matching filter
   assert.match(actions, /automaticFrontPageSection/)
   assert.match(actions, /FLASH/)
   assert.match(readingPage, /formatNewsDate/)
-  assert.match(readingClient, /新闻筛选/)
+  assert.match(readingClient, /筛选新闻来源/)
   assert.match(readingClient, /全部来源/)
   assert.match(readingClient, /全部版面/)
-  assert.match(readingClient, /全部专栏/)
-  assert.match(readingClient, /全部主题/)
-  assert.match(readingClient, /全部刊面/)
+  assert.match(readingClient, /全部栏目/)
 })
 
 test('reading filters keep news metadata consistent and restorable', () => {

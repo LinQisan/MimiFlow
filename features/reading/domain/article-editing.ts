@@ -22,3 +22,32 @@ export function insertArticleText(
     cursor: before.length + insertion.length,
   }
 }
+
+export function insertArticleFootnote(
+  current: string,
+  selectionStart: number,
+  selectionEnd: number,
+) {
+  const start = Math.max(0, Math.min(selectionStart, current.length))
+  const end = Math.max(start, Math.min(selectionEnd, current.length))
+  const selectedText = current.slice(start, end).trim()
+
+  if (!selectedText || selectedText.includes('\n') || selectedText.length > 50) {
+    return { changed: false as const, text: current, cursor: end }
+  }
+
+  const usedNumbers = Array.from(current.matchAll(/\[\^(\d+)\]/g)).map(
+    match => Number(match[1]),
+  )
+  const footnoteNumber = Math.max(0, ...usedNumbers) + 1
+  const reference = `[^${footnoteNumber}]`
+  const body = `${current.slice(0, end)}${reference}${current.slice(end)}`
+  const text = `${body.trimEnd()}\n\n${reference}: ${selectedText}：`
+
+  return {
+    changed: true as const,
+    text,
+    cursor: text.length,
+    footnoteNumber,
+  }
+}

@@ -14,6 +14,7 @@ import {
 } from '@/features/questions/domain/paper-editor'
 import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
 import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
+import { buildPracticeQuestionNumberMap } from '@/modules/practice/domain/question-numbering'
 import {
   normalizeOptionLabelFormat,
   parseCustomOptionLabels,
@@ -21,7 +22,7 @@ import {
 } from '@/utils/questions/optionLabels'
 import { resolvePathInsideRoot } from '@/utils/files/path'
 
-export type PaperExportOption = {
+type PaperExportOption = {
   id: string
   text: string
   imageDataUrl: string | null
@@ -46,7 +47,7 @@ export type PaperExportQuestion = {
   localNumber: number
 }
 
-export type PaperExportDialogue = {
+type PaperExportDialogue = {
   text: string
   start: number
   sequenceId: number
@@ -65,7 +66,7 @@ export type PaperExportMaterial = {
   questions: PaperExportQuestion[]
 }
 
-export type PaperExportSection = {
+type PaperExportSection = {
   key: string
   materialKey: 'TEXT_VOCAB' | 'GRAMMAR' | 'READING' | 'LISTENING'
   materialTitle: string
@@ -164,7 +165,7 @@ async function loadPaper(paperId: string) {
     where: { id: paperId, collectionType: 'PAPER' },
     include: {
       materials: {
-        orderBy: { sortOrder: 'asc' },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         include: {
           material: {
             include: {
@@ -432,6 +433,26 @@ export async function getPaperExportData(
       materialOrder[left.materialKey] - materialOrder[right.materialKey] ||
       left.sectionNumber - right.sectionNumber,
   )
+  const questionNumberMap = buildPracticeQuestionNumberMap(
+    orderedSections.flatMap(section =>
+      section.materials.flatMap(material =>
+        material.questions.map(question => ({
+          id: question.id,
+          isListening: section.materialKey === 'LISTENING',
+          sectionKey: section.key,
+        })),
+      ),
+    ),
+    paper.language,
+  )
+  orderedSections.forEach(section => {
+    section.materials.forEach(material => {
+      material.questions.forEach(question => {
+        question.localNumber =
+          questionNumberMap.get(question.id) || question.localNumber
+      })
+    })
+  })
 
   const audioFiles: PaperExportData['audioFiles'] = []
   let audioIndex = 0

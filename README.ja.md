@@ -16,7 +16,7 @@ Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL、ts-fsr
 
 ## ローカル実行
 
-Node.js 22–24 と PostgreSQL が必要です。
+Node.js 22–26 と PostgreSQL が必要です。
 
 ```bash
 npm install

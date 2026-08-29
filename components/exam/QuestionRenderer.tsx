@@ -5,8 +5,9 @@ import Image from 'next/image'
 import { StandardQuestion } from './question-renderer/StandardQuestion'
 import { OptionsList } from './question-renderer/OptionsList'
 import { annotateExamText } from './question-renderer/annotate'
-import { buildReadingPassageHtml } from './question-renderer/readingPassage'
+import { buildReadingPassageParts } from './question-renderer/readingPassage'
 import { ListeningTranscript } from './question-renderer/ListeningTranscript'
+import { WrongQuestionBadge } from './question-renderer/WrongQuestionBadge'
 import type {
   ExamAnnotationSettings,
   ExamQuestion,
@@ -28,6 +29,8 @@ type QuestionRendererProps = {
   isSubmitted?: boolean
   isInteractionLocked?: boolean
   submittedQuestionIds?: string[]
+  wrongQuestionIds?: string[]
+  questionNumberMap?: Record<string, number>
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
 }
@@ -41,6 +44,7 @@ function ReadingQuestion({
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   submittedQuestionIds = [],
+  wrongQuestionIds = [],
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -52,31 +56,33 @@ function ReadingQuestion({
           item.questionType === 'TOEIC_TEXT_COMPLETION'),
     )
     .sort((a, b) => (a.order || 0) - (b.order || 0))
+  const passageParts = buildReadingPassageParts({
+    question,
+    fillBlankQuestions: relatedFillBlankQuestions,
+    answerMap,
+    submittedQuestionIds,
+    annotation,
+  })
+  const readingInlineAnnotation = { ...annotation, showMeaning: false }
 
   return (
-    <div className='mx-auto flex w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(360px,1fr)] lg:items-start'>
-      <section className='custom-scrollbar relative w-full overflow-y-auto border-y border-slate-200 py-6 md:py-8 lg:max-h-[78vh]'>
+    <div className='mx-auto flex w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.85fr)_minmax(340px,0.9fr)] lg:gap-7 lg:items-start'>
+      <section className='custom-scrollbar relative w-full overflow-y-auto py-2 md:py-3 lg:max-h-[82vh]'>
         <article
           data-source-type='ARTICLE_TEXT'
           data-source-id={question.passage?.id || ''}
           data-context-block='true'
           data-context-role='reading-passage'
-          className={`reading-passage-body mx-auto max-w-[76ch] whitespace-pre-wrap text-[1.12rem] leading-[2.08] text-slate-700 md:text-[1.2rem] md:leading-[2.15] ${
+          className={`reading-passage-body mx-auto max-w-[88ch] whitespace-pre-wrap text-[1.12rem] leading-[2.08] text-slate-700 md:text-[1.2rem] md:leading-[2.15] ${
             isJapanesePaper ? 'exam-japanese-text' : ''
           }`}
           dangerouslySetInnerHTML={{
-            __html: buildReadingPassageHtml({
-              question,
-              fillBlankQuestions: relatedFillBlankQuestions,
-              answerMap,
-              submittedQuestionIds,
-              annotation,
-            }),
+            __html: `${passageParts.bodyHtml}${passageParts.footnotesHtml}${passageParts.annotationsHtml}`,
           }}
         />
       </section>
 
-      <aside className='custom-scrollbar w-full overflow-y-auto lg:sticky lg:top-24 lg:max-h-[78vh]'>
+      <aside className='custom-scrollbar w-full overflow-y-auto lg:sticky lg:top-24 lg:max-h-[82vh]'>
         <div className='mx-auto w-full max-w-xl'>
           <StandardQuestion
             question={question}
@@ -84,8 +90,9 @@ function ReadingQuestion({
             onSelect={onSelect}
             isSubmitted={isSubmitted}
             isInteractionLocked={isInteractionLocked}
+            isWrongReview={wrongQuestionIds.includes(question.id)}
             isJapanesePaper={isJapanesePaper}
-            annotation={annotation}
+            annotation={readingInlineAnnotation}
           />
         </div>
       </aside>
@@ -103,6 +110,8 @@ function ListeningQuestion({
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   submittedQuestionIds = [],
+  wrongQuestionIds = [],
+  questionNumberMap = {},
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -232,26 +241,35 @@ function ListeningQuestion({
 
       <div className={displayedQuestions.length > 1 ? 'divide-y divide-slate-200' : ''}>
         {displayedQuestions.map((item, index) => {
+          const displayNumber = questionNumberMap[item.id] || index + 1
           const itemPrompt = normalizeQuestionDisplayText(item.prompt)
           const itemContext = normalizeQuestionDisplayText(item.contextSentence)
           const itemDistinctContext =
             itemContext === itemPrompt ? null : itemContext
           const itemSubmitted = submittedQuestionIds.includes(item.id)
+          const itemIsWrong = wrongQuestionIds.includes(item.id)
           return (
             <section
               key={item.id}
               data-question-id={item.id}
               className='py-5 first:pt-0 last:pb-0'>
-              {displayedQuestions.length > 1 ? (
-                <p className='mb-3 text-xs font-bold text-slate-400'>
-                  第 {index + 1} 题
-                </p>
+              {displayedQuestions.length > 1 || itemIsWrong ? (
+                <div className='mb-3 flex min-h-6 items-center justify-between gap-3'>
+                  {displayedQuestions.length > 1 ? (
+                    <p className='text-xs font-bold text-slate-400'>
+                      第 {displayNumber} 题
+                    </p>
+                  ) : (
+                    <span />
+                  )}
+                  {itemIsWrong ? <WrongQuestionBadge /> : null}
+                </div>
               ) : null}
               {item.imageUrl ? (
                 <figure className='mb-2 overflow-hidden'>
                   <Image
                     src={item.imageUrl}
-                    alt={`第 ${index + 1} 题题目图片`}
+                    alt={`第 ${displayNumber} 题题目图片`}
                     width={1200}
                     height={800}
                     unoptimized
@@ -330,7 +348,6 @@ function ListeningQuestion({
           <ListeningTranscript
             lessonId={lessonId}
             dialogues={dialogues}
-            options={displayedQuestions.flatMap(item => item.options || [])}
             audioRef={audioRef}
             annotation={annotation}
           />
@@ -352,6 +369,8 @@ export function QuestionRenderer({
   isSubmitted = false,
   isInteractionLocked = isSubmitted,
   submittedQuestionIds = [],
+  wrongQuestionIds = [],
+  questionNumberMap = {},
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
@@ -371,6 +390,8 @@ export function QuestionRenderer({
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
         submittedQuestionIds={submittedQuestionIds}
+        wrongQuestionIds={wrongQuestionIds}
+        questionNumberMap={questionNumberMap}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -389,6 +410,8 @@ export function QuestionRenderer({
         isSubmitted={isSubmitted}
         isInteractionLocked={isInteractionLocked}
         submittedQuestionIds={submittedQuestionIds}
+        wrongQuestionIds={wrongQuestionIds}
+        questionNumberMap={questionNumberMap}
         isJapanesePaper={isJapanesePaper}
         annotation={annotation}
       />
@@ -405,6 +428,7 @@ export function QuestionRenderer({
       onSortingOrderChange={onSortingOrderChange}
       isSubmitted={isSubmitted}
       isInteractionLocked={isInteractionLocked}
+      isWrongReview={wrongQuestionIds.includes(question.id)}
       isJapanesePaper={isJapanesePaper}
       annotation={annotation}
     />

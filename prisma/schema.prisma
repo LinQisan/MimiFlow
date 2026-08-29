@@ -15,6 +15,24 @@ enum SourceType {
   QUIZ_QUESTION // 来自选择题
 }
 
+enum LearningRecordKind {
+  LEARNING_POINT
+  SENTENCE
+}
+
+enum LearningPointCategory {
+  GRAMMAR
+  PATTERN
+  PARAPHRASE
+  DISTRACTOR
+  OTHER
+}
+
+enum ExamScoreType {
+  JLPT
+  TOEIC
+}
+
 enum MaterialType {
   LISTENING
   MEDIA_SUBTITLE
@@ -113,8 +131,9 @@ model MediaSubtitleLine {
 }
 
 model Vocabulary {
-  id   String @id @default(cuid())
-  word String
+  id     String @id @default(cuid())
+  userId String @map("user_id")
+  word   String
 
   sourceType     SourceType
   sourceId       String
@@ -125,19 +144,26 @@ model Vocabulary {
   wordbooks      WordbookVocabulary[]
   review         VocabularyReview?
   createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @default(now()) @updatedAt
   sentenceLinks  VocabularySentenceLink[]
   tags           VocabularyTagOnVocabulary[]
+  user           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([word])
+  @@index([userId, word])
   @@index([createdAt])
   @@index([sourceType, sourceId])
+  @@index([wordAudio])
 }
 
 model VocabularyTag {
   id           String                      @id @default(cuid())
-  name         String                      @unique
+  userId       String                      @map("user_id")
+  name         String
   createdAt    DateTime                    @default(now())
   vocabularies VocabularyTagOnVocabulary[]
+  user         User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
 }
 
 model VocabularyTagOnVocabulary {
@@ -176,6 +202,7 @@ model VocabularyReview {
 
 model Wordbook {
   id        String               @id @default(cuid())
+  userId    String               @map("user_id")
   title     String
   parentId  String?
   parent    Wordbook?            @relation("WordbookTree", fields: [parentId], references: [id], onDelete: SetNull)
@@ -184,9 +211,10 @@ model Wordbook {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
   entries   WordbookVocabulary[]
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([parentId, title])
-  @@index([parentId])
+  @@unique([userId, parentId, title])
+  @@index([userId, parentId, sortOrder])
   @@map("wordbooks")
 }
 
@@ -196,11 +224,12 @@ model WordbookVocabulary {
   vocabularyId String     @map("vocabulary_id")
   sortOrder    Int        @default(0) @map("sort_order")
   createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at")
   wordbook     Wordbook   @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
   vocabulary   Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
 
   @@unique([wordbookId, vocabularyId])
-  @@index([wordbookId])
+  @@index([wordbookId, sortOrder])
   @@index([vocabularyId])
   @@map("wordbook_vocabularies")
 }
@@ -216,10 +245,13 @@ model VocabularySentence {
   sourceType      SourceType?
   sourceId        String?
   createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @default(now()) @updatedAt
   links           VocabularySentenceLink[]
   grammarExamples GrammarExample[]
 
   @@unique([normalizedText, sourceUrl])
+  @@index([sourceType, sourceId])
+  @@index([audioFile])
 }
 
 enum GrammarExampleSource {
@@ -313,6 +345,7 @@ model GrammarExample {
   sentenceId     String?              @map("sentence_id")
   constructionId String?              @map("construction_id")
   createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @default(now()) @updatedAt @map("updated_at")
   grammar        Grammar              @relation(fields: [grammarId], references: [id], onDelete: Cascade)
   sentence       VocabularySentence?  @relation(fields: [sentenceId], references: [id], onDelete: SetNull)
   construction   GrammarConstruction? @relation(fields: [constructionId], references: [id], onDelete: SetNull)
@@ -334,10 +367,12 @@ model VocabularySentenceLink {
   sentence     VocabularySentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
 
   @@unique([vocabularyId, sentenceId])
+  @@index([sentenceId])
 }
 
 model SentenceReview {
-  id String @id @default(cuid())
+  id     String @id @default(cuid())
+  userId String @map("user_id")
 
   text           String
   sourceType     SourceType
@@ -355,8 +390,9 @@ model SentenceReview {
   last_review    DateTime? // 记录上一次复习的精确时间
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([due])
+  @@index([userId, due])
   @@index([sourceType, sourceId])
 }
 
@@ -376,9 +412,10 @@ model Question {
   updatedAt    DateTime         @updatedAt @map("updated_at")
   sortOrder    Int              @default(0) @map("sort_order")
 
-  material   Material          @relation(fields: [materialId], references: [id], onDelete: Cascade)
-  attempts   QuestionAttempt[]
-  retryQueue QuestionRetry?
+  material    Material           @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  attempts    QuestionAttempt[]
+  retryQueues QuestionRetry[]
+  userNotes   UserQuestionNote[]
 
   @@index([materialId, sortOrder])
   @@map("questions")
@@ -407,14 +444,23 @@ model Collection {
 }
 
 model PracticePaperSubmission {
-  id            String     @id @default(uuid())
-  collectionId  String     @map("collection_id")
-  questionCount Int        @map("question_count")
-  correctCount  Int        @map("correct_count")
-  completedAt   DateTime   @default(now()) @map("completed_at")
-  collection    Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  id             String            @id @default(uuid())
+  userId         String            @map("user_id")
+  collectionId   String            @map("collection_id")
+  questionCount  Int               @map("question_count")
+  correctCount   Int               @map("correct_count")
+  languageScore  Int?              @map("language_score")
+  readingScore   Int?              @map("reading_score")
+  listeningScore Int?              @map("listening_score")
+  totalScore     Int?              @map("total_score")
+  passLine       Int?              @map("pass_line")
+  passed         Boolean?
+  completedAt    DateTime          @default(now()) @map("completed_at")
+  collection     Collection        @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  attempts       QuestionAttempt[]
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([collectionId, completedAt])
+  @@index([userId, collectionId, completedAt], map: "practice_submissions_user_collection_completed_idx")
   @@map("practice_paper_submissions")
 }
 
@@ -424,68 +470,158 @@ model CollectionMaterial {
   materialId   String   @map("material_id")
   sortOrder    Int      @default(0) @map("sort_order")
   createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at")
 
   collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   material   Material   @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([collectionId, materialId])
+  @@index([collectionId, sortOrder])
   @@index([materialId])
   @@map("collection_materials")
 }
 
 model QuestionAttempt {
-  id         String   @id @default(uuid())
-  questionId String
-  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  id               String                   @id @default(uuid())
+  userId           String                   @map("user_id")
+  questionId       String
+  question         Question                 @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  submissionId     String?                  @map("submission_id")
+  submission       PracticePaperSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  selectedOptionId String?                  @map("selected_option_id")
+  correctOptionId  String?                  @map("correct_option_id")
 
   isCorrect   Boolean // 用户是否做对
   timeSpentMs Int // 这道题思考/停留的耗时（毫秒）
 
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // 💡 未来如果你加了用户登录系统，可以把下面两行取消注释，绑定到具体用户
-  // userId      String?
-  // user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([questionId, createdAt])
+  @@index([userId, questionId, createdAt])
+  @@index([submissionId, createdAt])
 }
 
 model QuestionRetry {
   id         String   @id @default(cuid())
-  questionId String   @unique
+  userId     String   @map("user_id")
+  questionId String
   question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   stage      Int      @default(0) // 0 -> 24h, 1 -> 72h, 2 -> 7d
   dueAt      DateTime
   wrongCount Int      @default(1)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@index([dueAt])
+  @@unique([userId, questionId])
+  @@index([userId, dueAt, createdAt])
 }
 
-model LearnerProfile {
-  id              String                  @id @default("default")
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
-  fsrsProfile     FSRSProfile?
-  reviewEvents    ReviewEvent[]
-  studyProgresses MaterialStudyProgress[]
-  playtimeStats   MaterialPlaytimeStat[]
+model User {
+  id                  String                    @id @default(cuid())
+  name                String                    @unique
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  fsrsProfile         FSRSProfile?
+  reviewEvents        ReviewEvent[]
+  studyProgresses     MaterialStudyProgress[]
+  playtimeStats       MaterialPlaytimeStat[]
+  vocabularies        Vocabulary[]
+  vocabularyTags      VocabularyTag[]
+  wordbooks           Wordbook[]
+  sentenceReviews     SentenceReview[]
+  questionAttempts    QuestionAttempt[]
+  questionRetries     QuestionRetry[]
+  questionNotes       UserQuestionNote[]
+  practiceSubmissions PracticePaperSubmission[]
+  practiceVocabularyPreferences PracticeVocabularyPreference[]
+  studyTimes          StudyTimeDaily[]
+  learningRecords     LearningRecord[]
+  examScoreRecords    ExamScoreRecord[]
 
   @@map("GameProfile")
 }
 
+model PracticeVocabularyPreference {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  normalizedWord String   @map("normalized_word")
+  word           String
+  mastered       Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, normalizedWord])
+  @@index([userId, mastered])
+  @@map("practice_vocabulary_preferences")
+}
+
+model ExamScoreRecord {
+  id             String        @id @default(cuid())
+  userId         String        @map("user_id")
+  examType       ExamScoreType @map("exam_type")
+  examDate       DateTime      @map("exam_date") @db.Date
+  level          String?
+  languageScore  Int?          @map("language_score")
+  readingScore   Int           @map("reading_score")
+  listeningScore Int           @map("listening_score")
+  totalScore     Int           @map("total_score")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, examDate], map: "exam_scores_user_date_idx")
+  @@index([userId, examType, examDate], map: "exam_scores_user_type_date_idx")
+  @@map("exam_score_records")
+}
+
+model LearningRecord {
+  id           String                 @id @default(cuid())
+  userId       String                 @map("user_id")
+  kind         LearningRecordKind
+  category     LearningPointCategory?
+  title        String
+  fragments    Json
+  sentenceText String                 @map("sentence_text") @db.Text
+  note         String?                @db.Text
+  sourceType   SourceType             @map("source_type")
+  sourceId     String                 @map("source_id")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, kind, updatedAt], map: "learning_records_user_kind_updated_idx")
+  @@index([sourceType, sourceId], map: "learning_records_source_idx")
+  @@map("learning_records")
+}
+
+model UserQuestionNote {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  questionId String   @map("question_id")
+  note       String   @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, questionId])
+  @@index([questionId])
+  @@map("user_question_notes")
+}
+
 model MaterialStudyProgress {
-  id              String         @id @default(uuid())
-  profileId       String         @default("default") @map("profile_id")
-  materialId      String         @map("material_id")
-  learningMode    String         @default("default") @map("learning_mode")
-  progressPercent Float          @default(0) @map("progress_percent")
-  lastPosition    String?        @map("last_position")
-  startedAt       DateTime       @default(now()) @map("started_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  profile         LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  material        Material       @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  profileId       String   @default("default") @map("profile_id")
+  materialId      String   @map("material_id")
+  learningMode    String   @default("default") @map("learning_mode")
+  progressPercent Float    @default(0) @map("progress_percent")
+  lastPosition    String?  @map("last_position")
+  startedAt       DateTime @default(now()) @map("started_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  profile         User     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material        Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, materialId, learningMode])
   @@index([updatedAt])
@@ -493,16 +629,16 @@ model MaterialStudyProgress {
 }
 
 model MaterialPlaytimeStat {
-  id           String         @id @default(uuid())
-  profileId    String         @default("default") @map("profile_id")
-  materialId   String         @map("material_id")
-  totalSeconds Int            @default(0) @map("total_seconds")
-  playedDays   Int            @default(0) @map("played_days")
-  lastPlayedAt DateTime?      @map("last_played_at")
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
-  profile      LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  material     Material       @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  id           String    @id @default(uuid())
+  profileId    String    @default("default") @map("profile_id")
+  materialId   String    @map("material_id")
+  totalSeconds Int       @default(0) @map("total_seconds")
+  playedDays   Int       @default(0) @map("played_days")
+  lastPlayedAt DateTime? @map("last_played_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  profile      User      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  material     Material  @relation(fields: [materialId], references: [id], onDelete: Cascade)
 
   @@unique([profileId, materialId])
   @@index([materialId, updatedAt])
@@ -510,28 +646,28 @@ model MaterialPlaytimeStat {
 }
 
 model FSRSProfile {
-  id                 String         @id @default(cuid())
-  profileId          String         @unique
-  profile            LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
-  requestRetention   Float          @default(0.9)
-  maximumInterval    Int            @default(36500)
+  id                 String    @id @default(cuid())
+  profileId          String    @unique
+  profile            User      @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  requestRetention   Float     @default(0.9)
+  maximumInterval    Int       @default(36500)
   weights            String
-  sampleSize         Int            @default(0)
-  fitVersion         Int            @default(1)
-  enabled            Boolean        @default(true)
-  lastEngineMode     String         @default("custom")
+  sampleSize         Int       @default(0)
+  fitVersion         Int       @default(1)
+  enabled            Boolean   @default(true)
+  lastEngineMode     String    @default("custom")
   lastFallbackReason String?
   lastFallbackAt     DateTime?
   lastFittedAt       DateTime?
   lastEventAt        DateTime?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 }
 
 model ReviewEvent {
-  id               String         @id @default(cuid())
+  id               String     @id @default(cuid())
   profileId        String
-  profile          LearnerProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile          User       @relation(fields: [profileId], references: [id], onDelete: Cascade)
   reviewId         String
   sourceType       SourceType
   sourceId         String
@@ -545,7 +681,7 @@ model ReviewEvent {
   difficultyBefore Float
   difficultyAfter  Float
   dueAt            DateTime
-  reviewedAt       DateTime       @default(now())
+  reviewedAt       DateTime   @default(now())
   wasOverdue       Boolean
   wasRecallSuccess Boolean
 
@@ -560,12 +696,13 @@ enum StudyTimeKind {
 
 model StudyTimeDaily {
   id        String        @id @default(cuid())
+  userId    String        @map("user_id")
   dateKey   String
   kind      StudyTimeKind
   seconds   Int           @default(0)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([dateKey, kind])
-  @@index([dateKey])
+  @@unique([userId, dateKey, kind])
 }

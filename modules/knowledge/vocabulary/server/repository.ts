@@ -15,9 +15,11 @@ import {
 } from '@/utils/audioDialogue/sourceId'
 import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import { getReadingCardTitle } from '@/lib/repositories/materials/material-title'
+import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const VOCABULARY_DETAIL_INCLUDE = {
   wordbooks: {
+    where: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } },
     orderBy: { createdAt: 'asc' },
     include: { wordbook: { select: { id: true, title: true } } },
   },
@@ -43,9 +45,10 @@ export type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
   include: typeof VOCABULARY_DETAIL_INCLUDE
 }>
 
-export function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
+export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
+  const userId = await getCurrentUserId()
   return prisma.vocabulary.findMany({
-    where,
+    where: { AND: [{ userId }, where] },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,
@@ -56,31 +59,34 @@ export function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
   })
 }
 
-export function listVocabularyDetails(ids: string[]) {
-  if (ids.length === 0) return Promise.resolve([] as VocabularyDetailRow[])
+export async function listVocabularyDetailsByWords(words: string[]) {
+  if (words.length === 0) return Promise.resolve([] as VocabularyDetailRow[])
+  const userId = await getCurrentUserId()
   return prisma.vocabulary.findMany({
-    where: { id: { in: ids } },
+    where: { userId, word: { in: Array.from(new Set(words)) } },
     include: VOCABULARY_DETAIL_INCLUDE,
   })
 }
 
-export function findVocabularyDetail(id: string) {
-  return prisma.vocabulary.findUnique({
-    where: { id },
+export async function findVocabularyDetail(id: string) {
+  const userId = await getCurrentUserId()
+  return prisma.vocabulary.findFirst({
+    where: { id, userId },
     include: VOCABULARY_DETAIL_INCLUDE,
   })
 }
 
-export function listVocabularySentenceLinks(vocabularyIds: string[]) {
+export async function listVocabularySentenceLinks(vocabularyIds: string[]) {
   if (vocabularyIds.length === 0) return Promise.resolve([])
+  const userId = await getCurrentUserId()
   return prisma.vocabularySentenceLink.findMany({
-    where: { vocabularyId: { in: vocabularyIds } },
+    where: { vocabularyId: { in: vocabularyIds }, vocabulary: { userId } },
     include: { sentence: true },
     orderBy: { createdAt: 'asc' },
   })
 }
 
-export type VocabularySentenceAudioClip = {
+type VocabularySentenceAudioClip = {
   audioFile: string
   start: number
   end: number
@@ -159,7 +165,7 @@ export async function resolveAudioDialogueSentenceText(sourceId: string) {
   return dialogue?.text.trim() || ''
 }
 
-export type ResolvedVocabularySentenceSource = {
+type ResolvedVocabularySentenceSource = {
   source: string
   sourceUrl: string
 }
@@ -362,6 +368,7 @@ const buildVocabularyCandidateTerms = (normalizedWord: string) =>
   )
 
 export const findExistingVocabularyCandidate = async (normalizedWord: string) => {
+  const userId = await getCurrentUserId()
   const targetKeys = new Set(buildVocabularyCanonicalKeys(normalizedWord))
   if (targetKeys.size === 0) return null
 
@@ -372,6 +379,7 @@ export const findExistingVocabularyCandidate = async (normalizedWord: string) =>
 
   const candidates = await prisma.vocabulary.findMany({
     where: {
+      userId,
       OR: [
         { word: normalizedWord },
         ...candidateTerms.map(term => ({ word: term })),
@@ -426,6 +434,13 @@ export const upsertVocabularySentenceLink = async (
     posTags?: string[]
   },
 ) => {
+  const userId = await getCurrentUserId()
+  const ownedVocabulary = await prisma.vocabulary.findFirst({
+    where: { id: vocabularyId, userId },
+    select: { id: true },
+  })
+  if (!ownedVocabulary) throw new Error('找不到单词记录')
+
   const text = sentence.text.trim()
   if (!text) return
   const sourceUrl = sentence.sourceUrl.trim() || '#'
@@ -489,11 +504,13 @@ export const findSentenceLinkByText = async (
   vocabularyId: string,
   sentenceText: string,
 ) => {
+  const userId = await getCurrentUserId()
   const normalized = normalizeSentenceKey(sentenceText)
   if (!normalized) return null
   return prisma.vocabularySentenceLink.findFirst({
     where: {
       vocabularyId,
+      vocabulary: { userId },
       sentence: {
         normalizedText: normalized,
       },
@@ -619,8 +636,9 @@ export const resolveVocabularySourceMeta = async (
 export const listVocabularySentenceRecords = async (
   vocabularyId: string,
 ): Promise<VocabularySentenceRecord[]> => {
+  const userId = await getCurrentUserId()
   const links = await prisma.vocabularySentenceLink.findMany({
-    where: { vocabularyId },
+    where: { vocabularyId, vocabulary: { userId } },
     include: { sentence: true },
     orderBy: { createdAt: 'asc' },
   })

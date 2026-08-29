@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { evaluateSelectedOption } from "../modules/practice/domain/evaluate-attempt.ts";
 import { summarizePracticeSubmission } from "../modules/practice/domain/submission-summary.ts";
+import { calculateJlptScore } from "../modules/practice/domain/jlpt-scoring.ts";
 import {
   buildCompletedQuestionText,
   buildCompletedSortingText,
@@ -58,14 +59,18 @@ import {
 } from "../features/reading/domain/article-blocks.ts";
 import {
   ARTICLE_TABLE_TEMPLATE,
+  insertArticleFootnote,
   insertArticleText,
 } from "../features/reading/domain/article-editing.ts";
+import { parseArticleFootnotes } from "../features/reading/domain/article-footnotes.ts";
 import {
   prepareEbookChapters,
   removeRepeatedEbookHeadings,
 } from "../lib/ebooks/chapter-display.ts";
 import { parsePastedBookText } from "../lib/ebooks/pasted-book.ts";
 import { parseMultiQuizText } from "../modules/import/domain/quiz-text-parser.ts";
+import { buildArticleQuestionsFromQuickInput } from "../modules/import/domain/article-question-builder.ts";
+import { normalizePaperAttributes } from "../features/practice/domain/paper-attributes.ts";
 import { parseListeningOptionText } from "../modules/import/domain/listening-option-parser.ts";
 import { selectListeningQuestionEntriesForFile } from "../modules/import/domain/listening-batch-assignments.ts";
 import {
@@ -252,7 +257,7 @@ test("practice options underline inflected Japanese target words", () => {
   );
 });
 
-test("paper export numbers non-listening and listening as separate parts", () => {
+test("paper export keeps Japanese non-listening continuous and resets each listening problem", () => {
   const fixture = structuredClone(PAPER_EXPORT_FIXTURE);
   const nonListeningQuestion =
     fixture.sections[0].materials[0].questions[0];
@@ -275,12 +280,49 @@ test("paper export numbers non-listening and listening as separate parts", () =>
     }),
   );
   fixture.sections.push(listeningSection);
+  const secondListeningSection = structuredClone(listeningSection);
+  secondListeningSection.key = "LISTENING:2";
+  secondListeningSection.sectionNumber = 2;
+  secondListeningSection.materials[0].questions = [
+    {
+      ...secondListeningSection.materials[0].questions[0],
+      id: "listening-problem-2-1",
+    },
+  ];
+  fixture.sections.push(secondListeningSection);
 
   const numbers = buildPaperPartQuestionNumbers(fixture);
   assert.equal(numbers.get("non-listening-1"), 1);
   assert.equal(numbers.get("non-listening-2"), 2);
   assert.equal(numbers.get("listening-1"), 1);
   assert.equal(numbers.get("listening-2"), 2);
+  assert.equal(numbers.get("listening-problem-2-1"), 1);
+});
+
+test("paper export numbers English listening and reading independently", () => {
+  const fixture = structuredClone(PAPER_EXPORT_FIXTURE);
+  fixture.language = "en";
+  const readingQuestion = fixture.sections[0].materials[0].questions[0];
+  readingQuestion.id = "reading-1";
+  const secondReadingQuestion = structuredClone(readingQuestion);
+  secondReadingQuestion.id = "reading-2";
+  fixture.sections[0].materials[0].questions.push(secondReadingQuestion);
+  const listeningSection = structuredClone(fixture.sections[0]);
+  listeningSection.key = "LISTENING:1";
+  listeningSection.materialKey = "LISTENING";
+  listeningSection.materials[0].questions = [
+    { ...readingQuestion, id: "listening-1" },
+    { ...readingQuestion, id: "listening-2" },
+  ];
+  fixture.sections.push(listeningSection);
+
+  const numbers = buildPaperPartQuestionNumbers(fixture);
+  assert.deepEqual(
+    ["reading-1", "reading-2", "listening-1", "listening-2"].map(id =>
+      numbers.get(id),
+    ),
+    [1, 2, 1, 2],
+  );
 });
 
 test("paper export positions the sorting star above its answer line", () => {
@@ -396,7 +438,7 @@ test("answer PDF lists every answer first and only repeats analyzed questions", 
   assert.doesNotMatch(html, /无解析题目不应重复的题干/);
 });
 
-test("practice answer card follows JLPT material and problem sections", () => {
+test("practice answer card keeps Japanese non-listening numbers continuous", () => {
   const sections = buildAnswerCardSections([
     { id: "v1", questionType: "PRONUNCIATION" },
     { id: "v2", questionType: "PRONUNCIATION" },
@@ -408,7 +450,7 @@ test("practice answer card follows JLPT material and problem sections", () => {
       lessonId: "a1",
       lesson: { sectionNumber: 4, sectionTitle: "即時応答" },
     },
-  ]);
+  ], "ja");
 
   assert.deepEqual(
     sections.map((section) => ({
@@ -428,13 +470,13 @@ test("practice answer card follows JLPT material and problem sections", () => {
         key: "GRAMMAR:6",
         title: "文法",
         problem: 6,
-        localNumbers: [1],
+        localNumbers: [3],
       },
       {
         key: "READING:8",
         title: "読解",
         problem: 8,
-        localNumbers: [1],
+        localNumbers: [4],
       },
       {
         key: "LISTENING:4",
@@ -467,6 +509,12 @@ test("English listening answer cards use TOEIC parts instead of JLPT problems", 
           sectionTitle: "Part 2 · Question-Response",
         },
       },
+      { id: "r1", questionType: "TOEIC_INCOMPLETE_SENTENCES" },
+      {
+        id: "r2",
+        questionType: "TOEIC_TEXT_COMPLETION",
+        passageId: "passage-1",
+      },
     ],
     "en",
   );
@@ -475,10 +523,13 @@ test("English listening answer cards use TOEIC parts instead of JLPT problems", 
     sections.map((section) => ({
       title: section.materialTitle,
       section: section.sectionTitle,
+      numbers: section.items.map(item => item.localNumber),
     })),
     [
-      { title: "Listening", section: "Part 1 · Photographs" },
-      { title: "Listening", section: "Part 2 · Question-Response" },
+      { title: "Reading", section: "Part 5 · Incomplete Sentences", numbers: [1] },
+      { title: "Reading", section: "Part 6 · Text Completion", numbers: [2] },
+      { title: "Listening", section: "Part 1 · Photographs", numbers: [1] },
+      { title: "Listening", section: "Part 2 · Question-Response", numbers: [2] },
     ],
   );
 });
@@ -688,6 +739,140 @@ test("JLPT listening problem 3 keeps its authored option order", () => {
   );
 });
 
+test("submitted practice restores authored option order for review", async () => {
+  const repository = await readFile(
+    path.join(ROOT, "lib/repositories/exam/index.ts"),
+    "utf8",
+  );
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+
+  assert.match(repository, /authoredOptions: options/);
+  assert.match(player, /session\.isSubmitted[\s\S]*restoreAuthoredOptionOrder/);
+  assert.match(player, /question=\{displayedCurrentQuestion\}/);
+  assert.match(player, /allQuestions=\{displayedAllQuestions\}/);
+});
+
+test("practice copy follows configured option labels and omits question numbers", async () => {
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+
+  assert.match(player, /formatOptionLabel\(/);
+  assert.match(player, /question\.optionLabelFormat/);
+  assert.match(player, /question\.customOptionLabels/);
+  assert.equal(player.includes("sections.push(`第 ${questionIndex + 1} 题`)"), false);
+});
+
+test("practice review marks wrong questions in every question layout", async () => {
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+  const renderer = await readFile(
+    path.join(ROOT, "components/exam/QuestionRenderer.tsx"),
+    "utf8",
+  );
+  const standardQuestion = await readFile(
+    path.join(ROOT, "components/exam/question-renderer/StandardQuestion.tsx"),
+    "utf8",
+  );
+
+  assert.match(player, /wrongQuestionIds=\{reviewWrongQuestionIds\}/);
+  assert.match(renderer, /itemIsWrong \? <WrongQuestionBadge/);
+  assert.match(renderer, /isWrongReview=\{wrongQuestionIds\.includes\(question\.id\)\}/);
+  assert.match(standardQuestion, /isWrongReview \? \(/);
+});
+
+test("submission review hides the global MimiFlow navigation", async () => {
+  const navigation = await readFile(
+    path.join(ROOT, "components/layout/StudyNavigation.tsx"),
+    "utf8",
+  );
+
+  assert.match(
+    navigation,
+    /\/practice\\\/\[\^\/\]\+\\\/submissions\\\/\[\^\/\]\+\$/,
+  );
+});
+
+test("submission review preserves its current question across refreshes", async () => {
+  const page = await readFile(
+    path.join(
+      ROOT,
+      "app/(study)/practice/[id]/submissions/[submissionId]/page.tsx",
+    ),
+    "utf8",
+  );
+  const reviewClient = await readFile(
+    path.join(ROOT, "features/practice/ui/PracticeSubmissionReviewClient.tsx"),
+    "utf8",
+  );
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+
+  assert.match(page, /initialQuestionId=\{qid\}/);
+  assert.match(reviewClient, /requestedIndex >= 0 \? requestedIndex : firstWrongIndex/);
+  assert.match(player, /url\.searchParams\.set\('qid', currentQuestionId\)/);
+  assert.match(player, /window\.history\.replaceState/);
+});
+
+test("practice player separates mobile navigation and utility controls", async () => {
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+
+  assert.match(player, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  assert.match(player, /md:hidden/);
+  assert.match(player, /top-\[6\.5rem\]/);
+});
+
+test("saved question notes survive switching away and back without a refresh", async () => {
+  const player = await readFile(
+    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    "utf8",
+  );
+  const noteEditor = await readFile(
+    path.join(ROOT, "components/exam/QuestionNoteEditor.tsx"),
+    "utf8",
+  );
+
+  assert.match(player, /savedNotesByQuestionId\[question\.id\] \?\? question\.note/);
+  assert.match(player, /onSaved=\{handleQuestionNoteSaved\}/);
+  assert.match(noteEditor, /onSaved\?\.\(questionId, normalized\)/);
+  assert.equal(noteEditor.includes("noteCacheRef"), false);
+});
+
+test("database fields keep audit timestamps and query indexes", async () => {
+  const schema = await readFile(
+    path.join(ROOT, "prisma/schema.prisma"),
+    "utf8",
+  );
+
+  assert.match(schema, /model Vocabulary[\s\S]*updatedAt[\s\S]*@@index\(\[wordAudio\]\)/);
+  assert.match(schema, /model VocabularySentence[\s\S]*@@index\(\[sourceType, sourceId\]\)[\s\S]*@@index\(\[audioFile\]\)/);
+  assert.match(schema, /model VocabularySentenceLink[\s\S]*@@index\(\[sentenceId\]\)/);
+  assert.match(schema, /model CollectionMaterial[\s\S]*@@index\(\[collectionId, sortOrder\]\)/);
+});
+
+test("development server accepts interactive Cloudflare Tunnel requests", async () => {
+  const nextConfig = await readFile(
+    path.join(ROOT, "next.config.ts"),
+    "utf8",
+  );
+
+  assert.match(nextConfig, /tunnelDevelopmentOrigins = \['\*\.trycloudflare\.com'\]/);
+  assert.match(nextConfig, /allowedDevOrigins: developmentOrigins/);
+  assert.match(nextConfig, /serverActions:[\s\S]*allowedOrigins:/);
+  assert.match(nextConfig, /process\.env\.NODE_ENV === 'development'/);
+});
+
 test("question editors keep at least two options and preserve one correct answer", () => {
   const options = [
     { id: "a", isCorrect: false },
@@ -712,6 +897,142 @@ test("question text import accepts a variable option count", () => {
     ["はい", "いいえ", "わかりません"],
   );
   assert.equal(draft.contextSentence, "");
+});
+
+test("problem 7 import recognizes standalone bracketed blank numbers", () => {
+  const articleContent = "この制度は、多くの人に利用されている[1]、課題も残っている。";
+  const input = [
+    "[1]",
+    "1　ものの",
+    "2　ために",
+    "3　ことで",
+    "4　ほどに",
+  ].join("\n");
+  const parsed = parseMultiQuizText(input);
+
+  assert.equal(parsed[0].sourceSerial, 1);
+  const result = buildArticleQuestionsFromQuickInput(input, articleContent, {
+    questionType: "FILL_BLANK",
+  });
+  assert.equal(result.drafts.length, 1);
+  assert.deepEqual(result.drafts[0], {
+    questionType: "FILL_BLANK",
+    prompt: "この制度は、多くの人に利用されているものの、課題も残っている。",
+    contextSentence: articleContent,
+    explanation: "",
+    options: [
+      { text: "ものの", isCorrect: true },
+      { text: "ために", isCorrect: false },
+      { text: "ことで", isCorrect: false },
+      { text: "ほどに", isCorrect: false },
+    ],
+    __previewToken: "[1]",
+    __previewDuplicateToken: false,
+  });
+  assert.deepEqual(result.previewRows[0], {
+    serial: "1",
+    placeholderToken: "[1]",
+    generatedPrompt:
+      "この制度は、多くの人に利用されているものの、課題も残っている。",
+    questionType: "FILL_BLANK",
+    correctAnswer: "ものの",
+    isDuplicateToken: false,
+  });
+});
+
+test("problem 7 import accepts numbered option groups with trailing slashes", () => {
+  const input = [
+    "42\\",
+    "1　それによって\\",
+    "2　そればかりでなく\\",
+    "3　それどころか\\",
+    "4　それにもかかわらず",
+    "43\\",
+    "1　承知していれば\\",
+    "2　承知していて\\",
+    "3　承知していたのか\\",
+    "4　承知していたかのように",
+    "44\\",
+    "1　なら\\",
+    "2　だって\\",
+    "3　でさえ\\",
+    "4　といっても",
+  ].join("\n");
+  const content = [
+    "社会の仕組みは変化している[1]、考え方も変わってきた。",
+    "事情を[2]、別の判断をしただろう。",
+    "専門家[3]、すべてを知っているわけではない。",
+  ].join("\n");
+  const result = buildArticleQuestionsFromQuickInput(input, content, {
+    questionType: "FILL_BLANK",
+    matchFillBlanksByOrder: true,
+  });
+
+  assert.equal(result.drafts.length, 3);
+  assert.deepEqual(
+    result.previewRows.map((row) => ({
+      serial: row.serial,
+      token: row.placeholderToken,
+      answer: row.correctAnswer,
+    })),
+    [
+      { serial: "42", token: "[1]", answer: "それによって" },
+      { serial: "43", token: "[2]", answer: "承知していれば" },
+      { serial: "44", token: "[3]", answer: "なら" },
+    ],
+  );
+  assert.deepEqual(
+    result.drafts.map(question => question.options.map(option => option.text)),
+    [
+      ["それによって", "そればかりでなく", "それどころか", "それにもかかわらず"],
+      ["承知していれば", "承知していて", "承知していたのか", "承知していたかのように"],
+      ["なら", "だって", "でさえ", "といっても"],
+    ],
+  );
+});
+
+test("question text import accepts numbered bold JLPT pronunciation batches", () => {
+  const parsed = parseMultiQuizText(
+    [
+      "1．佐藤選手がゴールを決めたとき、観客は**絶叫**した。\\",
+      "　1　せっきょう\\",
+      "　2　ぜっきょう\\",
+      "　3　ぜっきゅう\\",
+      "　4　せっきゅう",
+      "2．**背後**から物音が聞こえた。\\",
+      "　1　はいご\\",
+      "　2　はいこう\\",
+      "　3　せいご\\",
+      "　4　せいこう",
+    ].join("\n"),
+  );
+
+  assert.equal(parsed.length, 2);
+  assert.deepEqual(
+    parsed.map((question) => ({
+      serial: question.sourceSerial,
+      prompt: question.prompt,
+      targetWord: question.targetWord,
+      type: question.questionType,
+      options: question.options.map((option) => option.text),
+    })),
+    [
+      {
+        serial: 1,
+        prompt: "佐藤選手がゴールを決めたとき、観客は絶叫した。",
+        targetWord: "絶叫",
+        type: "PRONUNCIATION",
+        options: ["せっきょう", "ぜっきょう", "ぜっきゅう", "せっきゅう"],
+      },
+      {
+        serial: 2,
+        prompt: "背後から物音が聞こえた。",
+        targetWord: "背後",
+        type: "PRONUNCIATION",
+        options: ["はいご", "はいこう", "せいご", "せいこう"],
+      },
+    ],
+  );
 });
 
 test("question text import separates consecutive numbered usage questions", () => {
@@ -948,8 +1269,40 @@ test("reading upload and editing share table insertion behavior", async () => {
   );
   assert.match(editor, /ARTICLE_TABLE_TEMPLATE/);
   assert.match(editor, /handleToggleUnderline/);
-  assert.match(editor, /生成問題7填空/);
+  assert.match(editor, /插入完形填空/);
   assert.match(importer, /ARTICLE_TABLE_TEMPLATE/);
+});
+
+test("reading upload and editing share footnote insertion and recognition", async () => {
+  const source = "昨日、図書館へ行きました。";
+  const start = source.indexOf("図書館");
+  const inserted = insertArticleFootnote(
+    source,
+    start,
+    start + "図書館".length,
+  );
+
+  assert.equal(inserted.changed, true);
+  assert.equal(inserted.text, "昨日、図書館[^1]へ行きました。\n\n[^1]: 図書館：");
+  assert.deepEqual(parseArticleFootnotes(inserted.text), {
+    body: "昨日、図書館[^1]へ行きました。",
+    footnotes: [
+      { id: "1", label: "1", term: "", definition: "図書館：" },
+    ],
+  });
+
+  const editor = await readFile(
+    path.join(ROOT, "features/content/ui/EditArticleUI.tsx"),
+    "utf8",
+  );
+  const importer = await readFile(
+    path.join(ROOT, "modules/import/components/ArticleImportPanel.tsx"),
+    "utf8",
+  );
+  assert.match(editor, /insertArticleFootnote/);
+  assert.match(importer, /insertArticleFootnote/);
+  assert.match(importer, /ArticleBodyPreview/);
+  assert.match(importer, />\s*插入注解\s*</);
 });
 
 test("grammar sentences are derived from the blank prompt and correct option", () => {
@@ -984,7 +1337,7 @@ test("self-contained vocabulary and grammar questions reject separate context", 
 test("sorting sentences derive completed text from explicit option order", () => {
   assert.equal(
     buildCompletedSortingText(
-      "A＿＿＿★＿＿＿C",
+      "A[[sort]][[sort:star]]C",
       [{ text: "1" }, { text: "2" }],
       [1, 0],
     ),
@@ -1019,6 +1372,49 @@ test("sorting prompts normalize parentheses and starred underlines into semantic
   const parentheses = parseSortingPrompt("A（　　）★（　　）（　　）B");
   assert.equal(parentheses.slotCount, 4);
   assert.equal(parentheses.starIndex, 1);
+});
+
+test("question text import treats an underline-wrapped star as one sorting slot", () => {
+  const [draft] = parseMultiQuizText(
+    [
+      "36　昨日はとても寒く、積もり＿＿＿＿　＿＿★＿＿　＿＿＿＿　＿＿＿＿　ずっと雪が降っていた。",
+      "1　が",
+      "2　こそ",
+      "3　しなかった",
+      "4　午前中",
+    ].join("\n"),
+  );
+
+  assert.equal(draft.questionType, "SORTING");
+  assert.equal(
+    draft.prompt,
+    "昨日はとても寒く、積もり[[sort]]　[[sort:star]]　[[sort]]　[[sort]]　ずっと雪が降っていた。",
+  );
+  assert.deepEqual(parseSortingPrompt(draft.prompt), {
+    prompt: draft.prompt,
+    segments: [
+      {
+        text: "昨日はとても寒く、積もり",
+        slotIndex: null,
+        isStar: false,
+      },
+      { text: "[[sort]]", slotIndex: 0, isStar: false },
+      { text: "　", slotIndex: null, isStar: false },
+      { text: "[[sort:star]]", slotIndex: 1, isStar: true },
+      { text: "　", slotIndex: null, isStar: false },
+      { text: "[[sort]]", slotIndex: 2, isStar: false },
+      { text: "　", slotIndex: null, isStar: false },
+      { text: "[[sort]]", slotIndex: 3, isStar: false },
+      {
+        text: "　ずっと雪が降っていた。",
+        slotIndex: null,
+        isStar: false,
+      },
+    ],
+    slotCount: 4,
+    starCount: 1,
+    starIndex: 1,
+  });
 });
 
 test("usage questions derive their target word from the prompt", () => {
@@ -1119,14 +1515,6 @@ test("audio library keeps uploads organized and folders hierarchical", async () 
     path.join(ROOT, "app/(admin)/manage/system/audio/page.tsx"),
     "utf8",
   );
-  const vocabularyAudioMigration = await readFile(
-    path.join(
-      ROOT,
-      "prisma/migrations/20260811000200_repair_vocabulary_audio_paths/migration.sql",
-    ),
-    "utf8",
-  );
-
   assert.match(action, /return `staging\/\$\{year\}-\$\{month\}`/);
   assert.match(action, /item\.folder\.startsWith\(`\$\{selectedFolder\}\//);
   assert.match(action, /walkAudioFolders/);
@@ -1138,10 +1526,6 @@ test("audio library keeps uploads organized and folders hierarchical", async () 
   assert.match(page, /上传到目录/);
   assert.match(page, /待整理/);
   assert.match(page, /linkedVocabularyAudio/);
-  assert.match(
-    vocabularyAudioMigration,
-    /\/audios\/vocabulary\/anki\/unlinked\//,
-  );
 });
 
 test("material and collection compatibility is governed by one policy", () => {
@@ -1410,6 +1794,98 @@ test("answer correctness is derived from stored options", () => {
     () => evaluateSelectedOption(options, "forged-option"),
     /所选答案无效/,
   );
+});
+
+test("N1 full-paper scoring applies section weights and pass thresholds", () => {
+  const weighted = calculateJlptScore(
+    [
+      { section: "LANGUAGE", problemNumber: 1, isCorrect: true },
+      { section: "LANGUAGE", problemNumber: 4, isCorrect: true },
+      { section: "READING", problemNumber: 8, isCorrect: true },
+      { section: "READING", problemNumber: 10, isCorrect: true },
+      { section: "LISTENING", problemNumber: 4, isCorrect: true },
+      { section: "LISTENING", problemNumber: 5, isCorrect: true },
+    ],
+    "N1",
+  );
+  assert.equal(weighted.language.rawScore, 3);
+  assert.equal(weighted.reading.rawScore, 5);
+  assert.equal(weighted.listening.rawScore, 4);
+  assert.equal(weighted.passLine, 100);
+
+  const perfect = calculateJlptScore(
+    [
+      ...Array.from({ length: 54 }, () => ({
+        section: "LANGUAGE",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 25 }, () => ({
+        section: "READING",
+        problemNumber: 8,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 26 }, () => ({
+        section: "LISTENING",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+    ],
+    "n1",
+  );
+  assert.equal(perfect.language.score, 60);
+  assert.equal(perfect.reading.score, 60);
+  assert.equal(perfect.listening.score, 60);
+  assert.equal(perfect.totalScore, 180);
+  assert.equal(perfect.passed, true);
+
+  const thresholdPassed = calculateJlptScore(
+    [
+      ...Array.from({ length: 17 }, () => ({
+        section: "LANGUAGE",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 25 }, () => ({
+        section: "READING",
+        problemNumber: 8,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 26 }, () => ({
+        section: "LISTENING",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+    ],
+    "N1",
+  );
+  assert.equal(thresholdPassed.language.score, 19);
+  assert.ok(thresholdPassed.totalScore >= 100);
+  assert.equal(thresholdPassed.passed, true);
+
+  const sectionFailed = calculateJlptScore(
+    [
+      ...Array.from({ length: 16 }, () => ({
+        section: "LANGUAGE",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 25 }, () => ({
+        section: "READING",
+        problemNumber: 8,
+        isCorrect: true,
+      })),
+      ...Array.from({ length: 26 }, () => ({
+        section: "LISTENING",
+        problemNumber: 1,
+        isCorrect: true,
+      })),
+    ],
+    "N1",
+  );
+  assert.equal(sectionFailed.language.score, 18);
+  assert.ok(sectionFailed.totalScore >= 100);
+  assert.equal(sectionFailed.passed, false);
 });
 
 test("partial practice submissions exclude unanswered questions", () => {
@@ -1840,10 +2316,25 @@ test("reading upload distinguishes article-local numbering from JLPT sections", 
     panel,
     /`問題\$\{section\.sectionNumber\}｜\$\{section\.title\}`/,
   );
-  assert.match(panel, /本文章第 \{qIndex \+ 1\} 题/);
+  assert.match(panel, /题目 \{qIndex \+ 1\}/);
   assert.match(panel, /添加\/取消下划线/);
   assert.match(panel, /toggleUnderlineSelection/);
+  assert.match(panel, /识别并加入阅读题/);
+  assert.match(panel, /选择圆点设置正确答案/);
+  assert.match(panel, /border-l-\[3px\]/);
+  assert.doesNotMatch(panel, /articleParsedPreviewRows/);
+  assert.doesNotMatch(panel, /articleParsedDrafts/);
+  assert.doesNotMatch(panel, /识别预览/);
   assert.doesNotMatch(panel, /padStart\(2, '0'\)/);
+
+  const uploadCenter = await readFile(
+    path.join(ROOT, "features/import/ui/UploadCenterUI.tsx"),
+    "utf8",
+  );
+  assert.match(
+    uploadCenter,
+    /commitArticleDrafts\(normalizedDrafts, previewRows\)/,
+  );
 
   const builder = await readFile(
     path.join(ROOT, "modules/import/domain/article-question-builder.ts"),
@@ -1852,9 +2343,123 @@ test("reading upload distinguishes article-local numbering from JLPT sections", 
   assert.match(builder, /detectedType === 'FILL_BLANK'[\s\S]*: ''/);
 });
 
+test("paper reading materials keep their authored import order", async () => {
+  const materialActions = await readFile(
+    path.join(ROOT, "modules/content/actions/materials.ts"),
+    "utf8",
+  );
+  const examRepository = await readFile(
+    path.join(ROOT, "lib/repositories/exam/index.ts"),
+    "utf8",
+  );
+  const exportRepository = await readFile(
+    path.join(ROOT, "features/practice/export/paper-export-data.ts"),
+    "utf8",
+  );
+
+  assert.match(materialActions, /collectionMaterial\.aggregate/);
+  assert.match(
+    materialActions,
+    /const nextMaterialOrder = \(lastMaterial\._max\.sortOrder \?\? -1\) \+ 1/,
+  );
+  assert.match(materialActions, /sortOrder: nextMaterialOrder/);
+  assert.doesNotMatch(
+    materialActions,
+    /collectionMaterials:\s*\{\s*create:\s*\{\s*collectionId,\s*sortOrder: 0/,
+  );
+  assert.match(
+    examRepository,
+    /orderBy: \[\{ sortOrder: "asc" \}, \{ createdAt: "asc" \}, \{ id: "asc" \}\]/,
+  );
+  assert.match(
+    exportRepository,
+    /orderBy: \[\{ sortOrder: 'asc' \}, \{ createdAt: 'asc' \}, \{ id: 'asc' \}\]/,
+  );
+});
+
+test("reading editor can move a whole cloze article to another paper", async () => {
+  const page = await readFile(
+    path.join(ROOT, "app/(admin)/manage/reading/[id]/page.tsx"),
+    "utf8",
+  );
+  const editor = await readFile(
+    path.join(ROOT, "features/content/ui/EditArticleUI.tsx"),
+    "utf8",
+  );
+  const actions = await readFile(
+    path.join(ROOT, "modules/content/actions/materials.ts"),
+    "utf8",
+  );
+
+  assert.match(page, /getManagePaperMoveTargets/);
+  assert.match(editor, /aria-label='移动到其他试卷'/);
+  assert.match(editor, /整篇文章及其 \$\{questions\.length\} 道题/);
+  assert.match(editor, /moveReadingMaterialToPaper/);
+  assert.match(actions, /export async function moveReadingMaterialToPaper/);
+  assert.match(actions, /collectionId: targetPaperId/);
+  assert.match(actions, /material\.type !== MaterialType\.READING/);
+});
+
+test("paper attributes are normalized across every creation and edit path", async () => {
+  assert.deepEqual(
+    normalizePaperAttributes({ title: "2024年12月N1", language: "ja" }),
+    {
+      language: "ja",
+      level: "N1",
+      acceptedMaterialTypes: ["LISTENING", "READING", "VOCAB_GRAMMAR"],
+    },
+  );
+  assert.deepEqual(normalizePaperAttributes({ title: "TOEIC L&R 問題集" }), {
+    language: "en",
+    level: "TOEIC",
+    acceptedMaterialTypes: ["LISTENING", "READING", "VOCAB_GRAMMAR"],
+  });
+
+  const materialActions = await readFile(
+    path.join(ROOT, "modules/content/actions/materials.ts"),
+    "utf8",
+  );
+  const importActions = await readFile(
+    path.join(ROOT, "features/import/actions.ts"),
+    "utf8",
+  );
+  const paperActions = await readFile(
+    path.join(ROOT, "features/practice/actions.ts"),
+    "utf8",
+  );
+  const collectionActions = await readFile(
+    path.join(ROOT, "features/collections/actions.ts"),
+    "utf8",
+  );
+  for (const source of [
+    materialActions,
+    importActions,
+    paperActions,
+    collectionActions,
+  ]) {
+    assert.match(source, /normalizePaperAttributes/);
+  }
+  assert.doesNotMatch(
+    materialActions,
+    /targetPaperId,[\s\S]{0,120}acceptedMaterialTypes: \{ has: MaterialType\.READING \}/,
+  );
+});
+
 test("search results use domain editors instead of the hidden JSON tool", async () => {
   const searchHrefBuilder = await readFile(
     path.join(ROOT, "features/search/domain.ts"),
+    "utf8",
+  );
+  const searchActions = await readFile(
+    path.join(ROOT, "features/search/actions.ts"),
+    "utf8",
+  );
+  const searchPage = await readFile(
+    path.join(ROOT, "app/(tools)/search/page.tsx"),
+    "utf8",
+  );
+  const vocabularyTabs = await readFile(
+    path.join(ROOT, "app/(knowledge)/vocabulary/VocabularyTabs.tsx"),
     "utf8",
   );
 
@@ -1867,6 +2472,15 @@ test("search results use domain editors instead of the hidden JSON tool", async 
     /`\/manage\/questions\/\$\{encodeURIComponent\(id\)\}`/,
   );
   assert.equal(searchHrefBuilder.includes("/manage/search/"), false);
+  assert.match(searchActions, /vocabularyResultsById/);
+  assert.match(searchActions, /sentence\.links\.forEach/);
+  assert.doesNotMatch(searchActions, /\.\.\.sentenceResults/);
+  assert.match(searchPage, /释义、读音、关联例句/);
+  assert.doesNotMatch(searchPage, /key: 'sentence', label: '句子'/);
+  assert.match(
+    vocabularyTabs,
+    /flashList\.findIndex\(item => item\.id === initialFocusId\)/,
+  );
 });
 
 test("responsive and component-boundary regressions remain guarded", async () => {
@@ -1944,7 +2558,8 @@ test("paper practice restores an unfinished local draft", async () => {
 
   assert.match(paperSession, /draftKey={`practice:draft:paper:\${id}`}/);
   assert.match(paperSession, /restoreDraftIndex={!qid}/);
-  assert.match(session, /window\.localStorage\.setItem\(draftKey/);
+  assert.match(session, /userStorageKey\(currentUser\.id, draftKey\)/);
+  assert.match(session, /window\.localStorage\.setItem\(scopedDraftKey/);
   assert.match(session, /currentQuestionId/);
   assert.match(session, /hasProgress:/);
   assert.match(player, /onClick={handleExit}/);
@@ -1972,6 +2587,17 @@ test("practice counts only complete paper submissions and can reset statistics",
     path.join(ROOT, "features/practice/ui/PerformanceStatsDialog.tsx"),
     "utf8",
   );
+  const paperDetail = await readFile(
+    path.join(ROOT, "app/(study)/practice/[id]/page.tsx"),
+    "utf8",
+  );
+  const submissionReview = await readFile(
+    path.join(
+      ROOT,
+      "features/practice/ui/PracticeSubmissionReviewClient.tsx",
+    ),
+    "utf8",
+  );
 
   assert.match(schema, /model PracticePaperSubmission/);
   assert.match(attemptService, /paperQuestionIds\.size !== uniqueQuestionIds\.length/);
@@ -1984,6 +2610,11 @@ test("practice counts only complete paper submissions and can reset statistics",
   assert.match(attemptService, /collectionId: \{ in: papers\.map/);
   assert.match(paperItem, /completedPracticeCount/);
   assert.match(paperItem, /hasDraftProgress \? '继续练习' : '开始练习'/);
+  assert.match(paperDetail, /查看错题/);
+  assert.match(paperDetail, /submissions\/\$\{encodeURIComponent\(submission\.id\)\}/);
+  assert.match(submissionReview, /<PracticePlayer/);
+  assert.match(submissionReview, /mode='history'/);
+  assert.match(submissionReview, /initialSubmitted/);
   assert.match(dialog, /重置统计/);
   assert.match(dialog, /按语言/);
   assert.match(dialog, /按试卷/);
@@ -2022,8 +2653,12 @@ test("practice papers default to newest and expose sort controls", async () => {
 });
 
 test("practice performance separates language and level before question type", async () => {
-  const practicePage = await readFile(
-    path.join(ROOT, "app/(study)/practice/page.tsx"),
+  const performanceRoute = await readFile(
+    path.join(ROOT, "app/api/practice/performance/route.ts"),
+    "utf8",
+  );
+  const launcher = await readFile(
+    path.join(ROOT, "features/practice/ui/PracticeInsightsLaunchers.tsx"),
     "utf8",
   );
   const dialog = await readFile(
@@ -2035,7 +2670,8 @@ test("practice performance separates language and level before question type", a
     "utf8",
   );
 
-  assert.match(practicePage, /getPracticePerformanceGroups/);
+  assert.match(performanceRoute, /getPracticePerformanceGroups/);
+  assert.match(launcher, /fetch\('\/api\/practice\/performance'/);
   assert.match(dialog, /语言与等级/);
   assert.match(dialog, /group\.level \? ` · \$\{group\.level\}` : ''/);
   assert.match(dialog, /平均用时/);
@@ -2072,8 +2708,8 @@ test("custom practice selects JLPT groups or individual problem sections", async
     customSession,
     /rawScope === 'attempted' \|\| rawScope === 'all'/,
   );
-  assert.match(repository, /attempts: \{ none: \{\} \}/);
-  assert.match(repository, /attempts: \{ some: \{\} \}/);
+  assert.match(repository, /attempts: \{ none: \{ userId \} \}/);
+  assert.match(repository, /attempts: \{ some: \{ userId \} \}/);
   assert.match(repository, /LANGUAGE:1/);
   assert.match(repository, /LISTENING:5/);
 });
@@ -2311,7 +2947,7 @@ test("selection popover supports pointer, keyboard and dialog semantics", async 
   assert.match(hook, /scheduleSelectionCommit\(240\)/);
   assert.match(hook, /window\.addEventListener\('scroll', handleWindowScroll/);
   assert.match(hook, /event\.key === 'Escape'/);
-  assert.match(tooltip, /role='dialog'/);
-  assert.match(tooltip, /aria-label='关闭词条编辑'/);
+  assert.match(tooltip, /role=\{panelOpen \? 'dialog' : undefined\}/);
+  assert.match(tooltip, /aria-label='关闭记录面板'/);
   assert.match(tooltip, /window\.visualViewport/);
 });

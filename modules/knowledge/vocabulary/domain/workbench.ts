@@ -3,11 +3,15 @@ import { Rating } from 'ts-fsrs'
 import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
 import { formatVocabularySentenceSource } from '@/utils/vocabulary/sourceDisplay'
 import type {
-  FolderItem,
   InflectionFamily,
   InflectionVariant,
   VocabItem,
 } from '../types'
+
+export {
+  buildFolderTree,
+  flattenFolderTree,
+} from './wordbook-tree.ts'
 
 export const LANGUAGE_NAMES: Record<string, string> = {
   ja: '日语',
@@ -82,43 +86,6 @@ export const resolveInconsistentMemoryRating = (
   if (first === Rating.Again) return Rating.Hard
   if (first === Rating.Hard) return Rating.Good
   return Rating.Easy
-}
-
-export type FolderTreeNode = FolderItem & { children: FolderTreeNode[] }
-
-export const buildFolderTree = (folders: FolderItem[]) => {
-  const nodeMap = new Map<string, FolderTreeNode>()
-  folders.forEach(folder => nodeMap.set(folder.id, { ...folder, children: [] }))
-  const roots: FolderTreeNode[] = []
-  nodeMap.forEach(node => {
-    if (node.parentId && nodeMap.has(node.parentId)) {
-      nodeMap.get(node.parentId)!.children.push(node)
-    } else {
-      roots.push(node)
-    }
-  })
-  return roots
-}
-
-export const flattenFolderTree = (
-  nodes: FolderTreeNode[],
-  depth = 0,
-  acc: Array<FolderItem & { depth: number; pathLabel: string }> = [],
-) => {
-  nodes
-    .slice()
-    .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'))
-    .forEach(node => {
-      acc.push({
-        id: node.id,
-        name: node.name,
-        parentId: node.parentId,
-        depth,
-        pathLabel: `${depth > 0 ? '— '.repeat(depth) : ''}${node.name}`,
-      })
-      flattenFolderTree(node.children, depth + 1, acc)
-    })
-  return acc
 }
 
 export const buildInflectionFamilyMap = (

@@ -6,7 +6,7 @@ import {
 import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
 import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
 
-export type ListeningQuestionDraft = {
+type ListeningQuestionDraft = {
   questionType:
     | 'LISTENING'
     | 'TOEIC_PHOTOGRAPH'
