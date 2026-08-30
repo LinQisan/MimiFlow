@@ -105,6 +105,13 @@ test('review routes and feature modules exist', async () => {
     'modules/knowledge/vocabulary/components/SentenceSearchPanel.tsx',
     'modules/knowledge/vocabulary/components/SentenceEditControls.tsx',
     'modules/knowledge/vocabulary/components/VocabularySentenceText.tsx',
+    'modules/knowledge/vocabulary/components/VocabularyMeaningEditor.tsx',
+    'modules/questions/domain/editor.ts',
+    'modules/questions/domain/paper-editor.ts',
+    'modules/questions/domain/toeic.ts',
+    'modules/language/domain/sudachi.ts',
+    'components/ui/PronunciationSourceSelector.tsx',
+    'app/api/pronunciation/route.ts',
     'modules/import/audio/hooks/useAudioFileCatalog.ts',
     'modules/media-subtitles/components/SubtitleReaderControls.tsx',
     'modules/practice/server/attempt-service.ts',
@@ -113,6 +120,7 @@ test('review routes and feature modules exist', async () => {
     'lib/validation/schema.ts',
     'lib/codecs/material-payload.ts',
     'lib/codecs/question-content.ts',
+    'lib/server/public-paths.ts',
     'features/collections/ui/DndSystem.tsx',
     'features/content/ui/EditArticleUI.tsx',
     'features/content/ui/EditQuizUI.tsx',
@@ -127,8 +135,8 @@ test('review routes and feature modules exist', async () => {
     'features/practice/ui/PaperLibraryItem.tsx',
     'features/practice/domain/paper-library.ts',
     'features/practice/hooks/usePaperLibraryState.ts',
-    'features/questions/domain/editor.ts',
-    'features/questions/domain/paper-editor.ts',
+    'modules/questions/domain/editor.ts',
+    'modules/questions/domain/paper-editor.ts',
     'features/questions/components/QuestionTypeBadge.tsx',
     'features/questions/hooks/useQuestionEditorMutations.ts',
     'features/questions/hooks/useQuestionEditorPageState.ts',
@@ -186,6 +194,32 @@ test('route, persistence, validation, and action boundaries stay explicit', asyn
 
     if (/readJsonRecord\([^\n]*contentPayload/.test(content)) {
       violations.push(`${relative} -> material payload bypasses codec`)
+    }
+  }
+
+  assert.deepEqual(violations, [])
+})
+
+test('shared question rules and pronunciation stay outside feature-specific paths', async () => {
+  const files = (
+    await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
+  ).flat()
+  const violations = []
+
+  for (const file of files) {
+    const relative = path.relative(ROOT, file)
+    const content = await readFile(file, 'utf8')
+    if (content.includes('features/questions/domain')) {
+      violations.push(`${relative} -> feature-owned shared question domain`)
+    }
+    if (content.includes('/api/practice/pronunciation')) {
+      violations.push(`${relative} -> feature-specific pronunciation endpoint`)
+    }
+    if (content.includes('features/reading/domain/sudachi')) {
+      violations.push(`${relative} -> reading-owned shared language domain`)
+    }
+    if (content.includes('features/reading/ui/PronunciationSourceSelector')) {
+      violations.push(`${relative} -> reading-owned shared pronunciation control`)
     }
   }
 
@@ -258,6 +292,7 @@ test('large feature entry points delegate distinct responsibilities', async () =
   assert.match(vocabularyTabs, /vocabulary\/components\/MemoryCardControls/)
   assert.match(vocabularyTabs, /vocabulary\/components\/SentenceSearchPanel/)
   assert.match(vocabularyTabs, /vocabulary\/components\/VocabularySentenceText/)
+  assert.match(vocabularyTabs, /vocabulary\/components\/VocabularyMeaningEditor/)
 })
 
 test('large interactive editors keep state, mutations, domain logic, and views separated', async () => {
@@ -353,7 +388,7 @@ test('content import keeps one task visible at a time', async () => {
     'utf8',
   )
   const toeicTypes = await readFile(
-    path.join(ROOT, 'features/questions/domain/toeic.ts'),
+    path.join(ROOT, 'modules/questions/domain/toeic.ts'),
     'utf8',
   )
   const answerCardSections = await readFile(

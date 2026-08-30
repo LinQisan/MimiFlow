@@ -73,11 +73,15 @@ test('paper frequency reports hierarchical wordbook coverage and outside words',
 })
 
 test('paper overview exposes Sudachi word frequency in a dialog', async () => {
-  const [page, repository, dialog, route, server, nextConfig] = await Promise.all([
+  const [page, repository, dialog, chart, route, server, nextConfig] = await Promise.all([
     readFile(path.join(ROOT, 'app/(study)/practice/[id]/page.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'lib/repositories/exam/index.ts'), 'utf8'),
     readFile(
       path.join(ROOT, 'features/practice/ui/PaperWordFrequencyDialog.tsx'),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'components/vocabulary/WordbookDistributionChart.tsx'),
       'utf8',
     ),
     readFile(
@@ -98,8 +102,9 @@ test('paper overview exposes Sudachi word frequency in a dialog', async () => {
   assert.match(repository, /dialogueTranscript/)
   assert.match(repository, /options: asArray/)
   assert.match(dialog, /听力原文、题干和全部选项/)
-  assert.match(dialog, /单词书分布/)
-  assert.match(dialog, /未加入任何单词书/)
+  assert.match(dialog, /WordbookDistributionChart/)
+  assert.match(chart, /单词书分布/)
+  assert.match(chart, /未加入任何单词书/)
   assert.match(server, /word: \{ in: batch \}/)
   assert.match(server, /ancestorIdsFor/)
   assert.match(nextConfig, /'\/practice\/\*'/)

@@ -35,6 +35,9 @@ type VocabularyWorkspaceState = {
   selectedFolderManageId: string | null
   activePronEditId: string | null
   pronInput: string
+  activeMeaningEditId: string | null
+  meaningDraft: string
+  isSavingMeanings: boolean
   activeFolderEditId: string | null
   expandedInflectionIds: Record<string, boolean>
   dragOffsetX: number
@@ -99,6 +102,9 @@ export function useVocabularyWorkspaceState(input: {
     selectedFolderManageId: null,
     activePronEditId: null,
     pronInput: '',
+    activeMeaningEditId: null,
+    meaningDraft: '',
+    isSavingMeanings: false,
     activeFolderEditId: null,
     expandedInflectionIds: {},
     dragOffsetX: 0,
@@ -146,6 +152,9 @@ export function useVocabularyWorkspaceState(input: {
       setSelectedFolderManageId: setter('selectedFolderManageId'),
       setActivePronEditId: setter('activePronEditId'),
       setPronInput: setter('pronInput'),
+      setActiveMeaningEditId: setter('activeMeaningEditId'),
+      setMeaningDraft: setter('meaningDraft'),
+      setIsSavingMeanings: setter('isSavingMeanings'),
       setActiveFolderEditId: setter('activeFolderEditId'),
       setExpandedInflectionIds: setter('expandedInflectionIds'),
       setDragOffsetX: setter('dragOffsetX'),

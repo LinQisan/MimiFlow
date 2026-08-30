@@ -7,6 +7,8 @@ const normalizeWord = (raw: string) =>
   raw
     .normalize('NFKC')
     .trim()
+    .replace(/^(?:[~〜～]+|\(\s*[~〜～]\s*\)|（\s*[~〜～]\s*）)+\s*/, '')
+    .replace(/\s*(?:[~〜～]+|\(\s*[~〜～]\s*\)|（\s*[~〜～]\s*）)+$/, '')
     .replace(/^[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+/, '')
     .replace(/[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+$/, '')
 
@@ -14,17 +16,17 @@ const isJapaneseWord = (value: string) => JAPANESE_REGEX.test(value)
 
 const GODAN_ROWS: Record<
   string,
-  { i: string; a: string; ta: string; te: string }
+  { i: string; a: string; e: string; o: string; ta: string; te: string }
 > = {
-  う: { i: 'い', a: 'わ', ta: 'った', te: 'って' },
-  く: { i: 'き', a: 'か', ta: 'いた', te: 'いて' },
-  ぐ: { i: 'ぎ', a: 'が', ta: 'いだ', te: 'いで' },
-  す: { i: 'し', a: 'さ', ta: 'した', te: 'して' },
-  つ: { i: 'ち', a: 'た', ta: 'った', te: 'って' },
-  ぬ: { i: 'に', a: 'な', ta: 'んだ', te: 'んで' },
-  ぶ: { i: 'び', a: 'ば', ta: 'んだ', te: 'んで' },
-  む: { i: 'み', a: 'ま', ta: 'んだ', te: 'んで' },
-  る: { i: 'り', a: 'ら', ta: 'った', te: 'って' },
+  う: { i: 'い', a: 'わ', e: 'え', o: 'お', ta: 'った', te: 'って' },
+  く: { i: 'き', a: 'か', e: 'け', o: 'こ', ta: 'いた', te: 'いて' },
+  ぐ: { i: 'ぎ', a: 'が', e: 'げ', o: 'ご', ta: 'いだ', te: 'いで' },
+  す: { i: 'し', a: 'さ', e: 'せ', o: 'そ', ta: 'した', te: 'して' },
+  つ: { i: 'ち', a: 'た', e: 'て', o: 'と', ta: 'った', te: 'って' },
+  ぬ: { i: 'に', a: 'な', e: 'ね', o: 'の', ta: 'んだ', te: 'んで' },
+  ぶ: { i: 'び', a: 'ば', e: 'べ', o: 'ぼ', ta: 'んだ', te: 'んで' },
+  む: { i: 'み', a: 'ま', e: 'め', o: 'も', ta: 'んだ', te: 'んで' },
+  る: { i: 'り', a: 'ら', e: 'れ', o: 'ろ', ta: 'った', te: 'って' },
 }
 
 const buildIchidanForms = (word: string) => {
@@ -43,6 +45,13 @@ const buildIchidanForms = (word: string) => {
     `${stem}ませんでした`,
     `${stem}ている`,
     `${stem}ていた`,
+    `${stem}られる`,
+    `${stem}られない`,
+    `${stem}させる`,
+    `${stem}れば`,
+    `${stem}よう`,
+    `${stem}ろ`,
+    `${stem}たい`,
   ]
 }
 
@@ -53,19 +62,28 @@ const buildGodanForms = (word: string) => {
   const stem = word.slice(0, -1)
   const masuStem = `${stem}${rule.i}`
   const naiStem = `${stem}${rule.a}`
+  const past = word.endsWith('行く') ? `${stem}った` : `${stem}${rule.ta}`
+  const connective = word.endsWith('行く') ? `${stem}って` : `${stem}${rule.te}`
   return [
     word,
-    `${stem}${rule.ta}`,
-    `${stem}${rule.te}`,
-    `${stem}${rule.ta}り`,
+    past,
+    connective,
+    `${past}り`,
     `${naiStem}ない`,
     `${naiStem}なかった`,
     `${masuStem}ます`,
     `${masuStem}ました`,
     `${masuStem}ません`,
     `${masuStem}ませんでした`,
-    `${stem}${rule.te}いる`,
-    `${stem}${rule.te}いた`,
+    `${connective}いる`,
+    `${connective}いた`,
+    `${naiStem}れる`,
+    `${naiStem}れない`,
+    `${naiStem}せる`,
+    `${stem}${rule.e}ば`,
+    `${stem}${rule.e}`,
+    `${stem}${rule.o}う`,
+    `${masuStem}たい`,
   ]
 }
 
@@ -89,6 +107,12 @@ const buildJapaneseSurfaceForms = (rawHeadword: string) => {
       `${stem}しません`,
       `${stem}しませんでした`,
       `${stem}したり`,
+      `${stem}される`,
+      `${stem}されない`,
+      `${stem}させる`,
+      `${stem}すれば`,
+      `${stem}しよう`,
+      `${stem}したい`,
     ].forEach(item => forms.add(item))
     return unique(Array.from(forms))
   }
@@ -106,6 +130,29 @@ const buildJapaneseSurfaceForms = (rawHeadword: string) => {
       `${stem}きません`,
       `${stem}きませんでした`,
       `${stem}きたり`,
+      `${stem}こられる`,
+      `${stem}こさせる`,
+      `${stem}くれば`,
+      `${stem}こよう`,
+    ].forEach(item => forms.add(item))
+    return unique(Array.from(forms))
+  }
+
+  if (word.endsWith('来る')) {
+    const stem = word.slice(0, -2)
+    ;[
+      `${stem}来る`,
+      `${stem}来た`,
+      `${stem}来て`,
+      `${stem}来ない`,
+      `${stem}来なかった`,
+      `${stem}来ます`,
+      `${stem}来ました`,
+      `${stem}来ません`,
+      `${stem}来られる`,
+      `${stem}来させる`,
+      `${stem}来れば`,
+      `${stem}来よう`,
     ].forEach(item => forms.add(item))
     return unique(Array.from(forms))
   }
@@ -126,6 +173,24 @@ const buildJapaneseSurfaceForms = (rawHeadword: string) => {
   buildGodanForms(word).forEach(item => forms.add(item))
 
   return unique(Array.from(forms))
+}
+
+export const buildJapaneseVocabularySearchTerms = (
+  rawHeadword: string,
+  partsOfSpeech: string[] = [],
+) => {
+  const headword = normalizeWord(rawHeadword).slice(0, 80)
+  if (!headword) return []
+  const tags = partsOfSpeech.map(item => item.trim()).filter(Boolean)
+  const isVerb = tags.some(tag => /動詞|动词|verb/i.test(tag))
+  const isIAdjective = tags.some(
+    tag => /形容詞|形容词|i-adjective|adjective|adj\./i.test(tag),
+  )
+  const mayBeDictionaryVerb =
+    tags.length === 0 && /(?:する|くる|来る|[うくぐすつぬぶむる])$/.test(headword)
+
+  if (!isVerb && !isIAdjective && !mayBeDictionaryVerb) return [headword]
+  return buildJapaneseSurfaceForms(headword)
 }
 
 export const buildSurfaceAliasMapForText = (text: string, words: string[]) => {

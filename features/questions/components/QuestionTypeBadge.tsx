@@ -1,4 +1,4 @@
-import { getQuestionEditorTypeConfig } from '../domain/editor'
+import { getQuestionEditorTypeConfig } from '@/modules/questions/domain/editor'
 
 export default function QuestionTypeBadge({ type }: { type: string }) {
   const config = getQuestionEditorTypeConfig(type)

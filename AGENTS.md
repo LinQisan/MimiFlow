@@ -45,8 +45,14 @@ Never print or commit values from `.env` or `.env.local`.
 - `modules/`: domain-focused workflows shared by routes and features. Keep domain
   rules in `domain/`, database access in `server/` or `repository.ts`, and writes
   in `actions/`.
+  - `questions/domain/` owns reusable editor rules, paper sections, and TOEIC
+    metadata. Import these rules from `modules`, never from a UI feature.
+  - `language/domain/` owns shared Japanese analysis types and pure vocabulary
+    ranking logic used by reading, listening, practice, and vocabulary.
 - `lib/`: infrastructure, codecs, validation, errors, Prisma access, and shared
   repositories. Repositories are the preferred database read boundary.
+  Server filesystem roots are centralized in `lib/server/public-paths.ts` so
+  Next.js traces exact directories instead of broad `process.cwd()` patterns.
 - `context/` and `hooks/`: cross-feature client state and reusable browser hooks.
 - `utils/`: deterministic, side-effect-free helpers where possible.
 - `prisma/schema.prisma`: the single source of truth for the current database
@@ -54,6 +60,8 @@ Never print or commit values from `.env` or `.env.local`.
 - `scripts/`: database startup, imports, performance checks, and Node test files.
 - `public/audios/`: user-managed local audio library. Preserve existing audio
   files and paths unless a request explicitly changes them.
+- `.codex-work/` and `outputs/`: local inspection and generated-artifact folders.
+  They are ignored and are never application source or commit inputs.
 
 `features/` and `modules/` overlap because the project is being organized
 incrementally. For new work, put reusable domain and persistence logic in
@@ -69,6 +77,20 @@ thin. Do not create another competing layer.
 4. Client mutations call a Server Action or a narrow API route.
 5. Mutation boundaries validate input, enforce collection/material compatibility,
    and return the shared serializable action-result contract.
+
+Preferred dependency direction:
+
+`app` / feature UI / shared components → `modules` → `lib` / `utils`
+
+- `app/` owns route composition, metadata, and small HTTP boundaries. It must not
+  become a second feature layer.
+- `features/` owns feature presentation and route-facing orchestration. Shared
+  business rules belong in `modules/`, even when one feature introduced them.
+- New `modules/` code must not depend on feature UI or route files. When old
+  overlap is encountered, move the shared rule downward rather than adding another
+  adapter.
+- `lib/` and `utils/` stay presentation-agnostic. `lib/` may perform infrastructure
+  work; `utils/` should remain deterministic and side-effect free.
 
 Core content hierarchy:
 
@@ -100,6 +122,8 @@ database dumps. The current schema is authoritative.
 - Read the relevant local Next.js 16 documentation before changing framework APIs.
 - Prefer Server Components. Add `'use client'` only at the smallest interactive
   boundary.
+- Keep `page.tsx` and `route.ts` files thin. Complex state belongs in a named hook,
+  view markup in a feature/module component, and reusable parsing in a domain file.
 - Keep render functions pure. Time, randomness, storage, and DOM access belong in
   event handlers, effects, or server boundaries.
 - Reuse domain parsers and question helpers; do not implement route-local copies.
@@ -111,8 +135,16 @@ database dumps. The current schema is authoritative.
   folder.
 - Prefer small named functions over large inline branches. Remove obsolete adapters
   and exports once all callers have moved.
+- Large interactive entry points may coordinate state, but new self-contained
+  controls and panels must be extracted into their feature/module `components/`
+  folder. Do not add another large inline popover to an already large route client.
 - Follow the visual rules in `DESIGN.md`; reuse existing `ui-*`, editorial, and
   language typography utilities before adding new global styles.
+- Use `CustomSelect` for styled application dropdowns and `DatePicker` for dates.
+  The shared date picker supports both direct typing and calendar selection.
+- Japanese pronunciation for practice, reading, listening, and vocabulary uses
+  the shared `/api/pronunciation` boundary, `modules/language` domain types, and
+  the source selector in `components/ui`. Do not create a route-specific copy.
 
 ## Verification expectations
 

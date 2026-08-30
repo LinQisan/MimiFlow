@@ -18,14 +18,14 @@ import {
   getVocabGrammarQuestionSection,
   MATERIAL_GROUPS,
   parseActiveQuestionSection,
-} from '@/features/questions/domain/paper-editor'
+} from '@/modules/questions/domain/paper-editor'
 import { usePaperQuestionEditorState } from '@/features/questions/hooks/usePaperQuestionEditorState'
 import { useQuestionEditorMutations } from '@/features/questions/hooks/useQuestionEditorMutations'
 import {
   createQuestionOption,
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import { supportsSeparateQuestionContext } from '@/modules/practice/domain/question-text'
 
 type EditableOption = {

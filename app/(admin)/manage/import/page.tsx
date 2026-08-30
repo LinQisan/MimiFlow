@@ -9,8 +9,8 @@ import ImportNavigation from './ImportNavigation'
 import {
   TOEIC_PARTS,
   getToeicPartBySlug,
-} from '@/features/questions/domain/toeic'
-import { PAPER_LISTENING_SECTIONS } from '@/features/questions/domain/paper-editor'
+} from '@/modules/questions/domain/toeic'
+import { PAPER_LISTENING_SECTIONS } from '@/modules/questions/domain/paper-editor'
 
 const importLanguages = [
   {

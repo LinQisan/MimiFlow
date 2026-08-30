@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { buildWordFrequency, type SudachiToken } from '@/features/reading/domain/sudachi'
+import { buildWordFrequency, type SudachiToken } from '@/modules/language/domain/sudachi'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
 import type { FrequencyMaterial } from '@/features/reading/ui/WordFrequencyDialog'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'

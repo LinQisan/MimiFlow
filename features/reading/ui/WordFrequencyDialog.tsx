@@ -8,7 +8,7 @@ import {
   sortWordFrequencyRows,
   type WordFrequencyRow,
   type WordFrequencySortMode,
-} from '@/features/reading/domain/sudachi'
+} from '@/modules/language/domain/sudachi'
 
 export type FrequencyMaterial = {
   id: string

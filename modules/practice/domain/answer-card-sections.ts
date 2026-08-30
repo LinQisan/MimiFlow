@@ -2,8 +2,8 @@ import {
   getReadingQuestionSection,
   getPaperLanguageSectionGroup,
   getVocabGrammarQuestionSection,
-} from "../../../features/questions/domain/paper-editor.ts";
-import { getToeicPartByQuestionType } from "../../../features/questions/domain/toeic.ts";
+} from "../../questions/domain/paper-editor.ts";
+import { getToeicPartByQuestionType } from "../../questions/domain/toeic.ts";
 import { buildPracticeQuestionNumberMap } from "./question-numbering.ts";
 
 export type AnswerCardQuestion = {

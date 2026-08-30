@@ -1,7 +1,11 @@
 'use client'
 
 import { guessLanguageCode } from '@/utils/language/langDetector'
-import { buildJapaneseRubyHtml } from '@/utils/language/japaneseRuby'
+import {
+  annotateJapaneseTextWithSudachi,
+  buildJapaneseRubyHtml,
+  type JapaneseRubyLexeme,
+} from '@/utils/language/japaneseRuby'
 import TrustedHtml from '@/components/ui/TrustedHtml'
 
 export default function WordPronunciation({
@@ -14,6 +18,8 @@ export default function WordPronunciation({
   wordClassName = '',
   hintClassName = '',
   meaningClassName = '',
+  pronunciationSource = 'personal',
+  sudachiLexicon = {},
 }: {
   word: string
   pronunciation?: string
@@ -24,19 +30,32 @@ export default function WordPronunciation({
   wordClassName?: string
   hintClassName?: string
   meaningClassName?: string
+  pronunciationSource?: 'sudachi' | 'personal'
+  sudachiLexicon?: Record<string, JapaneseRubyLexeme>
 }) {
   const lang = guessLanguageCode(word)
   const pron =
     (pronunciation || '').trim() ||
     pronunciations.map(item => item.trim()).find(Boolean) ||
     ''
-  const shouldShowHint = showPronunciation && !!pron
   const hasKanji = /[\u4e00-\u9fff]/.test(word)
+  const hasSudachiPronunciation = Object.values(sudachiLexicon).some(
+    lexeme =>
+      /[\u4e00-\u9fff]/.test(lexeme.surface) &&
+      word.includes(lexeme.surface) &&
+      Boolean(lexeme.reading.trim()),
+  )
+  const shouldShowHint =
+    showPronunciation &&
+    (pronunciationSource === 'sudachi'
+      ? hasSudachiPronunciation
+      : Boolean(pron))
   const parsedMeanings = meanings.map(item => item.trim()).filter(Boolean)
   const shouldShowMeaning = showMeaning && parsedMeanings.length > 0
   const hasKana = /[\u3040-\u30ff]/.test(word)
   const hasKanaInPron = /[\u3040-\u30ff]/.test(pron)
-  const isJapaneseWord = hasKana || hasKanaInPron || lang === 'ja'
+  const isJapaneseWord =
+    hasSudachiPronunciation || hasKana || hasKanaInPron || lang === 'ja'
   const isChineseWord = lang === 'zh' && !isJapaneseWord
   const renderMeanings = () =>
     shouldShowMeaning ? (
@@ -60,10 +79,18 @@ export default function WordPronunciation({
         </div>
       )
     }
-    const rubyHtml = buildJapaneseRubyHtml(word, pron, {
-      rubyClassName: 'jp-ruby',
-      rtClassName: `jp-ruby-rt ${hintClassName}`.trim(),
-    })
+    const rubyHtml =
+      pronunciationSource === 'sudachi' && Object.keys(sudachiLexicon).length > 0
+        ? annotateJapaneseTextWithSudachi(word, sudachiLexicon, {
+            useSudachiReading: true,
+            rubyEnabled: true,
+            rubyClassName: 'jp-ruby',
+            rtClassName: `jp-ruby-rt ${hintClassName}`.trim(),
+          })
+        : buildJapaneseRubyHtml(word, pron, {
+            rubyClassName: 'jp-ruby',
+            rtClassName: `jp-ruby-rt ${hintClassName}`.trim(),
+          })
     return (
       <div>
         <TrustedHtml

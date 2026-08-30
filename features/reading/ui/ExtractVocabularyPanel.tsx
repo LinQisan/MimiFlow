@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import type { VocabularyCandidate } from '@/features/reading/domain/sudachi'
+import type { VocabularyCandidate } from '@/modules/language/domain/sudachi'
 import { saveExtractedArticleVocabulary } from '@/features/reading/vocabulary-actions'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 

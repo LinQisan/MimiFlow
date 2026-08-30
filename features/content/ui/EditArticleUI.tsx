@@ -3,6 +3,8 @@
 import { useRef, useState } from 'react'
 import type { CollectionType } from '@prisma/client'
 import { useRouter } from 'next/navigation'
+import DatePicker from '@/components/ui/DatePicker'
+import CustomSelect from '@/components/ui/CustomSelect'
 import Link from 'next/link'
 
 import {
@@ -24,7 +26,7 @@ import {
   createQuestionOption,
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import {
   ARTICLE_TABLE_TEMPLATE,
   insertArticleFootnote,
@@ -565,7 +567,7 @@ export default function EditArticleUI({
                 </p>
                 {moveTargets.length > 0 ? (
                   <div className='flex items-center gap-1.5'>
-                    <select
+                    <CustomSelect
                       value={moveTargetId}
                       onChange={event => setMoveTargetId(event.target.value)}
                       aria-label='移动到其他试卷'
@@ -578,7 +580,7 @@ export default function EditArticleUI({
                           {target.title}
                         </option>
                       ))}
-                    </select>
+                    </CustomSelect>
                     <button
                       type='button'
                       onClick={() => void handleMoveToPaper()}
@@ -638,14 +640,12 @@ export default function EditArticleUI({
             </div>
             {sourceKind === 'NEWS' ? (
               <div className="grid gap-3 sm:grid-cols-3">
-                <input
-                  type="date"
+                <DatePicker
                   value={publishedDate}
-                  onChange={(event) => setPublishedDate(event.target.value)}
+                  onChange={setPublishedDate}
                   aria-label="日期"
-                  className="border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-slate-500"
                 />
-                <select
+                <CustomSelect
                   value={edition}
                   onChange={(event) => setEdition(event.target.value)}
                   aria-label="刊别"
@@ -655,7 +655,7 @@ export default function EditArticleUI({
                   <option value="MORNING">朝刊</option>
                   <option value="EVENING">夕刊</option>
                   <option value="FLASH">速報</option>
-                </select>
+                </CustomSelect>
                 <input
                   value={pageNumber}
                   onChange={(event) => setPageNumber(event.target.value)}

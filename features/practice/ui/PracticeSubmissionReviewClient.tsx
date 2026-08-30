@@ -3,7 +3,7 @@
 import { PracticePlayer } from '@/components/exam/PracticePlayer'
 import type { ExamQuestion } from '@/components/exam/question-renderer/types'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
-import type { SudachiLexeme } from '@/features/reading/domain/sudachi'
+import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
 
 type SubmissionItem = {
   question: ExamQuestion

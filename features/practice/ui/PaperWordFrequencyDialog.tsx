@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import CustomSelect from '@/components/ui/CustomSelect'
+import WordbookDistributionChart from '@/components/vocabulary/WordbookDistributionChart'
 import {
   sortWordFrequencyRows,
   type WordFrequencyRow,
   type WordFrequencySortMode,
-} from '@/features/reading/domain/sudachi'
+} from '@/modules/language/domain/sudachi'
 import type {
   PaperFrequencySourceStats,
   PaperWordbookDistribution,
@@ -26,62 +27,6 @@ const EMPTY_DISTRIBUTION: PaperWordbookDistribution = {
   outsideCount: 0,
   outsideRate: 0,
   wordbooks: [],
-}
-
-function WordbookDistribution({
-  distribution,
-}: {
-  distribution: PaperWordbookDistribution
-}) {
-  if (distribution.totalWords === 0) return null
-  const rows = [
-    ...distribution.wordbooks,
-    {
-      id: 'outside-wordbooks',
-      name: '未加入任何单词书',
-      pathLabel: '未加入任何单词书',
-      depth: 0,
-      matchedCount: distribution.outsideCount,
-      coverageRate: distribution.outsideRate,
-    },
-  ]
-
-  return (
-    <section className='border-b border-slate-200 py-5'>
-      <div className='flex flex-wrap items-end justify-between gap-2'>
-        <div>
-          <h3 className='text-sm font-bold text-slate-950'>单词书分布</h3>
-          <p className='mt-1 text-xs text-slate-500'>
-            按 {distribution.totalWords} 个去重词统计；父级包含子级，同一个词可能命中多个单词书。
-          </p>
-        </div>
-      </div>
-      <div className='mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2'>
-        {rows.map(row => (
-          <div key={row.id} title={row.pathLabel}>
-            <div
-              className='flex items-center justify-between gap-3 text-xs'
-              style={{ paddingLeft: `${row.depth * 0.9}rem` }}>
-              <span className='min-w-0 truncate font-semibold text-slate-700'>
-                {row.name}
-              </span>
-              <span className='shrink-0 tabular-nums text-slate-500'>
-                <strong className='text-slate-900'>{row.matchedCount}</strong> 个 · {row.coverageRate}%
-              </span>
-            </div>
-            <div
-              className='mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-200'
-              style={{ marginLeft: `${row.depth * 0.9}rem` }}>
-              <div
-                className={`h-full rounded-full ${row.id === 'outside-wordbooks' ? 'bg-slate-400' : 'bg-violet-500'}`}
-                style={{ width: `${Math.min(100, row.coverageRate)}%` }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
 }
 
 export default function PaperWordFrequencyDialog({
@@ -233,7 +178,7 @@ export default function PaperWordFrequencyDialog({
                 </div>
               </dl>
 
-              <WordbookDistribution distribution={wordbookDistribution} />
+              <WordbookDistributionChart distribution={wordbookDistribution} />
 
               <div className='grid gap-3 py-4 sm:grid-cols-[minmax(0,18rem)_minmax(0,13rem)_auto] sm:items-end'>
                 <label className='text-xs font-semibold text-slate-500 sm:w-72'>

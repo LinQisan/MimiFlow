@@ -2,7 +2,7 @@ import {
   isSudachiContentWord,
   translateSudachiPartOfSpeech,
   type SudachiToken,
-} from '../../reading/domain/sudachi.ts'
+} from '../../../modules/language/domain/sudachi.ts'
 
 const PRACTICE_VOCABULARY_CATEGORIES = [
   { key: 'TEXT_VOCAB', label: '文字・語彙' },

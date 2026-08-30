@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react'
 
+import CustomSelect from '@/components/ui/CustomSelect'
 import type {
   PracticeVocabularyAnalytics,
   PracticeVocabularyWordInsight,
@@ -306,11 +307,11 @@ function CoverageView({
         <div className='flex flex-wrap items-center gap-2'>
           <label className='text-xs font-semibold text-slate-500'>
             排序
-            <select value={sortMode} onChange={event => setSortMode(event.currentTarget.value as CoverageSortMode)} className='ml-2 h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
+            <CustomSelect value={sortMode} onChange={event => setSortMode(event.currentTarget.value as CoverageSortMode)} className='ml-2 h-9 min-w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
               <option value='learning'>学习价值</option>
               <option value='coverage'>试卷覆盖率</option>
               <option value='frequency'>题型命中次数</option>
-            </select>
+            </CustomSelect>
           </label>
           <button type='button' aria-pressed={showLearned} onClick={() => setShowLearned(current => !current)} className={`h-9 rounded-lg border px-3 text-xs font-semibold transition ${showLearned ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>
             {showLearned ? '已显示熟练词' : '显示已熟练词'}

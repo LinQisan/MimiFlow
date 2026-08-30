@@ -1659,6 +1659,13 @@ body.editorial-ui main :where(input, textarea, select):focus {
   box-shadow: 0 1px 0 var(--editorial-ink) !important;
 }
 
+body.editorial-ui main input.ui-date-picker-input,
+body.editorial-ui main input.ui-date-picker-input:focus {
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
 body.editorial-ui .ui-tag,
 body.editorial-ui main span[class*='rounded-full'][class*='border'] {
   border-radius: 999px;

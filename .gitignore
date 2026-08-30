@@ -45,3 +45,5 @@ next-env.d.ts
 /public/audios/
 /public/images/questions/
 /.local-backups/
+/.codex-work/
+/outputs/

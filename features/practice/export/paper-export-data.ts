@@ -11,8 +11,8 @@ import {
   getPaperLanguageSectionGroup,
   getReadingQuestionSection,
   getVocabGrammarQuestionSection,
-} from '@/features/questions/domain/paper-editor'
-import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
+} from '@/modules/questions/domain/paper-editor'
+import { getToeicPartByQuestionType } from '@/modules/questions/domain/toeic'
 import { normalizeQuestionTextFields } from '@/modules/practice/domain/question-text'
 import { buildPracticeQuestionNumberMap } from '@/modules/practice/domain/question-numbering'
 import {
@@ -21,6 +21,10 @@ import {
   type OptionLabelFormat,
 } from '@/utils/questions/optionLabels'
 import { resolvePathInsideRoot } from '@/utils/files/path'
+import {
+  PUBLIC_AUDIO_ROOT,
+  PUBLIC_ROOT,
+} from '@/lib/server/public-paths'
 
 type PaperExportOption = {
   id: string
@@ -96,8 +100,7 @@ export type PaperExportData = {
 type LoadedPaper = Awaited<ReturnType<typeof loadPaper>>
 type SourceMaterial = LoadedPaper['materials'][number]['material']
 
-const PUBLIC_ROOT = path.join(process.cwd(), 'public')
-const AUDIO_ROOT = path.join(PUBLIC_ROOT, 'audios')
+const AUDIO_ROOT = PUBLIC_AUDIO_ROOT
 
 const asRecords = (value: unknown) =>
   Array.isArray(value)

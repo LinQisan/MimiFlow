@@ -34,7 +34,7 @@ import { useUploadCenterMutations } from '@/features/import/hooks/useUploadMutat
 import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import {
   getImportQuestionTypeLabel,
   IMPORT_QUESTION_TYPES,
@@ -44,7 +44,7 @@ import {
   supportsSeparateQuestionContext,
   usesExplicitQuestionTargetWord,
 } from '@/modules/practice/domain/question-text'
-import type { PaperReadingQuestionType } from '@/features/questions/domain/paper-editor'
+import type { PaperReadingQuestionType } from '@/modules/questions/domain/paper-editor'
 import {
   findNewsCollectionId,
   getNewsTypeLabel,

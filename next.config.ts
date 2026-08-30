@@ -25,6 +25,7 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
   outputFileTracingIncludes: {
+    '/api/pronunciation': ['./scripts/sudachi_pronunciation.py'],
     '/reading/articles/*': ['./scripts/sudachi_pronunciation.py'],
     '/practice/*': ['./scripts/sudachi_pronunciation.py'],
   },

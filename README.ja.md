@@ -16,16 +16,19 @@ Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL、ts-fsr
 
 ## ローカル実行
 
-Node.js 22–26 と PostgreSQL が必要です。
+Node.js 22–26、Python 3、PostgreSQL が必要です。
 
 ```bash
 npm install
+npm run sudachi:setup
 npm run db:generate
 npm run db:push
 npm run dev
 ```
 
 データベースコマンドの実行前に、`.env.local` に `DATABASE_URL` を設定してください。
+`sudachi:setup` は読解・聴解・問題演習・語彙で共有する日本語解析環境を
+`.venv` に構築します。既存環境を使う場合は `SUDACHI_PYTHON` を指定できます。
 macOS で Homebrew 版 PostgreSQL を使用する場合、`npm run dev` はローカル
 データベースを確認し、停止中なら Homebrew サービスを自動起動します。複数の
 PostgreSQL がある場合は `.env.local` の `POSTGRES_SERVICE` で指定できます

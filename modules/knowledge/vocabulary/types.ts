@@ -23,6 +23,7 @@ type VocabularyWordbookMembership = {
 }
 
 type VocabularyWordbookSource = VocabularyWordbookMembership & {
+  recordIds: string[]
   pronunciations: string[]
   partsOfSpeech: string[]
   meanings: string[]

@@ -53,12 +53,14 @@ test('structured news metadata maps to source collections and keeps legacy compa
 })
 
 test('news import requires structured choices and reading offers matching filters', async () => {
-  const [center, panel, actions, readingPage, readingClient] = await Promise.all([
+  const [center, panel, datePicker, editor, actions, readingPage, readingClient] = await Promise.all([
     readFile(path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'), 'utf8'),
     readFile(
       path.join(ROOT, 'modules/import/components/ArticleImportPanel.tsx'),
       'utf8',
     ),
+    readFile(path.join(ROOT, 'components/ui/DatePicker.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'features/content/ui/EditArticleUI.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'modules/content/actions/materials.ts'), 'utf8'),
     readFile(path.join(ROOT, 'app/(library)/reading/page.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'app/(library)/reading/ReadingCenterClient.tsx'), 'utf8'),
@@ -76,6 +78,16 @@ test('news import requires structured choices and reading offers matching filter
   assert.match(panel, /NEWS_TOPIC_OPTIONS/)
   assert.match(panel, /onNewsMetadataChange/)
   assert.match(panel, /自动使用今天/)
+  assert.match(panel, /<DatePicker/)
+  assert.doesNotMatch(panel, /type="date"/)
+  assert.match(editor, /<DatePicker/)
+  assert.match(datePicker, /role='dialog'/)
+  assert.match(datePicker, /role='grid'/)
+  assert.match(datePicker, /ui-pop ui-pop-surface/)
+  assert.match(datePicker, /MANUAL_DATE_PATTERN/)
+  assert.match(datePicker, /请输入有效日期/)
+  assert.match(datePicker, /event\.key === 'ArrowDown'/)
+  assert.match(datePicker, /event\.key === 'Escape'/)
   assert.match(panel, /NEWS_EDITION_OPTIONS/)
   assert.match(panel, /已自动对应朝刊/)
   assert.match(panel, /已自动对应一面/)

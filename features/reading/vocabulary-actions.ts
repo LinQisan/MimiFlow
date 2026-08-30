@@ -3,7 +3,7 @@
 import { SourceType } from '@prisma/client'
 import { getArticleById } from '@/lib/repositories/materials'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
-import { buildVocabularyCandidates } from '@/features/reading/domain/sudachi'
+import { buildVocabularyCandidates } from '@/modules/language/domain/sudachi'
 import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
 import { extractSentenceAtOffset } from '@/utils/text/sentenceContext'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'

@@ -9,7 +9,7 @@ import {
   buildPracticeVocabularyAnalytics,
   rankPracticeVocabularyTrendWords,
 } from '../features/practice/domain/vocabulary-analytics.ts'
-import { isSudachiContentWord } from '../features/reading/domain/sudachi.ts'
+import { isSudachiContentWord } from '../modules/language/domain/sudachi.ts'
 
 const ROOT = process.cwd()
 

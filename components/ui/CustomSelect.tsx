@@ -49,8 +49,20 @@ type MenuLayout = {
 }
 
 const textFromNode = (node: ReactNode): string => {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  return Children.toArray(node).map(textFromNode).join('')
+  if (
+    typeof node === 'string' ||
+    typeof node === 'number' ||
+    typeof node === 'bigint'
+  ) {
+    return String(node)
+  }
+  if (Array.isArray(node)) return node.map(textFromNode).join('')
+  if (isValidElement(node)) {
+    return textFromNode(
+      (node.props as { children?: ReactNode }).children,
+    )
+  }
+  return ''
 }
 
 const readOptions = (children: ReactNode): SelectOption[] => {
@@ -318,7 +330,7 @@ export default function CustomSelect({
               id={listboxId}
               role='listbox'
               aria-label={ariaLabel}
-              className='fixed z-[100] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_-18px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900'
+              className='ui-pop ui-pop-surface fixed z-[100] overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-[0_18px_45px_-18px_rgba(15,23,42,0.45)] dark:border-slate-700 dark:bg-slate-900'
               style={{
                 left: menuLayout.left,
                 top: menuLayout.top,

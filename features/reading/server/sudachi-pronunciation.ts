@@ -6,7 +6,7 @@ import path from 'node:path'
 import type {
   SudachiLexeme,
   SudachiToken,
-} from '@/features/reading/domain/sudachi'
+} from '@/modules/language/domain/sudachi'
 
 export type SudachiPronunciationResult = {
   available: boolean

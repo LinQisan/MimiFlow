@@ -8,6 +8,7 @@ import {
 } from '@/features/reading/domain/article-footnotes'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { hasVocabularyMeaning } from '@/utils/vocabulary/vocabularyMeaning'
 
 const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -77,7 +78,7 @@ const resolvePassageAnnotations = (
   vocabularyMetaMap: Record<string, VocabularyMeta>,
 ) => {
   const wordsWithMeanings = Object.entries(vocabularyMetaMap)
-    .filter(([, meta]) => meta.meanings.some(meaning => meaning.trim()))
+    .filter(([, meta]) => hasVocabularyMeaning(meta))
     .map(([word]) => word)
   const aliasMap = buildSurfaceAliasMapForText(text, wordsWithMeanings)
   const firstOccurrenceByWord = new Map<

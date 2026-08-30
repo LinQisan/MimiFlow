@@ -20,7 +20,7 @@ import {
   removeQuestionOptionAt,
   updateQuestionOption,
   updateQuestionField,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import { useQuestionListEditorState } from '@/features/questions/hooks/useQuestionListEditorState'
 import { useQuestionEditorMutations } from '@/features/questions/hooks/useQuestionEditorMutations'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
@@ -281,20 +281,20 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
         <button
           onClick={handleSaveQuiz}
           disabled={isSaving}
-          className='mt-1 px-8 py-3 bg-gray-900 text-white font-black rounded-xl hover:bg-gray-800 transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-2 shrink-0'>
+          className='ui-btn ui-btn-primary mt-1 h-11 shrink-0 px-6 disabled:opacity-50'>
           {isSaving ? '保存中...' : '保存题库'}
         </button>
       </div>
       </div>
 
-      <div className='w-full bg-gray-50/50 rounded-3xl border border-gray-200 p-5 md:p-8 flex flex-col shadow-sm'>
+      <section className='flex w-full flex-col border-t border-slate-200 py-6 md:py-8'>
         <div className='flex items-center justify-between mb-8 shrink-0 relative'>
           <h2 className='text-xl font-black text-gray-800'>题目列表</h2>
 
           <div className='relative z-20'>
             <button
               onClick={() => setShowAddMenu(!showAddMenu)}
-              className='text-sm px-5 py-2.5 bg-gray-900 text-white font-bold rounded-xl hover:bg-gray-800 transition-colors flex items-center gap-2 shadow-sm'>
+              className='ui-btn ui-btn-primary px-5'>
               新增题目
               <svg
                 className='w-4 h-4'
@@ -315,7 +315,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                 <div
                   className='fixed inset-0'
                   onClick={() => setShowAddMenu(false)}></div>
-                <div className='absolute right-0 top-full mt-2 w-40 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 z-50 animate-in fade-in slide-in-from-top-2'>
+                <div className='ui-pop ui-pop-surface absolute right-0 top-full z-50 mt-2 w-48 p-2'>
                   <button
                     onClick={() => handleAddNewQuestion('PRONUNCIATION')}
                     className='w-full text-left px-3 py-2.5 hover:bg-emerald-50 rounded-lg text-sm font-bold text-gray-700 flex items-center gap-2'>
@@ -359,7 +359,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
 
         <div className='flex-1'>
           {questions.length === 0 ? (
-            <div className='text-center py-24 text-gray-400 font-medium bg-white rounded-3xl border border-dashed border-gray-200'>
+            <div className='rounded-xl border border-dashed border-slate-300 bg-white py-20 text-center text-sm font-medium text-slate-400'>
               当前题库暂无题目，请先新增。
             </div>
           ) : (
@@ -375,7 +375,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                   <SortableItem key={q.id} id={q.id}>
                     {isEditing ? (
                       <div
-                        className={`p-5 md:p-6 rounded-3xl border-2 shadow-sm group relative cursor-default transition-all ${tConfig.color.split(' ')[0]} border-opacity-50 border-indigo-300`}>
+                        className={`group relative cursor-default rounded-xl border border-slate-300 p-5 transition-colors md:p-6 ${tConfig.color.split(' ')[0]}`}>
                         <div className='flex justify-between items-center mb-5'>
                           <div className='flex items-center gap-2.5'>
                             <span className='px-2.5 py-1 rounded text-[10px] font-black bg-gray-900 text-white animate-pulse tracking-wider'>
@@ -386,7 +386,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                           <ActionInterceptor>
                             <button
                               onClick={() => setEditingQuestionId(null)}
-                              className='text-xs bg-gray-900 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-gray-800 shadow-sm transition-colors'>
+                              className='ui-btn ui-btn-primary ui-btn-sm px-5 text-xs'>
                               完成
                             </button>
                           </ActionInterceptor>
@@ -409,7 +409,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                   e.target.value,
                                 )
                               }
-                              className='w-full p-4 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 resize-none h-20 shadow-sm'
+                              className='h-20 w-full resize-none rounded-lg border border-slate-300 bg-white p-4 text-sm font-semibold outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
                               placeholder='仅在内容与题干不同时填写'
                             />
                           </div>
@@ -431,7 +431,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                       e.target.value,
                                     )
                                   }
-                                  className='w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-sm'
+                                  className='w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-semibold outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
                                   placeholder='例如：合宿'
                                 />
                               </div>
@@ -456,7 +456,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                     e.target.value,
                                   )
                                 }
-                                className='w-full p-3 bg-white border border-gray-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 shadow-sm'
+                                className='w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-semibold outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
                                 placeholder={q.questionType === 'LISTENING' ? '可留空（纯听力时不显示题干）' : '例如：划线部分的读音是？'}
                               />
                             </div>
@@ -495,7 +495,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                               {q.options?.map((opt, i: number) => (
                                 <div
                                   key={opt.id}
-                                  className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${opt.isCorrect ? 'bg-emerald-50 border-emerald-300 shadow-sm' : 'bg-white border-gray-200 shadow-sm'}`}>
+                                  className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${opt.isCorrect ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
                                   <input
                                     type='radio'
                                     checked={opt.isCorrect}
@@ -554,14 +554,14 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                                   e.target.value,
                                 )
                               }
-                              className='w-full p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none h-20'
+                              className='h-20 w-full resize-none rounded-lg border border-slate-300 bg-slate-50 p-4 text-sm font-medium outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
                               placeholder='输入解析，用户作答后可见'
                             />
                           </div>
                         </ActionInterceptor>
                       </div>
                     ) : (
-                      <div className='bg-white p-5 md:p-6 rounded-3xl border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group relative'>
+                      <div className='group relative rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-400 md:p-6'>
                         <div className='flex justify-between items-start mb-4 gap-2'>
                           <div className='flex items-center gap-3 flex-wrap'>
                             <ActionInterceptor>
@@ -656,7 +656,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
             </SortableList>
           )}
         </div>
-      </div>
+      </section>
     </div>
   )
 }

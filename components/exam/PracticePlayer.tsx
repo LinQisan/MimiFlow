@@ -25,7 +25,7 @@ import { buildAnswerCardSections } from '@/modules/practice/domain/answer-card-s
 import PronunciationSourceSelector, {
   PRONUNCIATION_SOURCE_STORAGE_KEY,
   type PronunciationSource,
-} from '@/features/reading/ui/PronunciationSourceSelector'
+} from '@/components/ui/PronunciationSourceSelector'
 import JlptScoreSummary from '@/features/practice/ui/JlptScoreSummary'
 import type { JlptScoreSummary as JlptScoreSummaryData } from '@/modules/practice/domain/jlpt-scoring'
 import {
@@ -39,7 +39,7 @@ import {
   formatJapaneseTextWithSudachiRubyNotation,
 } from '@/utils/language/japaneseRuby'
 import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
-import type { SudachiLexeme } from '@/features/reading/domain/sudachi'
+import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
 import { buildExamAnnotationTexts } from '@/features/practice/domain/exam-annotation-texts'
 
 const WordTooltip = dynamic(() => import('./WordTooltip'))
@@ -244,7 +244,7 @@ export function PracticePlayer({
     const texts = buildExamAnnotationTexts(questions)
     if (texts.length === 0) return
 
-    void fetch('/api/practice/pronunciation', {
+    void fetch('/api/pronunciation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texts }),

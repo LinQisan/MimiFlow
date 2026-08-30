@@ -57,6 +57,7 @@ type GroupedVocabItem = {
     id: string
     name: string
     pathLabel: string
+    recordIds: string[]
     pronunciations: string[]
     partsOfSpeech: string[]
     meanings: string[]
@@ -103,7 +104,7 @@ export default async function VocabularyPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const PAGE_SIZE = 48
+  const PAGE_SIZE = 50
   const resolvedSearchParams = await searchParams
   const pageValue = Array.isArray(resolvedSearchParams.page)
     ? resolvedSearchParams.page[0]
@@ -334,6 +335,7 @@ export default async function VocabularyPage({
         name: string
         pathLabel: string
         priority: number
+        recordIds: Set<string>
         pronunciations: Set<string>
         partsOfSpeech: Set<string>
         meanings: Set<string>
@@ -379,11 +381,13 @@ export default async function VocabularyPage({
       memberships.forEach((membership, membershipIndex) => {
         const source = sourceMap.get(membership.id) || {
           ...membership,
+          recordIds: new Set<string>(),
           pronunciations: new Set<string>(),
           partsOfSpeech: new Set<string>(),
           meanings: new Set<string>(),
           sentences: [],
         }
+        source.recordIds.add(vocab.id)
         meta.pronunciations.forEach(value => source.pronunciations.add(value))
         meta.partsOfSpeech.forEach(value => source.partsOfSpeech.add(value))
         // A shared database row keeps its rich content with the highest-priority
@@ -406,6 +410,7 @@ export default async function VocabularyPage({
         id: source.id,
         name: source.name,
         pathLabel: source.pathLabel,
+        recordIds: [...source.recordIds],
         pronunciations: [...source.pronunciations],
         partsOfSpeech: [...source.partsOfSpeech],
         meanings: [...source.meanings],

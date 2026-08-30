@@ -5,7 +5,7 @@ import { useCallback, useReducer, type SetStateAction } from 'react'
 import {
   deriveAudioOnlyFlags,
   type BaseEditableQuestion,
-} from '../domain/editor'
+} from '@/modules/questions/domain/editor'
 
 type QuestionListState<Question extends BaseEditableQuestion> = {
   questions: Question[]

@@ -16,7 +16,7 @@ import type {
   UploadCenterTab,
   UploadCollectionLite,
 } from '../types'
-import type { PaperReadingQuestionType } from '@/features/questions/domain/paper-editor'
+import type { PaperReadingQuestionType } from '@/modules/questions/domain/paper-editor'
 
 type UploadCenterState = {
   quizEntryMode: 'bulk' | 'single'

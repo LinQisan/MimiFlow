@@ -30,7 +30,7 @@ export default async function WordbookDetailPage({
   const currentPage = Number.isFinite(rawPage)
     ? Math.max(1, Math.floor(rawPage))
     : 1
-  const PAGE_SIZE = 48
+  const PAGE_SIZE = 50
 
   const [wordbook, allWordbooks] = await Promise.all([
     findWordbookWithChildren(id),

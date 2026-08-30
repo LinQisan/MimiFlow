@@ -7,7 +7,7 @@ import { readString } from '@/lib/validation/schema'
 import {
   getVocabGrammarQuestionSection,
   isReadingGrammarQuestion,
-} from '@/features/questions/domain/paper-editor'
+} from '@/modules/questions/domain/paper-editor'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
 import {
   applyPracticeVocabularyKnowledge,

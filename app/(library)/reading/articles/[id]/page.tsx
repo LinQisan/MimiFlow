@@ -9,7 +9,10 @@ import ArticleReaderClient from '@/features/reading/ui/ArticleReaderClient'
 import ArticleQuestionsPanel from './ArticleQuestionsPanel'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
-import { buildVocabularyCandidates } from '@/features/reading/domain/sudachi'
+import {
+  buildVocabularyCandidates,
+  buildWordFrequency,
+} from '@/modules/language/domain/sudachi'
 import ManageAudioPlayer from '@/features/listening/ui/ManageAudioPlayer'
 import {
   formatNewsDate,
@@ -71,6 +74,12 @@ export default async function ArticleDetailPage({
     sudachiPronunciation.tokens,
     Object.keys(article.vocabularyMetaMap),
   )
+  const analyzedWordbookWords = buildWordFrequency(
+    sudachiPronunciation.tokens,
+  ).map(row => row.word)
+  const wordbookDistributionWords = analyzedWordbookWords.length > 0
+    ? analyzedWordbookWords
+    : Object.keys(article.vocabularyMetaMap)
 
   return (
     <main className="min-h-screen bg-[#f8f7f3] px-4 py-6 md:px-6 md:py-10">
@@ -146,6 +155,7 @@ export default async function ArticleDetailPage({
           initialSudachiPronunciationMap={sudachiPronunciation.pronunciationMap}
           initialSudachiLexicon={sudachiPronunciation.lexicon}
           initialVocabularyCandidates={vocabularyCandidates}
+          initialWordbookDistributionWords={wordbookDistributionWords}
           sudachiAvailable={sudachiPronunciation.available}
         />
 

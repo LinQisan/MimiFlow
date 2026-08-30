@@ -22,6 +22,7 @@ import ControlDropdown from '@/modules/knowledge/vocabulary/components/ControlDr
 import SentenceSearchPanel from '@/modules/knowledge/vocabulary/components/SentenceSearchPanel'
 import SentenceEditControls from '@/modules/knowledge/vocabulary/components/SentenceEditControls'
 import VocabularySentenceText from '@/modules/knowledge/vocabulary/components/VocabularySentenceText'
+import VocabularyMeaningEditor from '@/modules/knowledge/vocabulary/components/VocabularyMeaningEditor'
 import {
   FlashCardNavigation,
   MemoryRatingControls,
@@ -50,6 +51,8 @@ import type {
 import { useVocabularyWorkspaceState } from '@/modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState'
 import { useVocabularyMutations } from '@/modules/knowledge/vocabulary/hooks/useVocabularyMutations'
 import { detectJapaneseInflection } from '@/utils/vocabulary/japaneseInflection'
+import PronunciationSourceSelector from '@/components/ui/PronunciationSourceSelector'
+import { useVocabularyPronunciation } from '@/modules/knowledge/vocabulary/hooks/useVocabularyPronunciation'
 
 function SpeakerIcon({ className = 'h-5 w-5' }: { className?: string }) {
   return (
@@ -130,7 +133,7 @@ export default function VocabularyTabs({
   initialFocusGroup,
   totalCount,
   currentPage,
-  pageSize = 48,
+  pageSize = 50,
 }: {
   groupedData: Record<string, VocabItem[]>
   groupedTotals: Record<string, number>
@@ -151,6 +154,7 @@ export default function VocabularyTabs({
     searchSentencesForWord,
     addVocabularySentence,
     updateVocabularyPronunciationById,
+    updateVocabularyMeaningsById,
     assignVocabularySentenceMeaning,
     clearVocabularySentenceMeaning,
     deleteVocabularySentence,
@@ -181,6 +185,8 @@ export default function VocabularyTabs({
     setSelectedPosFilter, selectedFolderFilter, setSelectedFolderFilter,
     selectedGroupFilter, setSelectedGroupFilter, folderList, setFolderList,
     activePronEditId, setActivePronEditId, pronInput, setPronInput, activeFolderEditId,
+    activeMeaningEditId, setActiveMeaningEditId, meaningDraft, setMeaningDraft,
+    isSavingMeanings, setIsSavingMeanings,
     setActiveFolderEditId, expandedInflectionIds, setExpandedInflectionIds,
     dragOffsetX, setDragOffsetX, cardTransitionState, setCardTransitionState,
     cardTransitionDirection, setCardTransitionDirection, searchingId,
@@ -228,6 +234,9 @@ export default function VocabularyTabs({
   }
 
   const effectiveGroupFilter = selectedGroupFilter || initialGroupFilter || activeTab
+  const effectiveGroupTotal = effectiveGroupFilter
+    ? groupedTotals[effectiveGroupFilter] || 0
+    : totalCount
   const effectiveGroupTotalPages = useMemo(() => {
     const groupCount = effectiveGroupFilter
       ? groupedTotals[effectiveGroupFilter] || 0
@@ -330,14 +339,18 @@ export default function VocabularyTabs({
     dialog.toast('删除成功', { tone: 'success' })
   }
 
-  const handleSearchSentences = async (id: string, word: string) => {
+  const handleSearchSentences = async (
+    id: string,
+    word: string,
+    partsOfSpeech: string[],
+  ) => {
     if (searchResults[id]) {
       setSearchingId(searchingId === id ? null : id)
       return
     }
     setIsSearchingMore(true)
     setSearchingId(id)
-    const res = await searchSentencesForWord(word)
+    const res = await searchSentencesForWord(word, partsOfSpeech)
     if (res.success)
       setSearchResults(prev => ({ ...prev, [id]: res.data || [] }))
     if (!res.success) setSearchResults(prev => ({ ...prev, [id]: [] }))
@@ -346,6 +359,7 @@ export default function VocabularyTabs({
 
   const handleOpenPronEditor = (vocab: VocabItem) => {
     setActiveFolderEditId(null)
+    setActiveMeaningEditId(null)
     setActivePronEditId(vocab.id)
     setPronInput(getPrimaryPronunciation(vocab))
   }
@@ -397,9 +411,82 @@ export default function VocabularyTabs({
 
   const openTagEditor = (vocab: VocabItem) => {
     setActivePronEditId(null)
+    setActiveMeaningEditId(null)
     setActiveFolderEditId(null)
     setActiveTagEditorId(vocab.id)
     setTagDraft((vocab.tags || []).join('\n'))
+  }
+
+  const resolveMeaningEditTarget = (vocab: VocabItem) => {
+    const isWordbookScope =
+      selectedFolderFilter !== 'all' && selectedFolderFilter !== 'none'
+    const selectedSource =
+      isWordbookScope
+        ? vocab.wordbookSources?.find(
+            source => source.id === selectedFolderFilter,
+          ) || vocab.wordbookSources?.[0]
+        : undefined
+    return {
+      recordId: selectedSource?.recordIds[0] || vocab.id,
+      meanings: selectedSource?.meanings || vocab.meanings || [],
+      sourceLabel: selectedSource?.pathLabel || '',
+    }
+  }
+
+  const handleOpenMeaningEditor = (vocab: VocabItem) => {
+    setActivePronEditId(null)
+    setActiveFolderEditId(null)
+    setActiveTagEditorId(null)
+    setActiveMeaningEditId(vocab.id)
+    setMeaningDraft(resolveMeaningEditTarget(vocab).meanings.join('\n'))
+  }
+
+  const handleSaveMeanings = async (vocab: VocabItem) => {
+    const target = resolveMeaningEditTarget(vocab)
+    const nextMeanings = splitListInput(meaningDraft)
+    setIsSavingMeanings(true)
+    const result = await updateVocabularyMeaningsById(
+      target.recordId,
+      nextMeanings,
+    )
+    setIsSavingMeanings(false)
+    if (!result.success) {
+      dialog.toast(result.message || '释义保存失败', { tone: 'error' })
+      return
+    }
+
+    setLocalData(previous => ({
+      ...previous,
+      [activeTab]: previous[activeTab].map(item => {
+        if (item.id !== vocab.id) return item
+        const previousSources = item.wordbookSources || []
+        const previousSourcedMeanings = new Set(
+          previousSources.flatMap(source => source.meanings),
+        )
+        const nextSources = previousSources.map(source =>
+          source.recordIds.includes(target.recordId)
+            ? { ...source, meanings: nextMeanings }
+            : source,
+        )
+        const unsourcedMeanings = (item.meanings || []).filter(
+          meaning => !previousSourcedMeanings.has(meaning),
+        )
+        const mergedMeanings = Array.from(
+          new Set([
+            ...unsourcedMeanings,
+            ...nextSources.flatMap(source => source.meanings),
+          ]),
+        )
+        return {
+          ...item,
+          meanings: mergedMeanings,
+          wordbookSources: nextSources,
+        }
+      }),
+    }))
+    setActiveMeaningEditId(null)
+    setMeaningDraft('')
+    dialog.toast('释义已保存', { tone: 'success' })
   }
 
   const closeTagEditor = () => {
@@ -646,6 +733,8 @@ export default function VocabularyTabs({
     return buildInflectionFamilyMap(localData)
   }, [localData])
   const activeTabLanguageCode = normalizeLanguageCode(activeTab)
+  const isJapaneseVocabularyGroup =
+    activeTabLanguageCode === 'ja' || /日语|日本語/.test(activeTab)
   const posFilterOptions = useMemo(
     () =>
       getVocabularyPosOptions(currentList),
@@ -659,6 +748,13 @@ export default function VocabularyTabs({
       sortMode,
     )
   }, [currentList, selectedPosFilter, sortMode])
+  const {
+    hasJapaneseTexts,
+    pronunciationSource,
+    setPronunciationSource,
+    sudachiAvailable,
+    sudachiLexicon,
+  } = useVocabularyPronunciation(visibleList, isJapaneseVocabularyGroup)
   const flashList = useMemo(() => {
     return buildFlashVocabularyList(
       visibleList,
@@ -689,11 +785,13 @@ export default function VocabularyTabs({
   useEffect(() => {
     const handleClickOutside = () => {
       setActivePronEditId(null)
+      setActiveMeaningEditId(null)
       setActiveFolderEditId(null)
       setActiveTagEditorId(null)
     }
     if (
       activePronEditId ||
+      activeMeaningEditId ||
       activeFolderEditId ||
       activeTagEditorId
     ) {
@@ -702,9 +800,11 @@ export default function VocabularyTabs({
     return () => window.removeEventListener('click', handleClickOutside)
   }, [
     activePronEditId,
+    activeMeaningEditId,
     activeFolderEditId,
     activeTagEditorId,
     setActivePronEditId,
+    setActiveMeaningEditId,
     setActiveFolderEditId,
     setActiveTagEditorId,
   ])
@@ -716,6 +816,7 @@ export default function VocabularyTabs({
   useEffect(() => {
     if (!isEditMode) {
       setActivePronEditId(null)
+      setActiveMeaningEditId(null)
       setActiveFolderEditId(null)
       setActiveTagEditorId(null)
       setBulkTagPanelOpen(false)
@@ -724,6 +825,7 @@ export default function VocabularyTabs({
   }, [
     isEditMode,
     setActivePronEditId,
+    setActiveMeaningEditId,
     setActiveFolderEditId,
     setActiveTagEditorId,
     setBulkTagPanelOpen,
@@ -851,6 +953,9 @@ export default function VocabularyTabs({
     const shouldShowPronunciation =
       memoryMode && viewMode === 'flashcard' ? memoryReveal : showPronunciation
     if (!shouldShowPronunciation) return false
+    if (pronunciationSource === 'sudachi' && hasJapanese(vocab.word)) {
+      return sudachiAvailable && hasJapanese(vocab.word)
+    }
     const hasPronunciation = !!getPrimaryPronunciation(vocab)
     if (!hasPronunciation) return false
     if (hasJapanese(vocab.word)) return true
@@ -901,10 +1006,12 @@ export default function VocabularyTabs({
         word={vocab.word}
         pronunciation={targetPron}
         highlightClass='rounded-md bg-stone-100 px-1 text-slate-950'
+        pronunciationSource={pronunciationSource}
+        sudachiLexicon={sudachiLexicon}
         showPronunciation={
           hasJapanese(vocab.word) &&
           shouldShowPronunciationForVocab(vocab) &&
-          Boolean(targetPron)
+          (pronunciationSource === 'sudachi' || Boolean(targetPron))
         }
       />
     )
@@ -1455,6 +1562,15 @@ export default function VocabularyTabs({
                     onChange={setShowPronunciation}
                   />
                 )}
+                {!(viewMode === 'flashcard' && memoryMode) &&
+                showPronunciation &&
+                hasJapaneseTexts ? (
+                  <PronunciationSourceSelector
+                    value={pronunciationSource}
+                    onChange={setPronunciationSource}
+                    sudachiAvailable={sudachiAvailable}
+                  />
+                ) : null}
                 {viewMode === 'flashcard' ? (
                   <>
                     <span className='hidden h-5 w-px bg-stone-200 sm:block' />
@@ -1657,7 +1773,7 @@ export default function VocabularyTabs({
 
                 <div className='flex flex-wrap items-center justify-between gap-2 text-xs text-gray-600'>
                   <span>
-                    本页 {visibleList.length} 条 · 第 {currentPage}/{effectiveGroupTotalPages}{' '}
+                    共 {effectiveGroupTotal} 条 · 第 {currentPage}/{effectiveGroupTotalPages}{' '}
                     页
                   </span>
                   {effectiveGroupTotalPages > 1 ? (
@@ -1742,6 +1858,12 @@ export default function VocabularyTabs({
                         pronunciation={getPrimaryPronunciation(vocab)}
                         pronunciations={displayPronunciations}
                         showPronunciation={shouldShowPronunciationForVocab(vocab)}
+                        pronunciationSource={
+                          hasJapanese(vocab.word)
+                            ? pronunciationSource
+                            : 'personal'
+                        }
+                        sudachiLexicon={sudachiLexicon}
                         wordClassName='text-[22px] font-black tracking-tight text-slate-900 md:text-[24px]'
                         hintClassName='text-[10px] font-semibold text-slate-500'
                       />
@@ -1861,6 +1983,25 @@ export default function VocabularyTabs({
                     )}
                   </div>
 
+                  <VocabularyMeaningEditor
+                    isOpen={activeMeaningEditId === currentFlashVocab.id}
+                    sourceLabel={
+                      resolveMeaningEditTarget(currentFlashVocab).sourceLabel
+                    }
+                    value={meaningDraft}
+                    isSaving={isSavingMeanings}
+                    onToggle={() => {
+                      if (activeMeaningEditId === currentFlashVocab.id) {
+                        setActiveMeaningEditId(null)
+                        return
+                      }
+                      handleOpenMeaningEditor(currentFlashVocab)
+                    }}
+                    onChange={setMeaningDraft}
+                    onCancel={() => setActiveMeaningEditId(null)}
+                    onSave={() => void handleSaveMeanings(currentFlashVocab)}
+                  />
+
                   <InlineConfirmAction
                     message='删除后不可恢复，确认删除吗？'
                     onConfirm={() =>
@@ -1883,6 +2024,12 @@ export default function VocabularyTabs({
                 showPronunciation={shouldShowPronunciationForVocab(
                   currentFlashVocab,
                 )}
+                pronunciationSource={
+                  hasJapanese(currentFlashVocab.word)
+                    ? pronunciationSource
+                    : 'personal'
+                }
+                sudachiLexicon={sudachiLexicon}
                 wordClassName='text-5xl font-semibold tracking-[0.04em] text-slate-950 md:text-6xl'
                 hintClassName='mt-2 text-sm font-medium tracking-wide text-slate-500 md:text-base'
               />
@@ -2020,6 +2167,9 @@ export default function VocabularyTabs({
                 currentFlashVocab.pronunciations &&
                 currentFlashVocab.pronunciations.filter(Boolean).length > 1 && (
                   <div className='mt-3 flex flex-wrap items-center justify-center gap-1.5'>
+                    <span className='text-[11px] font-semibold text-slate-400'>
+                      其他读音
+                    </span>
                     {currentFlashVocab.pronunciations.slice(1, 3).map(pron => (
                       <span
                         key={`${currentFlashVocab.id}-flash-pron-${pron}`}
@@ -2134,10 +2284,18 @@ export default function VocabularyTabs({
               {(() => {
                 const currentVocab = currentFlashVocab
                 const separatedSources = currentVocab.wordbookSources || []
-                if (!isEditMode && separatedSources.length > 1) {
+                const contentSources = separatedSources.filter(
+                  source =>
+                    source.meanings.length > 0 || source.sentences.length > 0,
+                )
+                if (
+                  !isEditMode &&
+                  separatedSources.length > 1 &&
+                  contentSources.length > 0
+                ) {
                   return (
                     <div className='min-h-0 flex-1 space-y-5 pt-2'>
-                      {separatedSources.map((source, sourceIndex) => (
+                      {contentSources.map((source, sourceIndex) => (
                         <section
                           key={`${currentVocab.id}-source-${source.id}`}
                           className='overflow-hidden rounded-2xl border border-slate-200 bg-white'>
@@ -2184,9 +2342,6 @@ export default function VocabularyTabs({
                                   </div>
                                 ))}
                               </div>
-                            ) : null}
-                            {source.meanings.length === 0 && source.sentences.length === 0 ? (
-                              <p className='text-xs text-slate-500'>该单词收录于此单词书，当前提供读音与词性信息。</p>
                             ) : null}
                           </div>
                         </section>
@@ -2501,6 +2656,7 @@ export default function VocabularyTabs({
                   handleSearchSentences(
                     currentFlashVocab.id,
                     currentFlashVocab.word,
+                    currentFlashVocab.partsOfSpeech || [],
                   )
                 }
                 onAdd={sentence =>

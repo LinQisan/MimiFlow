@@ -7,8 +7,8 @@ import {
   getReadingQuestionSection,
   getVocabGrammarQuestionSection,
   isReadingGrammarQuestion,
-} from "@/features/questions/domain/paper-editor";
-import { getToeicPartByQuestionType } from "@/features/questions/domain/toeic";
+} from "@/modules/questions/domain/paper-editor";
+import { getToeicPartByQuestionType } from "@/modules/questions/domain/toeic";
 import { groupQuestionsByMaterial } from "@/modules/practice/domain/material-question-groups";
 import { buildAnswerCardSections } from "@/modules/practice/domain/answer-card-sections";
 import PaperWordFrequencyDialog from "@/features/practice/ui/PaperWordFrequencyDialog";

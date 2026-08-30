@@ -4,8 +4,9 @@ MimiFlow uses a calm editorial workspace style: warm paper backgrounds, dark ink
 clear rules, compact controls, and generous reading space. It should feel closer
 to a well-edited study notebook than a colorful consumer dashboard.
 
-The implemented source of truth is `app/globals.css`. This document describes the
-current system and the rules new screens should follow.
+The implemented source of truth is `app/globals.css`; shared interactive controls
+live in `components/ui/`. This document describes the current system and the rules
+new screens should follow.
 
 ## Principles
 
@@ -118,8 +119,13 @@ without changing the global system deliberately.
 ### Inputs
 
 - Inputs use raised paper, a strong neutral border, and a visible ink/focus ring.
-- Use `CustomSelect` for application selection flows that require consistent
-  rendering; native selects retain a shared chevron and padding.
+- Use `CustomSelect` for normal application selection flows. It renders a portal
+  listbox with keyboard navigation, so it is not clipped by reading panes or sticky
+  editors. Keep a native select only when native platform behavior is itself a
+  requirement, such as a multiple select.
+- Use `DatePicker` for dates. It accepts direct input (`YYYY-MM-DD`, slashes, dots,
+  Japanese date separators, or compact `YYYYMMDD`) and provides the same calendar,
+  focus, and popover styling across browsers.
 - Number inputs use `.ui-number-stepper` when increment/decrement controls matter.
 - Labels remain visible. Placeholder text is an example, never a replacement for a
   label or format explanation.
@@ -139,6 +145,8 @@ without changing the global system deliberately.
   styling, with a border and restrained shadow.
 - Dialogs must expose a clear title, initial focus, Escape behavior, and keyboard
   navigation. Menus and listboxes must use their correct semantic role.
+- Portal-based controls must recompute or close on viewport changes and must stay
+  within a 12px mobile viewport gutter.
 
 ### Questions and reading
 
@@ -172,6 +180,20 @@ without changing the global system deliberately.
   hidden scrollbar rather than compressing content.
 - Desktop sticky elements must degrade to normal document flow on small screens.
 - Test Japanese wrapping, long Chinese labels, and English labels independently.
+
+## Page composition
+
+- A route page establishes the canvas, title, and task-level actions; it should not
+  duplicate the full control implementation.
+- Persistent content sections are flat or lightly raised and use rules plus spacing
+  for grouping. Floating controls use `ui-pop`; destructive confirmation uses the
+  shared dialog context.
+- On large editors, extract independent toolbars, popovers, and result panels into
+  named components. This keeps the visual language reusable and prevents one route
+  from developing a private set of controls.
+- Practice, reading, listening, and vocabulary share Japanese pronunciation source
+  controls. Personal wordbook readings and Sudachi readings are two sources of the
+  same feature, not separate visual systems.
 
 ## Do and do not
 

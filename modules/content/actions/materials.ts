@@ -27,7 +27,7 @@ import {
   supportsSeparateQuestionContext,
   usesExplicitQuestionTargetWord,
 } from '@/modules/practice/domain/question-text'
-import { getPaperReadingMaterialTitle } from '@/features/questions/domain/paper-editor'
+import { getPaperReadingMaterialTitle } from '@/modules/questions/domain/paper-editor'
 import {
   normalizePaperAttributes,
   PAPER_ACCEPTED_MATERIAL_TYPES,

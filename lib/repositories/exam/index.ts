@@ -21,11 +21,11 @@ import {
   getPaperQuestionSectionNumber,
   getReadingQuestionSection,
   getVocabGrammarQuestionSection,
-} from "@/features/questions/domain/paper-editor";
+} from "@/modules/questions/domain/paper-editor";
 import {
   getToeicPartByNumber,
   getToeicPartByQuestionType,
-} from "@/features/questions/domain/toeic";
+} from "@/modules/questions/domain/toeic";
 import { getCurrentUserId } from "@/modules/users/server/current-user";
 
 export type ExamHubPaperSummary = {

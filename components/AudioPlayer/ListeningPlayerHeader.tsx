@@ -4,6 +4,9 @@ import Link from 'next/link'
 
 import ToggleSwitch from '@/components/ToggleSwitch'
 import { formatDurationCompact, formatMediaTime } from '@/utils/time/format'
+import PronunciationSourceSelector, {
+  type PronunciationSource,
+} from '@/components/ui/PronunciationSourceSelector'
 
 type CopyStatus = 'idle' | 'success' | 'error'
 
@@ -17,6 +20,8 @@ export default function ListeningPlayerHeader({
   isTrackLoop,
   playbackRate,
   showPronunciation,
+  pronunciationSource,
+  sudachiAvailable,
   isBlindMode,
   sessionPlaySeconds,
   totalPlaySeconds,
@@ -28,6 +33,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop,
   onTogglePlaybackRate,
   onShowPronunciationChange,
+  onPronunciationSourceChange,
   onBlindModeChange,
 }: {
   title: string
@@ -39,6 +45,8 @@ export default function ListeningPlayerHeader({
   isTrackLoop: boolean
   playbackRate: number
   showPronunciation: boolean
+  pronunciationSource: PronunciationSource
+  sudachiAvailable: boolean
   isBlindMode: boolean
   sessionPlaySeconds: number
   totalPlaySeconds: number
@@ -50,6 +58,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop: () => void
   onTogglePlaybackRate: () => void
   onShowPronunciationChange: (value: boolean) => void
+  onPronunciationSourceChange: (value: PronunciationSource) => void
   onBlindModeChange: (value: boolean) => void
 }) {
   const displayedDays = Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)
@@ -127,6 +136,13 @@ export default function ListeningPlayerHeader({
 
           <div className='ml-1 flex items-center gap-3 border-l border-slate-200 pl-2 dark:border-slate-700'>
             <ToggleSwitch label='注音' checked={showPronunciation} onChange={onShowPronunciationChange} />
+            {showPronunciation ? (
+              <PronunciationSourceSelector
+                value={pronunciationSource}
+                onChange={onPronunciationSourceChange}
+                sudachiAvailable={sudachiAvailable}
+              />
+            ) : null}
             <ToggleSwitch label='盲听' checked={isBlindMode} onChange={onBlindModeChange} />
           </div>
 

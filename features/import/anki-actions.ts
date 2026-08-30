@@ -9,6 +9,7 @@ import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 import { resolvePathInsideRoot } from '@/utils/files/path'
+import { PUBLIC_AUDIO_ROOT } from '@/lib/server/public-paths'
 
 type ParsedRow = {
   rowNo: number
@@ -39,7 +40,7 @@ type PreviewRow = {
 
 const MAX_PREVIEW_ROWS = 24
 const MAX_IMPORT_ROWS = 5000
-const AUDIO_ROOT = path.join(process.cwd(), 'public', 'audios')
+const AUDIO_ROOT = PUBLIC_AUDIO_ROOT
 const DEFAULT_ANKI_AUDIO_FOLDER = 'vocabulary/anki'
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',

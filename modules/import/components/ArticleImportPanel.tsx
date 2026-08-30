@@ -14,12 +14,12 @@ import type { ArticleFormState, ArticleImportedQuestionDraft } from '../types'
 import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import {
   getReadingQuestionSection,
   PAPER_READING_QUESTION_TYPES,
   type PaperReadingQuestionType,
-} from '@/features/questions/domain/paper-editor'
+} from '@/modules/questions/domain/paper-editor'
 import { toggleUnderlineSelection } from '@/utils/text/underlineMarkup'
 import {
   parseArticleContentBlocks,
@@ -31,6 +31,7 @@ import {
   insertArticleFootnote,
 } from '@/features/reading/domain/article-editing'
 import ArticleBodyPreview from '@/features/reading/ui/ArticleBodyPreview'
+import DatePicker from '@/components/ui/DatePicker'
 import {
   formatNewsDate,
   NEWS_COLUMN_OPTIONS,
@@ -410,7 +411,7 @@ export default function ArticleImportPanel({
 
             {articleForm.sourceKind === 'NEWS' ? (
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-bold text-slate-500">
+                <div className="text-xs font-bold text-slate-500">
                   <span className="flex items-center justify-between gap-3">
                     <span>日期</span>
                     <span className="font-medium tabular-nums text-slate-400">
@@ -418,18 +419,18 @@ export default function ArticleImportPanel({
                         '自动使用今天'}
                     </span>
                   </span>
-                  <input
-                    type="date"
+                  <DatePicker
                     value={articleForm.publishedDate}
-                    onChange={(event) =>
+                    onChange={(publishedDate) =>
                       setArticleForm((previous) => ({
                         ...previous,
-                        publishedDate: event.target.value,
+                        publishedDate,
                       }))
                     }
-                    className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold tabular-nums text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white focus:ring-2 focus:ring-slate-200"
+                    aria-label="新闻日期"
+                    className="mt-1.5"
                   />
-                </label>
+                </div>
                 <fieldset>
                   <legend className="mb-1.5 text-xs font-bold text-slate-500">
                     刊面

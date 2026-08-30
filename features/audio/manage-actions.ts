@@ -4,6 +4,7 @@ import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { isPathInsideRoot, resolvePathInsideRoot } from '@/utils/files/path'
 import { readString } from '@/lib/validation/schema'
+import { PUBLIC_AUDIO_ROOT } from '@/lib/server/public-paths'
 import {
   decodeMaterialPayloadRecord,
   patchMaterialPayload,
@@ -22,7 +23,7 @@ const AUDIO_EXTENSIONS = new Set([
   '.webm',
 ])
 
-const PUBLIC_AUDIO_DIR = path.join(process.cwd(), 'public', 'audios')
+const PUBLIC_AUDIO_DIR = PUBLIC_AUDIO_ROOT
 
 type AudioRecord = {
   path: string

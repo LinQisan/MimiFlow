@@ -3,6 +3,8 @@
 import { ExamScoreType } from '@prisma/client'
 import { useMemo, useState, useTransition } from 'react'
 
+import CustomSelect from '@/components/ui/CustomSelect'
+import DatePicker from '@/components/ui/DatePicker'
 import { useDialog } from '@/context/DialogContext'
 import { deleteExamScore, saveExamScore } from '../actions'
 import {
@@ -137,7 +139,7 @@ export default function ExamScoreManager({
           {examType === ExamScoreType.JLPT ? (
             <label className={LABEL_CLASS}>
               官方考试场次
-              <select
+              <CustomSelect
                 required
                 value={examDate}
                 onChange={event => setExamDate(event.target.value)}
@@ -147,18 +149,19 @@ export default function ExamScoreManager({
                     {formatJlptSession(session)}
                   </option>
                 ))}
-              </select>
+              </CustomSelect>
               <span className='mt-1.5 block text-[10px] leading-4 text-slate-400'>新制 JLPT（2010 年起）；2020 年 7 月全球停考，已排除。</span>
             </label>
           ) : (
             <label className={LABEL_CLASS}>
               考试日期
-              <input
+              <DatePicker
                 required
-                type='date'
                 value={examDate}
-                onChange={event => setExamDate(event.target.value)}
-                className={`mt-1.5 ${INPUT_CLASS}`}
+                onChange={setExamDate}
+                aria-label='考试日期'
+                allowClear={false}
+                className='mt-1.5'
               />
             </label>
           )}
@@ -166,12 +169,12 @@ export default function ExamScoreManager({
           {examType === ExamScoreType.JLPT ? (
             <label className={LABEL_CLASS}>
               级别
-              <select
+              <CustomSelect
                 value={level}
                 onChange={event => setLevel(event.target.value as JlptLevel)}
                 className={`mt-1.5 ${INPUT_CLASS}`}>
                 {JLPT_LEVELS.map(item => <option key={item}>{item}</option>)}
-              </select>
+              </CustomSelect>
             </label>
           ) : null}
 

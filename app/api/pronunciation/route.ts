@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       lexicon: result.lexicon,
     })
   } catch (error) {
-    console.error('加载练习注音失败:', error)
+    console.error('加载日语注音失败:', error)
     return NextResponse.json({ message: '注音加载失败' }, { status: 500 })
   }
 }

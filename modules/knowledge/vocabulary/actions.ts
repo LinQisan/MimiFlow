@@ -2,7 +2,9 @@
 'use server'
 
 import {
+  CollectionType,
   MaterialType,
+  Prisma,
   QuestionType,
   SourceType,
 } from '@prisma/client'
@@ -37,6 +39,7 @@ import {
   buildCompletedSortingText,
 } from '@/modules/practice/domain/question-text'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { buildJapaneseVocabularySearchTerms } from '@/utils/vocabulary/japaneseInflection'
 
 
 
@@ -263,6 +266,29 @@ export async function updateVocabularyPartsOfSpeechById(
   }
 }
 
+export async function updateVocabularyMeaningsById(
+  id: string,
+  meanings: string[],
+) {
+  try {
+    const userId = await getCurrentUserId()
+    const normalized = Array.from(
+      new Set(meanings.map(item => item.trim()).filter(Boolean)),
+    )
+    const updated = await prisma.vocabulary.updateMany({
+      where: { id, userId },
+      data: { meanings: toJsonStringList(normalized) },
+    })
+    if (updated.count === 0) return { success: false, message: '单词不存在' }
+    revalidatePath('/vocabulary')
+    revalidatePath('/reading')
+    return { success: true, meanings: normalized }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '释义保存失败' }
+  }
+}
+
 
 
 export async function deleteVocabulary(id: string) {
@@ -277,34 +303,116 @@ export async function deleteVocabulary(id: string) {
   }
 }
 
-export async function searchSentencesForWord(word: string) {
+export async function searchSentencesForWord(
+  word: string,
+  partsOfSpeech: string[] = [],
+) {
   try {
-    const articles = await prisma.material.findMany({
-      where: { type: MaterialType.READING },
-      select: { id: true, title: true, contentPayload: true },
-    })
+    const searchTerms = buildJapaneseVocabularySearchTerms(word, partsOfSpeech)
+    if (searchTerms.length === 0) return { success: true, data: [] }
+    const articleTextFilters: Prisma.MaterialWhereInput[] = searchTerms.flatMap(
+      term => [
+        {
+          contentPayload: {
+            path: ['text'],
+            string_contains: term,
+          },
+        },
+        {
+          contentPayload: {
+            path: ['transcript'],
+            string_contains: term,
+          },
+        },
+      ],
+    )
+    const questionTextConditions = searchTerms.map(term => Prisma.sql`
+      STRPOS(LOWER(COALESCE(q."prompt", '')), LOWER(${term})) > 0
+      OR STRPOS(LOWER(COALESCE(q."context", '')), LOWER(${term})) > 0
+    `)
+    const questionAnswerConditions = searchTerms.map(term => Prisma.sql`
+      STRPOS(LOWER(COALESCE(q."options"::text, '')), LOWER(${term})) > 0
+      OR STRPOS(LOWER(COALESCE(q."answer"::text, '')), LOWER(${term})) > 0
+    `)
+    const includesSearchTerm = (text: string) =>
+      searchTerms.some(term => text.includes(term))
+    const [articles, questionCandidates] = await Promise.all([
+      prisma.material.findMany({
+        where: {
+          type: MaterialType.READING,
+          OR: articleTextFilters,
+        },
+        select: {
+          id: true,
+          title: true,
+          contentPayload: true,
+          collectionMaterials: {
+            where: {
+              collection: { collectionType: CollectionType.PAPER },
+            },
+            orderBy: { sortOrder: 'asc' },
+            take: 1,
+            select: {
+              collection: { select: { id: true, title: true } },
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 32,
+      }),
+      prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+        SELECT q."id"
+        FROM "questions" AS q
+        WHERE
+          (${Prisma.join(questionTextConditions, ' OR ')})
+          OR (
+            q."question_type"::text IN (
+              'GRAMMAR',
+              'GRAMMAR_SELECTION',
+              'SORTING'
+            )
+            AND (
+              ${Prisma.join(questionAnswerConditions, ' OR ')}
+            )
+          )
+        ORDER BY q."updated_at" DESC
+        LIMIT 48
+      `),
+    ])
 
-    const questions = await prisma.question.findMany({
-      where: {
-        OR: [
-          { prompt: { contains: word } },
-          { context: { contains: word } },
-          { questionType: QuestionType.GRAMMAR },
-          { questionType: QuestionType.GRAMMAR_SELECTION },
-          { questionType: QuestionType.SORTING },
-        ],
-      },
-      select: {
-        id: true,
-        questionType: true,
-        prompt: true,
-        context: true,
-        options: true,
-        answer: true,
-        content: true,
-        material: { select: { id: true, title: true, type: true } },
-      },
-    })
+    const questionIds = questionCandidates.map(item => item.id)
+    const questions = questionIds.length
+      ? await prisma.question.findMany({
+          where: { id: { in: questionIds } },
+          select: {
+            id: true,
+            questionType: true,
+            prompt: true,
+            context: true,
+            options: true,
+            answer: true,
+            content: true,
+            material: {
+              select: {
+                id: true,
+                title: true,
+                type: true,
+                collectionMaterials: {
+                  where: {
+                    collection: { collectionType: CollectionType.PAPER },
+                  },
+                  orderBy: { sortOrder: 'asc' },
+                  take: 1,
+                  select: {
+                    collection: { select: { id: true, title: true } },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { updatedAt: 'desc' },
+        })
+      : []
 
     const results: {
       text: string
@@ -312,10 +420,10 @@ export async function searchSentencesForWord(word: string) {
       sourceUrl: string
       sourceType?: SourceType
     }[] = []
-    articles.forEach(a => {
+    articles.forEach(article => {
       const payload = decodeMaterialPayloadRecord(
         MaterialType.READING,
-        a.contentPayload,
+        article.contentPayload,
       )
       const articleText = String(payload.text || payload.transcript || '')
       const parts = articleText.match(/[^。！？.!\?\n]+[。！？.!\?\n]*/g) || [
@@ -323,11 +431,14 @@ export async function searchSentencesForWord(word: string) {
       ]
       parts.forEach(p => {
         const t = p.trim()
-        if (t.includes(word) && t.length > 5) {
+        if (includesSearchTerm(t) && t.length > 5) {
+          const paper = article.collectionMaterials[0]?.collection
           results.push({
             text: t,
-            source: `阅读：${a.title}`,
-            sourceUrl: `/reading/articles/${a.id}`,
+            source: paper ? `试卷：${paper.title}` : `阅读：${article.title}`,
+            sourceUrl: paper
+              ? `/practice/${paper.id}`
+              : `/reading/articles/${article.id}`,
             sourceType: 'ARTICLE_TEXT',
           })
         }
@@ -347,11 +458,14 @@ export async function searchSentencesForWord(word: string) {
                 content.sortingOrder,
               )
             : (q.context || q.prompt || '').trim()
-      if (t.includes(word) && t.length > 5) {
+      if (includesSearchTerm(t) && t.length > 5) {
+        const paper = q.material?.collectionMaterials[0]?.collection
         results.push({
           text: t,
-          source: `题目：${q.material?.title || '练习题'}`,
-          sourceUrl: '/practice/custom',
+          source: paper
+            ? `试卷：${paper.title}`
+            : `题目：${q.material?.title || '练习题'}`,
+          sourceUrl: paper ? `/practice/${paper.id}` : '/practice/custom',
           sourceType: 'QUIZ_QUESTION',
         })
       }

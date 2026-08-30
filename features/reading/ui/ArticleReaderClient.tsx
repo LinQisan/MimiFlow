@@ -16,6 +16,9 @@ import {
   buildSurfaceAliasMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { hasVocabularyMeaning } from '@/utils/vocabulary/vocabularyMeaning'
+import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
+import WordbookDistributionChart from '@/components/vocabulary/WordbookDistributionChart'
 import { removeRepeatedEbookHeadings } from '@/lib/ebooks/chapter-display'
 import {
   parseArticleContentBlocks,
@@ -29,11 +32,11 @@ import { copyText } from '@/features/reading/ui/copy-text'
 import type {
   SudachiLexeme,
   VocabularyCandidate,
-} from '@/features/reading/domain/sudachi'
+} from '@/modules/language/domain/sudachi'
 import PronunciationSourceSelector, {
   PRONUNCIATION_SOURCE_STORAGE_KEY,
   type PronunciationSource,
-} from '@/features/reading/ui/PronunciationSourceSelector'
+} from '@/components/ui/PronunciationSourceSelector'
 import {
   readUserStorageValue,
   useCurrentUser,
@@ -69,6 +72,7 @@ export default function ArticleReaderClient({
   initialSudachiPronunciationMap = {},
   initialSudachiLexicon = {},
   initialVocabularyCandidates = [],
+  initialWordbookDistributionWords = [],
   sudachiAvailable = false,
   initialProgressPercent = 0,
   mode = 'article',
@@ -81,6 +85,7 @@ export default function ArticleReaderClient({
   initialSudachiPronunciationMap?: Record<string, string>
   initialSudachiLexicon?: Record<string, SudachiLexeme>
   initialVocabularyCandidates?: VocabularyCandidate[]
+  initialWordbookDistributionWords?: string[]
   sudachiAvailable?: boolean
   initialProgressPercent?: number
   mode?: 'article' | 'ebook'
@@ -105,6 +110,12 @@ export default function ArticleReaderClient({
   const [pronunciationSource, setPronunciationSourceState] =
     useState<PronunciationSource>(sudachiAvailable ? 'sudachi' : 'personal')
   const [noteEnabled, setNoteEnabled] = useState(true)
+  const [wordbookDistribution, setWordbookDistribution] =
+    useState<PaperWordbookDistribution | null>(null)
+  const [distributionLoadState, setDistributionLoadState] = useState<
+    'idle' | 'loading' | 'error'
+  >('idle')
+  const [distributionRetryKey, setDistributionRetryKey] = useState(0)
   const [extractPanelOpen, setExtractPanelOpen] = useState(false)
   const [copyLabel, setCopyLabel] = useState('复制正文')
   const [readingProgress, setReadingProgress] = useState(
@@ -267,9 +278,12 @@ export default function ArticleReaderClient({
 
   const activeChapterAnnotations = useMemo(() => {
     const chapterText = footnoteDocument.body
+    const wordsWithMeanings = Object.entries(localVocabularyMetaMap)
+      .filter(([, meta]) => hasVocabularyMeaning(meta))
+      .map(([word]) => word)
     const aliasMap = buildSurfaceAliasMapForText(
       chapterText,
-      Object.keys(localVocabularyMetaMap),
+      wordsWithMeanings,
     )
     const firstOccurrenceByWord = new Map<
       string,
@@ -312,6 +326,42 @@ export default function ArticleReaderClient({
 
     return selected.map((item, index) => ({ ...item, label: index + 1 }))
   }, [footnoteDocument.body, localVocabularyMetaMap])
+
+  useEffect(() => {
+    if (
+      !noteEnabled ||
+      wordbookDistribution ||
+      initialWordbookDistributionWords.length === 0
+    ) {
+      return
+    }
+    const controller = new AbortController()
+    setDistributionLoadState('loading')
+    void fetch('/api/reading/wordbook-distribution', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ words: initialWordbookDistributionWords }),
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error('request failed')
+        return (await response.json()) as PaperWordbookDistribution
+      })
+      .then(distribution => {
+        setWordbookDistribution(distribution)
+        setDistributionLoadState('idle')
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setDistributionLoadState('error')
+      })
+    return () => controller.abort()
+  }, [
+    initialWordbookDistributionWords,
+    noteEnabled,
+    distributionRetryKey,
+    wordbookDistribution,
+  ])
 
   const annotatedChapterBody = useMemo(() => {
     if (!noteEnabled) return footnoteDocument.body
@@ -792,6 +842,29 @@ export default function ArticleReaderClient({
             </aside>
           ) : null}
 
+          {noteEnabled && initialWordbookDistributionWords.length > 0 ? (
+            <div className='mt-12'>
+              {wordbookDistribution ? (
+                <WordbookDistributionChart
+                  distribution={wordbookDistribution}
+                  title='本文单词书分布'
+                  description={`按正文中的 ${wordbookDistribution.totalWords} 个去重词统计；单词书归属仅用于分布，不会生成释义注号。`}
+                />
+              ) : distributionLoadState === 'error' ? (
+                <button
+                  type='button'
+                  onClick={() => setDistributionRetryKey(value => value + 1)}
+                  className='ui-btn text-xs text-slate-500'>
+                  分布加载失败，重试
+                </button>
+              ) : (
+                <p className='border-y border-slate-200 py-5 text-xs text-slate-400'>
+                  正在统计本文的单词书分布…
+                </p>
+              )}
+            </div>
+          ) : null}
+
           {noteEnabled && activeChapterAnnotations.length > 0 ? (
             <aside aria-label='文章注释' className='mt-12'>
               <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
@@ -809,9 +882,10 @@ export default function ArticleReaderClient({
                           {word}
                         </strong>
                         <span className='ml-2 text-slate-500'>
-                          {[meta.pronunciations[0], meta.meanings[0]]
+                          {[meta.pronunciations[0], ...meta.meanings]
+                            .map(value => value.trim())
                             .filter(Boolean)
-                            .join(' · ') || '暂无注释'}
+                            .join(' · ')}
                         </span>
                       </span>
                       <a

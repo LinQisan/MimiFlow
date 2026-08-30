@@ -15,6 +15,10 @@ import {
 } from '@/utils/listening/jlptIdentity'
 import { revalidatePath } from 'next/cache'
 import { resolvePathInsideRoot } from '@/utils/files/path'
+import {
+  PUBLIC_AUDIO_ROOT,
+  PUBLIC_QUESTION_IMAGE_ROOT,
+} from '@/lib/server/public-paths'
 
 import prisma from '@/lib/prisma'
 import { replaceMediaSubtitleSearchIndex } from '@/lib/media-subtitles/search-index'
@@ -30,7 +34,7 @@ import { parseListeningQuestionDraftPayload } from '@/modules/import/domain/list
 import { selectListeningQuestionEntriesForFile } from '@/modules/import/domain/listening-batch-assignments'
 import { encodeQuestionContent } from '@/lib/codecs/question-content'
 import { toQuestionOptionsAndAnswer } from '@/modules/practice/domain/question-record'
-import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
+import { getToeicPartByQuestionType } from '@/modules/questions/domain/toeic'
 import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
 
 function assTimeToSeconds(timeStr: string): number {
@@ -195,13 +199,8 @@ const AUDIO_EXTENSIONS = new Set([
   '.webm',
 ])
 
-const PUBLIC_AUDIO_DIR = path.join(process.cwd(), 'public', 'audios')
-const PUBLIC_QUESTION_IMAGE_DIR = path.join(
-  process.cwd(),
-  'public',
-  'images',
-  'questions',
-)
+const PUBLIC_AUDIO_DIR = PUBLIC_AUDIO_ROOT
+const PUBLIC_QUESTION_IMAGE_DIR = PUBLIC_QUESTION_IMAGE_ROOT
 
 function toSafeFilename(name: string) {
   return name

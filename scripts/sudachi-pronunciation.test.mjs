@@ -10,7 +10,7 @@ import {
   isSudachiContentWord,
   mergeWordFrequencyRows,
   sortWordFrequencyRows,
-} from '../features/reading/domain/sudachi.ts'
+} from '../modules/language/domain/sudachi.ts'
 import {
   annotateJapaneseTextWithSudachi,
   buildJapaneseRubyHtml,
@@ -35,7 +35,7 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
   const sourceSelector = await readFile(
     path.join(
       ROOT,
-      'features/reading/ui/PronunciationSourceSelector.tsx',
+      'components/ui/PronunciationSourceSelector.tsx',
     ),
     'utf8',
   )

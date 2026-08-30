@@ -11,7 +11,12 @@ import type { TooltipSaveState } from '@/components/vocabulary/VocabularySaveSta
 import WordTooltip from '@/components/exam/WordTooltip'
 import TrustedHtml from '@/components/ui/TrustedHtml'
 import { useShowPronunciation } from '@/hooks/usePronunciationPrefs'
-import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
+import {
+  annotateJapaneseText,
+  annotateJapaneseTextWithSudachi,
+  formatJapaneseTextWithRubyNotation,
+  formatJapaneseTextWithSudachiRubyNotation,
+} from '@/utils/language/japaneseRuby'
 import { inferContextualPos } from '@/utils/language/posTagger'
 import {
   buildPronunciationMapForText,
@@ -23,6 +28,17 @@ import { getCleanSelectionText } from '@/utils/text/selection'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 import ListeningPlayerHeader from './ListeningPlayerHeader'
 import ListeningSentenceRow from './ListeningSentenceRow'
+import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
+import {
+  PRONUNCIATION_SOURCE_STORAGE_KEY,
+  type PronunciationSource,
+} from '@/components/ui/PronunciationSourceSelector'
+import {
+  readUserStorageValue,
+  useCurrentUser,
+  userStorageKey,
+} from '@/context/UserContext'
+import { copyText } from '@/features/reading/ui/copy-text'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -70,6 +86,11 @@ export default function AudioPlayer({
   isEmbedded = false,
   forceBlindMode,
 }: Props) {
+  const currentUser = useCurrentUser()
+  const pronunciationStorageKey = userStorageKey(
+    currentUser.id,
+    PRONUNCIATION_SOURCE_STORAGE_KEY,
+  )
   const router = useRouter()
   const {
     audioRef,
@@ -91,6 +112,12 @@ export default function AudioPlayer({
   const [dialogueSaveState, setDialogueSaveState] =
     useState<TooltipSaveState>('idle')
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
+  const [pronunciationSource, setPronunciationSourceState] =
+    useState<PronunciationSource>('personal')
+  const [sudachiLexicon, setSudachiLexicon] = useState<
+    Record<string, SudachiLexeme>
+  >({})
+  const [sudachiAvailable, setSudachiAvailable] = useState(false)
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     useState(vocabularyMetaMap)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
@@ -127,6 +154,26 @@ export default function AudioPlayer({
         .join('\n'),
     [lesson.dialogue],
   )
+  const transcriptTexts = useMemo(
+    () => lesson.dialogue.map(item => item.text.trim()).filter(Boolean),
+    [lesson.dialogue],
+  )
+  const transcriptTextKey = useMemo(
+    () => transcriptTexts.join('\u0000'),
+    [transcriptTexts],
+  )
+  const personalPronunciationMap = useMemo(
+    () =>
+      Object.entries(localVocabularyMetaMap).reduce<Record<string, string>>(
+        (acc, [word, meta]) => {
+          const pronunciation = (meta.pronunciations[0] || '').trim()
+          if (pronunciation) acc[word] = pronunciation
+          return acc
+        },
+        {},
+      ),
+    [localVocabularyMetaMap],
+  )
   const selectedVocabularyMeta = useMemo(() => {
     if (!selection.text) return undefined
     const existing = localVocabularyMetaMap[selection.text]
@@ -142,20 +189,38 @@ export default function AudioPlayer({
   }, [localVocabularyMetaMap, selection.contextSentence, selection.text])
   const annotateSentence = (text: string) => {
     if (!showPronunciation) return text
-    const basePronMap = Object.entries(localVocabularyMetaMap).reduce<
-      Record<string, string>
-    >((acc, [word, meta]) => {
-      const pronunciation = (meta.pronunciations[0] || '').trim()
-      if (pronunciation) acc[word] = pronunciation
-      return acc
-    }, {})
-    const pronMap = buildPronunciationMapForText(text, basePronMap)
+    if (
+      pronunciationSource === 'sudachi' &&
+      Object.keys(sudachiLexicon).length > 0
+    ) {
+      const html = annotateJapaneseTextWithSudachi(text, sudachiLexicon, {
+        pronunciationMap: buildPronunciationMapForText(
+          text,
+          personalPronunciationMap,
+        ),
+        useSudachiReading: true,
+        rubyEnabled: true,
+        rubyClassName: 'text-slate-900 dark:text-slate-100',
+        rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
+      })
+      return <TrustedHtml html={html} />
+    }
+    const pronMap = buildPronunciationMapForText(
+      text,
+      personalPronunciationMap,
+    )
     if (Object.keys(pronMap).length === 0) return text
     const html = annotateJapaneseText(text, pronMap, {
       rubyClassName: 'text-slate-900 dark:text-slate-100',
       rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
     })
     return <TrustedHtml html={html} />
+  }
+
+  const setPronunciationSource = (source: PronunciationSource) => {
+    if (source === 'sudachi' && !sudachiAvailable) return
+    setPronunciationSourceState(source)
+    window.localStorage.setItem(pronunciationStorageKey, source)
   }
 
   // ---------------- 音频控制逻辑 ----------------
@@ -199,7 +264,30 @@ export default function AudioPlayer({
   const handleCopyTranscript = async () => {
     if (!transcriptPlainText) return
     try {
-      await navigator.clipboard.writeText(transcriptPlainText)
+      const copyValue = !showPronunciation
+        ? transcriptPlainText
+        : pronunciationSource === 'sudachi' &&
+            Object.keys(sudachiLexicon).length > 0
+          ? transcriptTexts
+              .map(text =>
+                formatJapaneseTextWithSudachiRubyNotation(
+                  text,
+                  sudachiLexicon,
+                ),
+              )
+              .join('\n')
+          : transcriptTexts
+              .map(text =>
+                formatJapaneseTextWithRubyNotation(
+                  text,
+                  buildPronunciationMapForText(
+                    text,
+                    personalPronunciationMap,
+                  ),
+                ),
+              )
+              .join('\n')
+      await copyText(copyValue)
       setCopyStatus('success')
       window.setTimeout(() => setCopyStatus('idle'), 1800)
     } catch {
@@ -209,6 +297,54 @@ export default function AudioPlayer({
   }
 
   // ---------------- 副作用钩子 ----------------
+  useEffect(() => {
+    const stored = readUserStorageValue(
+      currentUser.id,
+      PRONUNCIATION_SOURCE_STORAGE_KEY,
+    )
+    if (stored === 'personal') setPronunciationSourceState('personal')
+  }, [currentUser.id])
+
+  useEffect(() => {
+    if (transcriptTexts.length === 0) {
+      setSudachiLexicon({})
+      setSudachiAvailable(false)
+      return
+    }
+    const controller = new AbortController()
+    setSudachiLexicon({})
+    setSudachiAvailable(false)
+
+    void fetch('/api/pronunciation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: transcriptTexts }),
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) return null
+        return (await response.json()) as {
+          available?: boolean
+          lexicon?: Record<string, SudachiLexeme>
+        }
+      })
+      .then(result => {
+        if (!result?.available) return
+        setSudachiLexicon(result.lexicon || {})
+        setSudachiAvailable(true)
+        const stored = readUserStorageValue(
+          currentUser.id,
+          PRONUNCIATION_SOURCE_STORAGE_KEY,
+        )
+        if (stored !== 'personal') setPronunciationSourceState('sudachi')
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+      })
+
+    return () => controller.abort()
+  }, [currentUser.id, transcriptTextKey, transcriptTexts])
+
   useEffect(() => {
     if (forceBlindMode !== undefined) {
       setIsBlindMode(forceBlindMode)
@@ -368,6 +504,8 @@ export default function AudioPlayer({
         isTrackLoop={isTrackLoop}
         playbackRate={playbackRate}
         showPronunciation={showPronunciation}
+        pronunciationSource={pronunciationSource}
+        sudachiAvailable={sudachiAvailable}
         isBlindMode={isBlindMode}
         sessionPlaySeconds={sessionPlaySeconds}
         totalPlaySeconds={totalPlaySeconds}
@@ -379,6 +517,7 @@ export default function AudioPlayer({
         onToggleTrackLoop={toggleTrackLoop}
         onTogglePlaybackRate={togglePlaybackRate}
         onShowPronunciationChange={setShowPronunciation}
+        onPronunciationSourceChange={setPronunciationSource}
         onBlindModeChange={setIsBlindMode}
       />
 

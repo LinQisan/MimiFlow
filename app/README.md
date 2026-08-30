@@ -9,8 +9,12 @@ changing public URLs.
 - `(library)`: browsable reading and subtitle libraries.
 - `(tools)`: supporting utilities such as global search.
 - `(admin)`: the `/manage` operations area for imports, listening, practice, vocabulary, collections, search results, audio, and review settings.
-- `actions`: shared server actions used across route groups.
-- `api`: route handlers.
+- `api`: narrow route handlers. Shared Japanese pronunciation is exposed at
+  `/api/pronunciation`; feature-specific analytics remain under their feature path.
+
+Routes compose feature and module code. Reusable business rules do not live beside
+pages: shared question rules are in `modules/questions/domain`, persistence stays in
+repositories/services, and client state belongs in a named hook or client component.
 
 Route group names in parentheses are omitted from the URL. For example,
 `app/(study)/listening/page.tsx` still serves `/listening`.

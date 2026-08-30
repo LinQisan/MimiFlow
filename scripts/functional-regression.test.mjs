@@ -51,7 +51,7 @@ import {
   getPaperQuestionSectionNumber,
   getReadingQuestionSection,
   isReadingGrammarQuestion,
-} from "../features/questions/domain/paper-editor.ts";
+} from "../modules/questions/domain/paper-editor.ts";
 import { isReadingTitleDerivedFromContent } from "../lib/repositories/materials/material-title.ts";
 import {
   parseArticleContentBlocks,
@@ -107,10 +107,12 @@ import { reorderExamOptionsForSession } from "../lib/repositories/exam/exam-opti
 import { updateDialogueTextAtIndex } from "../features/listening/domain/dialogue-editor.ts";
 import { buildCollectionAudioFolder } from "../modules/import/audio/domain.ts";
 import {
+  buildJapaneseVocabularySearchTerms,
   detectJapaneseInflection,
   resolveJapaneseTargetSurface,
 } from "../utils/vocabulary/japaneseInflection.ts";
 import { formatVocabularySentenceSource } from "../utils/vocabulary/sourceDisplay.ts";
+import { hasVocabularyMeaning } from "../utils/vocabulary/vocabularyMeaning.ts";
 import {
   buildPracticeQuestionGroups,
   findPracticeQuestionGroupIndex,
@@ -622,6 +624,28 @@ test("Japanese inflection evidence excludes particles and restores suru lemmas",
       partsOfSpeech: ["形容詞"],
     }),
     { surface: "高かった", lemma: "高い" },
+  );
+});
+
+test("vocabulary sentence search removes placeholders and expands Japanese inflections", () => {
+  const forms = buildJapaneseVocabularySearchTerms("～忘れる", ["他動詞"]);
+
+  assert.equal(forms[0], "忘れる");
+  assert.ok(forms.includes("忘れた"));
+  assert.ok(forms.includes("忘れて"));
+  assert.ok(forms.includes("忘れない"));
+  assert.ok(forms.includes("忘れられる"));
+  assert.ok(forms.includes("忘れれば"));
+  assert.ok(forms.every((form) => !form.includes("～") && !form.includes("~")));
+
+  const godanForms = buildJapaneseVocabularySearchTerms("行く", ["動詞"]);
+  assert.ok(godanForms.includes("行った"));
+  assert.ok(godanForms.includes("行って"));
+  assert.ok(!godanForms.includes("行いた"));
+
+  assert.deepEqual(
+    buildJapaneseVocabularySearchTerms("～を問わず", ["慣用句"]),
+    ["を問わず"],
   );
 });
 
@@ -1303,6 +1327,47 @@ test("reading upload and editing share footnote insertion and recognition", asyn
   assert.match(importer, /insertArticleFootnote/);
   assert.match(importer, /ArticleBodyPreview/);
   assert.match(importer, />\s*插入注解\s*</);
+});
+
+test("reading annotations require a real non-empty meaning", async () => {
+  assert.equal(
+    hasVocabularyMeaning({
+      pronunciations: ["わた"],
+      partsOfSpeech: ["名詞"],
+      meanings: [],
+    }),
+    false,
+  );
+  assert.equal(
+    hasVocabularyMeaning({
+      pronunciations: ["わた"],
+      partsOfSpeech: ["名詞"],
+      meanings: ["  ", "棉花"],
+    }),
+    true,
+  );
+
+  const [reader, route, chart] = await Promise.all([
+    readFile(
+      path.join(ROOT, "features/reading/ui/ArticleReaderClient.tsx"),
+      "utf8",
+    ),
+    readFile(
+      path.join(ROOT, "app/api/reading/wordbook-distribution/route.ts"),
+      "utf8",
+    ),
+    readFile(
+      path.join(ROOT, "components/vocabulary/WordbookDistributionChart.tsx"),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(reader, /filter\(\(\[, meta\]\) => hasVocabularyMeaning\(meta\)\)/);
+  assert.doesNotMatch(reader, /暂无注释/);
+  assert.match(reader, /本文单词书分布/);
+  assert.match(reader, /wordbookDistribution/);
+  assert.match(route, /getPaperWordbookDistribution/);
+  assert.match(chart, /未加入任何单词书/);
 });
 
 test("grammar sentences are derived from the blank prompt and correct option", () => {
@@ -2198,6 +2263,29 @@ test("route surfaces use the shared editorial visual language", async () => {
   assert.equal(pageHeader.includes("border-y border-slate-200"), false);
 });
 
+test("reading sibling navigation uses the shared editorial listbox", async () => {
+  const [siblingNav, customSelect] = await Promise.all([
+    readFile(
+      path.join(ROOT, "features/reading/ui/ArticleSiblingNav.tsx"),
+      "utf8",
+    ),
+    readFile(path.join(ROOT, "components/ui/CustomSelect.tsx"), "utf8"),
+  ]);
+
+  assert.match(siblingNav, /import CustomSelect/);
+  assert.match(siblingNav, /<CustomSelect/);
+  assert.doesNotMatch(siblingNav, /<select/);
+  assert.match(siblingNav, /font-reading-ja/);
+  assert.match(siblingNav, /h-10 w-full rounded-lg border/);
+  assert.match(customSelect, /ui-pop ui-pop-surface/);
+  assert.match(customSelect, /role='listbox'/);
+  assert.match(customSelect, /isValidElement\(node\)/);
+  assert.doesNotMatch(
+    customSelect,
+    /Children\.toArray\(node\)\.map\(textFromNode\)/,
+  );
+});
+
 test("body copy uses language-aware sans-serif font stacks", async () => {
   const globalStyles = await readFile(
     path.join(ROOT, "app/globals.css"),
@@ -2244,7 +2332,7 @@ test("listening import accepts MP3 uploads and supports multiple collections", a
     "utf8",
   );
   const paperEditorDomain = await readFile(
-    path.join(ROOT, "features/questions/domain/paper-editor.ts"),
+    path.join(ROOT, "modules/questions/domain/paper-editor.ts"),
     "utf8",
   );
 
@@ -2494,6 +2582,9 @@ test("responsive and component-boundary regressions remain guarded", async () =>
     "modules/knowledge/vocabulary/components/VocabularySentenceText.tsx",
     "modules/import/audio/hooks/useAudioFileCatalog.ts",
     "modules/media-subtitles/components/SubtitleReaderControls.tsx",
+    "features/content/ui/EditArticleUI.tsx",
+    "features/practice/ui/PracticeVocabularyAnalyticsDialog.tsx",
+    "modules/progress/exam-scores/components/ExamScoreManager.tsx",
     "components/AudioPlayer/ListeningPlayerHeader.tsx",
     "components/AudioPlayer/ListeningSentenceRow.tsx",
   ];
@@ -2877,6 +2968,10 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
   assert.equal(player.includes("scrollIntoView"), false);
   assert.match(player, /targetCenter - visibleCenter/);
   assert.match(player, /max-w-5xl/);
+  assert.match(player, /annotateJapaneseTextWithSudachi/);
+  assert.match(player, /formatJapaneseTextWithSudachiRubyNotation/);
+  assert.match(player, /fetch\('\/api\/pronunciation'/);
+  assert.match(player, /PRONUNCIATION_SOURCE_STORAGE_KEY/);
   assert.equal(player.includes("播放一句后显示词汇"), false);
   assert.equal(player.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), false);
   assert.match(sentenceRow, /data-context-sentence='true'/);
@@ -2905,6 +3000,8 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
     false,
   );
   assert.equal(playerHeader.includes("· 累计{' '}"), false);
+  assert.match(playerHeader, /PronunciationSourceSelector/);
+  assert.match(playerHeader, /sudachiAvailable/);
 });
 
 test("vocabulary language groups use pronunciation and source evidence", async () => {

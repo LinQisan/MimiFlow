@@ -29,7 +29,7 @@ import {
   removeQuestionOptionAt,
   updateQuestionField,
   updateQuestionOption,
-} from '@/features/questions/domain/editor'
+} from '@/modules/questions/domain/editor'
 import { useQuestionListEditorState } from '@/features/questions/hooks/useQuestionListEditorState'
 import { useQuestionEditorMutations } from '@/features/questions/hooks/useQuestionEditorMutations'
 import { useLessonQuestionPageState } from '@/features/questions/hooks/useQuestionEditorPageState'
@@ -38,7 +38,7 @@ import {
   supportsSeparateQuestionContext,
   usesExplicitQuestionTargetWord,
 } from '@/modules/practice/domain/question-text'
-import { getToeicPartByQuestionType } from '@/features/questions/domain/toeic'
+import { getToeicPartByQuestionType } from '@/modules/questions/domain/toeic'
 import ListeningOptionQuickInput from '@/features/questions/components/ListeningOptionQuickInput'
 
 // ─── Types ───

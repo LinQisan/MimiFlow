@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { getSentenceSourceDisplay } from '../domain/workbench'
 import type { SentenceItem, VocabItem } from '../types'
 
@@ -38,6 +39,7 @@ export default function SentenceSearchPanel({
             const isAdded = vocabulary.sentences.some(
               item => item.text === sentence.text,
             )
+            const sourceLabel = getSentenceSourceDisplay(sentence)
             return (
               <div
                 key={`${vocabulary.id}-search-sent-${sentence.sourceUrl || 'unknown'}-${sentence.text}-${index}`}
@@ -46,9 +48,17 @@ export default function SentenceSearchPanel({
                     ? 'border-gray-100 bg-gray-50 opacity-50'
                     : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
                 }`}>
-                <div className='text-[11px] font-medium text-slate-400'>
-                  {getSentenceSourceDisplay(sentence)}
-                </div>
+                {sentence.sourceUrl && sentence.sourceUrl !== '#' ? (
+                  <Link
+                    href={sentence.sourceUrl}
+                    className='w-fit text-[11px] font-medium text-slate-400 transition-colors hover:text-slate-600 hover:underline'>
+                    {sourceLabel}
+                  </Link>
+                ) : (
+                  <div className='text-[11px] font-medium text-slate-400'>
+                    {sourceLabel}
+                  </div>
+                )}
                 <div className='text-sm font-medium text-slate-700'>
                   {sentence.text}
                 </div>
