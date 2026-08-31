@@ -4,18 +4,21 @@ import path from 'node:path'
 import test from 'node:test'
 
 import {
-  buildFolderTree,
-  flattenFolderTree,
-} from '../modules/knowledge/vocabulary/domain/wordbook-tree.ts'
+  listWordbooks,
+} from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
 
 const ROOT = process.cwd()
 
-test('wordbook navigation keeps hierarchy, paths and descendant totals', () => {
-  const tree = buildFolderTree([
-    { id: 'book', name: 'N2語彙トレーニング', parentId: null, count: 0 },
-    { id: 'unit', name: 'Unit01 名詞A', parentId: 'book', count: 100 },
+test('wordbook navigation keeps explicit series paths and leaf totals', () => {
+  const rows = listWordbooks([
+    {
+      id: 'unit',
+      name: 'Unit01 名詞A',
+      seriesId: 'training',
+      seriesName: 'N2語彙トレーニング',
+      count: 100,
+    },
   ])
-  const rows = flattenFolderTree(tree)
 
   assert.deepEqual(
     rows.map(row => ({
@@ -26,14 +29,8 @@ test('wordbook navigation keeps hierarchy, paths and descendant totals', () => {
     })),
     [
       {
-        name: 'N2語彙トレーニング',
-        depth: 0,
-        path: 'N2語彙トレーニング',
-        total: 100,
-      },
-      {
         name: 'Unit01 名詞A',
-        depth: 1,
+        depth: 0,
         path: 'N2語彙トレーニング / Unit01 名詞A',
         total: 100,
       },
@@ -41,7 +38,7 @@ test('wordbook navigation keeps hierarchy, paths and descendant totals', () => {
   )
 })
 
-test('active wordbook navigation hides legacy archive and preserves hierarchy', async () => {
+test('active wordbook navigation hides legacy archive and preserves series order', async () => {
   const [repository, dropdown, vocabularyTabs] = await Promise.all([
     readFile(
       path.join(ROOT, 'modules/knowledge/wordbooks/repository.ts'),

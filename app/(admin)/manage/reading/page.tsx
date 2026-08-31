@@ -10,8 +10,10 @@ export default async function ManageReadingPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const params = await searchParams
-  const rows = await listReadingMaterials()
+  const [params, rows] = await Promise.all([
+    searchParams,
+    listReadingMaterials(),
+  ])
 
   return (
     <ReadingListClient

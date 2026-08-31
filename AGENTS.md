@@ -102,6 +102,9 @@ Core content hierarchy:
   normalize them through `lib/codecs` at the boundary.
 - Learning state is user-scoped. New reads and writes must use the current user;
   never silently fall back to global learning records.
+- Vocabulary organization is deliberately two levels: `WordbookSeries` groups
+  leaf `Wordbook` records. Do not recreate a recursive wordbook tree or expose a
+  series as if it were a selectable wordbook.
 
 ## Database policy
 
@@ -135,6 +138,13 @@ database dumps. The current schema is authoritative.
   folder.
 - Prefer small named functions over large inline branches. Remove obsolete adapters
   and exports once all callers have moved.
+- Start independent server reads together with `Promise.all`. For large datasets,
+  filter, project, aggregate, and paginate in PostgreSQL before building view models.
+  Bulk imports must pre-index reference data and batch association writes instead
+  of scanning the full dataset or issuing tag/link queries inside each row loop.
+- Persistent Next.js caches for mutable database content require an explicit,
+  audited invalidation path from every relevant write. Otherwise use request-local
+  React `cache` only for render deduplication, or read the database directly.
 - Large interactive entry points may coordinate state, but new self-contained
   controls and panels must be extracted into their feature/module `components/`
   folder. Do not add another large inline popover to an already large route client.
@@ -148,10 +158,15 @@ database dumps. The current schema is authoritative.
 
 ## Verification expectations
 
-- Pure domain changes require focused Node tests in `scripts/*.test.mjs`.
+- Pure domain changes require focused, behavior-oriented Node tests in
+  `scripts/*.test.mjs`. Prefer testing inputs, outputs, ordering, validation, and
+  authorization boundaries over matching implementation strings.
 - Route, schema, or shared UI changes require typecheck and lint.
 - Before committing a broad change, run the full test suite and production build.
 - Treat build warnings about broad filesystem tracing as performance work to fix,
   not as harmless permanent output.
+- Do not enforce component architecture with brittle rules such as banning every
+  local `useState` or asserting private helper names. Typecheck, lint, boundary
+  tests, and narrow domain tests should protect the intended contract.
 - Preserve unrelated working-tree changes. Never reset or replace user data to make
   a check pass.

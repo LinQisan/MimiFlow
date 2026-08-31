@@ -5,29 +5,44 @@ export async function listWordbookOptions() {
   const userId = await getCurrentUserId()
   return prisma.wordbook.findMany({
     where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    orderBy: [
+      { series: { sortOrder: 'asc' } },
+      { series: { createdAt: 'asc' } },
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+    ],
     select: {
       id: true,
       title: true,
-      parentId: true,
+      seriesId: true,
+      series: { select: { id: true, title: true } },
       _count: { select: { entries: true } },
     },
   })
 }
 
-export async function findWordbookWithChildren(id: string) {
+export async function findWordbookDetail(id: string) {
   const userId = await getCurrentUserId()
   return prisma.wordbook.findFirst({
     where: { id, userId },
     select: {
       id: true,
       title: true,
-      parentId: true,
-      parent: { select: { id: true, title: true } },
-      children: {
-        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-        select: { id: true, title: true, _count: { select: { entries: true } } },
-      },
+      seriesId: true,
+      series: { select: { id: true, title: true } },
+    },
+  })
+}
+
+export async function listWordbookSeries() {
+  const userId = await getCurrentUserId()
+  return prisma.wordbookSeries.findMany({
+    where: { userId },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      title: true,
+      _count: { select: { wordbooks: true } },
     },
   })
 }

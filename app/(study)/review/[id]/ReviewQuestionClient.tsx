@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 
 import type { RetryQueueItem } from '@/modules/review/actions/mistakes'
@@ -22,6 +22,8 @@ import { useTextSelection } from '@/hooks/useTextSelection'
 import { formatTokyoDateTime } from '@/utils/time/format'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
+import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
 
 type Summary = {
   dueCount: number
@@ -85,6 +87,8 @@ export default function ReviewQuestionClient({
   )
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
+  const [learningPointsEnabled, setLearningPointsEnabled] = useState(false)
+  const reviewRootRef = useRef<HTMLElement>(null)
   const [localPronunciationMap, setLocalPronunciationMap] = useState<
     Record<string, string>
   >({})
@@ -106,6 +110,11 @@ export default function ReviewQuestionClient({
     () => items.map(mapRetryItemToExamQuestion),
     [items],
   )
+  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+    rootRef: reviewRootRef,
+    contentKey: `${currentIndex}:${items.map(entry => entry.questionId).join(',')}`,
+    showLearningPoints: learningPointsEnabled,
+  })
   const examQuestion = examQuestions[0]!
   const reviewAnswerMap = useMemo(
     () =>
@@ -310,7 +319,7 @@ export default function ReviewQuestionClient({
   }
 
   return (
-    <main className='min-h-screen bg-slate-50 pb-24'>
+    <main ref={reviewRootRef} className='min-h-screen bg-slate-50 pb-24'>
       <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur'>
         <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-8'>
           <div className='min-w-0'>
@@ -360,6 +369,15 @@ export default function ReviewQuestionClient({
         </div>
       </header>
 
+      {learningPointsEnabled ? (
+        <div className='mx-auto w-full max-w-7xl px-4 pt-4 md:px-8'>
+          <LearningPointHighlightPanel
+            points={learningPoints}
+            isLoading={isLoadingLearningPoints}
+          />
+        </div>
+      ) : null}
+
       <div className='mx-auto w-full max-w-7xl space-y-4 px-4 py-4 md:px-8 md:py-6'>
         <section className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4'>
           <div className='flex flex-wrap items-center gap-2 text-xs'>
@@ -405,6 +423,11 @@ export default function ReviewQuestionClient({
               label='注释'
               checked={showMeaning}
               onChange={setShowMeaning}
+            />
+            <ToggleSwitch
+              label='学习点'
+              checked={learningPointsEnabled}
+              onChange={setLearningPointsEnabled}
             />
             {items.length === 1 && item.stats.resetEligible ? (
               <button

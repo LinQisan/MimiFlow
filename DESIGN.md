@@ -148,6 +148,51 @@ without changing the global system deliberately.
 - Portal-based controls must recompute or close on viewport changes and must stay
   within a 12px mobile viewport gutter.
 
+### Reading-context inspectors
+
+- A word, annotation, or learning-point inspector opened from reading content is
+  an anchored, non-modal popover—not a page-wide dialog. It must stay close to the
+  selected text, avoid a global backdrop, and remain inside a 12px viewport gutter.
+- The inspector surface is fully opaque raised paper with a visible border and
+  shadow. Ruby, highlights, and passage text must never show through it; mark the
+  inspector as excluded from text-highlight processing when that system is active.
+- Open in a compact reading state: show the word, pronunciation, part of speech,
+  concise meaning, collection membership, and sourced definitions. Do not expose
+  a full edit form on first open.
+- Editing is a deliberate secondary state within the same inspector. Use compact
+  fields, an internally scrolling body, and persistent Save/Cancel actions. An
+  outside click may close the reading state, but must not silently discard an
+  active edit; Escape returns from editing before it closes the inspector.
+- Collection membership is secondary metadata. Display selected collections as
+  quiet labels in the reading state and use checkboxes or a compact list for
+  editing; do not turn every collection into a large competing action button.
+- Keep the reading inspector about 360–400px wide on desktop and no taller than
+  the available viewport. On narrow screens it may use the viewport width minus
+  the standard gutter, while preserving the same local, non-blocking behavior.
+
+### Study highlights
+
+- Learning points and wordbook matches are overlays on authored text; they must
+  never rewrite stored content, ruby, selection text, or answer parsing.
+- Learning-point fills use semantic category colors, while wordbook membership
+  uses a restrained underline. A legend or adjacent label must explain the
+  meaning; color alone is not sufficient.
+- Highlight computation is opt-in and scoped to the visible chapter, question,
+  or subtitle page. Rebuild ranges when editable text changes, and keep overlay
+  nodes outside text selection and pointer interaction.
+- A learning-point summary is a flat, compact section near the active content.
+  It must support light and dark paper surfaces and must not become a modal that
+  obscures the passage being studied.
+
+### Vocabulary collections
+
+- Vocabulary navigation has two visible levels: a quiet series label and a
+  selectable leaf wordbook. Series organize; only leaf wordbooks contain words
+  and display counts, coverage, or selection state.
+- Display full `series / wordbook` paths anywhere ambiguity is possible. Coverage
+  views sort leaf books by matched words, keep uncollected words last, and reveal
+  the actual matched words on demand instead of adding decorative chart chrome.
+
 ### Questions and reading
 
 - Preserve the authored question order and the visual relationship between passage,

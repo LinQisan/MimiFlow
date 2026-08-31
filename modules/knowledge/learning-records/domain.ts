@@ -15,6 +15,7 @@ export const LEARNING_POINT_CATEGORY_LABELS: Record<
 > = {
   [LearningPointCategory.GRAMMAR]: '语法',
   [LearningPointCategory.PATTERN]: '句型',
+  [LearningPointCategory.IDIOM]: '惯用表达',
   [LearningPointCategory.PARAPHRASE]: '言い換え',
   [LearningPointCategory.DISTRACTOR]: '干扰项辨析',
   [LearningPointCategory.OTHER]: '其他',

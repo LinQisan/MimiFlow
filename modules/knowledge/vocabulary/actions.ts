@@ -143,6 +143,7 @@ export async function saveVocabulary(
         pronunciations: parseJsonStringList(mergedPronunciations),
         partsOfSpeech: parseJsonStringList(mergedPartsOfSpeech),
         meanings: parseJsonStringList(mergedMeanings),
+        wordAudio: exists.wordAudio || null,
       }
       if (newSentence && !existedLink) {
         await upsertVocabularySentenceLink(exists.id, {
@@ -209,6 +210,7 @@ export async function saveVocabulary(
         pronunciations: parseJsonStringList(created.pronunciations),
         partsOfSpeech: parseJsonStringList(created.partsOfSpeech),
         meanings: parseJsonStringList(created.meanings),
+        wordAudio: created.wordAudio || null,
       } satisfies VocabularyMeta,
     }
   } catch (error) {

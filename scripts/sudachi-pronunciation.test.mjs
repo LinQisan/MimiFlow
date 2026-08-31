@@ -32,6 +32,10 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
     path.join(ROOT, 'features/reading/ui/ArticleReaderClient.tsx'),
     'utf8',
   )
+  const pronunciationRoute = await readFile(
+    path.join(ROOT, 'app/api/pronunciation/route.ts'),
+    'utf8',
+  )
   const sourceSelector = await readFile(
     path.join(
       ROOT,
@@ -67,13 +71,17 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
   assert.match(requirements, /SudachiPy==/)
   assert.match(requirements, /SudachiDict-full==/)
   assert.doesNotMatch(requirements, /SudachiDict-core==/)
-  assert.match(articlePage, /getSudachiPronunciationMap/)
+  assert.doesNotMatch(articlePage, /getSudachiPronunciationMap/)
+  assert.match(reader, /fetch\('\/api\/pronunciation'/)
+  assert.match(reader, /includeWordbookAnalysis: true/)
+  assert.doesNotMatch(pronunciationRoute, /buildVocabularyCandidates/)
+  assert.match(pronunciationRoute, /buildWordFrequency/)
   assert.doesNotMatch(ebookPage, /getSudachiPronunciationMap/)
   assert.match(reader, /PronunciationSourceSelector/)
   assert.match(sourceSelector, />\s*默认\s*</)
   assert.match(sourceSelector, />\s*我的\s*</)
   assert.match(reader, /annotateJapaneseTextWithSudachi/)
-  assert.match(reader, /ExtractVocabularyPanel/)
+  assert.doesNotMatch(reader, /ExtractVocabularyPanel|提取生词/)
   assert.match(selectionHook, /data-sudachi-lemma/)
   assert.doesNotMatch(readingCenter, /getSudachiPronunciationMap/)
   assert.match(readingCenter, /frequencyMaterialCount/)

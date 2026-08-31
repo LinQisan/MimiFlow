@@ -67,7 +67,8 @@ export type VocabItem = {
 export type FolderItem = {
   id: string
   name: string
-  parentId: string | null
+  seriesId: string
+  seriesName: string
   count?: number
 }
 

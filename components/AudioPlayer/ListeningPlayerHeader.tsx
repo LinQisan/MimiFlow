@@ -20,6 +20,7 @@ export default function ListeningPlayerHeader({
   isTrackLoop,
   playbackRate,
   showPronunciation,
+  showLearningPoints,
   pronunciationSource,
   sudachiAvailable,
   isBlindMode,
@@ -33,6 +34,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop,
   onTogglePlaybackRate,
   onShowPronunciationChange,
+  onLearningPointsChange,
   onPronunciationSourceChange,
   onBlindModeChange,
 }: {
@@ -45,6 +47,7 @@ export default function ListeningPlayerHeader({
   isTrackLoop: boolean
   playbackRate: number
   showPronunciation: boolean
+  showLearningPoints: boolean
   pronunciationSource: PronunciationSource
   sudachiAvailable: boolean
   isBlindMode: boolean
@@ -58,6 +61,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop: () => void
   onTogglePlaybackRate: () => void
   onShowPronunciationChange: (value: boolean) => void
+  onLearningPointsChange: (value: boolean) => void
   onPronunciationSourceChange: (value: PronunciationSource) => void
   onBlindModeChange: (value: boolean) => void
 }) {
@@ -136,6 +140,7 @@ export default function ListeningPlayerHeader({
 
           <div className='ml-1 flex items-center gap-3 border-l border-slate-200 pl-2 dark:border-slate-700'>
             <ToggleSwitch label='注音' checked={showPronunciation} onChange={onShowPronunciationChange} />
+            <ToggleSwitch label='学习点' checked={showLearningPoints} onChange={onLearningPointsChange} />
             {showPronunciation ? (
               <PronunciationSourceSelector
                 value={pronunciationSource}

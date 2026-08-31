@@ -8,17 +8,18 @@ import { useEffect, useMemo, useState } from 'react'
 import WordPronunciation from '@/components/vocabulary/WordPronunciation'
 import {
   createWordbook,
+  createWordbookSeries,
   moveWordbook,
   removeVocabularyFromWordbook,
   renameWordbook,
+  renameWordbookSeries,
   deleteWordbook,
 } from '@/modules/knowledge/wordbooks/actions'
 import { useDialog } from '@/context/DialogContext'
 
-type WordbookMeta = {
+type WordbookSeriesMeta = {
   id: string
   title: string
-  parentId: string | null
 }
 
 type WordbookVocabularyItem = {
@@ -39,9 +40,8 @@ type WordbookVocabularyItem = {
 type Props = {
   wordbookId: string
   wordbookTitle: string
-  parentWordbook: { id: string; title: string } | null
-  chapterItems: Array<{ id: string; title: string; count: number }>
-  wordbooks: WordbookMeta[]
+  series: WordbookSeriesMeta
+  seriesOptions: WordbookSeriesMeta[]
   items: WordbookVocabularyItem[]
   currentPage: number
   totalPages: number
@@ -51,9 +51,8 @@ type Props = {
 export default function WordbookDetailClient({
   wordbookId,
   wordbookTitle,
-  parentWordbook,
-  chapterItems,
-  wordbooks,
+  series,
+  seriesOptions,
   items,
   currentPage,
   totalPages,
@@ -66,12 +65,9 @@ export default function WordbookDetailClient({
   const [flashIndex, setFlashIndex] = useState(0)
   const [showManagement, setShowManagement] = useState(false)
 
-  const parentOptions = useMemo(
-    () =>
-      wordbooks
-        .filter(item => item.id !== wordbookId)
-        .map(item => ({ id: item.id, label: item.title })),
-    [wordbookId, wordbooks],
+  const moveOptions = useMemo(
+    () => seriesOptions.filter(item => item.id !== series.id),
+    [series.id, seriesOptions],
   )
 
   const toPage = (page: number) => {
@@ -154,20 +150,25 @@ export default function WordbookDetailClient({
   }
 
   const handleMove = async () => {
-    const optionText = ['0. 根目录', ...parentOptions.map((item, idx) => `${idx + 1}. ${item.label}`)].join('\n')
+    if (moveOptions.length === 0) {
+      dialog.toast('没有其他可用的词书系列', { tone: 'info' })
+      return
+    }
+    const optionText = moveOptions
+      .map((item, index) => `${index + 1}. ${item.title}`)
+      .join('\n')
     const selected = await dialog.prompt(`输入序号选择目标：\n${optionText}`, {
-      title: '移动单词书',
-      defaultValue: '0',
+      title: '移动到其他系列',
+      defaultValue: '1',
       confirmText: '移动',
     })
     if (selected == null) return
     const index = Number(selected.trim())
-    if (!Number.isFinite(index) || index < 0 || index > parentOptions.length) {
+    if (!Number.isFinite(index) || index < 1 || index > moveOptions.length) {
       dialog.toast('请输入有效序号', { tone: 'error' })
       return
     }
-    const targetParentId = index === 0 ? null : parentOptions[index - 1].id
-    const res = await moveWordbook(wordbookId, targetParentId)
+    const res = await moveWordbook(wordbookId, moveOptions[index - 1].id)
     if (!res.success) {
       dialog.toast(res.message || '移动失败', { tone: 'error' })
       return
@@ -176,9 +177,9 @@ export default function WordbookDetailClient({
     dialog.toast('已移动', { tone: 'success' })
   }
 
-  const handleCreateChild = async () => {
-    const name = await dialog.prompt('输入子单词书名称', {
-      title: '新建子单词书',
+  const handleCreateSibling = async () => {
+    const name = await dialog.prompt(`在「${series.title}」中新建词书`, {
+      title: '新建同系列词书',
       confirmText: '创建',
     })
     if (name == null) return
@@ -187,12 +188,49 @@ export default function WordbookDetailClient({
       dialog.toast('名称不能为空', { tone: 'error' })
       return
     }
-    const res = await createWordbook(trimmed, wordbookId)
+    const res = await createWordbook(trimmed, series.id)
     if (!res.success) {
       dialog.toast(res.message || '创建失败', { tone: 'error' })
       return
     }
-    dialog.toast('子单词书已创建', { tone: 'success' })
+    dialog.toast('词书已创建', { tone: 'success' })
+    router.refresh()
+  }
+
+  const handleRenameSeries = async () => {
+    const name = await dialog.prompt('输入新的词书系列名称', {
+      title: '重命名词书系列',
+      defaultValue: series.title,
+      confirmText: '保存',
+    })
+    if (name == null) return
+    const res = await renameWordbookSeries(series.id, name)
+    if (!res.success) {
+      dialog.toast(res.message || '保存失败', { tone: 'error' })
+      return
+    }
+    router.refresh()
+    dialog.toast('词书系列已更新', { tone: 'success' })
+  }
+
+  const handleCreateSeriesAndMove = async () => {
+    const name = await dialog.prompt('输入新词书系列名称', {
+      title: '新建系列并移动当前词书',
+      confirmText: '创建并移动',
+    })
+    if (name == null) return
+    const created = await createWordbookSeries(name)
+    if (!created.success || !created.series) {
+      dialog.toast(created.message || '创建失败', { tone: 'error' })
+      return
+    }
+    const moved = await moveWordbook(wordbookId, created.series.id)
+    if (!moved.success) {
+      dialog.toast(moved.message || '移动失败', { tone: 'error' })
+      return
+    }
+    router.refresh()
+    dialog.toast('已创建系列并移动当前词书', { tone: 'success' })
   }
 
   const handleDeleteWordbook = async () => {
@@ -263,8 +301,14 @@ export default function WordbookDetailClient({
           <button type='button' onClick={() => void handleMove()} className='ui-btn ui-btn-sm'>
             移动
           </button>
-          <button type='button' onClick={() => void handleCreateChild()} className='ui-btn ui-btn-sm'>
-            新建目录
+          <button type='button' onClick={() => void handleRenameSeries()} className='ui-btn ui-btn-sm'>
+            重命名系列
+          </button>
+          <button type='button' onClick={() => void handleCreateSeriesAndMove()} className='ui-btn ui-btn-sm'>
+            新建系列并移动
+          </button>
+          <button type='button' onClick={() => void handleCreateSibling()} className='ui-btn ui-btn-sm'>
+            新建同系列词书
           </button>
           <button type='button' onClick={() => void handleDeleteWordbook()} className='ui-btn ui-btn-sm ui-btn-danger'>
             删除
@@ -272,32 +316,10 @@ export default function WordbookDetailClient({
         </div>
       ) : null}
 
-      {parentWordbook ? (
-        <div className='mb-3 flex items-center gap-2 text-sm text-slate-500'>
-          <span>上级</span>
-          <Link
-            href={`/vocabulary/wordbooks/${parentWordbook.id}`}
-            className='font-bold text-slate-900 hover:text-slate-600'>
-            {parentWordbook.title}
-          </Link>
-        </div>
-      ) : null}
-
-      {chapterItems.length > 0 ? (
-        <div className='mb-4 overflow-hidden rounded-xl border border-slate-200'>
-          <div className='divide-y divide-slate-100'>
-            {chapterItems.map(item => (
-              <Link
-                key={`chapter-${item.id}`}
-                href={`/vocabulary/wordbooks/${item.id}`}
-                className='flex items-center justify-between px-3 py-2.5 text-sm transition hover:bg-slate-50'>
-                <span className='font-bold text-slate-900'>{item.title}</span>
-                <span className='text-xs font-semibold text-slate-500'>{item.count} 词</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <div className='mb-3 flex items-center gap-2 text-sm text-slate-500'>
+        <span>词书系列</span>
+        <span className='font-bold text-slate-900'>{series.title}</span>
+      </div>
 
       <input
         type='search'

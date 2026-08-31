@@ -84,7 +84,8 @@ type GroupedVocabItem = {
 type FolderItem = {
   id: string
   name: string
-  parentId: string | null
+  seriesId: string
+  seriesName: string
   count?: number
 }
 
@@ -122,32 +123,6 @@ export default async function VocabularyPage({
   const initialFocusGroup = (groupValue || '').trim()
   const wordbookFilter = (wordbookValue || 'all').trim()
 
-  const allWordbooks = await listWordbookOptions()
-  const getWordbookDescendantIds = (wordbookId: string) => {
-    const childrenByParent = allWordbooks.reduce<Record<string, string[]>>(
-      (acc, folder) => {
-        const parentKey = folder.parentId || '__root__'
-        if (!acc[parentKey]) acc[parentKey] = []
-        acc[parentKey].push(folder.id)
-        return acc
-      },
-      {},
-    )
-    const queue = [wordbookId]
-    const result: string[] = []
-    while (queue.length > 0) {
-      const current = queue.shift()!
-      result.push(current)
-      const children = childrenByParent[current] || []
-      children.forEach(childId => queue.push(childId))
-    }
-    return result
-  }
-
-  const wordbookFilterIds =
-    wordbookFilter !== 'all' && wordbookFilter !== 'none'
-      ? getWordbookDescendantIds(wordbookFilter)
-      : []
   const rawPage = Number(pageValue || 1)
   const currentPage = Number.isFinite(rawPage)
     ? Math.max(1, Math.floor(rawPage))
@@ -161,9 +136,12 @@ export default async function VocabularyPage({
               none: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } },
             },
           }
-        : { wordbooks: { some: { wordbookId: { in: wordbookFilterIds } } } }
+        : { wordbooks: { some: { wordbookId: wordbookFilter } } }
 
-  const vocabularyGroupRows = await listVocabularyGroups(whereClause)
+  const [allWordbooks, vocabularyGroupRows] = await Promise.all([
+    listWordbookOptions(),
+    listVocabularyGroups(whereClause),
+  ])
 
   const groupedTotals: Record<string, number> = {}
   const vocabularyGroups = new Map<
@@ -240,22 +218,18 @@ export default async function VocabularyPage({
   const folders = allWordbooks.map(item => ({
     id: item.id,
     name: item.title,
-    parentId: item.parentId,
+    seriesId: item.seriesId,
+    seriesName: item.series.title,
     count: item._count.entries,
   }))
   const wordbookById = new Map(allWordbooks.map(item => [item.id, item]))
   const getWordbookPath = (wordbookId: string) => {
-    const path: Array<{ id: string; title: string }> = []
-    const visited = new Set<string>()
-    let cursor: string | null = wordbookId
-    while (cursor && !visited.has(cursor)) {
-      visited.add(cursor)
-      const wordbook = wordbookById.get(cursor)
-      if (!wordbook) break
-      path.unshift({ id: wordbook.id, title: wordbook.title })
-      cursor = wordbook.parentId
-    }
-    return path
+    const wordbook = wordbookById.get(wordbookId)
+    if (!wordbook) return []
+    return [
+      { id: wordbook.series.id, title: wordbook.series.title },
+      { id: wordbook.id, title: wordbook.title },
+    ]
   }
   const getWordbookPriority = (wordbookId: string) => {
     const rootTitle = getWordbookPath(wordbookId)[0]?.title || ''

@@ -30,11 +30,10 @@ import {
 import {
   LANGUAGE_NAMES,
   buildFlashVocabularyList,
-  buildFolderTree,
   buildInflectionFamilyMap,
   filterAndSortVocabulary,
   firstSentencePosTag,
-  flattenFolderTree,
+  listWordbooks,
   getPrimaryPronunciation,
   getSentenceSourceDisplay,
   getVocabularyPosOptions,
@@ -218,8 +217,7 @@ export default function VocabularyTabs({
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  const folderTree = useMemo(() => buildFolderTree(folderList), [folderList])
-  const flatFolders = useMemo(() => flattenFolderTree(folderTree), [folderTree])
+  const flatFolders = useMemo(() => listWordbooks(folderList), [folderList])
   const folderPathLabelMap = useMemo(
     () =>
       flatFolders.reduce<Record<string, string>>((acc, folder) => {
@@ -898,8 +896,15 @@ export default function VocabularyTabs({
     const nextIndex = flashList.findIndex(item => item.id === initialFocusId)
     if (nextIndex >= 0) {
       setCurrentIndex(nextIndex)
-      setViewMode('flashcard')
+      setViewMode('list')
       appliedFocusIdRef.current = initialFocusId
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          document
+            .getElementById(`vocabulary-${initialFocusId}`)
+            ?.scrollIntoView({ block: 'center' })
+        })
+      })
     }
   }, [
     initialFocusId,
@@ -1516,7 +1521,7 @@ export default function VocabularyTabs({
                             { value: 'none', label: '选择目标单词书' },
                             ...flatFolders.map(folder => ({
                               value: folder.id,
-                              label: folder.name,
+                              label: folder.pathLabel,
                               selectedLabel: folder.pathLabel,
                               depth: folder.depth,
                               count: folder.totalCount,
@@ -1743,7 +1748,7 @@ export default function VocabularyTabs({
                       { value: 'none', label: '未加入单词书' },
                       ...flatFolders.map(folder => ({
                         value: folder.id,
-                        label: folder.name,
+                        label: folder.pathLabel,
                         selectedLabel: folder.pathLabel,
                         depth: folder.depth,
                         count: folder.totalCount,
@@ -1822,6 +1827,7 @@ export default function VocabularyTabs({
             return (
               <div
                 key={vocab.id}
+                id={`vocabulary-${vocab.id}`}
                 onClick={() => {
                   if (isEditMode) return
                   const nextIndex = flashList.findIndex(
@@ -1830,8 +1836,12 @@ export default function VocabularyTabs({
                   setCurrentIndex(nextIndex >= 0 ? nextIndex : idx)
                   setViewMode('flashcard')
                 }}
-                className={`px-3 py-2.5 transition-colors hover:bg-slate-50 ${
-                  isEditMode ? 'bg-slate-50/20' : 'bg-white'
+                className={`scroll-mt-24 px-3 py-2.5 transition-colors hover:bg-slate-50 ${
+                  vocab.id === initialFocusId
+                    ? 'bg-amber-50 ring-1 ring-inset ring-amber-300'
+                    : isEditMode
+                      ? 'bg-slate-50/20'
+                      : 'bg-white'
                 }`}>
                 <div className='flex items-center justify-between gap-3'>
                   <div className='flex min-w-0 items-center gap-3'>

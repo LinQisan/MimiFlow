@@ -13,8 +13,11 @@ export default async function ManageExamPaperDetailPage({
   params: Promise<{ id: string }>
   searchParams?: Promise<{ section?: string | string[] }>
 }) {
-  const { id } = await params
-  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const [{ id }, resolvedSearchParams] = await Promise.all([
+    params,
+    searchParams ||
+      Promise.resolve<{ section?: string | string[] }>({}),
+  ])
   const rawSection = Array.isArray(resolvedSearchParams.section)
     ? resolvedSearchParams.section[0]
     : resolvedSearchParams.section

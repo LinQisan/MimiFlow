@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 
 import InlineConfirmAction from '@/components/InlineConfirmAction'
 import CustomSelect from '@/components/ui/CustomSelect'
@@ -13,8 +14,7 @@ import {
   getVocabularyMergePreviewAdmin,
   mergeAllVocabularyDuplicatesAdmin,
   mergeVocabularyDuplicateGroupAdmin,
-  updateVocabularyMetaAdmin,
-  updateVocabularyTagsAdmin,
+  updateVocabularyAdmin,
 } from '@/features/vocabulary/admin-actions'
 
 type VocabularyRecord = {
@@ -90,48 +90,64 @@ export default function VocabularyManagePage() {
   const [partsOfSpeechInput, setPartsOfSpeechInput] = useState('')
   const [meaningInput, setMeaningInput] = useState('')
   const [tagsInput, setTagsInput] = useState('')
-  const [showBatchTools, setShowBatchTools] = useState(false)
+  const [activeTool, setActiveTool] = useState<'batch' | 'duplicates' | null>(null)
   const [bulkPronunciationsInput, setBulkPronunciationsInput] = useState('')
   const [bulkPartsOfSpeechInput, setBulkPartsOfSpeechInput] = useState('')
   const [bulkMode, setBulkMode] = useState<'append' | 'replace'>('append')
   const [isBulkSaving, setIsBulkSaving] = useState(false)
-  const [showDuplicates, setShowDuplicates] = useState(false)
   const [mergePreview, setMergePreview] = useState<{
     groups: MergePreviewGroup[]
     totalGroups: number
     duplicateCount: number
   }>({ groups: [], totalGroups: 0, duplicateCount: 0 })
   const [isLoadingMergePreview, setIsLoadingMergePreview] = useState(false)
+  const [hasLoadedMergePreview, setHasLoadedMergePreview] = useState(false)
   const [mergingGroupKey, setMergingGroupKey] = useState<string | null>(null)
   const [isMergingAll, setIsMergingAll] = useState(false)
+  const requestIdRef = useRef(0)
+  const isInitialRequestRef = useRef(true)
 
   const fetchVocabs = useCallback(async (page: number, keyword: string) => {
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
     setLoading(true)
-    const data = await getVocabulariesPagedAdmin(keyword, page, PAGE_SIZE)
-    const nextList = data.items as VocabularyRecord[]
-    setVocabList(nextList)
-    setTotalCount(data.total || 0)
-    setCurrentPage(data.page || 1)
-    const validIds = new Set(nextList.map(item => item.id))
-    setSelectedIds(previous => previous.filter(id => validIds.has(id)))
-    setLoading(false)
-  }, [])
+    try {
+      const data = await getVocabulariesPagedAdmin(keyword, page, PAGE_SIZE)
+      if (requestId !== requestIdRef.current) return
+      const nextList = data.items as VocabularyRecord[]
+      setVocabList(nextList)
+      setTotalCount(data.total || 0)
+      setCurrentPage(data.page || 1)
+      const validIds = new Set(nextList.map(item => item.id))
+      setSelectedIds(previous => previous.filter(id => validIds.has(id)))
+    } catch {
+      if (requestId === requestIdRef.current) {
+        dialog.toast('词条加载失败，请稍后重试', { tone: 'error' })
+      }
+    } finally {
+      if (requestId === requestIdRef.current) setLoading(false)
+    }
+  }, [dialog])
 
   const fetchMergePreview = useCallback(async () => {
     setIsLoadingMergePreview(true)
-    const data = await getVocabularyMergePreviewAdmin()
-    setMergePreview(data as typeof mergePreview)
-    setIsLoadingMergePreview(false)
-  }, [])
+    try {
+      const data = await getVocabularyMergePreviewAdmin()
+      setMergePreview(data as typeof mergePreview)
+      setHasLoadedMergePreview(true)
+    } catch {
+      dialog.toast('重复项扫描失败，请稍后重试', { tone: 'error' })
+    } finally {
+      setIsLoadingMergePreview(false)
+    }
+  }, [dialog])
 
   useEffect(() => {
-    void fetchMergePreview()
-  }, [fetchMergePreview])
-
-  useEffect(() => {
+    const delay = isInitialRequestRef.current ? 0 : 240
+    isInitialRequestRef.current = false
     const timer = window.setTimeout(() => {
       void fetchVocabs(currentPage, searchKeyword)
-    }, 240)
+    }, delay)
     return () => window.clearTimeout(timer)
   }, [currentPage, fetchVocabs, searchKeyword])
 
@@ -139,6 +155,8 @@ export default function VocabularyManagePage() {
   const selectedInView = selectedIds.filter(id => currentIds.includes(id)).length
   const allInViewSelected = vocabList.length > 0 && selectedInView === vocabList.length
   const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const rangeStart = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, totalCount)
 
   const toggleSelectAll = () => {
     setSelectedIds(previous => {
@@ -163,22 +181,18 @@ export default function VocabularyManagePage() {
     const meanings = splitUserInput(meaningInput)
     const tags = splitUserInput(tagsInput)
     setSavingId(item.id)
-    const result = await updateVocabularyMetaAdmin(item.id, {
+    const result = await updateVocabularyAdmin(item.id, {
       pronunciations,
       partsOfSpeech,
       meanings,
+      tags,
     })
     if (!result.success) {
       setSavingId(null)
       dialog.toast(result.message || '保存失败', { tone: 'error' })
       return
     }
-    const tagResult = await updateVocabularyTagsAdmin(item.id, tags)
     setSavingId(null)
-    if (!tagResult.success) {
-      dialog.toast(tagResult.message || '标签保存失败', { tone: 'error' })
-      return
-    }
     setVocabList(previous =>
       previous.map(current =>
         current.id === item.id
@@ -196,7 +210,9 @@ export default function VocabularyManagePage() {
       dialog.toast(result.message || '删除失败', { tone: 'error' })
       return
     }
-    await fetchVocabs(currentPage, searchKeyword)
+    setVocabList(previous => previous.filter(item => item.id !== id))
+    setSelectedIds(previous => previous.filter(itemId => itemId !== id))
+    setTotalCount(previous => Math.max(0, previous - 1))
     dialog.toast('已删除', { tone: 'success' })
   }
 
@@ -235,10 +251,12 @@ export default function VocabularyManagePage() {
       dialog.toast(result.message || '合并失败', { tone: 'error' })
       return
     }
-    await Promise.all([
-      fetchVocabs(currentPage, searchKeyword),
-      fetchMergePreview(),
-    ])
+    await fetchVocabs(currentPage, searchKeyword)
+    setMergePreview(previous => ({
+      groups: previous.groups.filter(item => item.groupKey !== group.groupKey),
+      totalGroups: Math.max(0, previous.totalGroups - 1),
+      duplicateCount: Math.max(0, previous.duplicateCount - group.mergeIds.length),
+    }))
     dialog.toast('已合并', { tone: 'success' })
   }
 
@@ -250,44 +268,69 @@ export default function VocabularyManagePage() {
       dialog.toast(result.message || '合并失败', { tone: 'error' })
       return
     }
-    await Promise.all([
-      fetchVocabs(currentPage, searchKeyword),
-      fetchMergePreview(),
-    ])
+    await fetchVocabs(currentPage, searchKeyword)
+    setMergePreview({ groups: [], totalGroups: 0, duplicateCount: 0 })
     dialog.toast(`已合并 ${result.mergedCount || 0} 条`, { tone: 'success' })
   }
 
+  const toggleTool = (tool: 'batch' | 'duplicates') => {
+    setActiveTool(previous => (previous === tool ? null : tool))
+    if (tool === 'duplicates' && !hasLoadedMergePreview) {
+      void fetchMergePreview()
+    }
+  }
+
   return (
-    <main className='min-h-full px-3 py-4 md:px-6 md:py-6'>
-      <div className='mx-auto max-w-6xl space-y-4'>
-        <header className='flex flex-wrap items-center justify-between gap-3'>
-          <div className='flex items-baseline gap-3'>
-            <h1 className='text-xl font-black text-slate-950 md:text-2xl'>词库</h1>
-            <span className='text-sm text-slate-400'>{totalCount} 条</span>
+    <main className='min-h-full bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-7xl space-y-6'>
+        <header className='editorial-page-header flex flex-wrap items-end justify-between gap-5'>
+          <div>
+            <p className='text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400'>
+              Vocabulary · Manage
+            </p>
+            <div className='mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1'>
+              <h1 className='text-3xl font-black tracking-tight text-slate-950'>词汇管理</h1>
+              <span className='text-sm tabular-nums text-slate-500'>{totalCount.toLocaleString()} 条</span>
+            </div>
+            <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
+              搜索、校对和批量整理个人词库。重复项扫描仅在需要时执行，不影响日常打开速度。
+            </p>
           </div>
-          <div className='flex items-center gap-2'>
+          <div className='flex flex-wrap items-center gap-2'>
             {selectedIds.length > 0 ? (
-              <span className='rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600'>
+              <span className='ui-tag ui-tag-muted'>
                 已选 {selectedIds.length}
               </span>
             ) : null}
+            <Link href='/vocabulary' className='ui-btn ui-btn-sm'>
+              查看词库
+            </Link>
             <button
               type='button'
-              onClick={() => setShowBatchTools(previous => !previous)}
-              className='ui-btn ui-btn-sm'>
-              批量编辑
+              aria-pressed={activeTool === 'batch'}
+              onClick={() => toggleTool('batch')}
+              className={`ui-btn ui-btn-sm ${activeTool === 'batch' ? 'ui-btn-primary' : ''}`}>
+              批量处理
             </button>
             <button
               type='button'
-              onClick={() => setShowDuplicates(previous => !previous)}
-              className='ui-btn ui-btn-sm'>
-              重复项{mergePreview.duplicateCount > 0 ? ` ${mergePreview.duplicateCount}` : ''}
+              aria-pressed={activeTool === 'duplicates'}
+              onClick={() => toggleTool('duplicates')}
+              className={`ui-btn ui-btn-sm ${activeTool === 'duplicates' ? 'ui-btn-primary' : ''}`}>
+              {isLoadingMergePreview
+                ? '扫描重复项…'
+                : mergePreview.duplicateCount > 0
+                  ? `重复项 ${mergePreview.duplicateCount}`
+                  : hasLoadedMergePreview
+                    ? '无重复项'
+                    : '检查重复项'}
             </button>
           </div>
         </header>
 
-        <section className='rounded-xl border border-slate-200 bg-white p-2 shadow-sm'>
-          <div className='flex items-center gap-2'>
+        <section className='border-y border-slate-200 bg-white/75 px-3 py-3'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <span className='text-xs font-bold uppercase tracking-[0.16em] text-slate-400'>检索</span>
             <input
               type='search'
               value={searchKeyword}
@@ -297,8 +340,19 @@ export default function VocabularyManagePage() {
               }}
               placeholder='搜索词条、释义或来源'
               aria-label='搜索词库'
-              className='ui-input h-10 min-w-0 flex-1 rounded-lg border-0 bg-slate-50 px-3 text-sm outline-none'
+              className='ui-input h-10 min-w-[220px] flex-1 bg-white px-3 text-sm outline-none'
             />
+            {searchKeyword ? (
+              <button
+                type='button'
+                onClick={() => {
+                  setSearchKeyword('')
+                  setCurrentPage(1)
+                }}
+                className='ui-btn ui-btn-sm'>
+                清除
+              </button>
+            ) : null}
             <button
               type='button'
               onClick={toggleSelectAll}
@@ -309,8 +363,8 @@ export default function VocabularyManagePage() {
           </div>
         </section>
 
-        {showBatchTools ? (
-          <section className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+        {activeTool === 'batch' ? (
+          <section className='border-y border-slate-200 bg-white px-4 py-5'>
             <div className='mb-3 flex items-center justify-between gap-3'>
               <h2 className='text-sm font-bold text-slate-900'>批量编辑</h2>
               <button
@@ -364,10 +418,15 @@ export default function VocabularyManagePage() {
           </section>
         ) : null}
 
-        {showDuplicates ? (
-          <section className='rounded-xl border border-slate-200 bg-white p-4 shadow-sm'>
+        {activeTool === 'duplicates' ? (
+          <section className='border-y border-slate-200 bg-white px-4 py-5'>
             <div className='flex flex-wrap items-center justify-between gap-3'>
-              <h2 className='text-sm font-bold text-slate-900'>重复项</h2>
+              <div>
+                <h2 className='text-base font-bold text-slate-900'>重复项整理</h2>
+                <p className='mt-1 text-xs text-slate-500'>
+                  按词形、注音和内容质量选择保留项；合并会保留例句与词书归属。
+                </p>
+              </div>
               <div className='flex gap-2'>
                 <button
                   type='button'
@@ -403,14 +462,31 @@ export default function VocabularyManagePage() {
                   </button>
                 </div>
               ))}
-              {mergePreview.totalGroups === 0 ? (
-                <p className='py-6 text-center text-sm text-slate-400'>没有重复项</p>
+              {isLoadingMergePreview ? (
+                <div className='space-y-2 py-4' aria-label='正在扫描重复项'>
+                  {Array.from({ length: 3 }).map((_, index) => (
+                    <div key={index} className='h-10 animate-pulse bg-stone-100' />
+                  ))}
+                </div>
+              ) : mergePreview.totalGroups === 0 ? (
+                <p className='py-8 text-center text-sm text-slate-400'>没有发现重复项</p>
               ) : null}
             </div>
           </section>
         ) : null}
 
-        <section className='overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'>
+        <section className='overflow-hidden border-y border-slate-200 bg-white'>
+          <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
+            <div>
+              <h2 className='text-sm font-bold text-slate-900'>词条列表</h2>
+              <p className='mt-0.5 text-xs tabular-nums text-slate-400'>
+                当前显示 {rangeStart}–{rangeEnd}，共 {totalCount.toLocaleString()} 条
+              </p>
+            </div>
+            {loading ? (
+              <span className='text-xs font-semibold text-slate-400'>正在更新结果…</span>
+            ) : null}
+          </div>
           {loading ? (
             <div className='space-y-1 p-2'>
               {Array.from({ length: 8 }).map((_, index) => (
@@ -424,7 +500,7 @@ export default function VocabularyManagePage() {
                 const isSaving = savingId === item.id
                 const previewSentence = item.sentences[0]
                 return (
-                  <article key={item.id} className='px-3 py-3 md:px-4'>
+                  <article key={item.id} className='px-3 py-4 transition-colors hover:bg-stone-50/70 md:px-4'>
                     <div className='flex items-start gap-3'>
                       <input
                         type='checkbox'
@@ -449,7 +525,7 @@ export default function VocabularyManagePage() {
                             wordClassName='text-lg font-black text-slate-950'
                             hintClassName='text-xs font-medium text-slate-400'
                           />
-                          <span className='rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+                          <span className='ui-tag ui-tag-muted text-[10px]'>
                             {sourceLabel[item.sourceType]}
                           </span>
                           {item.partsOfSpeech.slice(0, 2).map(value => (
@@ -507,7 +583,7 @@ export default function VocabularyManagePage() {
                     </div>
 
                     {isEditing ? (
-                      <div className='ml-7 mt-3 grid gap-2 rounded-lg bg-slate-50 p-3 md:grid-cols-2'>
+                      <div className='ml-7 mt-4 grid gap-3 border-t border-slate-200 bg-stone-50/60 px-3 py-4 md:grid-cols-2'>
                         {[
                           ['注音', pronunciationsInput, setPronunciationsInput],
                           ['词性', partsOfSpeechInput, setPartsOfSpeechInput],
@@ -541,8 +617,8 @@ export default function VocabularyManagePage() {
           )}
         </section>
 
-        <nav className='flex items-center justify-between text-xs text-slate-400' aria-label='词库分页'>
-          <span>{currentPage} / {totalPages}</span>
+        <nav className='flex items-center justify-between border-t border-slate-300 pt-4 text-xs text-slate-500' aria-label='词库分页'>
+          <span className='tabular-nums'>第 {currentPage} / {totalPages} 页</span>
           <div className='flex gap-2'>
             <button
               type='button'

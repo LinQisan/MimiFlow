@@ -80,6 +80,9 @@ const highlightKeyword = (text: string, keyword?: string) => {
 export default function SearchPage() {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const requestIdRef = useRef(0)
+  const resultCacheRef = useRef(
+    new Map<string, Map<GlobalSearchType, GlobalSearchResult[]>>(),
+  )
   const [keyword, setKeyword] = useState('')
   const [searchedKeyword, setSearchedKeyword] = useState('')
   const [results, setResults] = useState<GlobalSearchResult[]>([])
@@ -111,7 +114,10 @@ export default function SearchPage() {
     nextTypes: GlobalSearchType[] = selectedTypes,
     explicitKeyword?: string,
   ) => {
-    const q = (explicitKeyword ?? keyword).trim()
+    const q = (explicitKeyword ?? keyword)
+      .replace(/\u3000/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
     setHasSearched(true)
     setSearchedKeyword(q)
     if (!q) {
@@ -131,9 +137,36 @@ export default function SearchPage() {
     }
     window.history.replaceState(null, '', `/search?${params.toString()}`)
 
+    let cachedByType = resultCacheRef.current.get(q)
+    if (!cachedByType) {
+      cachedByType = new Map()
+      resultCacheRef.current.set(q, cachedByType)
+      if (resultCacheRef.current.size > 20) {
+        const oldestKeyword = resultCacheRef.current.keys().next().value
+        if (oldestKeyword) resultCacheRef.current.delete(oldestKeyword)
+      }
+    }
+    const missingTypes = nextTypes.filter(type => !cachedByType.has(type))
+    const readCachedResults = () =>
+      nextTypes.flatMap(type => cachedByType.get(type) || []).slice(0, 50)
+
+    if (missingTypes.length === 0) {
+      setResults(readCachedResults())
+      setIsSearching(false)
+      return
+    }
+
     try {
-      const next = await searchGlobalContent(q, { types: nextTypes })
-      if (requestId === requestIdRef.current) setResults(next)
+      const next = await searchGlobalContent(q, { types: missingTypes })
+      for (const type of missingTypes) {
+        const items = next.filter(item => item.type === type)
+        // A full response can truncate later groups. Only cache a missing group
+        // when the result proves that the search was exhaustive.
+        if (items.length > 0 || next.length < 50 || missingTypes.length === 1) {
+          cachedByType.set(type, items)
+        }
+      }
+      if (requestId === requestIdRef.current) setResults(readCachedResults())
     } finally {
       if (requestId === requestIdRef.current) setIsSearching(false)
     }

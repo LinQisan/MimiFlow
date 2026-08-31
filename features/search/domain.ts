@@ -109,6 +109,24 @@ export const buildSearchDetailHref = (
   return '/manage/practice'
 }
 
+export const buildVocabularyTargetHref = (id: string, word: string) => {
+  const params = new URLSearchParams()
+  params.set('focus', id)
+  params.set('q', word)
+  return `/vocabulary?${params.toString()}`
+}
+
+export const buildQuestionTargetHref = (input: {
+  questionId: string
+  materialId: string
+  paperId?: string | null
+}) => {
+  if (input.paperId) {
+    return `/practice/${encodeURIComponent(input.paperId)}/do?qid=${encodeURIComponent(input.questionId)}`
+  }
+  return `/manage/questions/${encodeURIComponent(input.materialId)}?focus=${encodeURIComponent(input.questionId)}`
+}
+
 export const extractMaterialSearchText = (
   type: MaterialType,
   contentPayload: unknown,

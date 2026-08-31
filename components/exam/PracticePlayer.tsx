@@ -40,7 +40,9 @@ import {
 } from '@/utils/language/japaneseRuby'
 import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
-import { buildExamAnnotationTexts } from '@/features/practice/domain/exam-annotation-texts'
+import { buildExamAnnotationTexts } from '@/modules/practice/domain/exam-annotation-texts'
+import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
+import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
 
 const WordTooltip = dynamic(() => import('./WordTooltip'))
 
@@ -78,8 +80,10 @@ const initAttemptStats = (questions: ExamQuestion[]) =>
   questions.reduce<Record<string, AttemptStats>>((acc, question) => {
     const attempts = question.attempts || []
     acc[question.id] = {
-      total: attempts.length,
-      correct: attempts.filter(item => item.isCorrect).length,
+      total: question.attemptCount ?? attempts.length,
+      correct:
+        question.correctAttemptCount ??
+        attempts.filter(item => item.isCorrect).length,
     }
     return acc
   }, {})
@@ -139,6 +143,8 @@ export function PracticePlayer({
   )
   const router = useRouter()
   const [selectionEnabled, setSelectionEnabled] = React.useState(true)
+  const [learningPointsEnabled, setLearningPointsEnabled] = React.useState(false)
+  const playerRootRef = React.useRef<HTMLDivElement>(null)
   const { selection, closeSelection } = useTextSelection(selectionEnabled)
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
@@ -217,6 +223,11 @@ export function PracticePlayer({
     session.currentIndex,
   )
   const currentGroup = questionGroups[currentGroupIndex]
+  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+    rootRef: playerRootRef,
+    contentKey: `${currentGroupIndex}:${currentGroup?.key || ''}`,
+    showLearningPoints: learningPointsEnabled,
+  })
   const normalizedPaperLanguage = (paperLanguage || '').trim().toLowerCase()
   const isJapanesePaper =
     normalizedPaperLanguage === 'ja' ||
@@ -761,6 +772,7 @@ export function PracticePlayer({
 
   return (
     <div
+      ref={playerRootRef}
       className={`relative flex min-h-screen flex-col bg-[#f7f7f5] font-sans ${
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
@@ -896,6 +908,19 @@ export function PracticePlayer({
                 </button>
               </>
             ) : null}
+            <button
+              type='button'
+              aria-pressed={learningPointsEnabled}
+              aria-label='切换学习点'
+              onClick={() => setLearningPointsEnabled(value => !value)}
+              className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
+                learningPointsEnabled
+                  ? 'bg-slate-200 text-slate-900'
+                  : 'text-slate-500 hover:bg-slate-200/70'
+              }`}>
+              <span className='sm:hidden'>点</span>
+              <span className='hidden sm:inline'>学习点</span>
+            </button>
             </div>
 
             <div className='flex shrink-0 items-center gap-0.5 sm:gap-1'>
@@ -1014,6 +1039,15 @@ export function PracticePlayer({
           </div>
         )}
       </header>
+
+      {learningPointsEnabled ? (
+        <div className='mx-auto w-full max-w-7xl px-3 pt-3 md:px-6'>
+          <LearningPointHighlightPanel
+            points={learningPoints}
+            isLoading={isLoadingLearningPoints}
+          />
+        </div>
+      ) : null}
 
       {session.showSheet && !isSingleMode && (
         <>

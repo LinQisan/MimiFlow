@@ -18,6 +18,8 @@ export default function SubtitleReaderControls({
   setShowPronunciation,
   showMeaning,
   setShowMeaning,
+  showLearningPoints,
+  setShowLearningPoints,
   showTimeline,
   setShowTimeline,
   showFavoriteOnly,
@@ -37,6 +39,8 @@ export default function SubtitleReaderControls({
   setShowPronunciation: (value: boolean) => void
   showMeaning: boolean
   setShowMeaning: (value: boolean) => void
+  showLearningPoints: boolean
+  setShowLearningPoints: (value: boolean) => void
   showTimeline: boolean
   setShowTimeline: (value: boolean) => void
   showFavoriteOnly: boolean
@@ -104,6 +108,11 @@ export default function SubtitleReaderControls({
             label='注音'
           />
           <ToggleSwitch checked={showMeaning} onChange={setShowMeaning} label='注释' />
+          <ToggleSwitch
+            checked={showLearningPoints}
+            onChange={setShowLearningPoints}
+            label='学习点'
+          />
           <ToggleSwitch
             checked={showTimeline}
             onChange={setShowTimeline}

@@ -97,6 +97,7 @@ const buildVocabularyMetaMapForText = async (
       userId,
       OR: [
         { sourceType: 'ARTICLE_TEXT', sourceId: { in: sourceIds } },
+        { wordAudio: { not: null } },
         { pronunciations: { not: null } },
         { meanings: { not: null } },
       ],
@@ -106,6 +107,7 @@ const buildVocabularyMetaMapForText = async (
       pronunciations: true,
       partsOfSpeech: true,
       meanings: true,
+      wordAudio: true,
       sourceType: true,
       sourceId: true,
     },
@@ -713,11 +715,20 @@ export async function getTopMaterialSnapshots() {
   }
 }
 
-async function listMaterialsForShadowingByType(materialType: MaterialType) {
+async function listMaterialsForShadowingByType(
+  materialType: MaterialType | MaterialType[],
+) {
   const rows = await prisma.material.findMany({
-    where: { type: materialType },
+    where: {
+      type: Array.isArray(materialType) ? { in: materialType } : materialType,
+    },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    include: {
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      chapterName: true,
+      contentPayload: true,
       collectionMaterials: {
         take: 1,
         orderBy: { sortOrder: 'asc' },
@@ -893,4 +904,11 @@ export async function listListeningMaterialsForShadowing() {
 
 export async function listListeningLessonsForShadowing() {
   return listMaterialsForShadowingByType(MaterialType.LISTENING)
+}
+
+export async function listListeningLibraryMaterials() {
+  return listMaterialsForShadowingByType([
+    MaterialType.SPEAKING,
+    MaterialType.LISTENING,
+  ])
 }

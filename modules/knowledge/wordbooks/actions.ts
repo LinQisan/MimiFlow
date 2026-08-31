@@ -5,29 +5,65 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 
-const isWordbookMoveValid = async (
-  wordbookId: string,
-  nextParentId: string | null,
-  userId: string,
-) => {
-  if (!nextParentId) return true
-  if (nextParentId === wordbookId) return false
+const revalidateWordbooks = () => {
+  revalidatePath('/vocabulary')
+  revalidatePath('/manage/import')
+}
 
-  let cursor: string | null = nextParentId
-  while (cursor) {
-    if (cursor === wordbookId) return false
-    const parent: { parentId: string | null } | null = await prisma.wordbook.findFirst({
-        where: { id: cursor, userId },
-        select: { parentId: true },
-      })
-    cursor = parent?.parentId || null
+export async function createWordbookSeries(title: string) {
+  try {
+    const userId = await getCurrentUserId()
+    const trimmedTitle = title.trim()
+    if (!trimmedTitle) return { success: false, message: '词书系列名称不能为空' }
+    const series = await prisma.wordbookSeries.create({
+      data: { userId, title: trimmedTitle },
+      select: { id: true, title: true },
+    })
+    revalidateWordbooks()
+    return { success: true, series }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同名词书系列已存在' }
+    }
+    console.error(error)
+    return { success: false, message: '创建词书系列失败' }
   }
-  return true
+}
+
+export async function renameWordbookSeries(seriesId: string, title: string) {
+  try {
+    const userId = await getCurrentUserId()
+    const trimmedSeriesId = seriesId.trim()
+    const trimmedTitle = title.trim()
+    if (!trimmedSeriesId || !trimmedTitle) {
+      return { success: false, message: '词书系列名称不能为空' }
+    }
+    const series = await prisma.wordbookSeries.findFirst({
+      where: { id: trimmedSeriesId, userId },
+      select: { id: true },
+    })
+    if (!series) return { success: false, message: '词书系列不存在' }
+    const updated = await prisma.wordbookSeries.update({
+      where: { id: series.id },
+      data: { title: trimmedTitle },
+      select: { id: true, title: true },
+    })
+    revalidateWordbooks()
+    return { success: true, series: updated }
+  } catch (error: unknown) {
+    const prismaError = error as { code?: string }
+    if (prismaError.code === 'P2002') {
+      return { success: false, message: '同名词书系列已存在' }
+    }
+    console.error(error)
+    return { success: false, message: '重命名词书系列失败' }
+  }
 }
 
 export async function createWordbook(
   title: string,
-  parentId?: string | null,
+  seriesId: string,
 ) {
   try {
     const userId = await getCurrentUserId()
@@ -35,39 +71,35 @@ export async function createWordbook(
     if (!trimmedTitle) {
       return { success: false, message: '单词书名称不能为空' }
     }
-    const nextParentId = parentId?.trim() || null
-    if (nextParentId) {
-      const parent = await prisma.wordbook.findFirst({
-        where: { id: nextParentId, userId },
-        select: { id: true },
-      })
-      if (!parent) {
-        return { success: false, message: '上级单词书不存在' }
-      }
-    }
+    const trimmedSeriesId = seriesId.trim()
+    if (!trimmedSeriesId) return { success: false, message: '请选择词书系列' }
+    const series = await prisma.wordbookSeries.findFirst({
+      where: { id: trimmedSeriesId, userId },
+      select: { id: true },
+    })
+    if (!series) return { success: false, message: '词书系列不存在' }
     const wordbook = await prisma.wordbook.create({
       data: {
         userId,
         title: trimmedTitle,
-        parentId: nextParentId,
+        seriesId: series.id,
       },
-      select: { id: true, title: true, parentId: true, createdAt: true },
+      select: { id: true, title: true, seriesId: true, createdAt: true },
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return {
       success: true,
       wordbook: {
         id: wordbook.id,
         title: wordbook.title,
-        parentId: wordbook.parentId,
+        seriesId: wordbook.seriesId,
         createdAt: wordbook.createdAt,
       },
     }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
     if (prismaError.code === 'P2002') {
-      return { success: false, message: '同级单词书名称已存在' }
+      return { success: false, message: '该系列中已存在同名单词书' }
     }
     console.error(error)
     return { success: false, message: '创建单词书失败' }
@@ -89,10 +121,9 @@ export async function renameWordbook(wordbookId: string, title: string) {
     const updated = await prisma.wordbook.update({
       where: { id: existing.id },
       data: { title: trimmedTitle },
-      select: { id: true, title: true, parentId: true },
+      select: { id: true, title: true, seriesId: true },
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return { success: true, wordbook: updated }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
@@ -106,39 +137,35 @@ export async function renameWordbook(wordbookId: string, title: string) {
 
 export async function moveWordbook(
   wordbookId: string,
-  parentId: string | null,
+  seriesId: string,
 ) {
   try {
     const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
-    const nextParentId = parentId?.trim() || null
+    const trimmedSeriesId = seriesId.trim()
     if (!trimmedWordbookId) return { success: false, message: '单词书无效' }
+    if (!trimmedSeriesId) return { success: false, message: '请选择词书系列' }
     const wordbook = await prisma.wordbook.findFirst({
       where: { id: trimmedWordbookId, userId },
       select: { id: true },
     })
     if (!wordbook) return { success: false, message: '单词书不存在' }
-    if (nextParentId) {
-      const target = await prisma.wordbook.findFirst({
-        where: { id: nextParentId, userId },
-        select: { id: true },
-      })
-      if (!target) return { success: false, message: '目标单词书不存在' }
-    }
-    const valid = await isWordbookMoveValid(trimmedWordbookId, nextParentId, userId)
-    if (!valid) return { success: false, message: '不能移动到自身或子单词书下' }
+    const targetSeries = await prisma.wordbookSeries.findFirst({
+      where: { id: trimmedSeriesId, userId },
+      select: { id: true },
+    })
+    if (!targetSeries) return { success: false, message: '目标词书系列不存在' }
     const updated = await prisma.wordbook.update({
       where: { id: trimmedWordbookId },
-      data: { parentId: nextParentId },
-      select: { id: true, title: true, parentId: true },
+      data: { seriesId: targetSeries.id },
+      select: { id: true, title: true, seriesId: true },
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return { success: true, wordbook: updated }
   } catch (error: unknown) {
     const prismaError = error as { code?: string }
     if (prismaError.code === 'P2002') {
-      return { success: false, message: '目标位置已有同名单词书' }
+      return { success: false, message: '目标系列已有同名单词书' }
     }
     console.error(error)
     return { success: false, message: '移动单词书失败' }
@@ -159,8 +186,7 @@ export async function deleteWordbook(wordbookId: string) {
     await prisma.wordbook.delete({
       where: { id: trimmedWordbookId },
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return { success: true }
   } catch (error) {
     console.error(error)
@@ -186,8 +212,7 @@ export async function removeVocabularyFromWordbook(
         vocabulary: { userId },
       },
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return { success: true }
   } catch (error) {
     console.error(error)
@@ -195,15 +220,21 @@ export async function removeVocabularyFromWordbook(
   }
 }
 
-export async function listWordbooksTree() {
+export async function listSelectableWordbooks() {
   const userId = await getCurrentUserId()
   const rows = await prisma.wordbook.findMany({
-    where: { userId },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
+    orderBy: [
+      { series: { sortOrder: 'asc' } },
+      { series: { createdAt: 'asc' } },
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+    ],
     select: {
       id: true,
       title: true,
-      parentId: true,
+      seriesId: true,
+      series: { select: { title: true } },
       _count: {
         select: { entries: true },
       },
@@ -212,7 +243,8 @@ export async function listWordbooksTree() {
   return rows.map(item => ({
     id: item.id,
     title: item.title,
-    parentId: item.parentId,
+    seriesId: item.seriesId,
+    seriesTitle: item.series.title,
     vocabularyCount: item._count.entries,
   }))
 }
@@ -327,9 +359,9 @@ export async function addVocabulariesToWordbook(
         wordbookId: trimmedWordbookId,
         vocabularyId,
       })),
+      skipDuplicates: true,
     })
-    revalidatePath('/vocabulary')
-    revalidatePath('/vocabulary')
+    revalidateWordbooks()
     return {
       success: true,
       added: result.count,

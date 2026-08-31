@@ -8,11 +8,6 @@ import {
 import ArticleReaderClient from '@/features/reading/ui/ArticleReaderClient'
 import ArticleQuestionsPanel from './ArticleQuestionsPanel'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
-import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
-import {
-  buildVocabularyCandidates,
-  buildWordFrequency,
-} from '@/modules/language/domain/sudachi'
 import ManageAudioPlayer from '@/features/listening/ui/ManageAudioPlayer'
 import {
   formatNewsDate,
@@ -40,10 +35,6 @@ export default async function ArticleDetailPage({
     redirect(`/reading/ebooks/${encodeURIComponent(article.id)}`)
   }
 
-  const articleTexts =
-    article.chapters.length > 0
-      ? article.chapters.map(chapter => chapter.text)
-      : [article.content]
   const news = normalizeNewsMetadata({
     ...article,
     collectionName: article.category?.name,
@@ -56,30 +47,17 @@ export default async function ArticleDetailPage({
         news.source,
         news.column || news.section || getNewsTypeLabel(news.type),
       ].filter(Boolean).join(' · ')
-  const [sudachiPronunciation, relatedArticles] = await Promise.all([
-    getSudachiPronunciationMap(articleTexts),
-    isPaperArticle || article.sourceKind === 'NEWS'
-      ? listRelatedReadingArticles({
-          articleId: article.id,
-          collectionId: article.category?.id,
-          collectionType: article.category?.collectionType,
-          newsSource: news.source,
-          newsColumn: news.column,
-          newsSection: news.column ? '' : news.section,
-          newsType: news.column || news.section ? '' : news.type,
-        })
-      : Promise.resolve([]),
-  ])
-  const vocabularyCandidates = buildVocabularyCandidates(
-    sudachiPronunciation.tokens,
-    Object.keys(article.vocabularyMetaMap),
-  )
-  const analyzedWordbookWords = buildWordFrequency(
-    sudachiPronunciation.tokens,
-  ).map(row => row.word)
-  const wordbookDistributionWords = analyzedWordbookWords.length > 0
-    ? analyzedWordbookWords
-    : Object.keys(article.vocabularyMetaMap)
+  const relatedArticles = isPaperArticle || article.sourceKind === 'NEWS'
+    ? await listRelatedReadingArticles({
+        articleId: article.id,
+        collectionId: article.category?.id,
+        collectionType: article.category?.collectionType,
+        newsSource: news.source,
+        newsColumn: news.column,
+        newsSection: news.column ? '' : news.section,
+        newsType: news.column || news.section ? '' : news.type,
+      })
+    : []
 
   return (
     <main className="min-h-screen bg-[#f8f7f3] px-4 py-6 md:px-6 md:py-10">
@@ -152,11 +130,6 @@ export default async function ArticleDetailPage({
           content={article.content}
           chapters={article.chapters}
           initialVocabularyMetaMap={article.vocabularyMetaMap}
-          initialSudachiPronunciationMap={sudachiPronunciation.pronunciationMap}
-          initialSudachiLexicon={sudachiPronunciation.lexicon}
-          initialVocabularyCandidates={vocabularyCandidates}
-          initialWordbookDistributionWords={wordbookDistributionWords}
-          sudachiAvailable={sudachiPronunciation.available}
         />
 
         {article.category?.collectionType === 'PAPER' ? (

@@ -11,8 +11,10 @@ export default async function ManageReadingEditPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ returnTo?: string | string[] }>
 }) {
-  const { id } = await params
-  const resolvedSearchParams = await searchParams
+  const [{ id }, resolvedSearchParams] = await Promise.all([
+    params,
+    searchParams,
+  ])
   const rawReturnTo = Array.isArray(resolvedSearchParams.returnTo)
     ? resolvedSearchParams.returnTo[0]
     : resolvedSearchParams.returnTo

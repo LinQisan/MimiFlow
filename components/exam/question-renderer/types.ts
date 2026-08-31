@@ -14,6 +14,8 @@ export type ExamQuestion = {
   attempts?: {
     isCorrect: boolean
   }[]
+  attemptCount?: number
+  correctAttemptCount?: number
   order?: number | null
   questionType?: string | null
   prompt?: string | null

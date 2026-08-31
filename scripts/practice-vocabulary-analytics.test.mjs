@@ -152,14 +152,14 @@ test('practice analytics matches personal wordbooks and mastered preferences', (
     analytics,
     [{
       word: '環境',
-      wordbookIds: ['book-n1', 'book-root'],
+      wordbookIds: ['book-n1'],
       wordbookNames: ['红宝书 / N1'],
     }],
     ['取り組む'],
     [{
-      id: 'book-root',
-      name: '红宝书',
-      pathLabel: '红宝书',
+      id: 'book-n1',
+      name: 'N1',
+      pathLabel: '红宝书 / N1',
       depth: 0,
       totalCount: 1,
     }],
@@ -168,23 +168,21 @@ test('practice analytics matches personal wordbooks and mastered preferences', (
   const candidate = personalized.words.find(row => row.word === '取り組む')
 
   assert.equal(environment.inWordbook, true)
-  assert.deepEqual(environment.wordbookIds, ['book-n1', 'book-root'])
+  assert.deepEqual(environment.wordbookIds, ['book-n1'])
   assert.deepEqual(environment.wordbookNames, ['红宝书 / N1'])
   assert.equal(candidate.isMastered, true)
-  assert.equal(personalized.wordbooks[0].id, 'book-root')
+  assert.equal(personalized.wordbooks[0].id, 'book-n1')
 })
 
-test('practice analytics builds selectable parent and child wordbooks', () => {
+test('practice analytics exposes only real wordbooks with explicit series paths', () => {
   assert.deepEqual(
     buildPracticeVocabularyWordbookOptions([
-      { id: 'root', title: '红宝书', parentId: null, count: 0 },
-      { id: 'n1', title: 'N1', parentId: 'root', count: 3053 },
-      { id: 'n2', title: 'N2', parentId: 'root', count: 2328 },
+      { id: 'n1', title: 'N1', seriesTitle: '红宝书', count: 3053 },
+      { id: 'n2', title: 'N2', seriesTitle: '红宝书', count: 2328 },
     ]),
     [
-      { id: 'root', name: '红宝书', pathLabel: '红宝书', depth: 0, totalCount: 5381 },
-      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 1, totalCount: 3053 },
-      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 1, totalCount: 2328 },
+      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 0, totalCount: 3053 },
+      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 0, totalCount: 2328 },
     ],
   )
 })
@@ -252,7 +250,10 @@ test('practice page exposes the vocabulary analysis dialog and source builder', 
   assert.match(wordbookRoute, /searchParams/)
   assert.match(dialog, /count: 0/)
   assert.match(dialog, /正在读取单词书/)
-  assert.match(route, /practice-vocabulary-analytics-v6/)
+  assert.match(route, /practice-vocabulary-analytics-v7/)
+  assert.match(server, /SUDACHI_ANALYSIS_BATCH_CHARACTERS/)
+  assert.match(server, /documentIndexes\[token\.textIndex\]/)
+  assert.match(server, /if \(!analysis\.available\)/)
 })
 
 test('mastered vocabulary preferences are persisted per user', async () => {

@@ -202,26 +202,78 @@ export async function getVocabulariesPagedAdmin(
     : {}
 
   const ownedWhere = { AND: [{ userId }, where] }
-  const total = await prisma.vocabulary.count({ where: ownedWhere })
+  const requestedSkip = (safePage - 1) * safePageSize
+  const [total, requestedRows] = await Promise.all([
+    prisma.vocabulary.count({ where: ownedWhere }),
+    prisma.vocabulary.findMany({
+      where: ownedWhere,
+      orderBy: { createdAt: 'desc' },
+      skip: requestedSkip,
+      take: safePageSize,
+      select: {
+        id: true,
+        word: true,
+        sourceType: true,
+        pronunciations: true,
+        partsOfSpeech: true,
+        meanings: true,
+        sentenceLinks: {
+          orderBy: { createdAt: 'asc' },
+          take: 6,
+          select: {
+            meaningIndex: true,
+            posTags: true,
+            sentence: {
+              select: {
+                text: true,
+                source: true,
+                sourceUrl: true,
+                sourceType: true,
+              },
+            },
+          },
+        },
+        tags: {
+          select: { tag: { select: { name: true } } },
+        },
+      },
+    }),
+  ])
   const totalPages = Math.max(1, Math.ceil(total / safePageSize))
   const normalizedPage = Math.min(safePage, totalPages)
-  const skip = (normalizedPage - 1) * safePageSize
-
-  const rows = await prisma.vocabulary.findMany({
-    where: ownedWhere,
-    orderBy: { createdAt: 'desc' },
-    skip,
-    take: safePageSize,
-    include: {
-      sentenceLinks: {
-        include: { sentence: true },
-        orderBy: { createdAt: 'asc' },
-      },
-      tags: {
-        include: { tag: true },
-      },
-    },
-  })
+  const rows = normalizedPage === safePage
+    ? requestedRows
+    : await prisma.vocabulary.findMany({
+        where: ownedWhere,
+        orderBy: { createdAt: 'desc' },
+        skip: (normalizedPage - 1) * safePageSize,
+        take: safePageSize,
+        select: {
+          id: true,
+          word: true,
+          sourceType: true,
+          pronunciations: true,
+          partsOfSpeech: true,
+          meanings: true,
+          sentenceLinks: {
+            orderBy: { createdAt: 'asc' },
+            take: 6,
+            select: {
+              meaningIndex: true,
+              posTags: true,
+              sentence: {
+                select: {
+                  text: true,
+                  source: true,
+                  sourceUrl: true,
+                  sourceType: true,
+                },
+              },
+            },
+          },
+          tags: { select: { tag: { select: { name: true } } } },
+        },
+      })
 
   const items: VocabularyRecordForAdmin[] = rows.map(item => {
     const { sentenceLinks, tags } = item
@@ -242,7 +294,7 @@ export async function getVocabulariesPagedAdmin(
           meaningIndex: link.meaningIndex,
           posTags: parseJsonStringList(link.posTags).slice(0, 1),
         })),
-        16,
+        1,
       ),
     }
   })
@@ -275,25 +327,51 @@ export async function deleteVocabularyAdmin(vocabId: string) {
   }
 }
 
-export async function updateVocabularyMetaAdmin(
+export async function updateVocabularyAdmin(
   vocabId: string,
-  payload: VocabularyMetaPayload,
+  payload: VocabularyMetaPayload & { tags: string[] },
 ) {
   try {
     const userId = await getCurrentUserId()
     const pronunciations = normalizeStringList(payload.pronunciations)
     const partsOfSpeech = normalizeStringList(payload.partsOfSpeech)
     const meanings = normalizeStringList(payload.meanings)
+    const normalizedTags = Array.from(
+      new Set(payload.tags.map(tag => tag.trim()).filter(Boolean)),
+    )
+    const updated = await prisma.$transaction(async tx => {
+      const ownedVocabulary = await tx.vocabulary.updateMany({
+        where: { id: vocabId, userId },
+        data: {
+          pronunciations: toJsonStringList(pronunciations),
+          partsOfSpeech: toJsonStringList(partsOfSpeech),
+          meanings: toJsonStringList(meanings),
+        },
+      })
+      if (ownedVocabulary.count === 0) return false
 
-    const updated = await prisma.vocabulary.updateMany({
-      where: { id: vocabId, userId },
-      data: {
-        pronunciations: toJsonStringList(pronunciations),
-        partsOfSpeech: toJsonStringList(partsOfSpeech),
-        meanings: toJsonStringList(meanings),
-      },
+      await tx.vocabularyTagOnVocabulary.deleteMany({
+        where: { vocabularyId: vocabId },
+      })
+      if (normalizedTags.length === 0) return true
+
+      const tags = await Promise.all(
+        normalizedTags.map(name =>
+          tx.vocabularyTag.upsert({
+            where: { userId_name: { userId, name } },
+            update: {},
+            create: { userId, name },
+            select: { id: true },
+          }),
+        ),
+      )
+      await tx.vocabularyTagOnVocabulary.createMany({
+        data: tags.map(tag => ({ vocabularyId: vocabId, tagId: tag.id })),
+        skipDuplicates: true,
+      })
+      return true
     })
-    if (updated.count === 0) return { success: false, message: '词条不存在' }
+    if (!updated) return { success: false, message: '词条不存在' }
 
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
@@ -301,53 +379,6 @@ export async function updateVocabularyMetaAdmin(
     return { success: true }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '更新失败'
-    return { success: false, message }
-  }
-}
-
-export async function updateVocabularyTagsAdmin(
-  vocabId: string,
-  tagNames: string[],
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const normalizedTags = Array.from(
-      new Set(tagNames.map(t => t.trim()).filter(Boolean)),
-    )
-
-    const ownedVocabulary = await prisma.vocabulary.findFirst({
-      where: { id: vocabId, userId },
-      select: { id: true },
-    })
-    if (!ownedVocabulary) return { success: false, message: '词条不存在' }
-
-    // 删除所有现有标签关联
-    await prisma.vocabularyTagOnVocabulary.deleteMany({
-      where: { vocabularyId: vocabId },
-    })
-
-    // 创建或连接新标签
-    if (normalizedTags.length > 0) {
-      for (const tagName of normalizedTags) {
-        // 查找或创建标签
-        let tag = await prisma.vocabularyTag.findUnique({
-          where: { userId_name: { userId, name: tagName } },
-        })
-        if (!tag) {
-          tag = await prisma.vocabularyTag.create({ data: { userId, name: tagName } })
-        }
-        // 创建关联
-        await prisma.vocabularyTagOnVocabulary.create({
-          data: { vocabularyId: vocabId, tagId: tag.id },
-        })
-      }
-    }
-
-    revalidatePath('/manage/vocabulary')
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : '更新标签失败'
     return { success: false, message }
   }
 }

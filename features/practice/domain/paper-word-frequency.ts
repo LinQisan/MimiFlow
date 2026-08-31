@@ -30,12 +30,14 @@ type PaperWordbookDistributionItem = {
   depth: number
   matchedCount: number
   coverageRate: number
+  matchedWords: string[]
 }
 
 export type PaperWordbookDistribution = {
   totalWords: number
   outsideCount: number
   outsideRate: number
+  outsideWords: string[]
   wordbooks: PaperWordbookDistributionItem[]
 }
 
@@ -75,21 +77,34 @@ export const buildPaperWordbookDistribution = ({
   const rate = (count: number) =>
     totalWords > 0 ? Math.round((count / totalWords) * 1_000) / 10 : 0
   const outsideCount = Math.max(0, totalWords - matchedWords.size)
+  const sortWords = (values: Iterable<string>) =>
+    Array.from(values).sort((left, right) => left.localeCompare(right, 'ja'))
 
   return {
     totalWords,
     outsideCount,
     outsideRate: rate(outsideCount),
+    outsideWords: sortWords(
+      Array.from(paperWords).filter(word => !matchedWords.has(word)),
+    ),
     wordbooks: wordbooks
       .map(wordbook => {
-        const matchedCount = matchesByWordbook.get(wordbook.id)?.size || 0
+        const matches = matchesByWordbook.get(wordbook.id) || new Set<string>()
+        const matchedCount = matches.size
         return {
           ...wordbook,
           matchedCount,
           coverageRate: rate(matchedCount),
+          matchedWords: sortWords(matches),
         }
       })
-      .filter(wordbook => wordbook.matchedCount > 0),
+      .filter(wordbook => wordbook.matchedCount > 0)
+      .sort(
+        (left, right) =>
+          right.matchedCount - left.matchedCount ||
+          left.depth - right.depth ||
+          left.pathLabel.localeCompare(right.pathLabel, 'ja'),
+      ),
   }
 }
 

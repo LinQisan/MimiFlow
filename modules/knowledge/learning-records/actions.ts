@@ -22,6 +22,16 @@ export type SaveLearningRecordInput = {
   sourceId: string
 }
 
+export type UpdateLearningRecordInput = {
+  id: string
+  kind: LearningRecordKind
+  category?: LearningPointCategory | null
+  title: string
+  fragments: string[]
+  sentenceText: string
+  note?: string
+}
+
 const isEnumValue = <T extends string>(values: readonly T[], value: unknown): value is T =>
   typeof value === 'string' && values.includes(value as T)
 
@@ -85,6 +95,66 @@ export async function saveLearningRecord(input: SaveLearningRecordInput) {
     return { success: true, id: created.id, message: '已保存到学习点。' }
   } catch (error) {
     console.error('保存学习记录失败:', error)
+    return { success: false, message: '保存失败，请重试。' }
+  }
+}
+
+export async function updateLearningRecord(input: UpdateLearningRecordInput) {
+  try {
+    const userId = await getCurrentUserId()
+    const kindValues = Object.values(LearningRecordKind)
+    const categoryValues = Object.values(LearningPointCategory)
+
+    if (!input.id.trim() || !isEnumValue(kindValues, input.kind)) {
+      return { success: false, message: '记录类型无效。' }
+    }
+
+    const sentenceText = input.sentenceText.replace(/\s+/g, ' ').trim()
+    const fragments = normalizeLearningFragments(input.fragments).slice(0, 8)
+    const title = input.title.replace(/\s+/g, ' ').trim()
+    const note = (input.note || '').trim()
+    const category =
+      input.kind === LearningRecordKind.LEARNING_POINT &&
+      isEnumValue(categoryValues, input.category)
+        ? input.category
+        : null
+
+    if (!sentenceText) {
+      return { success: false, message: '请填写原句。' }
+    }
+    if (sentenceText.length > 2000) {
+      return { success: false, message: '原句过长，请缩短后重试。' }
+    }
+    if (input.kind === LearningRecordKind.LEARNING_POINT && fragments.length === 0) {
+      return { success: false, message: '请至少填写一个句内片段。' }
+    }
+
+    const normalizedTitle =
+      title ||
+      (input.kind === LearningRecordKind.SENTENCE
+        ? sentenceText.slice(0, 80)
+        : fragments.join(' / ').slice(0, 80))
+
+    const result = await prisma.learningRecord.updateMany({
+      where: { id: input.id.trim(), userId },
+      data: {
+        kind: input.kind,
+        category,
+        title: normalizedTitle.slice(0, 200),
+        fragments,
+        sentenceText,
+        note: note ? note.slice(0, 10000) : null,
+      },
+    })
+
+    if (result.count === 0) {
+      return { success: false, message: '记录不存在或无权编辑。' }
+    }
+
+    revalidatePath('/learning-points')
+    return { success: true, message: '学习点已更新。' }
+  } catch (error) {
+    console.error('更新学习记录失败:', error)
     return { success: false, message: '保存失败，请重试。' }
   }
 }

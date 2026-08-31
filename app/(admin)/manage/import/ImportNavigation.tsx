@@ -65,8 +65,9 @@ export default function ImportNavigation({
 
   return (
     <aside className='min-w-0 lg:sticky lg:top-24 lg:self-start'>
-      <div className='rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_14px_40px_-36px_rgba(15,23,42,0.55)] md:p-5'>
-        <h2 className='text-base font-black text-slate-950'>导入内容</h2>
+      <div className='border-y border-slate-300 py-5'>
+        <p className='text-xs font-bold uppercase tracking-[0.16em] text-slate-400'>Import</p>
+        <h2 className='mt-2 text-lg font-semibold text-slate-950'>导入内容</h2>
 
         <div className='mt-5 space-y-4'>
           <label className='block'>
@@ -75,7 +76,7 @@ export default function ImportNavigation({
               value={language}
               onChange={event => handleLanguageChange(event.currentTarget.value)}
               aria-label='选择导入语言'
-              className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm font-bold text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'>
+              className='ui-input !h-10 text-left text-sm font-semibold'>
               {languages.map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -90,7 +91,7 @@ export default function ImportNavigation({
               value={activeGroup?.scope ?? ''}
               onChange={event => handleScopeChange(event.currentTarget.value)}
               aria-label='选择导入分类'
-              className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm font-bold text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'>
+              className='ui-input !h-10 text-left text-sm font-semibold'>
               {availableGroups.map(group => (
                 <option key={group.scope} value={group.scope}>
                   {group.label}
@@ -111,7 +112,7 @@ export default function ImportNavigation({
                 )
               }
               aria-label='选择导入类型'
-              className='h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-left text-sm font-bold text-slate-800 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100'>
+              className='ui-input !h-10 text-left text-sm font-semibold'>
               {availableItems.map(item => (
                 <option key={item.type} value={item.type}>
                   {item.label}

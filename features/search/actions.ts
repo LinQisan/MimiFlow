@@ -10,6 +10,8 @@ import { normalizeMediaSubtitleSearchText } from '@/lib/media-subtitles/search-i
 import { MaterialType } from '@prisma/client'
 import {
   buildSearchDetailHref,
+  buildQuestionTargetHref,
+  buildVocabularyTargetHref,
   extractMaterialSearchText,
   formatMediaDialogueMeta,
   formatPassageMeta,
@@ -79,11 +81,20 @@ export async function searchGlobalContent(
               { meanings: { contains: primaryToken } },
             ],
           },
-          include: {
+          select: {
+            id: true,
+            word: true,
+            pronunciations: true,
+            partsOfSpeech: true,
+            meanings: true,
             sentenceLinks: {
-              include: { sentence: true },
+              select: {
+                sentence: {
+                  select: { text: true, source: true },
+                },
+              },
               orderBy: { createdAt: 'asc' },
-              take: 8,
+              take: 1,
             },
           },
           orderBy: { createdAt: 'desc' },
@@ -100,7 +111,9 @@ export async function searchGlobalContent(
               { source: { contains: primaryToken } },
             ],
           },
-          include: {
+          select: {
+            text: true,
+            source: true,
             links: {
               where: { vocabulary: { userId } },
               include: {
@@ -175,16 +188,32 @@ export async function searchGlobalContent(
 
     typeSet.has('question')
       ? prisma.question.findMany({
-        where: {
-          OR: [
-            { prompt: { contains: primaryToken } },
-            { context: { contains: primaryToken } },
-          ],
+          where: {
+            OR: [
+              { prompt: { contains: primaryToken } },
+              { context: { contains: primaryToken } },
+            ],
           },
-          include: {
-          material: {
-            select: { id: true, title: true, type: true },
-          },
+          select: {
+            id: true,
+            materialId: true,
+            prompt: true,
+            context: true,
+            options: true,
+            answer: true,
+            material: {
+              select: {
+                title: true,
+                collectionMaterials: {
+                  where: { collection: { collectionType: 'PAPER' } },
+                  orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+                  take: 1,
+                  select: {
+                    collection: { select: { id: true, title: true } },
+                  },
+                },
+              },
+            },
           },
           take: 20,
         })
@@ -196,6 +225,12 @@ export async function searchGlobalContent(
             sourceType: 'AUDIO_DIALOGUE',
             text: { contains: primaryToken },
             links: { some: { vocabulary: { userId } } },
+          },
+          select: {
+            sourceId: true,
+            sourceUrl: true,
+            text: true,
+            source: true,
           },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -345,7 +380,8 @@ export async function searchGlobalContent(
     ),
   )
 
-  const vocabularyResults: GlobalSearchResult[] = rankedVocabRows.map(item => {
+  const vocabularyResultsByWord = new Map<string, GlobalSearchResult>()
+  rankedVocabRows.forEach(item => {
     const matchingSentence = item.sentenceLinks.find(link =>
       includesAllTokens([link.sentence.text, link.sentence.source], tokens),
     )?.sentence
@@ -353,11 +389,9 @@ export async function searchGlobalContent(
     const meanings = parseJsonStringList(item.meanings).slice(0, 2)
     const pronunciations = parseJsonStringList(item.pronunciations).slice(0, 1)
 
-    const focusParams = new URLSearchParams()
-    focusParams.set('focus', item.id)
-    focusParams.set('q', item.word)
-
-    return {
+    const wordKey = item.word.normalize('NFKC').trim().toLocaleLowerCase('ja')
+    if (vocabularyResultsByWord.has(wordKey)) return
+    vocabularyResultsByWord.set(wordKey, {
       id: `vocab-${item.id}`,
       type: 'vocabulary',
       title: item.word,
@@ -368,23 +402,23 @@ export async function searchGlobalContent(
           ? meanings.join('；')
           : shortText(firstSentence?.text || '暂无释义', 80),
       href: buildSearchDetailHref(`vocab-${item.id}`, 'vocabulary', q),
-      targetHref: `/vocabulary?${focusParams.toString()}`,
+      targetHref: buildVocabularyTargetHref(item.id, item.word),
       meta: pronunciations.length > 0 ? pronunciations.join(' / ') : '单词',
       keyword: q,
-    }
+    })
   })
 
-  const vocabularyResultsById = new Map(
-    vocabularyResults.map(result => [result.id, result]),
-  )
-  const sentenceMergedVocabularyIds = new Set<string>()
+  const sentenceMergedVocabularyWords = new Set<string>()
   rankedSentenceRows.forEach(sentence => {
     sentence.links.forEach(link => {
       const vocabulary = link.vocabulary
-      const resultId = `vocab-${vocabulary.id}`
-      if (sentenceMergedVocabularyIds.has(resultId)) return
-      sentenceMergedVocabularyIds.add(resultId)
-      const existing = vocabularyResultsById.get(resultId)
+      const wordKey = vocabulary.word
+        .normalize('NFKC')
+        .trim()
+        .toLocaleLowerCase('ja')
+      if (sentenceMergedVocabularyWords.has(wordKey)) return
+      sentenceMergedVocabularyWords.add(wordKey)
+      const existing = vocabularyResultsByWord.get(wordKey)
       if (existing) {
         existing.snippet = shortText(sentence.text, 100)
         existing.keyword = q
@@ -392,16 +426,13 @@ export async function searchGlobalContent(
       }
       const meanings = parseJsonStringList(vocabulary.meanings).slice(0, 2)
       const pronunciations = parseJsonStringList(vocabulary.pronunciations).slice(0, 1)
-      const focusParams = new URLSearchParams()
-      focusParams.set('focus', vocabulary.id)
-      focusParams.set('q', vocabulary.word)
-      vocabularyResultsById.set(resultId, {
-        id: resultId,
+      vocabularyResultsByWord.set(wordKey, {
+        id: `vocab-${vocabulary.id}`,
         type: 'vocabulary',
         title: vocabulary.word,
         snippet: shortText(sentence.text, 100),
-        href: buildSearchDetailHref(resultId, 'vocabulary', q),
-        targetHref: `/vocabulary?${focusParams.toString()}`,
+        href: buildSearchDetailHref(`vocab-${vocabulary.id}`, 'vocabulary', q),
+        targetHref: buildVocabularyTargetHref(vocabulary.id, vocabulary.word),
         meta:
           pronunciations.length > 0
             ? pronunciations.join(' / ')
@@ -454,16 +485,23 @@ export async function searchGlobalContent(
   }))
 
   const questionResults: GlobalSearchResult[] = rankedQuestionRows.map(
-    item => ({
-      id: `question-${item.id}`,
-      type: 'question',
-      title: shortText(normalizeQuestionContext(item.prompt, item.context), 52),
-      snippet: shortText(normalizeQuestionContext(item.prompt, item.context), 100),
-      href: buildSearchDetailHref(`question-${item.id}`, 'question', q),
-      targetHref: '/practice',
-      meta: item.material?.title || '题目',
-      keyword: q,
-    }),
+    item => {
+      const paper = item.material?.collectionMaterials[0]?.collection
+      return {
+        id: `question-${item.id}`,
+        type: 'question',
+        title: shortText(normalizeQuestionContext(item.prompt, item.context), 52),
+        snippet: shortText(normalizeQuestionContext(item.prompt, item.context), 100),
+        href: buildSearchDetailHref(`question-${item.id}`, 'question', q),
+        targetHref: buildQuestionTargetHref({
+          questionId: item.id,
+          materialId: item.materialId,
+          paperId: paper?.id,
+        }),
+        meta: paper?.title || item.material?.title || '题目',
+        keyword: q,
+      }
+    },
   )
 
   const audioDialogueResults: GlobalSearchResult[] = rankedAudioDialogueRows.map(
@@ -510,7 +548,7 @@ export async function searchGlobalContent(
   )
 
   return [
-    ...vocabularyResultsById.values(),
+    ...vocabularyResultsByWord.values(),
     ...passageResults,
     ...quizResults,
     ...questionResults,

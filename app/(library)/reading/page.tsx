@@ -24,8 +24,11 @@ export default async function ReadingCenterPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const initialFilters = parseReadingFilters(await searchParams)
-  const materials = await listReadingMaterials()
+  const [resolvedSearchParams, materials] = await Promise.all([
+    searchParams,
+    listReadingMaterials(),
+  ])
+  const initialFilters = parseReadingFilters(resolvedSearchParams)
   const frequencySource = materials.filter(
     item => !isEbookSourceKind(item.sourceKind),
   )

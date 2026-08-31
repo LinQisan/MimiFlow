@@ -9,9 +9,8 @@ import type {
 } from '../types'
 
 export {
-  buildFolderTree,
-  flattenFolderTree,
-} from './wordbook-tree.ts'
+  listWordbooks,
+} from './wordbook-list.ts'
 
 export const LANGUAGE_NAMES: Record<string, string> = {
   ja: '日语',

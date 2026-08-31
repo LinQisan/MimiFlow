@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { CollectionType, MaterialType, QuestionType } from "@prisma/client";
+import { cache } from "react";
 import { getMaterialDisplayTitle } from "../materials/material-title";
 import { reorderExamOptionsForSession } from "./exam-option-order";
 import {
@@ -27,6 +28,7 @@ import {
   getToeicPartByQuestionType,
 } from "@/modules/questions/domain/toeic";
 import { getCurrentUserId } from "@/modules/users/server/current-user";
+import { buildExamAnnotationTexts } from "@/modules/practice/domain/exam-annotation-texts";
 
 export type ExamHubPaperSummary = {
   id: string;
@@ -407,6 +409,8 @@ function buildQuestionView(
     id: string;
     note: string | null;
     attempts?: Array<{ isCorrect: boolean }>;
+    attemptCount?: number;
+    correctAttemptCount?: number;
     questionType: QuestionType;
     content: unknown;
     prompt: string | null;
@@ -467,6 +471,8 @@ function buildQuestionView(
     id: row.id,
     note: row.note,
     attempts: row.attempts || [],
+    attemptCount: row.attemptCount,
+    correctAttemptCount: row.correctAttemptCount,
     order: toQuestionOrder(content, row.sortOrder || fallbackOrder),
     questionType,
     prompt: normalizeQuestionDisplayText(row.prompt),
@@ -527,22 +533,42 @@ function buildQuestionView(
 }
 
 async function buildVocabularyMaps(userId: string, relevantText = "") {
-  const vocabularyRows = await prisma.vocabulary.findMany({
-    where: {
-      userId,
-      OR: [{ pronunciations: { not: null } }, { meanings: { not: null } }],
-    },
-    select: {
-      word: true,
-      pronunciations: true,
-      partsOfSpeech: true,
-      meanings: true,
-    },
-  });
-
+  const metadataFilter = {
+    userId,
+    OR: [{ pronunciations: { not: null } }, { meanings: { not: null } }],
+  };
+  const selectMetadata = {
+    word: true,
+    pronunciations: true,
+    partsOfSpeech: true,
+    meanings: true,
+  } as const;
+  const matchedWords = relevantText
+    ? Array.from(
+        new Set(
+          (
+            await prisma.vocabulary.findMany({
+              where: { userId },
+              select: { word: true },
+            })
+          )
+            .map(item => item.word)
+            .filter(word => word && relevantText.includes(word)),
+        ),
+      )
+    : [];
   const relevantVocabularyRows = relevantText
-    ? vocabularyRows.filter(item => relevantText.includes(item.word))
-    : vocabularyRows;
+    ? await prisma.vocabulary.findMany({
+        where: {
+          ...metadataFilter,
+          word: { in: matchedWords },
+        },
+        select: selectMetadata,
+      })
+    : await prisma.vocabulary.findMany({
+        where: metadataFilter,
+        select: selectMetadata,
+      });
   const pronunciationMap: Record<string, string> = {};
   const vocabularyMetaMap = relevantVocabularyRows.reduce<
     Record<string, VocabularyMeta>
@@ -1419,33 +1445,29 @@ export async function getManagePaperMoveTargets(currentPaperId: string) {
   });
 }
 
-export async function getExamQuestionsByPaperId(paperId: string) {
-  const userId = await getCurrentUserId();
-  const collection = await prisma.collection.findFirst({
+const getExamPaperQuestions = cache(
+  async (paperId: string) => prisma.collection.findFirst({
     where: {
       id: paperId,
     },
-    include: {
+    select: {
+      title: true,
+      language: true,
       materials: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
-        include: {
+        select: {
           material: {
-            include: {
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              chapterName: true,
+              contentPayload: true,
+              metadata: true,
               questions: {
                 orderBy: { sortOrder: "asc" },
                 select: {
                   id: true,
-                  userNotes: {
-                    where: { userId },
-                    take: 1,
-                    select: { note: true },
-                  },
-                  attempts: {
-                    where: { userId },
-                    select: {
-                      isCorrect: true,
-                    },
-                  },
                   questionType: true,
                   content: true,
                   prompt: true,
@@ -1460,9 +1482,49 @@ export async function getExamQuestionsByPaperId(paperId: string) {
         },
       },
     },
-  });
+  }),
+);
+
+export async function getExamQuestionsByPaperId(paperId: string) {
+  const [userId, collection] = await Promise.all([
+    getCurrentUserId(),
+    getExamPaperQuestions(paperId),
+  ]);
 
   if (!collection) return null;
+
+  const questionIds = collection.materials.flatMap(relation =>
+    relation.material.questions.map(question => question.id),
+  );
+  const [noteRows, attemptGroups] = questionIds.length > 0
+    ? await Promise.all([
+        prisma.userQuestionNote.findMany({
+          where: { userId, questionId: { in: questionIds } },
+          select: { questionId: true, note: true },
+        }),
+        prisma.questionAttempt.groupBy({
+          by: ["questionId", "isCorrect"],
+          where: { userId, questionId: { in: questionIds } },
+          _count: { _all: true },
+        }),
+      ])
+    : [[], []];
+  const noteByQuestionId = new Map(
+    noteRows.map(row => [row.questionId, row.note]),
+  );
+  const attemptStatsByQuestionId = new Map<
+    string,
+    { total: number; correct: number }
+  >();
+  for (const group of attemptGroups) {
+    const current = attemptStatsByQuestionId.get(group.questionId) || {
+      total: 0,
+      correct: 0,
+    };
+    current.total += group._count._all;
+    if (group.isCorrect) current.correct += group._count._all;
+    attemptStatsByQuestionId.set(group.questionId, current);
+  }
 
   type OrderedExamQuestion = ReturnType<typeof buildQuestionView> & {
     sourceOrder: number;
@@ -1471,6 +1533,27 @@ export async function getExamQuestionsByPaperId(paperId: string) {
   };
   const languageQs: OrderedExamQuestion[] = [];
   const listeningQs: OrderedExamQuestion[] = [];
+  const sharedPassages = new Map<
+    string,
+    { id: string; content: string }
+  >();
+  const sharedLessons = new Map<
+    string,
+    {
+      id: string;
+      audioFile: string;
+      sectionKey: string;
+      sectionTitle: string;
+      sectionNumber: number | null;
+      dialogues: Array<{
+        id: number;
+        text: string;
+        start: number;
+        end: number;
+        sequenceId: number;
+      }>;
+    }
+  >();
   let sourceOrder = 0;
 
   for (const relation of collection.materials) {
@@ -1485,11 +1568,28 @@ export async function getExamQuestionsByPaperId(paperId: string) {
     const questions = material.questions.map((row, index) => {
       sourceOrder += 1;
       const question = buildQuestionView(
-        { ...row, note: row.userNotes[0]?.note || null },
+        {
+          ...row,
+          note: noteByQuestionId.get(row.id) || null,
+          attemptCount: attemptStatsByQuestionId.get(row.id)?.total || 0,
+          correctAttemptCount:
+            attemptStatsByQuestionId.get(row.id)?.correct || 0,
+        },
         material,
         index + 1,
         collection.language,
       );
+      if ("passage" in question && question.passage) {
+        const sharedPassage =
+          sharedPassages.get(material.id) || question.passage;
+        sharedPassages.set(material.id, sharedPassage);
+        question.passage = sharedPassage;
+      }
+      if ("lesson" in question && question.lesson) {
+        const sharedLesson = sharedLessons.get(material.id) || question.lesson;
+        sharedLessons.set(material.id, sharedLesson);
+        question.lesson = sharedLesson;
+      }
       const sectionNumber =
         material.type === MaterialType.LISTENING && "lesson" in question
           ? question.lesson.sectionNumber || Number.MAX_SAFE_INTEGER
@@ -1536,7 +1636,10 @@ export async function getExamQuestionsByPaperId(paperId: string) {
     },
   );
   const { pronunciationMap, vocabularyMetaMap } =
-    await buildVocabularyMaps(userId, JSON.stringify(allQuestions));
+    await buildVocabularyMaps(
+      userId,
+      buildExamAnnotationTexts(allQuestions).join("\n"),
+    );
 
   return {
     paperTitle: collection.title,

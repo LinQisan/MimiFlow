@@ -238,7 +238,7 @@ export default function CustomSelect({
     if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault()
       if (!isOpen) openMenu()
-      const startIndex = event.key === 'Home' ? options.length : -1
+      const startIndex = event.key === 'Home' ? -1 : 0
       setActiveIndex(
         findEnabledIndex(options, startIndex, event.key === 'Home' ? 1 : -1),
       )
@@ -259,15 +259,20 @@ export default function CustomSelect({
       }
     }
     const handleViewportChange = () => closeMenu()
+    const handleScroll = (event: Event) => {
+      const target = event.target
+      if (target instanceof Node && menuRef.current?.contains(target)) return
+      closeMenu()
+    }
 
     document.addEventListener('pointerdown', handlePointerDown)
     window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('scroll', handleViewportChange, true)
+    window.addEventListener('scroll', handleScroll, true)
     window.visualViewport?.addEventListener('resize', handleViewportChange)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
       window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('scroll', handleViewportChange, true)
+      window.removeEventListener('scroll', handleScroll, true)
       window.visualViewport?.removeEventListener('resize', handleViewportChange)
     }
   }, [isOpen, updateMenuLayout])

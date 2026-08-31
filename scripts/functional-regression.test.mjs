@@ -880,7 +880,12 @@ test("database fields keep audit timestamps and query indexes", async () => {
   );
 
   assert.match(schema, /model Vocabulary[\s\S]*updatedAt[\s\S]*@@index\(\[wordAudio\]\)/);
+  assert.match(schema, /vocabulary_word_trgm_idx/);
+  assert.match(schema, /vocabulary_meanings_trgm_idx/);
   assert.match(schema, /model VocabularySentence[\s\S]*@@index\(\[sourceType, sourceId\]\)[\s\S]*@@index\(\[audioFile\]\)/);
+  assert.match(schema, /vocabulary_sentences_text_trgm_idx/);
+  assert.match(schema, /questions_prompt_trgm_idx/);
+  assert.match(schema, /questions_context_trgm_idx/);
   assert.match(schema, /model VocabularySentenceLink[\s\S]*@@index\(\[sentenceId\]\)/);
   assert.match(schema, /model CollectionMaterial[\s\S]*@@index\(\[collectionId, sortOrder\]\)/);
 });
@@ -1366,6 +1371,7 @@ test("reading annotations require a real non-empty meaning", async () => {
   assert.doesNotMatch(reader, /暂无注释/);
   assert.match(reader, /本文单词书分布/);
   assert.match(reader, /wordbookDistribution/);
+  assert.match(reader, /typeof value === 'string'/);
   assert.match(route, /getPaperWordbookDistribution/);
   assert.match(chart, /未加入任何单词书/);
 });
@@ -2560,10 +2566,23 @@ test("search results use domain editors instead of the hidden JSON tool", async 
     /`\/manage\/questions\/\$\{encodeURIComponent\(id\)\}`/,
   );
   assert.equal(searchHrefBuilder.includes("/manage/search/"), false);
-  assert.match(searchActions, /vocabularyResultsById/);
+  assert.match(searchActions, /vocabularyResultsByWord/);
+  assert.match(searchActions, /select:\s*\{[\s\S]*sentenceLinks:/);
+  assert.match(searchActions, /sourceId:\s*true,[\s\S]*sourceUrl:\s*true/);
   assert.match(searchActions, /sentence\.links\.forEach/);
   assert.doesNotMatch(searchActions, /\.\.\.sentenceResults/);
+  assert.match(searchActions, /buildQuestionTargetHref/);
+  assert.match(searchActions, /collectionType: 'PAPER'/);
+  assert.match(
+    searchHrefBuilder,
+    /`\/practice\/\$\{encodeURIComponent\(input\.paperId\)\}\/do\?qid=/,
+  );
+  assert.match(searchHrefBuilder, /`\/manage\/questions\/\$\{encodeURIComponent\(input\.materialId\)\}\?focus=/);
   assert.match(searchPage, /释义、读音、关联例句/);
+  assert.match(searchPage, /resultCacheRef/);
+  assert.match(searchPage, /missingTypes = nextTypes\.filter/);
+  assert.match(searchPage, /resultCacheRef\.current\.size > 20/);
+  assert.match(searchPage, /searchGlobalContent\(q, \{ types: missingTypes \}\)/);
   assert.doesNotMatch(searchPage, /key: 'sentence', label: '句子'/);
   assert.match(
     vocabularyTabs,

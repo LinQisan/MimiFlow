@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect } from 'react'
 import type { CollectionType, QuestionType } from '@prisma/client'
 
 // 🌟 复用拖拽系统
@@ -65,7 +66,13 @@ type EditableQuestionField =
   | 'prompt'
   | 'explanation'
 
-export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
+export default function EditQuizUI({
+  quiz,
+  initialFocusQuestionId,
+}: {
+  quiz: EditableQuiz
+  initialFocusQuestionId?: string
+}) {
   const dialog = useDialog()
   const { updateQuizWithQuestions, updateSortOrder } = useQuestionEditorMutations()
   const {
@@ -86,6 +93,17 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
     quiz.category?.collectionType === 'PAPER' && quiz.category.levelId
       ? `/manage/practice/${quiz.category.levelId}`
       : '/manage/practice'
+
+  useEffect(() => {
+    if (!initialFocusQuestionId) return
+    if (!questions.some(question => question.id === initialFocusQuestionId)) return
+    setEditingQuestionId(initialFocusQuestionId)
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`question-${initialFocusQuestionId}`)
+        ?.scrollIntoView({ block: 'center' })
+    })
+  }, [initialFocusQuestionId, questions, setEditingQuestionId])
 
   // ================= 1. 新增题目 =================
   const handleAddNewQuestion = (
@@ -373,6 +391,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
 
                 return (
                   <SortableItem key={q.id} id={q.id}>
+                    <div id={`question-${q.id}`} className='scroll-mt-24'>
                     {isEditing ? (
                       <div
                         className={`group relative cursor-default rounded-xl border border-slate-300 p-5 transition-colors md:p-6 ${tConfig.color.split(' ')[0]}`}>
@@ -650,6 +669,7 @@ export default function EditQuizUI({ quiz }: { quiz: EditableQuiz }) {
                         </div>
                       </div>
                     )}
+                    </div>
                   </SortableItem>
                 )
               })}

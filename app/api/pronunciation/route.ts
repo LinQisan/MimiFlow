@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server'
 
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
+import { buildWordFrequency } from '@/modules/language/domain/sudachi'
 
 const MAX_TEXTS = 600
 const MAX_CHARACTERS = 250_000
 
 export async function POST(request: Request) {
   try {
-    const payload = (await request.json()) as { texts?: unknown }
+    const payload = (await request.json()) as {
+      texts?: unknown
+      includeWordbookAnalysis?: unknown
+    }
     if (!Array.isArray(payload.texts)) {
       return NextResponse.json({ message: '注音文本格式不正确' }, { status: 400 })
     }
@@ -22,10 +26,18 @@ export async function POST(request: Request) {
     }
 
     const result = await getSudachiPronunciationMap(texts)
+    const includeWordbookAnalysis = payload.includeWordbookAnalysis === true
     return NextResponse.json({
       available: result.available,
       pronunciationMap: result.pronunciationMap,
       lexicon: result.lexicon,
+      ...(includeWordbookAnalysis
+        ? {
+            wordbookDistributionWords: buildWordFrequency(result.tokens).map(
+              row => row.word,
+            ),
+          }
+        : {}),
     })
   } catch (error) {
     console.error('加载日语注音失败:', error)

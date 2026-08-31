@@ -23,6 +23,8 @@ import {
 } from '@/utils/vocabulary/japaneseInflection'
 import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useTextSelection } from '@/hooks/useTextSelection'
+import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
+import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
 import { useAudioController } from './useAudioController'
 import { getCleanSelectionText } from '@/utils/text/selection'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
@@ -108,6 +110,7 @@ export default function AudioPlayer({
   const { selection, closeSelection } = useTextSelection()
 
   const [isBlindMode, setIsBlindMode] = useState(false)
+  const [showLearningPoints, setShowLearningPoints] = useState(false)
   const [savingDialogueId, setSavingDialogueId] = useState<number | null>(null)
   const [dialogueSaveState, setDialogueSaveState] =
     useState<TooltipSaveState>('idle')
@@ -138,6 +141,11 @@ export default function AudioPlayer({
   const dirtySecondsRef = useRef(0)
   const isFlushingRef = useRef(false)
   const playerRootRef = useRef<HTMLDivElement>(null)
+  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+    rootRef: playerRootRef,
+    contentKey: lesson.materialId,
+    showLearningPoints,
+  })
   const activeSentenceIndex =
     activeId === null
       ? -1
@@ -504,6 +512,7 @@ export default function AudioPlayer({
         isTrackLoop={isTrackLoop}
         playbackRate={playbackRate}
         showPronunciation={showPronunciation}
+        showLearningPoints={showLearningPoints}
         pronunciationSource={pronunciationSource}
         sudachiAvailable={sudachiAvailable}
         isBlindMode={isBlindMode}
@@ -517,9 +526,19 @@ export default function AudioPlayer({
         onToggleTrackLoop={toggleTrackLoop}
         onTogglePlaybackRate={togglePlaybackRate}
         onShowPronunciationChange={setShowPronunciation}
+        onLearningPointsChange={setShowLearningPoints}
         onPronunciationSourceChange={setPronunciationSource}
         onBlindModeChange={setIsBlindMode}
       />
+
+      {showLearningPoints ? (
+        <div className='mx-auto w-full max-w-5xl px-3 pt-3 md:px-5'>
+          <LearningPointHighlightPanel
+            points={learningPoints}
+            isLoading={isLoadingLearningPoints}
+          />
+        </div>
+      ) : null}
 
       <div className='mx-auto w-full max-w-5xl px-3 py-4 md:px-5 md:py-5'>
         <div className='min-w-0 space-y-2 pb-24 md:pb-32'>

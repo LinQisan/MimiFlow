@@ -14,6 +14,23 @@ import { buildAnswerCardSections } from "@/modules/practice/domain/answer-card-s
 import PaperWordFrequencyDialog from "@/features/practice/ui/PaperWordFrequencyDialog";
 import { formatTokyoDateTime } from "@/utils/time/format";
 
+function formatListeningSectionHeading(
+  title: string,
+  sectionNumber: number | null,
+) {
+  if (!sectionNumber) return title;
+
+  const normalizedTitle = title
+    .trim()
+    .replace(
+      new RegExp(`^問題\\s*${sectionNumber}\\s*(?:[｜|·・:：—–-]\\s*)?`),
+      "",
+    )
+    .trim();
+
+  return `問題${sectionNumber}｜${normalizedTitle || title.trim()}`;
+}
+
 export default async function PaperPage({
   params,
 }: {
@@ -529,6 +546,13 @@ export default async function PaperPage({
               {listeningSections.map((section) => {
                 const questionCount = section.questions.length;
                 const firstQuestion = section.questions[0];
+                const sectionHeading =
+                  isJapanesePaper && section.sectionNumber
+                    ? formatListeningSectionHeading(
+                        section.title,
+                        section.sectionNumber,
+                      )
+                    : section.title;
                 const lessonGroups = groupQuestionsByMaterial(
                   section.questions,
                   (question) => question.lessonId,
@@ -538,13 +562,8 @@ export default async function PaperPage({
                   <div key={section.key} className="py-5">
                     <div className="flex items-center justify-between gap-4">
                       <div className="flex min-w-0 items-baseline gap-3">
-                        {section.sectionNumber && isJapanesePaper ? (
-                          <span className="text-xs font-bold text-slate-400">
-                            問題{section.sectionNumber}
-                          </span>
-                        ) : null}
                         <h3 className="truncate font-bold text-slate-900">
-                          {section.title}
+                          {sectionHeading}
                         </h3>
                         <span className="shrink-0 text-xs font-semibold text-slate-400">
                           {questionCount} 题
@@ -568,7 +587,7 @@ export default async function PaperPage({
                               <Link
                                 href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
                                 key={lessonGroup.materialId}
-                                aria-label={`${section.title}第 ${questionNumberMap.get(question.id) || lessonIndex + 1} 题`}
+                                aria-label={`${sectionHeading}第 ${questionNumberMap.get(question.id) || lessonIndex + 1} 题`}
                                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                               >
                                 {questionNumberMap.get(question.id) || lessonIndex + 1}

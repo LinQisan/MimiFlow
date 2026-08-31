@@ -23,6 +23,7 @@ enum LearningRecordKind {
 enum LearningPointCategory {
   GRAMMAR
   PATTERN
+  IDIOM
   PARAPHRASE
   DISTRACTOR
   OTHER
@@ -99,6 +100,7 @@ model Material {
   mediaSubtitleLines  MediaSubtitleLine[]
 
   @@index([type, createdAt])
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "materials_title_trgm_idx")
   @@map("materials")
 }
 
@@ -147,12 +149,33 @@ model Vocabulary {
   updatedAt      DateTime                    @default(now()) @updatedAt
   sentenceLinks  VocabularySentenceLink[]
   tags           VocabularyTagOnVocabulary[]
+  definitions    VocabularyDefinition[]
   user           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, word])
+  @@index([userId, createdAt])
   @@index([createdAt])
   @@index([sourceType, sourceId])
   @@index([wordAudio])
+  @@index([word(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_word_trgm_idx")
+  @@index([pronunciations(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_pronunciations_trgm_idx")
+  @@index([partsOfSpeech(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_parts_of_speech_trgm_idx")
+  @@index([meanings(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_meanings_trgm_idx")
+}
+
+model VocabularyDefinition {
+  id             String     @id @default(cuid())
+  vocabularyId   String     @map("vocabulary_id")
+  language       String
+  dictionaryName String     @map("dictionary_name")
+  definition     String     @db.Text
+  sortOrder      Int        @default(0) @map("sort_order")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  vocabulary     Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+
+  @@index([vocabularyId, sortOrder], map: "vocabulary_definitions_vocabulary_sort_idx")
+  @@map("vocabulary_definitions")
 }
 
 model VocabularyTag {
@@ -204,18 +227,32 @@ model Wordbook {
   id        String               @id @default(cuid())
   userId    String               @map("user_id")
   title     String
-  parentId  String?
-  parent    Wordbook?            @relation("WordbookTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children  Wordbook[]           @relation("WordbookTree")
+  seriesId  String               @map("series_id")
+  series    WordbookSeries       @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   sortOrder Int                  @default(0)
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
   entries   WordbookVocabulary[]
   user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, parentId, title])
-  @@index([userId, parentId, sortOrder])
+  @@unique([seriesId, title])
+  @@index([userId, seriesId, sortOrder])
   @@map("wordbooks")
+}
+
+model WordbookSeries {
+  id        String     @id @default(cuid())
+  userId    String     @map("user_id")
+  title     String
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  wordbooks Wordbook[]
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, title])
+  @@index([userId, sortOrder])
+  @@map("wordbook_series")
 }
 
 model WordbookVocabulary {
@@ -252,6 +289,8 @@ model VocabularySentence {
   @@unique([normalizedText, sourceUrl])
   @@index([sourceType, sourceId])
   @@index([audioFile])
+  @@index([text(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_sentences_text_trgm_idx")
+  @@index([source(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_sentences_source_trgm_idx")
 }
 
 enum GrammarExampleSource {
@@ -418,6 +457,8 @@ model Question {
   userNotes   UserQuestionNote[]
 
   @@index([materialId, sortOrder])
+  @@index([prompt(ops: raw("gin_trgm_ops"))], type: Gin, map: "questions_prompt_trgm_idx")
+  @@index([context(ops: raw("gin_trgm_ops"))], type: Gin, map: "questions_context_trgm_idx")
   @@map("questions")
 }
 
@@ -518,26 +559,27 @@ model QuestionRetry {
 }
 
 model User {
-  id                  String                    @id @default(cuid())
-  name                String                    @unique
-  createdAt           DateTime                  @default(now())
-  updatedAt           DateTime                  @updatedAt
-  fsrsProfile         FSRSProfile?
-  reviewEvents        ReviewEvent[]
-  studyProgresses     MaterialStudyProgress[]
-  playtimeStats       MaterialPlaytimeStat[]
-  vocabularies        Vocabulary[]
-  vocabularyTags      VocabularyTag[]
-  wordbooks           Wordbook[]
-  sentenceReviews     SentenceReview[]
-  questionAttempts    QuestionAttempt[]
-  questionRetries     QuestionRetry[]
-  questionNotes       UserQuestionNote[]
-  practiceSubmissions PracticePaperSubmission[]
+  id                            String                         @id @default(cuid())
+  name                          String                         @unique
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  fsrsProfile                   FSRSProfile?
+  reviewEvents                  ReviewEvent[]
+  studyProgresses               MaterialStudyProgress[]
+  playtimeStats                 MaterialPlaytimeStat[]
+  vocabularies                  Vocabulary[]
+  vocabularyTags                VocabularyTag[]
+  wordbookSeries                WordbookSeries[]
+  wordbooks                     Wordbook[]
+  sentenceReviews               SentenceReview[]
+  questionAttempts              QuestionAttempt[]
+  questionRetries               QuestionRetry[]
+  questionNotes                 UserQuestionNote[]
+  practiceSubmissions           PracticePaperSubmission[]
   practiceVocabularyPreferences PracticeVocabularyPreference[]
-  studyTimes          StudyTimeDaily[]
-  learningRecords     LearningRecord[]
-  examScoreRecords    ExamScoreRecord[]
+  studyTimes                    StudyTimeDaily[]
+  learningRecords               LearningRecord[]
+  examScoreRecords              ExamScoreRecord[]
 
   @@map("GameProfile")
 }

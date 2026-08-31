@@ -11,10 +11,13 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useTransition,
 } from 'react'
 
 import WordTooltip from '@/components/exam/WordTooltip'
+import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
+import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
 import TrustedHtml from '@/components/ui/TrustedHtml'
 import { useDialog } from '@/context/DialogContext'
 import { useTextSelection } from '@/hooks/useTextSelection'
@@ -85,7 +88,9 @@ export default function MediaSubtitleEditor({
 
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
   const { showMeaning, setShowMeaning } = useShowMeaning()
+  const [showLearningPoints, setShowLearningPoints] = useState(false)
   const { selection, closeSelection } = useTextSelection()
+  const subtitleRootRef = useRef<HTMLElement>(null)
   const rowRefs = useRef<Record<number, HTMLElement | null>>({})
   const hasAppliedInitialFocusRef = useRef(false)
 
@@ -128,6 +133,13 @@ export default function MediaSubtitleEditor({
       ),
     [filteredRows, normalizedPage, pageSize],
   )
+  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+    rootRef: subtitleRootRef,
+    contentKey: `${normalizedPage}:${paginatedRows
+      .map(row => `${row.stableId}:${row.text}`)
+      .join('\u0000')}`,
+    showLearningPoints,
+  })
   const currentSearchHitId = searchHitIds[currentSearchHitIndex] || null
   const favoriteCount = useMemo(
     () => rows.filter(row => row.favorite).length,
@@ -592,6 +604,7 @@ export default function MediaSubtitleEditor({
 
   return (
     <section
+      ref={subtitleRootRef}
       className='border border-slate-200 bg-white'
       onCopy={handleCopySelectedRowsFromClipboardEvent}
       onClick={handleEditorBackgroundClick}>
@@ -636,6 +649,8 @@ export default function MediaSubtitleEditor({
           setShowPronunciation={setShowPronunciation}
           showMeaning={showMeaning}
           setShowMeaning={setShowMeaning}
+          showLearningPoints={showLearningPoints}
+          setShowLearningPoints={setShowLearningPoints}
           showTimeline={showTimeline}
           setShowTimeline={setShowTimeline}
           showFavoriteOnly={showFavoriteOnly}
@@ -643,6 +658,13 @@ export default function MediaSubtitleEditor({
           pageSize={pageSize}
           setPageSize={setPageSize}
         />
+
+        {showLearningPoints ? (
+          <LearningPointHighlightPanel
+            points={learningPoints}
+            isLoading={isLoadingLearningPoints}
+          />
+        ) : null}
 
         <div className='grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
           <div className='rounded-lg border border-slate-200 bg-slate-50 p-3'>

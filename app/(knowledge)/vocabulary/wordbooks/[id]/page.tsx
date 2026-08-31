@@ -5,9 +5,9 @@ import { parseJsonStringList } from '@/utils/text/jsonList'
 import WordbookDetailClient from './WordbookDetailClient'
 import { syncAnkiSentenceSourcesForWordbook } from '@/modules/knowledge/wordbooks/actions'
 import {
-  findWordbookWithChildren,
+  findWordbookDetail,
   listWordbookEntries,
-  listWordbookOptions,
+  listWordbookSeries,
 } from '@/modules/knowledge/wordbooks/repository'
 
 type SearchParams = Record<string, string | string[] | undefined>
@@ -32,9 +32,9 @@ export default async function WordbookDetailPage({
     : 1
   const PAGE_SIZE = 50
 
-  const [wordbook, allWordbooks] = await Promise.all([
-    findWordbookWithChildren(id),
-    listWordbookOptions(),
+  const [wordbook, seriesOptions] = await Promise.all([
+    findWordbookDetail(id),
+    listWordbookSeries(),
   ])
 
   if (!wordbook) notFound()
@@ -68,20 +68,10 @@ export default async function WordbookDetailPage({
         <WordbookDetailClient
           wordbookId={wordbook.id}
           wordbookTitle={wordbook.title}
-          parentWordbook={
-            wordbook.parent
-              ? { id: wordbook.parent.id, title: wordbook.parent.title }
-              : null
-          }
-          chapterItems={wordbook.children.map(item => ({
+          series={{ id: wordbook.series.id, title: wordbook.series.title }}
+          seriesOptions={seriesOptions.map(item => ({
             id: item.id,
             title: item.title,
-            count: item._count.entries,
-          }))}
-          wordbooks={allWordbooks.map(item => ({
-            id: item.id,
-            title: item.title,
-            parentId: item.parentId,
           }))}
           currentPage={normalizedPage}
           totalPages={totalPages}

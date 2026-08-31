@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { getPracticeSubmissionReview } from '@/lib/repositories/exam'
 import PracticeSubmissionReviewClient from '@/features/practice/ui/PracticeSubmissionReviewClient'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
-import { buildExamAnnotationTexts } from '@/features/practice/domain/exam-annotation-texts'
+import { buildExamAnnotationTexts } from '@/modules/practice/domain/exam-annotation-texts'
 
 export default async function PracticeSubmissionReviewPage({
   params,

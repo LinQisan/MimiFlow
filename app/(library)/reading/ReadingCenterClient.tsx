@@ -53,12 +53,11 @@ const EXAM_PAPERS_PER_PAGE = 3
 const GROUPS: Array<{
   kind: ReadingCenterItem['kind']
   label: string
-  description: string
 }> = [
-  { kind: 'news', label: '新闻', description: '按日期与来源浏览' },
-  { kind: 'exam', label: '真题文章', description: '按试卷与顺序选择' },
-  { kind: 'article', label: '独立文章', description: '浏览单篇阅读材料' },
-  { kind: 'ebook', label: '电子书', description: '按章节继续阅读' },
+  { kind: 'news', label: '新闻' },
+  { kind: 'exam', label: '真题文章' },
+  { kind: 'article', label: '独立文章' },
+  { kind: 'ebook', label: '电子书' },
 ]
 
 const SELECT_CLASS = 'h-10 min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
@@ -259,40 +258,36 @@ export default function ReadingCenterClient({
 
   return (
     <div className='min-h-screen bg-[#f6f5f1] pb-20 font-sans text-slate-900'>
-      <h1 className='sr-only'>阅读中心</h1>
-      <header className='border-b border-slate-200 bg-white/35'>
-        <div className='mx-auto flex max-w-7xl items-center justify-between gap-6 px-4 py-5 md:px-8'>
-          <div>
-            <h2 className='text-xl font-semibold tracking-tight text-slate-950'>阅读</h2>
-            <p className='mt-1 text-xs text-slate-500'>{items.length} 份材料</p>
-          </div>
-          <div className='shrink-0'>
+      <h1 className='sr-only'>阅读材料</h1>
+
+      <div className='mx-auto max-w-7xl px-4 md:px-8'>
+        <div className='flex items-stretch gap-4 border-b border-slate-200'>
+          <nav aria-label='阅读材料类型' className='flex min-w-0 flex-1 gap-6 overflow-x-auto'>
+            {[
+              { kind: 'all' as const, label: '全部材料', count: items.length },
+              ...GROUPS
+                .map(group => ({ ...group, count: counts[group.kind] }))
+                .filter(group => group.count > 0 || kind === group.kind),
+            ].map(option => (
+              <button
+                key={option.kind}
+                type='button'
+                aria-pressed={kind === option.kind}
+                onClick={() => updateFilter('kind', option.kind as ReadingMaterialFilter)}
+                className={`relative flex shrink-0 items-center gap-2 px-0 py-4 text-sm font-semibold transition-colors after:absolute after:inset-x-0 after:bottom-[-1px] after:h-0.5 after:origin-center after:scale-x-0 after:bg-slate-950 after:transition-transform focus:outline-none focus-visible:text-slate-950 focus-visible:after:scale-x-100 ${
+                  kind === option.kind
+                    ? 'text-slate-950 after:scale-x-100'
+                    : 'text-slate-400 hover:text-slate-700'
+                }`}>
+                <span>{option.label}</span>
+                <span className='text-[11px] font-medium tabular-nums text-slate-400'>{option.count}</span>
+              </button>
+            ))}
+          </nav>
+          <div className='flex shrink-0 items-center'>
             <WordFrequencyDialog materialCount={frequencyMaterialCount} />
           </div>
         </div>
-      </header>
-
-      <div className='mx-auto max-w-7xl px-4 md:px-8'>
-        <nav aria-label='阅读材料类型' className='flex gap-6 overflow-x-auto border-b border-slate-200 pt-1'>
-          {[
-            { kind: 'all' as const, label: '全部材料', description: '汇总浏览', count: items.length },
-            ...GROUPS.map(group => ({ ...group, count: counts[group.kind] })),
-          ].map(option => (
-            <button
-              key={option.kind}
-              type='button'
-              aria-pressed={kind === option.kind}
-              onClick={() => updateFilter('kind', option.kind as ReadingMaterialFilter)}
-              className={`flex shrink-0 items-center gap-2 border-b-2 px-0 py-4 text-sm font-semibold transition ${
-                kind === option.kind
-                  ? 'border-slate-950 text-slate-950'
-                  : 'border-transparent text-slate-400 hover:text-slate-700'
-              }`}>
-              <span>{option.label}</span>
-              <span className='text-[11px] font-medium tabular-nums text-slate-400'>{option.count}</span>
-            </button>
-          ))}
-        </nav>
 
         <section aria-label='筛选阅读材料' className='border-b border-slate-200 py-4'>
           <div className='grid gap-2 sm:grid-cols-2 lg:grid-cols-4'>
@@ -346,14 +341,15 @@ export default function ReadingCenterClient({
               </CustomSelect>
             </div>
           ) : null}
+
+          {hasActiveFilters ? (
+            <div className='mt-3 flex justify-end'>
+              <button type='button' onClick={resetFilters} className='text-xs font-semibold text-slate-500 transition hover:text-slate-950'>清空筛选</button>
+            </div>
+          ) : null}
         </section>
 
-        <div className='mb-3 mt-6 flex items-center justify-between gap-4'>
-          <p className='text-sm text-slate-500'>找到 <strong className='font-semibold tabular-nums text-slate-950'>{filteredItems.length}</strong> 份材料</p>
-          {hasActiveFilters ? <button type='button' onClick={resetFilters} className='text-xs font-semibold text-slate-500 transition hover:text-slate-950'>清空筛选</button> : null}
-        </div>
-
-        <main className='min-w-0'>
+        <main className='min-w-0 pt-5'>
           {visibleGroups.length === 0 ? (
             <section className='rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center'>
               <p className='text-lg font-semibold text-slate-950'>没有找到匹配的阅读材料</p>

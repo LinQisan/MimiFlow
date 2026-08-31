@@ -40,6 +40,7 @@ type PreviewRow = {
 
 const MAX_PREVIEW_ROWS = 24
 const MAX_IMPORT_ROWS = 5000
+const TAG_BATCH_SIZE = 1_000
 const AUDIO_ROOT = PUBLIC_AUDIO_ROOT
 const DEFAULT_ANKI_AUDIO_FOLDER = 'vocabulary/anki'
 const AUDIO_EXTENSIONS = new Set([
@@ -337,80 +338,56 @@ const normalizeFolderSegments = (value: string) =>
 const resolveWordbookPath = async (rawPath: string, userId: string) => {
   const segments = normalizeFolderSegments(rawPath)
   if (segments.length === 0) return null
-
-  let parentId: string | null = null
-  for (const segment of segments) {
-    const existing: { id: string } | null = await prisma.wordbook.findFirst({
-      where: { userId, title: segment, parentId },
-      select: { id: true },
-    })
-    if (existing) {
-      parentId = existing.id
-      continue
-    }
-    const created: { id: string } = await prisma.wordbook.create({
-      data: { userId, title: segment, parentId },
-      select: { id: true },
-    })
-    parentId = created.id
+  if (segments.length !== 2) {
+    throw new Error('新建路径必须使用“词书系列/词书”两级格式。')
   }
-  return parentId
+  const [seriesTitle, wordbookTitle] = segments
+  const series = await prisma.wordbookSeries.upsert({
+    where: { userId_title: { userId, title: seriesTitle } },
+    update: {},
+    create: { userId, title: seriesTitle },
+    select: { id: true },
+  })
+  const wordbook = await prisma.wordbook.upsert({
+    where: {
+      seriesId_title: { seriesId: series.id, title: wordbookTitle },
+    },
+    update: {},
+    create: { userId, seriesId: series.id, title: wordbookTitle },
+    select: { id: true },
+  })
+  return wordbook.id
 }
 
 const resolveVocabularyTagIds = async (tagNames: string[], userId: string) => {
   const uniqueNames = Array.from(
     new Set(tagNames.map(item => item.trim()).filter(Boolean)),
   )
-  const ids: string[] = []
-  for (const name of uniqueNames) {
-    const tag = await prisma.vocabularyTag.upsert({
-      where: { userId_name: { userId, name } },
-      update: {},
-      create: { userId, name },
-      select: { id: true },
-    })
-    ids.push(tag.id)
-  }
-  return ids
-}
-
-const attachVocabularyTags = async (vocabularyId: string, tagIds: string[]) => {
-  if (tagIds.length === 0) return
-  for (const tagId of tagIds) {
-    await prisma.vocabularyTagOnVocabulary.upsert({
-      where: {
-        vocabularyId_tagId: {
-          vocabularyId,
-          tagId,
-        },
-      },
-      update: {},
-      create: {
-        vocabularyId,
-        tagId,
-      },
+  if (uniqueNames.length === 0) return new Map<string, string>()
+  const batches = Array.from(
+    { length: Math.ceil(uniqueNames.length / TAG_BATCH_SIZE) },
+    (_, index) => uniqueNames.slice(
+      index * TAG_BATCH_SIZE,
+      (index + 1) * TAG_BATCH_SIZE,
+    ),
+  )
+  for (const names of batches) {
+    await prisma.vocabularyTag.createMany({
+      data: names.map(name => ({ userId, name })),
+      skipDuplicates: true,
     })
   }
-}
-
-const attachVocabularyToWordbook = async (
-  vocabularyId: string,
-  wordbookId: string | null,
-) => {
-  if (!wordbookId) return
-  await prisma.wordbookVocabulary.upsert({
-    where: {
-      wordbookId_vocabularyId: {
-        wordbookId,
-        vocabularyId,
-      },
-    },
-    update: {},
-    create: {
-      wordbookId,
-      vocabularyId,
-    },
-  })
+  const tags = (
+    await Promise.all(
+      batches.map(names =>
+        prisma.vocabularyTag.findMany({
+          where: { userId, name: { in: names } },
+          select: { id: true, name: true },
+        }),
+      ),
+    )
+  ).flat()
+  return new Map(tags.map(tag => [tag.name, tag.id]))
 }
 
 const createPreviewRows = (rows: ParsedRow[]): PreviewRow[] =>
@@ -479,6 +456,7 @@ const parseRowsJson = (raw: string): ParsedRow[] => {
           : [],
       }))
       .filter(item => item.rowNo > 0)
+      .slice(0, MAX_IMPORT_ROWS)
   } catch {
     return []
   }
@@ -551,16 +529,33 @@ export async function previewAnkiImport(formData: FormData) {
   const validRows = truncatedRows.filter(item => item.word && item.sentence)
 
   const uniqueWords = Array.from(new Set(validRows.map(item => item.word)))
-  const existingWords = await prisma.vocabulary.findMany({
-    where: { userId, word: { in: uniqueWords } },
-    select: { word: true },
-  })
+  const notebookName = String(formData.get('notebookName') || '').trim()
+  const wordbookId = String(formData.get('wordbookId') || '').trim()
+  const [existingWords, selectedWordbook] = await Promise.all([
+    prisma.vocabulary.findMany({
+      where: { userId, word: { in: uniqueWords } },
+      select: { word: true },
+    }),
+    wordbookId
+      ? prisma.wordbook.findFirst({
+          where: { id: wordbookId, userId },
+          select: { title: true },
+        })
+      : Promise.resolve(null),
+  ])
+  if (wordbookId && !selectedWordbook) {
+    return { success: false, message: '目标单词书不存在或已不可用，请重新选择。' }
+  }
   const existingWordSet = new Set(existingWords.map(item => item.word))
 
   const audioFiles = (formData.getAll('audioFiles') as File[]).filter(file => file?.size > 0)
-  const notebookName = String(formData.get('notebookName') || '').trim()
-  const wordbookId = String(formData.get('wordbookId') || '').trim()
-  const wordbookTitle = String(formData.get('wordbookTitle') || '').trim()
+  if (!wordbookId && notebookName && normalizeFolderSegments(notebookName).length !== 2) {
+    return {
+      success: false,
+      message: '新建路径必须使用“词书系列/词书”两级格式。',
+    }
+  }
+  const wordbookTitle = selectedWordbook?.title || ''
   const sourceName = wordbookTitle || notebookName || 'Anki导入'
   const globalTags = splitList(String(formData.get('globalTags') || ''))
   const uploadNameSet = new Set([
@@ -615,7 +610,6 @@ export async function runAnkiImport(formData: FormData) {
     DEFAULT_ANKI_AUDIO_FOLDER
   const notebookName = String(formData.get('notebookName') || '').trim()
   const selectedWordbookId = String(formData.get('wordbookId') || '').trim()
-  const selectedWordbookTitle = String(formData.get('wordbookTitle') || '').trim()
   const globalTags = splitList(String(formData.get('globalTags') || ''))
   const rows = parseRowsJson(rowsJson)
   if (rows.length === 0) {
@@ -623,20 +617,36 @@ export async function runAnkiImport(formData: FormData) {
   }
 
   const audioFiles = (formData.getAll('audioFiles') as File[]).filter(file => file?.size > 0)
-  const audioMap = await uploadAudioFiles(audioFiles, audioFolder)
-  const sourceName = selectedWordbookTitle || notebookName || 'Anki导入'
   const selectedWordbook = selectedWordbookId
     ? await prisma.wordbook.findFirst({
         where: { id: selectedWordbookId, userId },
-        select: { id: true },
+        select: { id: true, title: true },
       })
     : null
-  const targetWordbookId = selectedWordbookId
-    ? selectedWordbook?.id || null
-    : notebookName
-      ? await resolveWordbookPath(notebookName, userId)
-      : null
-  const globalTagIds = await resolveVocabularyTagIds(globalTags, userId)
+  if (selectedWordbookId && !selectedWordbook) {
+    return { success: false, message: '目标单词书不存在或已不可用，请重新选择。' }
+  }
+  const sourceName = selectedWordbook?.title || notebookName || 'Anki导入'
+  let targetWordbookId: string | null = selectedWordbook?.id || null
+  if (!selectedWordbookId && notebookName) {
+    try {
+      targetWordbookId = await resolveWordbookPath(notebookName, userId)
+    } catch (error) {
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : '词书路径无效。',
+      }
+    }
+  }
+  const audioMap = await uploadAudioFiles(audioFiles, audioFolder)
+  const tagIdByName = await resolveVocabularyTagIds(
+    [...globalTags, ...rows.flatMap(row => row.tags)],
+    userId,
+  )
+  const globalTagIds = globalTags.flatMap(name => {
+    const id = tagIdByName.get(name)
+    return id ? [id] : []
+  })
 
   let created = 0
   let updated = 0
@@ -645,17 +655,44 @@ export async function runAnkiImport(formData: FormData) {
     where: { userId },
     select: { id: true, word: true, pronunciations: true, meanings: true, wordAudio: true },
   })
+  const vocabularyByExactWord = new Map<string, (typeof allVocabularies)[number]>()
+  const vocabularyIndexesByCanonicalKey = new Map<string, number[]>()
+  const indexVocabulary = (
+    vocabulary: (typeof allVocabularies)[number],
+    index: number,
+  ) => {
+    if (!vocabularyByExactWord.has(vocabulary.word)) {
+      vocabularyByExactWord.set(vocabulary.word, vocabulary)
+    }
+    buildVocabularyCanonicalKeys(vocabulary.word).forEach(key => {
+      const indexes = vocabularyIndexesByCanonicalKey.get(key)
+      if (indexes) indexes.push(index)
+      else vocabularyIndexesByCanonicalKey.set(key, [index])
+    })
+  }
+  allVocabularies.forEach(indexVocabulary)
+  const pendingWordbookVocabularyIds = new Set<string>()
+  const pendingTagLinks = new Map<string, { vocabularyId: string; tagId: string }>()
 
   for (const row of rows) {
     if (!row.word || !row.sentence) continue
 
-    let existing = allVocabularies.find(item => item.word === row.word) || null
+    let existing = vocabularyByExactWord.get(row.word) || null
     if (!existing) {
       const targetKeys = new Set(buildVocabularyCanonicalKeys(row.word))
       if (targetKeys.size > 0) {
         let best: (typeof allVocabularies)[number] | null = null
         let bestScore = -1
-        for (const candidate of allVocabularies) {
+        const candidateIndexes = Array.from(
+          new Set(
+            [...targetKeys].flatMap(
+              key => vocabularyIndexesByCanonicalKey.get(key) || [],
+            ),
+          ),
+        ).sort((left, right) => left - right)
+        for (const candidateIndex of candidateIndexes) {
+          const candidate = allVocabularies[candidateIndex]
+          if (!candidate) continue
           const candidateKeys = buildVocabularyCanonicalKeys(candidate.word)
           const intersectCount = candidateKeys.filter(key => targetKeys.has(key)).length
           if (intersectCount === 0) continue
@@ -702,6 +739,10 @@ export async function runAnkiImport(formData: FormData) {
         meanings: toJsonStringList(row.meanings),
         wordAudio: wordAudioPath || null,
       })
+      indexVocabulary(
+        allVocabularies[allVocabularies.length - 1],
+        allVocabularies.length - 1,
+      )
       vocabularyId = createdVocab.id
       created += 1
     } else {
@@ -738,12 +779,13 @@ export async function runAnkiImport(formData: FormData) {
       updated += 1
     }
 
-    await attachVocabularyToWordbook(vocabularyId, targetWordbookId)
-
-    await attachVocabularyTags(vocabularyId, globalTagIds)
-    if (row.tags.length > 0) {
-      const rowTagIds = await resolveVocabularyTagIds(row.tags, userId)
-      await attachVocabularyTags(vocabularyId, rowTagIds)
+    if (targetWordbookId) pendingWordbookVocabularyIds.add(vocabularyId)
+    const rowTagIds = row.tags.flatMap(name => {
+      const id = tagIdByName.get(name)
+      return id ? [id] : []
+    })
+    for (const tagId of [...globalTagIds, ...rowTagIds]) {
+      pendingTagLinks.set(`${vocabularyId}\u0000${tagId}`, { vocabularyId, tagId })
     }
 
     const sentenceAudioPath = row.sentenceAudioName
@@ -800,6 +842,24 @@ export async function runAnkiImport(formData: FormData) {
     linkedSentences += 1
   }
 
+  await Promise.all([
+    targetWordbookId && pendingWordbookVocabularyIds.size > 0
+      ? prisma.wordbookVocabulary.createMany({
+          data: [...pendingWordbookVocabularyIds].map(vocabularyId => ({
+            wordbookId: targetWordbookId,
+            vocabularyId,
+          })),
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+    pendingTagLinks.size > 0
+      ? prisma.vocabularyTagOnVocabulary.createMany({
+          data: [...pendingTagLinks.values()],
+          skipDuplicates: true,
+        })
+      : Promise.resolve(),
+  ])
+
   return {
     success: true,
     message: 'Anki 导入完成。',
@@ -808,9 +868,9 @@ export async function runAnkiImport(formData: FormData) {
       created,
       updated,
       linkedSentences,
-      uploadedAudios: audioMap.size,
+      uploadedAudios: new Set(audioMap.values()).size,
       sourceName,
-      notebookName: selectedWordbookTitle || notebookName || '',
+      notebookName: selectedWordbook?.title || notebookName || '',
       globalTags: globalTags.join(' / '),
     },
   }
@@ -856,18 +916,28 @@ export async function syncWordbookSources() {
     }
   }
 
-  let updatedCount = 0
-  for (const [sentenceId, source] of sentenceSourceById.entries()) {
-    const result = await prisma.vocabularySentence.updateMany({
-      where: {
-        id: sentenceId,
-        source: { not: source },
-        OR: [{ sourceId: 'anki-import' }, { sourceUrl: '/manage/import?type=anki' }],
-      },
-      data: { source },
-    })
-    updatedCount += result.count
-  }
+  const sentenceIdsBySource = new Map<string, string[]>()
+  sentenceSourceById.forEach((source, sentenceId) => {
+    const ids = sentenceIdsBySource.get(source)
+    if (ids) ids.push(sentenceId)
+    else sentenceIdsBySource.set(source, [sentenceId])
+  })
+  const updates = await Promise.all(
+    [...sentenceIdsBySource].map(([source, sentenceIds]) =>
+      prisma.vocabularySentence.updateMany({
+        where: {
+          id: { in: sentenceIds },
+          source: { not: source },
+          OR: [
+            { sourceId: 'anki-import' },
+            { sourceUrl: '/manage/import?type=anki' },
+          ],
+        },
+        data: { source },
+      }),
+    ),
+  )
+  const updatedCount = updates.reduce((sum, result) => sum + result.count, 0)
 
   return { success: true, updatedCount }
 }

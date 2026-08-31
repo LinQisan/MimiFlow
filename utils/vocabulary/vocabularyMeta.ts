@@ -5,6 +5,7 @@ export type VocabularyMeta = {
   pronunciations: string[]
   partsOfSpeech: string[]
   meanings: string[]
+  wordAudio?: string | null
 }
 
 type VocabularyMetaRow = {
@@ -12,6 +13,7 @@ type VocabularyMetaRow = {
   pronunciations?: string | null
   partsOfSpeech?: string | null
   meanings?: string | null
+  wordAudio?: string | null
 }
 
 export const toVocabularyMeta = (row: VocabularyMetaRow): VocabularyMeta => ({
@@ -21,4 +23,5 @@ export const toVocabularyMeta = (row: VocabularyMetaRow): VocabularyMeta => ({
   ),
   partsOfSpeech: parseJsonStringList(row.partsOfSpeech),
   meanings: parseJsonStringList(row.meanings),
+  wordAudio: row.wordAudio || null,
 })

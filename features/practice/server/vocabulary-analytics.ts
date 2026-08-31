@@ -9,6 +9,7 @@ import {
   isReadingGrammarQuestion,
 } from '@/modules/questions/domain/paper-editor'
 import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
+import type { SudachiToken } from '@/modules/language/domain/sudachi'
 import {
   applyPracticeVocabularyKnowledge,
   buildPracticeVocabularyWordbookOptions,
@@ -21,6 +22,8 @@ import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 
 const VOCABULARY_MATCH_BATCH_SIZE = 1_500
+const SUDACHI_ANALYSIS_BATCH_CHARACTERS = 40_000
+const SUDACHI_ANALYSIS_BATCH_TEXTS = 120
 
 const asArray = <T = unknown>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : []
@@ -58,6 +61,56 @@ const cleanAnalyticsText = (value: string) =>
     .replace(/\[\[(?:sort(?::star)?|blank)\]\]/gi, ' ')
     .replace(/选项\s*\d*/g, ' ')
 
+async function analyzePracticeVocabularyDocuments(
+  documents: PracticeVocabularyDocument[],
+) {
+  const batches: Array<{
+    documentIndexes: number[]
+    texts: string[]
+  }> = []
+  let documentIndexes: number[] = []
+  let texts: string[] = []
+  let characterCount = 0
+
+  const flush = () => {
+    if (texts.length === 0) return
+    batches.push({ documentIndexes, texts })
+    documentIndexes = []
+    texts = []
+    characterCount = 0
+  }
+
+  documents.forEach((document, documentIndex) => {
+    const exceedsBatchLimit =
+      texts.length > 0 &&
+      (texts.length >= SUDACHI_ANALYSIS_BATCH_TEXTS ||
+        characterCount + document.text.length > SUDACHI_ANALYSIS_BATCH_CHARACTERS)
+    if (exceedsBatchLimit) flush()
+    documentIndexes.push(documentIndex)
+    texts.push(document.text)
+    characterCount += document.text.length
+  })
+  flush()
+
+  const tokens: SudachiToken[] = []
+  for (const batch of batches) {
+    const analysis = await getSudachiPronunciationMap(batch.texts)
+    if (!analysis.available) {
+      throw new Error('SudachiPy is unavailable for practice vocabulary analysis')
+    }
+    analysis.tokens.forEach(token => {
+      const documentIndex = batch.documentIndexes[token.textIndex]
+      if (documentIndex === undefined) return
+      tokens.push({ ...token, textIndex: documentIndex })
+    })
+  }
+
+  if (documents.length > 0 && tokens.length === 0) {
+    throw new Error('SudachiPy returned no tokens for practice vocabulary analysis')
+  }
+  return tokens
+}
+
 export async function personalizePracticeVocabularyAnalytics(
   analytics: PracticeVocabularyAnalytics,
 ) {
@@ -81,7 +134,7 @@ export async function personalizePracticeVocabularyAnalytics(
       select: {
         id: true,
         title: true,
-        parentId: true,
+        series: { select: { title: true } },
         _count: { select: { entries: true } },
       },
     }),
@@ -104,30 +157,20 @@ export async function personalizePracticeVocabularyAnalytics(
       },
     }))),
   ])
-  const wordbookById = new Map(wordbookRows.map(row => [row.id, row]))
   const wordbookOptions = buildPracticeVocabularyWordbookOptions(
     wordbookRows.map(row => ({
       id: row.id,
       title: row.title,
-      parentId: row.parentId,
+      seriesTitle: row.series.title,
       count: row._count.entries,
     })),
   )
   const pathById = new Map(wordbookOptions.map(option => [option.id, option.pathLabel]))
-  const ancestorIdsFor = (wordbookId: string) => {
-    const ids: string[] = []
-    let cursor: string | null = wordbookId
-    while (cursor) {
-      ids.push(cursor)
-      cursor = wordbookById.get(cursor)?.parentId || null
-    }
-    return ids
-  }
   const wordbookMatches = vocabularyBatches.flat().map(vocabulary => {
     const directIds = vocabulary.wordbooks.map(link => link.wordbookId)
     return {
       word: vocabulary.word,
-      wordbookIds: Array.from(new Set(directIds.flatMap(ancestorIdsFor))),
+      wordbookIds: Array.from(new Set(directIds)),
       wordbookNames: Array.from(
         new Set(directIds.map(id => pathById.get(id)).filter(Boolean)),
       ) as string[],
@@ -156,40 +199,15 @@ export async function getPracticeVocabularyWordbookEntries(
       NOT: { id: { startsWith: 'legacy-' } },
     },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    select: { id: true, title: true, parentId: true },
+    select: { id: true, title: true, series: { select: { title: true } } },
   })
   const byId = new Map(wordbooks.map(row => [row.id, row]))
   const validSelectedIds = selectedIds.filter(id => byId.has(id))
   if (validSelectedIds.length === 0) return []
 
-  const childrenByParent = new Map<string, string[]>()
-  wordbooks.forEach(row => {
-    if (!row.parentId) return
-    childrenByParent.set(row.parentId, [
-      ...(childrenByParent.get(row.parentId) || []),
-      row.id,
-    ])
-  })
-  const descendantsFor = (id: string) => {
-    const result: string[] = []
-    const queue = [id]
-    while (queue.length > 0) {
-      const current = queue.shift()
-      if (!current || result.includes(current)) continue
-      result.push(current)
-      queue.push(...(childrenByParent.get(current) || []))
-    }
-    return result
-  }
-  const descendantsBySelectedId = new Map(
-    validSelectedIds.map(id => [id, new Set(descendantsFor(id))]),
-  )
-  const targetWordbookIds = Array.from(
-    new Set([...descendantsBySelectedId.values()].flatMap(ids => [...ids])),
-  )
   const links = await prisma.wordbookVocabulary.findMany({
     where: {
-      wordbookId: { in: targetWordbookIds },
+      wordbookId: { in: validSelectedIds },
       wordbook: { userId },
       vocabulary: { userId },
     },
@@ -217,9 +235,7 @@ export async function getPracticeVocabularyWordbookEntries(
     }
   >()
   links.forEach(link => {
-    const matchedSelections = validSelectedIds.filter(id =>
-      descendantsBySelectedId.get(id)?.has(link.wordbookId),
-    )
+    const matchedSelections = validSelectedIds.filter(id => id === link.wordbookId)
     if (matchedSelections.length === 0) return
     const current = matchesByVocabulary.get(link.vocabulary.id) || {
       word: link.vocabulary.word,
@@ -230,7 +246,10 @@ export async function getPracticeVocabularyWordbookEntries(
     }
     matchedSelections.forEach(id => {
       current.wordbookIds.add(id)
-      current.wordbookNames.add(byId.get(id)?.title || '')
+      const wordbook = byId.get(id)
+      current.wordbookNames.add(
+        wordbook ? `${wordbook.series.title} / ${wordbook.title}` : '',
+      )
     })
     matchesByVocabulary.set(link.vocabulary.id, current)
   })
@@ -395,12 +414,10 @@ export async function getPracticeVocabularyAnalytics() {
     })
   })
 
-  const sudachi = await getSudachiPronunciationMap(
-    documents.map(document => document.text),
-  )
+  const tokens = await analyzePracticeVocabularyDocuments(documents)
   return buildPracticeVocabularyAnalytics({
     documents,
-    tokens: sudachi.tokens,
+    tokens,
     totalPapers: papers.length,
   })
 }

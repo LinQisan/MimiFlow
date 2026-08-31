@@ -253,30 +253,21 @@ async function copyAudioFiles(records, sourceRoot, apply) {
 }
 
 async function resolveWordbooks(prisma, userId) {
-  let root = await prisma.wordbook.findFirst({
-    where: { userId, title: ROOT_TITLE, parentId: null },
+  const series = await prisma.wordbookSeries.upsert({
+    where: { userId_title: { userId, title: ROOT_TITLE } },
+    update: { sortOrder: 0 },
+    create: { userId, title: ROOT_TITLE, sortOrder: 0 },
     select: { id: true },
   })
-  if (!root) {
-    root = await prisma.wordbook.create({
-      data: { userId, title: ROOT_TITLE, sortOrder: 0 },
-      select: { id: true },
-    })
-  }
 
   const result = new Map()
   for (const [sortOrder, level] of LEVELS.entries()) {
-    const existing = await prisma.wordbook.findFirst({
-      where: { userId, title: level, parentId: root.id },
+    const wordbook = await prisma.wordbook.upsert({
+      where: { seriesId_title: { seriesId: series.id, title: level } },
+      update: { sortOrder },
+      create: { userId, seriesId: series.id, title: level, sortOrder },
       select: { id: true },
     })
-    const wordbook = existing || await prisma.wordbook.create({
-      data: { userId, title: level, parentId: root.id, sortOrder },
-      select: { id: true },
-    })
-    if (existing) {
-      await prisma.wordbook.update({ where: { id: wordbook.id }, data: { sortOrder } })
-    }
     result.set(level, wordbook.id)
   }
   return result

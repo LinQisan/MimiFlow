@@ -20,8 +20,10 @@ export default async function ManageAudioMaterialEditPage({
     returnTo?: string | string[]
   }>
 }) {
-  const { id } = await params
-  const resolvedSearchParams = await searchParams
+  const [{ id }, resolvedSearchParams] = await Promise.all([
+    params,
+    searchParams,
+  ])
   const returnPageValue = Array.isArray(resolvedSearchParams.returnPage)
     ? resolvedSearchParams.returnPage[0]
     : resolvedSearchParams.returnPage

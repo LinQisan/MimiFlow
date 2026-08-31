@@ -31,7 +31,7 @@ export async function getPaperWordbookDistribution(
       select: {
         id: true,
         title: true,
-        parentId: true,
+        series: { select: { title: true } },
         _count: { select: { entries: true } },
       },
     }),
@@ -50,23 +50,11 @@ export async function getPaperWordbookDistribution(
       },
     }))),
   ])
-  const wordbookById = new Map(wordbookRows.map(row => [row.id, row]))
-  const ancestorIdsFor = (wordbookId: string) => {
-    const ids: string[] = []
-    const visited = new Set<string>()
-    let cursor: string | null = wordbookId
-    while (cursor && !visited.has(cursor)) {
-      visited.add(cursor)
-      ids.push(cursor)
-      cursor = wordbookById.get(cursor)?.parentId || null
-    }
-    return ids
-  }
   const options = buildPracticeVocabularyWordbookOptions(
     wordbookRows.map(row => ({
       id: row.id,
       title: row.title,
-      parentId: row.parentId,
+      seriesTitle: row.series.title,
       count: row._count.entries,
     })),
   )
@@ -82,7 +70,7 @@ export async function getPaperWordbookDistribution(
     memberships: vocabularyBatches.flat().map(vocabulary => ({
       word: vocabulary.word,
       wordbookIds: Array.from(new Set(
-        vocabulary.wordbooks.flatMap(link => ancestorIdsFor(link.wordbookId)),
+        vocabulary.wordbooks.map(link => link.wordbookId),
       )),
     })),
   })

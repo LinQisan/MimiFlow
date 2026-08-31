@@ -1,23 +1,21 @@
 import 'server-only'
 
-import {
-  listListeningLessonsForShadowing,
-  listListeningMaterialsForShadowing,
-} from '@/lib/repositories/materials'
+import { listListeningLibraryMaterials } from '@/lib/repositories/materials'
 import {
   getListeningStudySummary,
-  listCollectionsByTypes,
+  listListeningLibraryCollections,
 } from '@/features/listening/server/repository'
 
 export async function getListeningLibrarySource() {
-  const [speakingRows, listeningRows, collections] = await Promise.all([
-    listListeningMaterialsForShadowing(),
-    listListeningLessonsForShadowing(),
-    listCollectionsByTypes(['BOOK', 'CHAPTER']),
+  const [[materialRows, collections], summary] = await Promise.all([
+    Promise.all([
+      listListeningLibraryMaterials(),
+      listListeningLibraryCollections(),
+    ]),
+    getListeningStudySummary(),
   ])
-  const summary = await getListeningStudySummary(
-    [...speakingRows, ...listeningRows].map(item => item.materialId),
-  )
+  const speakingRows = materialRows.filter(item => item.materialType === 'SPEAKING')
+  const listeningRows = materialRows.filter(item => item.materialType === 'LISTENING')
   const playtimeByMaterialId = Object.fromEntries(
     summary.stats.map(item => [item.materialId, item.totalSeconds]),
   )

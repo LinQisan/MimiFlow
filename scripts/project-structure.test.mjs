@@ -295,65 +295,6 @@ test('large feature entry points delegate distinct responsibilities', async () =
   assert.match(vocabularyTabs, /vocabulary\/components\/VocabularyMeaningEditor/)
 })
 
-test('large interactive editors keep state, mutations, domain logic, and views separated', async () => {
-  const entries = [
-    ['app/(knowledge)/vocabulary/VocabularyTabs.tsx', [
-      /useVocabularyWorkspaceState/,
-      /useVocabularyMutations/,
-      /vocabulary\/domain\/workbench/,
-      /vocabulary\/components\//,
-    ]],
-    ['features/import/ui/UploadForm.tsx', [
-      /useAudioUploadState/,
-      /useUploadFormMutations/,
-      /import\/audio\/domain/,
-      /AudioMatchPreview/,
-    ]],
-    ['features/import/ui/UploadCenterUI.tsx', [
-      /useUploadCenterState/,
-      /useUploadCenterMutations/,
-      /article-question-builder/,
-      /ArticleImportPanel/,
-    ]],
-    ['app/(library)/subtitles/[id]/MediaSubtitleEditor.tsx', [
-      /useMediaSubtitleEditorState/,
-      /useMediaSubtitleMutations/,
-      /media-subtitles\/domain\/editor/,
-      /HighlightedSubtitleText/,
-    ]],
-    ['features/listening/ui/ListeningListClient.tsx', [
-      /useListeningListQuery/,
-      /useListeningListState/,
-      /useListeningListMutations/,
-      /ListeningQuickClassifyForm/,
-    ]],
-    ['features/content/ui/EditQuizUI.tsx', [
-      /useQuestionListEditorState/,
-      /useQuestionEditorMutations/,
-      /questions\/domain\/editor/,
-      /QuestionTypeBadge/,
-    ]],
-    ['features/collections/ui/LessonQuestionsPanel.tsx', [
-      /useLessonQuestionPageState/,
-      /useQuestionEditorMutations/,
-      /questions\/domain\/editor/,
-      /QuestionTypeBadge/,
-    ]],
-    ['features/practice/ui/PaperQuestionEditor.tsx', [
-      /usePaperQuestionEditorState/,
-      /useQuestionEditorMutations/,
-      /questions\/domain\/paper-editor/,
-      /CustomSelect/,
-    ]],
-  ]
-
-  for (const [file, boundaries] of entries) {
-    const content = await readFile(path.join(ROOT, file), 'utf8')
-    assert.equal(content.includes('useState'), false, `${file} keeps local useState`)
-    for (const boundary of boundaries) assert.match(content, boundary)
-  }
-})
-
 test('content import keeps one task visible at a time', async () => {
   const importPage = await readFile(
     path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),

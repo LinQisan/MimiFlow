@@ -21,7 +21,21 @@ export function listCollectionsByTypes(types: CollectionType[]) {
   })
 }
 
-export async function getListeningStudySummary(materialIds: string[]) {
+export function listListeningLibraryCollections() {
+  return prisma.collection.findMany({
+    where: { collectionType: { in: ['BOOK', 'CHAPTER'] } },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: {
+      id: true,
+      title: true,
+      collectionType: true,
+      parentId: true,
+      sortOrder: true,
+    },
+  })
+}
+
+export async function getListeningStudySummary() {
   const userId = await getCurrentUserId()
   const [studySummary, studyDays, stats] = await Promise.all([
     prisma.studyTimeDaily.aggregate({
@@ -31,17 +45,15 @@ export async function getListeningStudySummary(materialIds: string[]) {
     prisma.studyTimeDaily.count({
       where: { userId, kind: StudyTimeKind.LESSON_SPEAKING, seconds: { gt: 0 } },
     }),
-    materialIds.length === 0
-      ? Promise.resolve([])
-      : prisma.materialPlaytimeStat.findMany({
-          where: { profileId: userId, materialId: { in: materialIds } },
-          select: {
-            materialId: true,
-            totalSeconds: true,
-            playedDays: true,
-            lastPlayedAt: true,
-          },
-        }),
+    prisma.materialPlaytimeStat.findMany({
+      where: { profileId: userId },
+      select: {
+        materialId: true,
+        totalSeconds: true,
+        playedDays: true,
+        lastPlayedAt: true,
+      },
+    }),
   ])
   return {
     totalSeconds: studySummary._sum.seconds ?? 0,

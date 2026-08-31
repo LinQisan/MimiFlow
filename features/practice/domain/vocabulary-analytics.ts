@@ -102,55 +102,23 @@ export function rankPracticeVocabularyTrendWords(
 type PracticeVocabularyWordbookRow = {
   id: string
   title: string
-  parentId: string | null
+  seriesTitle: string
   count: number
 }
 
 export function buildPracticeVocabularyWordbookOptions(
   rows: PracticeVocabularyWordbookRow[],
 ): PracticeVocabularyWordbookOption[] {
-  const byId = new Map(rows.map(row => [row.id, row]))
-  const children = new Map<string | null, PracticeVocabularyWordbookRow[]>()
-  rows.forEach(row => {
-    const parentId = row.parentId && byId.has(row.parentId) ? row.parentId : null
-    children.set(parentId, [...(children.get(parentId) || []), row])
-  })
-  const totals = new Map<string, number>()
-  const totalFor = (id: string): number => {
-    const cached = totals.get(id)
-    if (cached !== undefined) return cached
-    const row = byId.get(id)
-    if (!row) return 0
-    const total = row.count + (children.get(id) || []).reduce(
-      (sum, child) => sum + totalFor(child.id),
-      0,
-    )
-    totals.set(id, total)
-    return total
-  }
-  const options: PracticeVocabularyWordbookOption[] = []
-  const visit = (
-    nodes: PracticeVocabularyWordbookRow[],
-    depth: number,
-    ancestors: string[],
-  ) => {
-    nodes.forEach(node => {
-      const path = [...ancestors, node.title]
-      const totalCount = totalFor(node.id)
-      if (totalCount > 0) {
-        options.push({
-          id: node.id,
-          name: node.title,
-          pathLabel: path.join(' / '),
-          depth,
-          totalCount,
-        })
-      }
-      visit(children.get(node.id) || [], depth + 1, path)
-    })
-  }
-  visit(children.get(null) || [], 0, [])
-  return options
+  return rows
+    .filter(row => row.count > 0)
+    .map(row => ({
+      id: row.id,
+      name: row.title,
+      pathLabel: `${row.seriesTitle} / ${row.title}`,
+      depth: 0,
+      totalCount: row.count,
+    }))
+    .sort((left, right) => left.pathLabel.localeCompare(right.pathLabel, 'ja'))
 }
 
 export type PracticeVocabularyAnalytics = {

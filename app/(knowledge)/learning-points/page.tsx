@@ -3,11 +3,9 @@ import { LearningRecordKind } from '@prisma/client'
 
 import PageHeader from '@/components/layout/PageHeader'
 import {
-  LEARNING_POINT_CATEGORY_LABELS,
-  LEARNING_RECORD_KIND_LABELS,
-  SOURCE_TYPE_LABELS,
   normalizeLearningFragments,
 } from '@/modules/knowledge/learning-records/domain'
+import LearningRecordItem from '@/modules/knowledge/learning-records/components/LearningRecordItem'
 import { listLearningRecords } from '@/modules/knowledge/learning-records/server/repository'
 
 export const revalidate = 0
@@ -28,7 +26,7 @@ export default async function LearningPointsPage({
   const records = await listLearningRecords(kind)
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+    <main className='min-h-screen bg-slate-50 px-4 py-6 dark:bg-slate-950 md:px-8 md:py-8'>
       <div className='mx-auto max-w-5xl space-y-6'>
         <PageHeader
           showTitle
@@ -57,8 +55,8 @@ export default async function LearningPointsPage({
               aria-current={item.active ? 'page' : undefined}
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
                 item.active
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'
+                  ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950'
+                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500'
               }`}>
               {item.label}
             </Link>
@@ -66,51 +64,33 @@ export default async function LearningPointsPage({
         </nav>
 
         {records.length === 0 ? (
-          <p className='rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500'>
+          <p className='rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'>
             暂无记录。在正文、字幕或题目中选中文字，再点“划词”即可记录。
           </p>
         ) : (
-          <section className='grid gap-4 md:grid-cols-2'>
+          <section className='divide-y divide-slate-200 border-y border-slate-200 dark:divide-slate-800 dark:border-slate-800'>
             {records.map(record => {
               const fragments = normalizeLearningFragments(record.fragments)
               return (
-                <article
+                <LearningRecordItem
                   key={record.id}
-                  className='rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)]'>
-                  <div className='flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500'>
-                    <span className='rounded-full bg-slate-900 px-2 py-0.5 text-white'>
-                      {LEARNING_RECORD_KIND_LABELS[record.kind]}
-                    </span>
-                    {record.category ? (
-                      <span>{LEARNING_POINT_CATEGORY_LABELS[record.category]}</span>
-                    ) : null}
-                    <span>·</span>
-                    <span>{SOURCE_TYPE_LABELS[record.sourceType]}</span>
-                  </div>
-                  <h2 className='mt-3 text-lg font-bold text-slate-950'>{record.title}</h2>
-                  {fragments.length > 0 ? (
-                    <div className='mt-3 flex flex-wrap gap-1.5'>
-                      {fragments.map(fragment => (
-                        <span key={fragment} className='rounded-md bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-950'>
-                          {fragment}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-                  <blockquote className='mt-4 border-l-2 border-slate-200 pl-3 text-sm leading-7 text-slate-700'>
-                    {record.sentenceText}
-                  </blockquote>
-                  {record.note ? (
-                    <p className='mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-600'>{record.note}</p>
-                  ) : null}
-                  <time className='mt-4 block text-[11px] text-slate-400'>
-                    {new Intl.DateTimeFormat('zh-CN', {
+                  record={{
+                    id: record.id,
+                    kind: record.kind,
+                    category: record.category,
+                    title: record.title,
+                    fragments,
+                    sentenceText: record.sentenceText,
+                    note: record.note,
+                    sourceType: record.sourceType,
+                    sourceHref: record.sourceHref,
+                    updatedAtLabel: new Intl.DateTimeFormat('zh-CN', {
                       year: 'numeric',
                       month: '2-digit',
                       day: '2-digit',
-                    }).format(record.updatedAt)}
-                  </time>
-                </article>
+                    }).format(record.updatedAt),
+                  }}
+                />
               )
             })}
           </section>

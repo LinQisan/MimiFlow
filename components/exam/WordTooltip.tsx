@@ -19,6 +19,7 @@ import { saveLearningRecord } from '@/modules/knowledge/learning-records/actions
 import { LEARNING_POINT_CATEGORY_LABELS } from '@/modules/knowledge/learning-records/domain'
 import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import WordAudioButton from '@/components/vocabulary/WordAudioButton'
 
 const POS_OPTIONS = ['名词', '动词', '形容词', '副词', '助词', '接续词']
 const BASE_INPUT_CLASS =
@@ -329,9 +330,17 @@ export default function WordTooltip({
         <>
           <header className='sticky top-0 z-10 border-b border-slate-100 bg-white px-3 pt-3'>
             <div className='flex items-center justify-between gap-3'>
-              <div>
+              <div className='min-w-0'>
                 <p className='text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400'>记录选区</p>
-                <p className='mt-0.5 max-w-[15rem] truncate text-sm font-bold text-slate-950'>{word}</p>
+                <div className='mt-0.5 flex min-w-0 items-center gap-1'>
+                  <p className='max-w-[15rem] truncate text-sm font-bold text-slate-950'>{word}</p>
+                  <WordAudioButton
+                    key={initialMeta?.wordAudio || 'no-word-audio'}
+                    audioFile={initialMeta?.wordAudio}
+                    word={word}
+                    className='size-7'
+                  />
+                </div>
               </div>
               <button
                 type='button'

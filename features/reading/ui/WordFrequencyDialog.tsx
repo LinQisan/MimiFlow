@@ -127,15 +127,11 @@ export default function WordFrequencyDialog({
         aria-expanded={isOpen}
         onClick={openDialog}
         disabled={materialCount === 0}
-        className='group mt-1 inline-flex items-baseline gap-2 text-left disabled:cursor-default'>
-        <span className='text-xl font-semibold tabular-nums text-slate-950'>
+        className='ui-btn ui-btn-sm inline-flex items-center gap-2 disabled:cursor-default'>
+        <span>词频</span>
+        <span className='text-[11px] tabular-nums text-slate-400'>
           {materials ? totalRows.length || '—' : materialCount || '—'}
         </span>
-        {materialCount > 0 ? (
-          <span className='text-[11px] font-semibold text-slate-400 transition group-hover:text-slate-700'>
-            {materials ? '个词 · 查看详情' : '篇材料 · 查看词频'}
-          </span>
-        ) : null}
       </button>
 
       {isOpen ? (

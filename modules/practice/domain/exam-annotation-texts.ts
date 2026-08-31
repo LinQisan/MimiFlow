@@ -1,6 +1,16 @@
-import type { ExamQuestion } from '@/components/exam/question-renderer/types'
+type AnnotatableExamQuestion = {
+  prompt?: string | null
+  contextSentence?: string | null
+  passage?: { content?: string | null } | null
+  options?: Array<{ text?: string | null }>
+  lesson?: {
+    dialogues?: Array<{ text?: string | null }>
+  } | null
+}
 
-export const buildExamAnnotationTexts = (questions: ExamQuestion[]) => {
+export const buildExamAnnotationTexts = (
+  questions: AnnotatableExamQuestion[],
+) => {
   const texts = new Set<string>()
   const add = (value?: string | null) => {
     const text = (value || '').trim()

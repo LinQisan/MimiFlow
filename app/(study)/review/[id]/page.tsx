@@ -40,8 +40,7 @@ export default async function ReviewQuestionPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ type?: string | string[] }>
 }) {
-  const { id } = await params
-  const query = await searchParams
+  const [{ id }, query] = await Promise.all([params, searchParams])
   const requestedType = Array.isArray(query.type) ? query.type[0] : query.type
   const [summary, typeSummaries] = await Promise.all([
     getRetryQueueSummary(),

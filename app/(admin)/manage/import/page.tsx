@@ -4,6 +4,7 @@ import { getUploadPageSeedData } from '@/lib/repositories/manage'
 import type { UploadCenterTab } from '@/modules/import/types'
 import type { CollectionType, MaterialType } from '@prisma/client'
 import Link from 'next/link'
+import PageHeader from '@/components/layout/PageHeader'
 import AnkiImportPanel from './AnkiImportPanel'
 import ImportNavigation from './ImportNavigation'
 import {
@@ -247,7 +248,11 @@ export default async function UnifiedImportPage({
           />
 
           <section className='min-w-0'>
-            <h2 className='sr-only'>{activeItem.label}</h2>
+            <PageHeader
+              showTitle
+              title={activeItem.label}
+              description={`${importLanguages.find(item => item.value === language)?.label ?? language} · ${activeGroup.label}。请先检查文件和目标位置，再预览确认后导入。`}
+            />
 
             {toeicPart ? (
               <div className='mb-5 border-b border-slate-300 pb-4'>

@@ -26,6 +26,7 @@ const EMPTY_DISTRIBUTION: PaperWordbookDistribution = {
   totalWords: 0,
   outsideCount: 0,
   outsideRate: 0,
+  outsideWords: [],
   wordbooks: [],
 }
 

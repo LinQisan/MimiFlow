@@ -49,27 +49,47 @@ test('paper frequency includes passages, listening transcripts, prompts and ever
   })
 })
 
-test('paper frequency reports hierarchical wordbook coverage and outside words', () => {
+test('paper frequency reports leaf wordbook coverage and outside words', () => {
   const distribution = buildPaperWordbookDistribution({
     words: ['環境', '環境', '語彙', '未収録'],
     wordbooks: [
-      { id: 'red', name: '红宝书', pathLabel: '红宝书', depth: 0 },
-      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 1 },
-      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 1 },
+      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 0 },
+      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 0 },
     ],
     memberships: [
-      { word: '環境', wordbookIds: ['red', 'n1'] },
-      { word: '語彙', wordbookIds: ['red', 'n2'] },
+      { word: '環境', wordbookIds: ['n1'] },
+      { word: '語彙', wordbookIds: ['n2'] },
     ],
   })
 
   assert.equal(distribution.totalWords, 3)
   assert.equal(distribution.outsideCount, 1)
   assert.equal(distribution.outsideRate, 33.3)
+  assert.deepEqual(distribution.outsideWords, ['未収録'])
   assert.deepEqual(
-    distribution.wordbooks.map(row => [row.id, row.matchedCount]),
-    [['red', 2], ['n1', 1], ['n2', 1]],
+    distribution.wordbooks.map(row => [row.id, row.matchedCount, row.matchedWords]),
+    [
+      ['n1', 1, ['環境']],
+      ['n2', 1, ['語彙']],
+    ],
   )
+})
+
+test('wordbook distribution orders matches by coverage before series order', () => {
+  const distribution = buildPaperWordbookDistribution({
+    words: ['一', '二', '三', '四'],
+    wordbooks: [
+      { id: 'small', name: '小册', pathLabel: '小册', depth: 0 },
+      { id: 'large', name: '大册', pathLabel: '大册', depth: 0 },
+    ],
+    memberships: [
+      { word: '一', wordbookIds: ['small', 'large'] },
+      { word: '二', wordbookIds: ['large'] },
+      { word: '三', wordbookIds: ['large'] },
+    ],
+  })
+
+  assert.deepEqual(distribution.wordbooks.map(row => row.id), ['large', 'small'])
 })
 
 test('paper overview exposes Sudachi word frequency in a dialog', async () => {
@@ -105,7 +125,9 @@ test('paper overview exposes Sudachi word frequency in a dialog', async () => {
   assert.match(dialog, /WordbookDistributionChart/)
   assert.match(chart, /单词书分布/)
   assert.match(chart, /未加入任何单词书/)
+  assert.match(chart, /未收录置底 · 点击查看单词/)
   assert.match(server, /word: \{ in: batch \}/)
-  assert.match(server, /ancestorIdsFor/)
+  assert.match(server, /seriesTitle: row\.series\.title/)
+  assert.doesNotMatch(server, /ancestorIdsFor/)
   assert.match(nextConfig, /'\/practice\/\*'/)
 })

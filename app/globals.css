@@ -1728,3 +1728,32 @@ html.dark body.editorial-ui {
 body.editorial-ui main :where(article, section, aside, fieldset, details)[class*='bg-white'] {
   background-color: transparent !important;
 }
+.wordbook-highlight-key-0 { border-color: #2563eb; }
+.wordbook-highlight-key-1 { border-color: #059669; }
+.wordbook-highlight-key-2 { border-color: #d97706; }
+.wordbook-highlight-key-3 { border-color: #7c3aed; }
+.wordbook-highlight-key-4 { border-color: #e11d48; }
+.wordbook-highlight-key-5 { border-color: #0891b2; }
+
+.study-learning-point-highlight {
+  position: absolute;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+.study-learning-point-highlight.learning-point-grammar { background: rgb(147 197 253 / 45%); }
+.study-learning-point-highlight.learning-point-pattern { background: rgb(196 181 253 / 45%); }
+.study-learning-point-highlight.learning-point-idiom { background: rgb(252 211 77 / 48%); }
+.study-learning-point-highlight.learning-point-paraphrase { background: rgb(94 234 212 / 42%); }
+.study-learning-point-highlight.learning-point-distractor { background: rgb(253 164 175 / 45%); }
+.study-learning-point-highlight.learning-point-other { background: rgb(203 213 225 / 48%); }
+.dark .study-learning-point-highlight {
+  mix-blend-mode: screen;
+  opacity: 0.62;
+}
+.study-wordbook-highlight { position: absolute; border-radius: 999px; }
+.study-wordbook-highlight.wordbook-slot-0 { background: #2563eb; }
+.study-wordbook-highlight.wordbook-slot-1 { background: #059669; }
+.study-wordbook-highlight.wordbook-slot-2 { background: #d97706; }
+.study-wordbook-highlight.wordbook-slot-3 { background: #7c3aed; }
+.study-wordbook-highlight.wordbook-slot-4 { background: #e11d48; }
+.study-wordbook-highlight.wordbook-slot-5 { background: #0891b2; }

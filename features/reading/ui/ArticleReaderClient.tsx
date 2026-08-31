@@ -29,10 +29,7 @@ import {
   type ArticleFootnote,
 } from '@/features/reading/domain/article-footnotes'
 import { copyText } from '@/features/reading/ui/copy-text'
-import type {
-  SudachiLexeme,
-  VocabularyCandidate,
-} from '@/modules/language/domain/sudachi'
+import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
 import PronunciationSourceSelector, {
   PRONUNCIATION_SOURCE_STORAGE_KEY,
   type PronunciationSource,
@@ -42,12 +39,16 @@ import {
   useCurrentUser,
   userStorageKey,
 } from '@/context/UserContext'
+import {
+  useStudyTextHighlights,
+  resolveWordbookHighlightSlot,
+  wordbookHighlightKeyClass,
+} from '@/hooks/useStudyTextHighlights'
+import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
+import VocabularyWordbookInspector from '@/modules/knowledge/vocabulary/components/VocabularyWordbookInspector'
 
 const MathExpression = dynamic(
   () => import('@/features/reading/ui/MathExpression'),
-)
-const ExtractVocabularyPanel = dynamic(
-  () => import('@/features/reading/ui/ExtractVocabularyPanel'),
 )
 const WordTooltip = dynamic(() => import('@/components/exam/WordTooltip'))
 
@@ -71,7 +72,6 @@ export default function ArticleReaderClient({
   initialVocabularyMetaMap,
   initialSudachiPronunciationMap = {},
   initialSudachiLexicon = {},
-  initialVocabularyCandidates = [],
   initialWordbookDistributionWords = [],
   sudachiAvailable = false,
   initialProgressPercent = 0,
@@ -84,7 +84,6 @@ export default function ArticleReaderClient({
   initialVocabularyMetaMap: Record<string, VocabularyMeta>
   initialSudachiPronunciationMap?: Record<string, string>
   initialSudachiLexicon?: Record<string, SudachiLexeme>
-  initialVocabularyCandidates?: VocabularyCandidate[]
   initialWordbookDistributionWords?: string[]
   sudachiAvailable?: boolean
   initialProgressPercent?: number
@@ -109,14 +108,31 @@ export default function ArticleReaderClient({
   const [rubyEnabled, setRubyEnabled] = useState(true)
   const [pronunciationSource, setPronunciationSourceState] =
     useState<PronunciationSource>(sudachiAvailable ? 'sudachi' : 'personal')
+  const [automaticPronunciationAvailable, setAutomaticPronunciationAvailable] =
+    useState(sudachiAvailable)
+  const [sudachiPronunciationMap, setSudachiPronunciationMap] = useState(
+    initialSudachiPronunciationMap,
+  )
+  const [sudachiLexicon, setSudachiLexicon] = useState(initialSudachiLexicon)
+  const [wordbookDistributionWords, setWordbookDistributionWords] = useState(
+    initialWordbookDistributionWords,
+  )
   const [noteEnabled, setNoteEnabled] = useState(true)
+  const [learningPointsEnabled, setLearningPointsEnabled] = useState(false)
+  const [hiddenWordbookIds, setHiddenWordbookIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const [inspectedWord, setInspectedWord] = useState<{
+    word: string
+    x: number
+    y: number
+  } | null>(null)
   const [wordbookDistribution, setWordbookDistribution] =
     useState<PaperWordbookDistribution | null>(null)
   const [distributionLoadState, setDistributionLoadState] = useState<
     'idle' | 'loading' | 'error'
   >('idle')
   const [distributionRetryKey, setDistributionRetryKey] = useState(0)
-  const [extractPanelOpen, setExtractPanelOpen] = useState(false)
   const [copyLabel, setCopyLabel] = useState('复制正文')
   const [readingProgress, setReadingProgress] = useState(
     Math.max(0, Math.min(100, initialProgressPercent)),
@@ -135,6 +151,51 @@ export default function ArticleReaderClient({
       : [{ id: 'article', title: '正文', text: content, href: '' }]
   const activeChapter =
     readerChapters[activeChapterIndex] || readerChapters[0]
+  const analysisTexts = useMemo(
+    () => chapters.length > 0 ? chapters.map(chapter => chapter.text) : [content],
+    [chapters, content],
+  )
+
+  useEffect(() => {
+    if (mode !== 'article' || sudachiAvailable) return
+
+    const controller = new AbortController()
+    void fetch('/api/pronunciation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        texts: analysisTexts,
+        includeWordbookAnalysis: true,
+      }),
+      signal: controller.signal,
+    })
+      .then(async response => {
+        if (!response.ok) throw new Error('request failed')
+        return (await response.json()) as {
+          available: boolean
+          pronunciationMap: Record<string, string>
+          lexicon: Record<string, SudachiLexeme>
+          wordbookDistributionWords?: string[]
+        }
+      })
+      .then(result => {
+        setAutomaticPronunciationAvailable(result.available)
+        setSudachiPronunciationMap(result.pronunciationMap)
+        setSudachiLexicon(result.lexicon)
+        setWordbookDistributionWords(
+          result.wordbookDistributionWords?.length
+            ? result.wordbookDistributionWords
+            : Object.keys(initialVocabularyMetaMap),
+        )
+        setWordbookDistribution(null)
+      })
+      .catch(error => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setWordbookDistributionWords(Object.keys(initialVocabularyMetaMap))
+      })
+
+    return () => controller.abort()
+  }, [analysisTexts, initialVocabularyMetaMap, mode, sudachiAvailable])
 
   useEffect(() => {
     if (mode !== 'article') return
@@ -142,13 +203,21 @@ export default function ArticleReaderClient({
       currentUser.id,
       PRONUNCIATION_SOURCE_STORAGE_KEY,
     )
-    if (stored === 'personal' || (stored === 'sudachi' && sudachiAvailable)) {
+    if (
+      stored === 'personal' ||
+      (stored === 'sudachi' && automaticPronunciationAvailable)
+    ) {
       setPronunciationSourceState(stored)
     }
-  }, [currentUser.id, mode, pronunciationStorageKey, sudachiAvailable])
+  }, [
+    automaticPronunciationAvailable,
+    currentUser.id,
+    mode,
+    pronunciationStorageKey,
+  ])
 
   const setPronunciationSource = (source: PronunciationSource) => {
-    if (source === 'sudachi' && !sudachiAvailable) return
+    if (source === 'sudachi' && !automaticPronunciationAvailable) return
     setPronunciationSourceState(source)
     window.localStorage.setItem(pronunciationStorageKey, source)
   }
@@ -162,7 +231,7 @@ export default function ArticleReaderClient({
         : pronunciationSource === 'sudachi'
           ? formatJapaneseTextWithSudachiRubyNotation(
               text,
-              initialSudachiLexicon,
+              sudachiLexicon,
             )
           : formatJapaneseTextWithRubyNotation(
               text,
@@ -259,7 +328,7 @@ export default function ArticleReaderClient({
 
   const selectedPronunciationMap =
     pronunciationSource === 'sudachi'
-      ? initialSudachiPronunciationMap
+      ? sudachiPronunciationMap
       : basePronMap
 
   const footnoteDocument = useMemo(
@@ -328,10 +397,37 @@ export default function ArticleReaderClient({
   }, [footnoteDocument.body, localVocabularyMetaMap])
 
   useEffect(() => {
+    if (mode !== 'article' || !noteEnabled) return
+    const scrollToArticleHash = () => {
+      let targetId = ''
+      try {
+        targetId = decodeURIComponent(window.location.hash.slice(1))
+      } catch {
+        return
+      }
+      if (!targetId.startsWith(`${annotationAnchorPrefix}-`)) return
+      window.requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({ block: 'start' })
+      })
+    }
+    scrollToArticleHash()
+    window.addEventListener('hashchange', scrollToArticleHash)
+    return () => window.removeEventListener('hashchange', scrollToArticleHash)
+  }, [
+    activeChapterAnnotations.length,
+    annotationAnchorPrefix,
+    mode,
+    noteEnabled,
+    pronunciationSource,
+    rubyEnabled,
+    sudachiLexicon,
+  ])
+
+  useEffect(() => {
     if (
       !noteEnabled ||
       wordbookDistribution ||
-      initialWordbookDistributionWords.length === 0
+      wordbookDistributionWords.length === 0
     ) {
       return
     }
@@ -340,7 +436,7 @@ export default function ArticleReaderClient({
     void fetch('/api/reading/wordbook-distribution', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ words: initialWordbookDistributionWords }),
+      body: JSON.stringify({ words: wordbookDistributionWords }),
       signal: controller.signal,
     })
       .then(async response => {
@@ -357,7 +453,7 @@ export default function ArticleReaderClient({
       })
     return () => controller.abort()
   }, [
-    initialWordbookDistributionWords,
+    wordbookDistributionWords,
     noteEnabled,
     distributionRetryKey,
     wordbookDistribution,
@@ -374,6 +470,38 @@ export default function ArticleReaderClient({
       })
     return next
   }, [activeChapterAnnotations, footnoteDocument.body, noteEnabled])
+
+  const wordbookHighlightGroups = useMemo(
+    () =>
+      (wordbookDistribution?.wordbooks || [])
+        .map(wordbook => ({
+          id: wordbook.id,
+          label: wordbook.pathLabel,
+          words: wordbook.matchedWords,
+          slot: resolveWordbookHighlightSlot(wordbook.pathLabel),
+        }))
+        .sort(
+          (left, right) =>
+            left.slot - right.slot ||
+            Number(!/\/\s*N[1-5]\s*$/i.test(left.label)) -
+              Number(!/\/\s*N[1-5]\s*$/i.test(right.label)) ||
+            left.label.localeCompare(right.label, 'ja'),
+        ),
+    [wordbookDistribution],
+  )
+  const visibleWordbookHighlightGroups = useMemo(
+    () =>
+      wordbookHighlightGroups.filter(group => !hiddenWordbookIds.has(group.id)),
+    [hiddenWordbookIds, wordbookHighlightGroups],
+  )
+  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+    rootRef: readerRef,
+    contentKey: `${articleId}:${activeChapterIndex}:${noteEnabled}:${rubyEnabled}:${pronunciationSource}:${Object.keys(sudachiLexicon).length}`,
+    showLearningPoints: learningPointsEnabled,
+    showWordbooks: noteEnabled,
+    wordbookGroups: visibleWordbookHighlightGroups,
+    onWordbookWordClick: setInspectedWord,
+  })
 
   const contentBlocks = useMemo(() => {
     const items = splitParagraphs(annotatedChapterBody)
@@ -405,7 +533,7 @@ export default function ArticleReaderClient({
       let annotationIndex = 0
       const pushJapaneseSegment = (segment: string, segmentKey: string) => {
         if (!segment) return
-        if (mode === 'article' && Object.keys(initialSudachiLexicon).length > 0) {
+        if (mode === 'article' && Object.keys(sudachiLexicon).length > 0) {
           const personalPronunciationMap = buildPronunciationMapForText(
             segment,
             basePronMap,
@@ -417,7 +545,7 @@ export default function ArticleReaderClient({
               dangerouslySetInnerHTML={{
                 __html: annotateJapaneseTextWithSudachi(
                   segment,
-                  initialSudachiLexicon,
+                  sudachiLexicon,
                   {
                     pronunciationMap: personalPronunciationMap,
                     useSudachiReading: pronunciationSource === 'sudachi',
@@ -443,7 +571,7 @@ export default function ArticleReaderClient({
         }
         const pronMap =
           pronunciationSource === 'sudachi'
-            ? initialSudachiPronunciationMap
+            ? sudachiPronunciationMap
             : buildPronunciationMapForText(segment, selectedPronunciationMap)
         parts.push(
           <span
@@ -675,22 +803,9 @@ export default function ArticleReaderClient({
               <PronunciationSourceSelector
                 value={pronunciationSource}
                 onChange={setPronunciationSource}
-                sudachiAvailable={sudachiAvailable}
+                sudachiAvailable={automaticPronunciationAvailable}
               />
             </div>
-          ) : null}
-          {mode === 'article' ? (
-            <button
-              type='button'
-              onClick={() => setExtractPanelOpen(value => !value)}
-              aria-pressed={extractPanelOpen}
-              className={`h-7 border-0 px-3 text-xs font-medium transition ${
-                extractPanelOpen
-                  ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
-                  : 'text-slate-500 hover:text-slate-900'
-              }`}>
-              提取生词
-            </button>
           ) : null}
           {mode === 'article' ? (
             <button
@@ -711,26 +826,90 @@ export default function ArticleReaderClient({
             }`}>
             注释
           </button>
+          <button
+            type='button'
+            onClick={() => setLearningPointsEnabled(value => !value)}
+            aria-pressed={learningPointsEnabled}
+            className={`h-7 border-0 px-3 text-xs font-medium transition ${
+              learningPointsEnabled
+                ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
+                : 'text-slate-400 hover:text-slate-700'
+            }`}>
+            学习点
+          </button>
           </div>
         </div>
+        {noteEnabled && wordbookHighlightGroups.length > 0 ? (
+          <div className='mt-2 border-t border-slate-200 pt-2'>
+            <div className='mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-400'>
+              <span>单词本高亮</span>
+              <button
+                type='button'
+                onClick={() =>
+                  setHiddenWordbookIds(current =>
+                    current.size > 0
+                      ? new Set()
+                      : new Set(wordbookHighlightGroups.map(group => group.id)),
+                  )
+                }
+                className='font-semibold text-slate-500 transition hover:text-slate-900'>
+                {hiddenWordbookIds.size > 0 ? '全部显示' : '全部隐藏'}
+              </button>
+            </div>
+            <div className='flex flex-wrap justify-end gap-1.5'>
+              {wordbookHighlightGroups.map(group => {
+                const hidden = hiddenWordbookIds.has(group.id)
+                const parts = group.label
+                  .split(/\s*\/\s*/)
+                  .map(part => part.trim())
+                  .filter(Boolean)
+                const shortName = parts.at(-1) || group.label
+                return (
+                  <button
+                    key={group.id}
+                    type='button'
+                    aria-pressed={!hidden}
+                    onClick={() =>
+                      setHiddenWordbookIds(current => {
+                        const next = new Set(current)
+                        if (next.has(group.id)) next.delete(group.id)
+                        else next.add(group.id)
+                        return next
+                      })
+                    }
+                    title={`${hidden ? '显示' : '隐藏'} ${group.label}`}
+                    className={`flex h-7 items-center gap-1.5 rounded-md border bg-white px-2 text-left transition ${
+                      hidden
+                        ? 'border-dashed border-slate-200 text-slate-400 opacity-65 hover:opacity-100'
+                        : `border-b-2 border-x-slate-200 border-t-slate-200 text-slate-700 ${wordbookHighlightKeyClass(group.slot)}`
+                    }`}>
+                    <span
+                      aria-hidden='true'
+                      className={`size-2 shrink-0 rounded-full border-4 ${
+                        hidden
+                          ? 'border-slate-300'
+                          : wordbookHighlightKeyClass(group.slot)
+                      }`}
+                    />
+                    <span className='text-xs font-semibold'>{shortName}</span>
+                    <span className='text-[10px] tabular-nums text-slate-400'>
+                      {group.words.length}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      {mode === 'article' && extractPanelOpen ? (
-        <ExtractVocabularyPanel
-          articleId={articleId}
-          initialCandidates={initialVocabularyCandidates.filter(
-            item => !localVocabularyMetaMap[item.word],
-          )}
-          onSaved={items =>
-            setLocalVocabularyMetaMap(current => {
-              const next = { ...current }
-              items.forEach(item => {
-                next[item.word] = item.meta
-              })
-              return next
-            })
-          }
-        />
+      {learningPointsEnabled ? (
+        <div className='mx-auto mb-6 max-w-[44rem]'>
+          <LearningPointHighlightPanel
+            points={learningPoints}
+            isLoading={isLoadingLearningPoints}
+          />
+        </div>
       ) : null}
 
       <div
@@ -842,7 +1021,47 @@ export default function ArticleReaderClient({
             </aside>
           ) : null}
 
-          {noteEnabled && initialWordbookDistributionWords.length > 0 ? (
+          {noteEnabled && activeChapterAnnotations.length > 0 ? (
+            <aside aria-label='文章注释' className='mt-12'>
+              <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
+                {activeChapterAnnotations.map(
+                  ({ word, meta, label }) => (
+                    <li
+                      key={word}
+                      id={`${annotationAnchorPrefix}-${label}`}
+                      className='scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2.5 last:border-b-0'>
+                      <span className='text-xs font-semibold tabular-nums text-slate-400'>
+                        释{label}
+                      </span>
+                      <span>
+                        <strong className='font-semibold text-slate-800'>
+                          {word}
+                        </strong>
+                        <span className='ml-2 text-slate-500'>
+                          {[meta.pronunciations[0], ...meta.meanings]
+                            .filter(
+                              (value): value is string =>
+                                typeof value === 'string',
+                            )
+                            .map(value => value.trim())
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </span>
+                      </span>
+                      <a
+                        href={`#${annotationAnchorPrefix}-${label}-ref`}
+                        aria-label={`返回释${label}在正文中的位置`}
+                        className='text-xs text-slate-400 transition hover:text-slate-900'>
+                        ↩
+                      </a>
+                    </li>
+                  ),
+                )}
+              </ol>
+            </aside>
+          ) : null}
+
+          {noteEnabled && wordbookDistributionWords.length > 0 ? (
             <div className='mt-12'>
               {wordbookDistribution ? (
                 <WordbookDistributionChart
@@ -863,42 +1082,6 @@ export default function ArticleReaderClient({
                 </p>
               )}
             </div>
-          ) : null}
-
-          {noteEnabled && activeChapterAnnotations.length > 0 ? (
-            <aside aria-label='文章注释' className='mt-12'>
-              <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
-                {activeChapterAnnotations.map(
-                  ({ word, meta, label }) => (
-                    <li
-                      key={word}
-                      id={`${annotationAnchorPrefix}-${label}`}
-                      className='scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2.5 last:border-b-0'>
-                      <span className='text-xs font-semibold tabular-nums text-slate-400'>
-                        释{label}
-                      </span>
-                      <span>
-                        <strong className='font-semibold text-slate-800'>
-                          {word}
-                        </strong>
-                        <span className='ml-2 text-slate-500'>
-                          {[meta.pronunciations[0], ...meta.meanings]
-                            .map(value => value.trim())
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
-                      <a
-                        href={`#${annotationAnchorPrefix}-${label}-ref`}
-                        aria-label={`返回释${label}在正文中的位置`}
-                        className='text-xs text-slate-400 transition hover:text-slate-900'>
-                        ↩
-                      </a>
-                    </li>
-                  ),
-                )}
-              </ol>
-            </aside>
           ) : null}
         </article>
       </div>
@@ -944,6 +1127,22 @@ export default function ArticleReaderClient({
             }
           />
         </>
+      ) : null}
+
+      {inspectedWord ? (
+        <VocabularyWordbookInspector
+          word={inspectedWord.word}
+          x={inspectedWord.x}
+          y={inspectedWord.y}
+          onClose={() => setInspectedWord(null)}
+          onSaved={({ word, meta, membershipsChanged }) => {
+            setLocalVocabularyMetaMap(current => ({ ...current, [word]: meta }))
+            if (membershipsChanged) {
+              setWordbookDistribution(null)
+              setDistributionRetryKey(value => value + 1)
+            }
+          }}
+        />
       ) : null}
     </section>
   )
