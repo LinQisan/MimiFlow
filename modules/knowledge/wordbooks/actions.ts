@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { invalidateVocabularyGroupsCache } from '@/modules/knowledge/vocabulary/server/repository'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const revalidateWordbooks = () => {
   revalidatePath('/vocabulary')
   revalidatePath('/manage/import')
+  invalidateVocabularyGroupsCache()
 }
 
 export async function createWordbookSeries(title: string) {

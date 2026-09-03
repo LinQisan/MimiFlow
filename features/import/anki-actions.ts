@@ -5,6 +5,7 @@ import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { invalidateVocabularyGroupsCache } from '@/modules/knowledge/vocabulary/server/repository'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
@@ -860,6 +861,7 @@ export async function runAnkiImport(formData: FormData) {
       : Promise.resolve(),
   ])
 
+  invalidateVocabularyGroupsCache()
   return {
     success: true,
     message: 'Anki 导入完成。',

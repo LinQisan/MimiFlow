@@ -7,7 +7,7 @@ import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
 import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
-import { normalizeSentencePosTags } from './server/repository'
+import { invalidateVocabularyGroupsCache, normalizeSentencePosTags } from './server/repository'
 
 export type VocabularyDefinitionDraft = {
   language: 'ZH' | 'JA'
@@ -252,6 +252,7 @@ export async function updateVocabularyFromInspector(input: {
 
     revalidatePath('/vocabulary')
     revalidatePath('/reading')
+    invalidateVocabularyGroupsCache()
     return {
       success: true as const,
       message: '单词信息已更新',

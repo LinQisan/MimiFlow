@@ -3,6 +3,7 @@
 
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { invalidateVocabularyGroupsCache } from '@/modules/knowledge/vocabulary/server/repository'
 import {
   normalizeStringList,
   parseJsonStringList,
@@ -320,6 +321,7 @@ export async function deleteVocabularyAdmin(vocabId: string) {
     revalidatePath('/')
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
+    invalidateVocabularyGroupsCache()
     return { success: true }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '删除失败'
@@ -376,6 +378,7 @@ export async function updateVocabularyAdmin(
     revalidatePath('/manage/vocabulary')
     revalidatePath('/vocabulary')
     revalidatePath('/reading')
+    invalidateVocabularyGroupsCache()
     return { success: true }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '更新失败'
@@ -450,6 +453,7 @@ export async function batchUpdateVocabularyMetaAdmin(
     revalidatePath('/vocabulary')
     revalidatePath('/reading')
     revalidatePath('/practice')
+    invalidateVocabularyGroupsCache()
     return { success: true, updatedCount: rows.length }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '批量更新失败'
@@ -602,6 +606,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
     revalidatePath('/vocabulary')
     revalidatePath('/reading')
     revalidatePath('/practice')
+    invalidateVocabularyGroupsCache()
     return { success: true, mergedCount: uniqMergeIds.length }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '归并失败'

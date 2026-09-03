@@ -4,6 +4,7 @@ import {
   Prisma,
   SourceType,
 } from '@prisma/client'
+import { revalidateTag, unstable_cache } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
@@ -45,18 +46,39 @@ export type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
   include: typeof VOCABULARY_DETAIL_INCLUDE
 }>
 
+export const VOCABULARY_GROUPS_CACHE_TAG = 'vocabulary-groups'
+
+const getCachedVocabularyGroups = unstable_cache(
+  async (userId: string, whereKey: string) =>
+    prisma.vocabulary.findMany({
+      where: {
+        AND: [
+          { userId },
+          JSON.parse(whereKey) as Prisma.VocabularyWhereInput,
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        word: true,
+        pronunciations: true,
+        // partsOfSpeech keeps the POS-filter options working; it is part of
+        // the current row shape consumed by the vocabulary page.
+        partsOfSpeech: true,
+        sourceType: true,
+      },
+    }),
+  ['vocabulary-groups-v1'],
+  { tags: [VOCABULARY_GROUPS_CACHE_TAG], revalidate: 300 },
+)
+
+export function invalidateVocabularyGroupsCache() {
+  revalidateTag(VOCABULARY_GROUPS_CACHE_TAG, 'max')
+}
+
 export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
   const userId = await getCurrentUserId()
-  return prisma.vocabulary.findMany({
-    where: { AND: [{ userId }, where] },
-    orderBy: { createdAt: 'desc' },
-    select: {
-      id: true,
-      word: true,
-      pronunciations: true,
-      sourceType: true,
-    },
-  })
+  return getCachedVocabularyGroups(userId, JSON.stringify(where))
 }
 
 export async function listVocabularyDetailsByWords(words: string[]) {

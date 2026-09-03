@@ -10,6 +10,7 @@ import {
 } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
+import { invalidateVocabularyGroupsCache } from './server/repository'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
@@ -201,6 +202,7 @@ export async function saveVocabulary(
       })
     }
 
+    invalidateVocabularyGroupsCache()
     return {
       success: true,
       state: 'success',
@@ -237,6 +239,7 @@ export async function updateVocabularyPronunciationById(
         pronunciations: toJsonStringList(nextPron ? [nextPron] : []),
       },
     })
+    invalidateVocabularyGroupsCache()
     return { success: true }
   } catch (error) {
     console.error(error)
@@ -261,6 +264,7 @@ export async function updateVocabularyPartsOfSpeechById(
     })
     if (updated.count === 0) return { success: false, message: '单词不存在' }
     revalidatePath('/vocabulary')
+    invalidateVocabularyGroupsCache()
     return { success: true }
   } catch (error) {
     console.error(error)
@@ -284,6 +288,7 @@ export async function updateVocabularyMeaningsById(
     if (updated.count === 0) return { success: false, message: '单词不存在' }
     revalidatePath('/vocabulary')
     revalidatePath('/reading')
+    invalidateVocabularyGroupsCache()
     return { success: true, meanings: normalized }
   } catch (error) {
     console.error(error)
@@ -298,6 +303,7 @@ export async function deleteVocabulary(id: string) {
     const userId = await getCurrentUserId()
     const deleted = await prisma.vocabulary.deleteMany({ where: { id, userId } })
     if (deleted.count === 0) return { success: false, message: '单词不存在' }
+    invalidateVocabularyGroupsCache()
     return { success: true, message: '删除成功' }
   } catch (error) {
     console.error(error)
@@ -714,6 +720,7 @@ export async function updateVocabularyTags(
     })
 
     revalidatePath('/vocabulary')
+    invalidateVocabularyGroupsCache()
     return { success: true }
   } catch (error) {
     console.error('updateVocabularyTags error:', error)
