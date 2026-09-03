@@ -59,7 +59,7 @@ test('centralized Prisma extension covers all writers without per-site code', as
   assert.match(client, /\$extends\(/)
   assert.match(client, /\$allModels/)
   assert.match(client, /\$allOperations/)
-  for (const model of ['Vocabulary', 'WordbookVocabulary']) {
+  for (const model of ['Vocabulary', 'WordbookVocabulary', 'Wordbook', 'WordbookSeries']) {
     assert.match(client, new RegExp(`'${model}'`), `model ${model}`)
   }
   for (const operation of [
@@ -80,4 +80,13 @@ test('centralized Prisma extension covers all writers without per-site code', as
   // The extension keeps the exact PrismaClient API so existing
   // TransactionClient-typed call sites keep compiling.
   assert.match(client, /as unknown as PrismaClient/)
+})
+
+test('wordbook options reuse the same cache tag', async () => {
+  const repository = await read(
+    'modules/knowledge/wordbooks/repository.ts',
+  )
+  assert.match(repository, /unstable_cache/)
+  assert.match(repository, /VOCABULARY_GROUPS_CACHE_TAG/)
+  assert.match(repository, /getCachedWordbookOptions\(userId\)/)
 })

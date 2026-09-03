@@ -2,13 +2,15 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { revalidateTag } from 'next/cache'
 
-// Models whose writes change the vocabulary-groups cache (tab counts and
-// group membership on /vocabulary). The tag must stay identical to
-// VOCABULARY_GROUPS_CACHE_TAG in
+// Models whose writes change the vocabulary-groups cache (tab counts,
+// group membership, and wordbook options on /vocabulary). The tag must stay
+// identical to VOCABULARY_GROUPS_CACHE_TAG in
 // modules/knowledge/vocabulary/server/repository.ts.
 const VOCABULARY_GROUPS_WRITE_MODELS = new Set([
   'Vocabulary',
   'WordbookVocabulary',
+  'Wordbook',
+  'WordbookSeries',
 ])
 const VOCABULARY_GROUPS_WRITE_OPERATIONS = new Set([
   'create',
