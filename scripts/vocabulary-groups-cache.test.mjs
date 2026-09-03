@@ -53,3 +53,28 @@ test('every wordbook membership writer busts the groups cache', async () => {
   assert.match(helper.slice(0, 400), /invalidateVocabularyGroupsCache\(\)/)
   assert.ok(countOccurrences(wordbooks, 'revalidateWordbooks(') >= 6)
 })
+
+test('centralized Prisma extension covers all writers without per-site code', async () => {
+  const client = await read('lib/prisma.ts')
+  assert.match(client, /\$extends\(/)
+  assert.match(client, /\$allModels/)
+  assert.match(client, /\$allOperations/)
+  for (const model of ['Vocabulary', 'WordbookVocabulary']) {
+    assert.match(client, new RegExp(`'${model}'`), `model ${model}`)
+  }
+  for (const operation of [
+    'create',
+    'createMany',
+    'update',
+    'updateMany',
+    'upsert',
+    'delete',
+    'deleteMany',
+  ]) {
+    assert.match(client, new RegExp(`'${operation}'`), `operation ${operation}`)
+  }
+  // Same tag as the explicit helper: busts are idempotent across both paths.
+  assert.match(client, /revalidateTag\('vocabulary-groups', 'max'\)/)
+  // Non-request contexts (scripts/build) must not crash writes.
+  assert.match(client, /catch \{/)
+})
