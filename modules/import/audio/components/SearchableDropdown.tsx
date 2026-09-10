@@ -156,7 +156,7 @@ export default function SearchableDropdown({
           ) : groupedOptions ? (
             Array.from(groupedOptions.entries()).map(([group, groupOpts]) => (
               <div key={group}>
-                <div className='sticky top-0 z-[5] border-b border-gray-50 bg-gray-50/90 px-4 py-1.5 text-[10px] font-black uppercase tracking-wider text-gray-400 backdrop-blur-sm'>
+                <div className='sticky top-0 z-[5] border-b border-gray-50 bg-gray-50/90 px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 backdrop-blur-sm'>
                   {group}
                 </div>
                 {groupOpts.map(option => (

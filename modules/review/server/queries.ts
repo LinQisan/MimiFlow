@@ -1,3 +1,5 @@
+import 'server-only'
+
 import prisma from '@/lib/prisma'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import { getCurrentUserId } from '@/modules/users/server/current-user'

@@ -1,4 +1,9 @@
-import { CollectionType, MaterialType } from '@prisma/client'
+import {
+  CollectionType,
+  MaterialType,
+  Prisma,
+  QuestionType,
+} from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'
@@ -211,4 +216,69 @@ export async function getUploadPageSeedData({
     : allDbCollections
 
   return { dbLevels, dbCollections }
+}
+
+export async function getDefaultListeningQuestionsPerMaterial({
+  language,
+  questionType,
+  listeningSectionNumber,
+}: {
+  language: string
+  questionType: QuestionType
+  listeningSectionNumber?: number
+}): Promise<number | null> {
+  const sectionFilter = listeningSectionNumber
+    ? Prisma.sql`AND COALESCE(
+        CASE
+          WHEN m.content_payload->>'listeningSectionNumber' ~ '^[1-9][0-9]*$'
+            THEN (m.content_payload->>'listeningSectionNumber')::int
+        END,
+        CASE
+          WHEN m.content_payload->>'sectionNumber' ~ '^[1-9][0-9]*$'
+            THEN (m.content_payload->>'sectionNumber')::int
+        END,
+        CASE
+          WHEN q.content->>'listeningSectionNumber' ~ '^[1-9][0-9]*$'
+            THEN (q.content->>'listeningSectionNumber')::int
+        END,
+        CASE
+          WHEN q.content->>'sectionNumber' ~ '^[1-9][0-9]*$'
+            THEN (q.content->>'sectionNumber')::int
+        END
+      ) = ${listeningSectionNumber}`
+    : Prisma.empty
+
+  const rows = await prisma.$queryRaw<
+    Array<{ questionCount: number; materialCount: number }>
+  >(Prisma.sql`
+    WITH material_question_counts AS (
+      SELECT
+        m.id,
+        COUNT(q.id)::int AS question_count
+      FROM materials m
+      JOIN questions q ON q.material_id = m.id
+      WHERE m.type = 'LISTENING'
+        AND q.question_type = ${questionType}::"QuestionType"
+        ${sectionFilter}
+        AND EXISTS (
+          SELECT 1
+          FROM collection_materials cm
+          JOIN collections c ON c.id = cm.collection_id
+          WHERE cm.material_id = m.id
+            AND c.collection_type = 'PAPER'
+            AND LOWER(c.language) = LOWER(${language})
+        )
+      GROUP BY m.id
+    )
+    SELECT
+      question_count AS "questionCount",
+      COUNT(*)::int AS "materialCount"
+    FROM material_question_counts
+    WHERE question_count BETWEEN 1 AND 5
+    GROUP BY question_count
+    ORDER BY "materialCount" DESC, "questionCount" DESC
+    LIMIT 1
+  `)
+
+  return rows[0]?.questionCount ?? null
 }

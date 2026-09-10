@@ -270,7 +270,7 @@ export default async function PaperPage({
           </Link>
           <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-950 md:text-3xl">
                 {paper.name}
               </h1>
               <p className="mt-1 text-sm text-slate-500">
@@ -342,7 +342,7 @@ export default async function PaperPage({
                           <span className="font-normal text-slate-400">/60</span>
                         )}
                       </td>
-                      <td className="px-3 py-3 text-center font-black tabular-nums text-slate-950">
+                      <td className="px-3 py-3 text-center font-bold tabular-nums text-slate-950">
                         {submission.totalScore ?? "—"}
                         {submission.totalScore !== null && (
                           <span className="font-normal text-slate-400">/180</span>
@@ -408,6 +408,7 @@ export default async function PaperPage({
                       {section.questions.map((question) => (
                         <Link
                           href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                          prefetch={false}
                           key={question.id}
                           className="group flex gap-3 border-t border-slate-100 py-3 text-sm transition first:border-t-0 hover:text-slate-950"
                         >
@@ -440,6 +441,7 @@ export default async function PaperPage({
                       question => (
                         <Link
                           href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                          prefetch={false}
                           key={question.id}
                           aria-label={`文章の文法第 ${questionNumberMap.get(question.id) || 1} 题`}
                           className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
@@ -490,6 +492,7 @@ export default async function PaperPage({
                               <Link
                                 key={passageGroup.materialId}
                                 href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                prefetch={false}
                                 aria-label={`${section.title}第 ${questionNumberMap.get(question.id) || passageIndex + 1} 题，${question.passageTitle}`}
                                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                               >
@@ -515,6 +518,7 @@ export default async function PaperPage({
                                     <Link
                                       key={question.id}
                                       href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                      prefetch={false}
                                       aria-label={`第 ${questionNumberMap.get(question.id) || questionIndex + 1} 题`}
                                       className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                                     >
@@ -586,6 +590,7 @@ export default async function PaperPage({
                             return (
                               <Link
                                 href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                prefetch={false}
                                 key={lessonGroup.materialId}
                                 aria-label={`${sectionHeading}第 ${questionNumberMap.get(question.id) || lessonIndex + 1} 题`}
                                 className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
@@ -612,6 +617,7 @@ export default async function PaperPage({
                                     <Link
                                       key={question.id}
                                       href={`/practice/${encodeURIComponent(paper.id)}/do?qid=${encodeURIComponent(question.id)}`}
+                                      prefetch={false}
                                       aria-label={`第 ${questionNumberMap.get(question.id) || questionIndex + 1} 题`}
                                       className="flex h-9 min-w-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold tabular-nums text-slate-600 transition hover:border-slate-400 hover:text-slate-950"
                                     >

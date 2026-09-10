@@ -110,9 +110,8 @@ export default function ExamScoreManager({
     <div className='grid gap-8 lg:grid-cols-[22rem_minmax(0,1fr)]'>
       <form
         onSubmit={handleSubmit}
-        className='h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_16px_48px_-38px_rgba(15,23,42,0.55)] lg:sticky lg:top-24'>
-        <h2 className='text-lg font-bold text-slate-950'>补录考试成绩</h2>
-        <p className='mt-1 text-xs leading-5 text-slate-500'>总分会根据分项自动计算。</p>
+        className='h-fit border-b border-slate-200 py-5 lg:sticky lg:top-24 lg:border-b-0 lg:py-0'>
+        <h2 className='ui-section-head'>补录考试成绩</h2>
 
         <div className='mt-5 grid grid-cols-2 gap-2'>
           {[ExamScoreType.JLPT, ExamScoreType.TOEIC].map(type => (
@@ -200,7 +199,7 @@ export default function ExamScoreManager({
 
           <div className='flex items-end justify-between border-y border-slate-100 py-3'>
             <span className='text-xs font-semibold text-slate-500'>总分</span>
-            <span className='text-3xl font-black tabular-nums text-slate-950'>
+            <span className='text-3xl font-bold tabular-nums text-slate-950'>
               {totalScore}<small className='ml-1 text-xs font-semibold text-slate-400'>/ {examType === ExamScoreType.JLPT ? 180 : 990}</small>
             </span>
           </div>
@@ -225,13 +224,13 @@ export default function ExamScoreManager({
         </div>
 
         {records.length === 0 ? (
-          <p className='rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500'>还没有考试成绩记录。</p>
+          <p className='ui-empty'>还没有考试成绩记录。</p>
         ) : (
-          <div className='space-y-3'>
+          <div className='divide-y divide-slate-200 border-y border-slate-200'>
             {records.map(record => {
               const maxScore = record.examType === ExamScoreType.JLPT ? 180 : 990
               return (
-                <article key={record.id} className='rounded-2xl border border-slate-200 bg-white p-5'>
+                <article key={record.id} className='py-4'>
                   <div className='flex items-start justify-between gap-4'>
                     <div>
                       <div className='flex flex-wrap items-center gap-2'>
@@ -240,18 +239,18 @@ export default function ExamScoreManager({
                       </div>
                     </div>
                     <div className='text-right'>
-                      <strong className='text-3xl font-black tabular-nums text-slate-950'>{record.totalScore}</strong>
+                      <strong className='text-2xl font-bold tabular-nums text-slate-950'>{record.totalScore}</strong>
                       <span className='text-xs font-semibold text-slate-400'> / {maxScore}</span>
                     </div>
                   </div>
 
-                  <div className={`mt-4 grid gap-2 ${record.examType === ExamScoreType.JLPT ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                  <div className={`mt-3 grid gap-2 ${record.examType === ExamScoreType.JLPT ? 'grid-cols-3' : 'grid-cols-2'}`}>
                     {record.languageScore != null ? <ScoreItem label='语言知识' value={record.languageScore} max={60} /> : null}
                     <ScoreItem label='阅读' value={record.readingScore} max={record.examType === ExamScoreType.JLPT ? 60 : 495} />
                     <ScoreItem label='听力' value={record.listeningScore} max={record.examType === ExamScoreType.JLPT ? 60 : 495} />
                   </div>
 
-                  <div className='mt-4 flex justify-end border-t border-slate-100 pt-3'>
+                  <div className='mt-3 flex justify-end'>
                     <button type='button' disabled={isPending} onClick={() => void handleDelete(record)} className='text-xs font-semibold text-slate-400 hover:text-rose-700 disabled:opacity-50'>删除记录</button>
                   </div>
                 </article>
@@ -266,9 +265,9 @@ export default function ExamScoreManager({
 
 function ScoreItem({ label, value, max }: { label: string; value: number; max: number }) {
   return (
-    <div className='rounded-xl bg-slate-50 px-3 py-2.5'>
+    <div className='border-l border-slate-200 pl-3'>
       <p className='text-[10px] font-semibold text-slate-400'>{label}</p>
-      <p className='mt-1 text-lg font-black tabular-nums text-slate-900'>{value}<span className='ml-1 text-[10px] font-semibold text-slate-400'>/ {max}</span></p>
+      <p className='mt-0.5 text-lg font-bold tabular-nums text-slate-900'>{value}<span className='ml-1 text-[10px] font-semibold text-slate-400'>/ {max}</span></p>
     </div>
   )
 }

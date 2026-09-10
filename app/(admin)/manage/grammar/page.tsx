@@ -47,7 +47,7 @@ export default async function GrammarEditPage() {
       <div className='mx-auto max-w-6xl space-y-4'>
         <header className='flex flex-wrap items-center justify-between gap-3'>
           <div className='flex items-baseline gap-3'>
-            <h1 className='text-xl font-black text-slate-950 md:text-2xl'>语法</h1>
+            <h1 className='text-xl font-bold text-slate-950 md:text-2xl'>语法</h1>
             <span className='text-sm text-slate-400'>{grammars.length} 条</span>
           </div>
           <Link href='/grammar' className='ui-btn ui-btn-sm'>

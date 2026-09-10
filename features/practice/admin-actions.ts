@@ -23,6 +23,10 @@ import {
   supportsSeparateQuestionContext,
   usesExplicitQuestionTargetWord,
 } from '@/modules/practice/domain/question-text'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 const updatePaperQuestionSchema = z.object({
   questionId: z.string().trim().min(1, '题目 ID 缺失。'),
@@ -116,6 +120,8 @@ export async function deletePaperQuestions(payload: unknown) {
         await resequenceMaterialQuestions(tx, materialId)
       }
     })
+    await precomputePracticeVocabularyMaterialAnalyses(affectedMaterialIds)
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePaperQuestionRoutes(input.paperId)
     return actionSuccess(
@@ -179,6 +185,8 @@ export async function movePaperQuestions(payload: unknown) {
       bucket.push(question)
       grouped.set(question.materialId, bucket)
     }
+    const affectedMaterialIds = new Set(grouped.keys())
+    const clonedMaterialIds: string[] = []
 
     await prisma.$transaction(async tx => {
       const targetLastMaterial = await tx.collectionMaterial.aggregate({
@@ -242,6 +250,7 @@ export async function movePaperQuestions(payload: unknown) {
           },
           select: { id: true },
         })
+        clonedMaterialIds.push(clonedMaterial.id)
         nextMaterialOrder += 1
         await tx.question.updateMany({
           where: { id: { in: selectedQuestions.map(question => question.id) } },
@@ -251,6 +260,11 @@ export async function movePaperQuestions(payload: unknown) {
         await resequenceMaterialQuestions(tx, clonedMaterial.id)
       }
     })
+    await precomputePracticeVocabularyMaterialAnalyses([
+      ...affectedMaterialIds,
+      ...clonedMaterialIds,
+    ])
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePaperQuestionRoutes(input.paperId)
     revalidatePaperQuestionRoutes(input.targetPaperId)
@@ -319,6 +333,7 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
       answer: true,
       material: {
         select: {
+          id: true,
           type: true,
           collectionMaterials: {
             take: 1,
@@ -435,6 +450,8 @@ export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
     where: { id: questionId },
     data,
   })
+  await precomputePracticeVocabularyMaterialAnalyses([current.material.id])
+  invalidatePracticeVocabularyAnalytics()
 
   const paperId = current.material.collectionMaterials[0]?.collectionId
   revalidatePath('/manage/practice')

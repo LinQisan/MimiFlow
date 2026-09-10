@@ -165,6 +165,7 @@ function PaperReadingNavigator({
             <Link
               key={item.id}
               href={buildHref(item.id)}
+              prefetch={false}
               aria-label={label}
               title={`${item.title} · ${item.questionCount}题`}
               className={className}>
@@ -558,7 +559,7 @@ export default function EditArticleUI({
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="文章标题"
-              className="mt-1 block w-full border-0 bg-transparent p-0 text-xl font-black tracking-tight text-slate-950 outline-none placeholder:text-slate-300 focus:ring-0 md:text-2xl"
+              className="mt-1 block w-full border-0 bg-transparent p-0 text-xl font-bold tracking-tight text-slate-950 outline-none placeholder:text-slate-300 focus:ring-0 md:text-2xl"
             />
             {isPaperArticle ? (
               <div className='mt-1 flex flex-wrap items-center gap-2'>

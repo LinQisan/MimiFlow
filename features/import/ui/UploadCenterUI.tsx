@@ -63,6 +63,7 @@ interface Props {
   language?: string
   collectionScope?: 'paper' | 'material'
   defaultQuestionType?: string
+  defaultQuestionsPerMaterial?: number
   toeicPartLabel?: string
   defaultListeningSectionNumber?: string
   listeningSectionLabel?: string
@@ -237,6 +238,7 @@ export default function UploadCenterUI({
   language = 'ja',
   collectionScope = 'material',
   defaultQuestionType,
+  defaultQuestionsPerMaterial,
   toeicPartLabel,
   defaultListeningSectionNumber,
   listeningSectionLabel,
@@ -1173,6 +1175,7 @@ export default function UploadCenterUI({
               defaultLanguage={language}
               collectionScope={collectionScope}
               defaultQuestionType={defaultQuestionType}
+              defaultQuestionsPerMaterial={defaultQuestionsPerMaterial}
               toeicPartLabel={toeicPartLabel}
               defaultListeningSectionNumber={defaultListeningSectionNumber}
               listeningSectionLabel={listeningSectionLabel}
@@ -1380,7 +1383,7 @@ export default function UploadCenterUI({
             ) : (
               <>
                 <section className="border-b border-slate-200 py-6">
-                  <label className="mb-2 block text-sm font-black text-slate-900">
+                  <label className="mb-2 block text-sm font-bold text-slate-900">
                     快速粘贴
                   </label>
                   <textarea
@@ -1402,7 +1405,7 @@ export default function UploadCenterUI({
                             key={idx}
                             type="button"
                             onClick={() => setCorrectOption(idx)}
-                            className={`h-9 min-w-9 px-3 text-sm font-black transition-colors ${quizForm.options[idx].isCorrect ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-600 hover:border-slate-500'}`}
+                            className={`h-9 min-w-9 px-3 text-sm font-bold transition-colors ${quizForm.options[idx].isCorrect ? 'bg-slate-900 text-white' : 'border border-slate-300 bg-white text-slate-600 hover:border-slate-500'}`}
                           >
                             {idx + 1}
                           </button>
@@ -1653,7 +1656,7 @@ export default function UploadCenterUI({
                     isSubmitting || !quizHasQuestionContent || !quizSortingReady
                   }
                   type="submit"
-                  className="w-full bg-slate-900 py-3.5 font-black text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
+                  className="w-full bg-slate-900 py-3.5 font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-50"
                 >
                   {isSubmitting
                     ? '保存中...'

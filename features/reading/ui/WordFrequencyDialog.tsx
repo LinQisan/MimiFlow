@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import CustomSelect from '@/components/ui/CustomSelect'
+import WordbookScopeFilter from '@/components/vocabulary/WordbookScopeFilter'
+import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
+import { filterReadingFrequencyRowsByWordbooks } from '@/features/reading/domain/word-frequency'
+import { resolveWordbookFilterIds } from '@/modules/knowledge/vocabulary/domain/wordbook-list'
 import {
   mergeWordFrequencyRows,
   sortWordFrequencyRows,
@@ -21,6 +25,13 @@ type FrequencyScope = 'all' | FrequencyMaterial['kind']
 
 const PAGE_SIZE = 50
 const EMPTY_MATERIALS: FrequencyMaterial[] = []
+const EMPTY_DISTRIBUTION: PaperWordbookDistribution = {
+  totalWords: 0,
+  outsideCount: 0,
+  outsideRate: 0,
+  outsideWords: [],
+  wordbooks: [],
+}
 
 export default function WordFrequencyDialog({
   materialCount,
@@ -29,6 +40,8 @@ export default function WordFrequencyDialog({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [materials, setMaterials] = useState<FrequencyMaterial[] | null>(null)
+  const [wordbookDistribution, setWordbookDistribution] =
+    useState<PaperWordbookDistribution>(EMPTY_DISTRIBUTION)
   const [isLoading, setIsLoading] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [scope, setScope] = useState<FrequencyScope>('all')
@@ -36,6 +49,7 @@ export default function WordFrequencyDialog({
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const [sortMode, setSortMode] = useState<WordFrequencySortMode>('learning')
+  const [wordbookFilter, setWordbookFilter] = useState('all')
   const availableMaterials = materials || EMPTY_MATERIALS
 
   const loadMaterials = async () => {
@@ -47,7 +61,12 @@ export default function WordFrequencyDialog({
         cache: 'no-store',
       })
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
-      setMaterials((await response.json()) as FrequencyMaterial[])
+      const result = (await response.json()) as {
+        materials: FrequencyMaterial[]
+        wordbookDistribution: PaperWordbookDistribution
+      }
+      setMaterials(result.materials)
+      setWordbookDistribution(result.wordbookDistribution)
     } catch {
       setLoadError('词频统计加载失败，请重试。')
     } finally {
@@ -82,17 +101,30 @@ export default function WordFrequencyDialog({
   )
   const filteredRows = useMemo(() => {
     const keyword = query.normalize('NFKC').trim().toLowerCase()
-    const rows = sortWordFrequencyRows(
-      mergeWordFrequencyRows(filteredMaterials.map(item => item.rows)),
-      sortMode,
+    const selectedWordbookIds = resolveWordbookFilterIds(
+      wordbookDistribution.wordbooks,
+      wordbookFilter,
     )
-    if (!keyword) return rows
-    return rows.filter(item =>
+    const rows = filterReadingFrequencyRowsByWordbooks(
+      mergeWordFrequencyRows(filteredMaterials.map(item => item.rows)),
+      selectedWordbookIds,
+      wordbookFilter === 'none',
+      wordbookDistribution.wordbooks,
+      wordbookDistribution.outsideWords,
+    )
+    const matchingRows = !keyword ? rows : rows.filter(item =>
       `${item.word} ${item.reading} ${item.partOfSpeech}`
         .toLowerCase()
         .includes(keyword),
     )
-  }, [filteredMaterials, query, sortMode])
+    return sortWordFrequencyRows(matchingRows, sortMode)
+  }, [
+    filteredMaterials,
+    query,
+    sortMode,
+    wordbookFilter,
+    wordbookDistribution,
+  ])
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const normalizedPage = Math.min(page, totalPages)
   const visibleRows = filteredRows.slice(
@@ -104,7 +136,7 @@ export default function WordFrequencyDialog({
     0,
   )
 
-  useEffect(() => setPage(1), [query, scope, sortMode, year])
+  useEffect(() => setPage(1), [query, scope, sortMode, wordbookFilter, year])
 
   useEffect(() => {
     if (!isOpen) return
@@ -165,6 +197,18 @@ export default function WordFrequencyDialog({
                 关闭
               </button>
             </header>
+
+            <WordbookScopeFilter
+              wordbooks={wordbookDistribution.wordbooks.map(wordbook => ({
+                ...wordbook,
+                totalCount: wordbook.matchedCount,
+              }))}
+              value={wordbookFilter}
+              visibleCount={filteredRows.length}
+              isLoading={isLoading}
+              error={loadError}
+              onChange={setWordbookFilter}
+            />
 
             <div className='min-h-0 overflow-y-auto px-5 py-5 md:px-6'>
               <div className='grid gap-3 border-b border-slate-200 pb-5 sm:grid-cols-2 lg:grid-cols-4'>

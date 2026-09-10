@@ -53,7 +53,6 @@ type Props = {
 
 export default function MediaSubtitleEditor({
   materialId,
-  initialTitle,
   initialDialogues,
   initialPronunciationMap,
   initialVocabularyMetaMap,
@@ -133,7 +132,14 @@ export default function MediaSubtitleEditor({
       ),
     [filteredRows, normalizedPage, pageSize],
   )
-  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+  const {
+    learningPoints,
+    isLoadingLearningPoints,
+    learningPointSelection,
+    closeLearningPoint,
+    inspectLearningPoint,
+    inspectLearningPointWord,
+  } = useStudyTextHighlights({
     rootRef: subtitleRootRef,
     contentKey: `${normalizedPage}:${paginatedRows
       .map(row => `${row.stableId}:${row.text}`)
@@ -610,12 +616,7 @@ export default function MediaSubtitleEditor({
       onClick={handleEditorBackgroundClick}>
       <div className='border-b border-slate-200 px-4 py-4 md:px-5'>
         <div className='flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between'>
-          <div>
-            <h2 className='text-xl font-black text-slate-950'>字幕阅读</h2>
-            <p className='mt-1 text-sm text-slate-500'>
-              {initialTitle}。选择句子可加入词汇，行内可收藏、写笔记和修正文案。
-            </p>
-          </div>
+          <h2 className='ui-section-head'>字幕阅读</h2>
           <div className='flex flex-wrap gap-2 text-xs font-bold text-slate-600'>
             <span className='rounded border border-slate-200 bg-slate-50 px-2.5 py-1'>
               {rows.length} 句
@@ -663,6 +664,10 @@ export default function MediaSubtitleEditor({
           <LearningPointHighlightPanel
             points={learningPoints}
             isLoading={isLoadingLearningPoints}
+            selection={learningPointSelection}
+            onClose={closeLearningPoint}
+            onInspect={inspectLearningPoint}
+            onInspectWord={inspectLearningPointWord}
           />
         ) : null}
 
@@ -670,7 +675,7 @@ export default function MediaSubtitleEditor({
           <div className='rounded-lg border border-slate-200 bg-slate-50 p-3'>
             <div className='flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
               <div>
-                <p className='text-xs font-black text-slate-700'>复制字幕文本</p>
+                <p className='text-xs font-bold text-slate-700'>复制字幕文本</p>
                 <p className='mt-1 text-xs text-slate-500'>
                   可按句号范围复制，也可点击字幕框选择，Shift 点击另一框批量选择。
                 </p>
@@ -698,7 +703,7 @@ export default function MediaSubtitleEditor({
                   <button
                     type='button'
                     onClick={() => void handleCopyRange()}
-                    className={`col-span-2 h-10 rounded-md border px-3 text-xs font-black transition sm:col-span-1 ${
+                    className={`col-span-2 h-10 rounded-md border px-3 text-xs font-bold transition sm:col-span-1 ${
                       copyState === 'copied'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : copyState === 'error'
@@ -717,7 +722,7 @@ export default function MediaSubtitleEditor({
                     type='button'
                     onClick={() => void handleCopySelectedRows()}
                     disabled={selectedRowIds.size === 0}
-                    className={`h-10 rounded-md border px-3 text-xs font-black transition ${
+                    className={`h-10 rounded-md border px-3 text-xs font-bold transition ${
                       selectedCopyState === 'copied'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
                         : selectedCopyState === 'error'
@@ -787,7 +792,7 @@ export default function MediaSubtitleEditor({
                 <div className='flex items-start gap-3'>
                   <div
                     data-context-ignore
-                    className='mt-1 flex h-7 min-w-9 shrink-0 items-center justify-center rounded bg-slate-100 px-2 text-[11px] font-black text-slate-500'>
+                    className='mt-1 flex h-7 min-w-9 shrink-0 items-center justify-center rounded bg-slate-100 px-2 text-[11px] font-bold text-slate-500'>
                     #{row.id}
                   </div>
                   <div className='min-w-0 flex-1'>
@@ -996,29 +1001,28 @@ export default function MediaSubtitleEditor({
         </div>
 
         {filteredRows.length > 0 && (
-          <div className='flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3'>
-            <p className='text-xs text-slate-500'>
-              当前显示第 {visibleStart}-{visibleEnd} 句
+          <div className='flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 py-3'>
+            <p className='ui-meta tabular-nums'>
+              第 {visibleStart}-{visibleEnd} 句 · {normalizedPage} / {totalPages} 页
             </p>
-            <div className='flex items-center gap-2'>
+            <div className='flex items-center gap-0.5'>
               <button
                 type='button'
+                aria-label='上一页'
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={normalizedPage <= 1}
-                className='h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40'>
-                上一页
+                className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>
+                ‹
               </button>
-              <span className='rounded border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600'>
-                {normalizedPage} / {totalPages}
-              </span>
               <button
                 type='button'
+                aria-label='下一页'
                 onClick={() =>
                   setCurrentPage(prev => Math.min(totalPages, prev + 1))
                 }
                 disabled={normalizedPage >= totalPages}
-                className='h-9 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40'>
-                下一页
+                className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>
+                ›
               </button>
             </div>
           </div>

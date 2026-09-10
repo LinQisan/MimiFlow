@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation'
 import { getPracticeSubmissionReview } from '@/lib/repositories/exam'
 import PracticeSubmissionReviewClient from '@/features/practice/ui/PracticeSubmissionReviewClient'
-import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
+import { getSudachiPronunciationMap } from '@/modules/language/server/sudachi-pronunciation'
+import { getPaperWordbookDistribution } from '@/features/practice/server/paper-wordbook-distribution'
+import { buildWordFrequency } from '@/modules/language/domain/sudachi'
 import { buildExamAnnotationTexts } from '@/modules/practice/domain/exam-annotation-texts'
 
 export default async function PracticeSubmissionReviewPage({
@@ -26,7 +28,18 @@ export default async function PracticeSubmissionReviewPage({
     /日语|日文|日本语|日本語/.test(data.paperLanguage || '')
   const sudachiPronunciation = isJapanesePaper
     ? await getSudachiPronunciationMap(buildExamAnnotationTexts(questions))
-    : { available: false, pronunciationMap: {}, lexicon: {} }
+    : { available: false, pronunciationMap: {}, lexicon: {}, tokens: [] }
+
+  const wordbookDistributionWords =
+    isJapanesePaper
+      ? sudachiPronunciation.available
+        ? buildWordFrequency(sudachiPronunciation.tokens || []).map(row => row.word)
+        : Object.keys(data.vocabularyMetaMap)
+      : []
+  const wordbookDistribution =
+    wordbookDistributionWords.length > 0
+      ? await getPaperWordbookDistribution(wordbookDistributionWords)
+      : null
 
   return (
     <PracticeSubmissionReviewClient
@@ -41,6 +54,7 @@ export default async function PracticeSubmissionReviewPage({
       sudachiLexicon={sudachiPronunciation.lexicon}
       sudachiAvailable={sudachiPronunciation.available}
       vocabularyMetaMap={data.vocabularyMetaMap}
+      wordbookDistribution={wordbookDistribution}
     />
   )
 }

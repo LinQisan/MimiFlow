@@ -1,16 +1,25 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import {
   previewAnkiImport,
   runAnkiImport,
   syncWordbookSources,
 } from '@/features/import/anki-actions'
-import { listSelectableWordbooks } from '@/modules/knowledge/wordbooks/actions'
+import {
+  listSelectableWordbooks,
+  listSelectableWordbookSeries,
+} from '@/modules/knowledge/wordbooks/actions'
 import { useDialog } from '@/context/DialogContext'
 import CustomSelect from '@/components/ui/CustomSelect'
+import { JLPT_LEVELS } from '@/modules/knowledge/vocabulary/domain/jlpt'
+import { buildVocabularyAudioFolder } from '@/utils/vocabulary/audioFolder'
+import AnkiFileDropZone from './AnkiFileDropZone'
 
 type PreviewPayload = {
+  fileKind: 'apkg' | 'tsv'
+  deckNames: string[]
+  embeddedAudioFiles: number
   totalRows: number
   validRows: number
   skippedRows: number
@@ -28,6 +37,7 @@ type PreviewPayload = {
   globalTags?: string
   rowsJson: string
   sampleRows: {
+    etymologies?: string[]
     rowNo: number
     word: string
     wordAudioName: string
@@ -47,17 +57,26 @@ type WordbookOption = {
   seriesTitle: string
 }
 
+type WordbookSeriesOption = {
+  id: string
+  title: string
+}
+
 export default function AnkiImportPanel() {
   const dialog = useDialog()
-  const tsvRef = useRef<HTMLInputElement | null>(null)
   const audioRef = useRef<HTMLInputElement | null>(null)
-  const [pickedTsvName, setPickedTsvName] = useState('')
+  const [importFile, setImportFile] = useState<File | null>(null)
   const [isAudioDragging, setIsAudioDragging] = useState(false)
   const [pickedAudioNames, setPickedAudioNames] = useState<string[]>([])
-  const [audioFolder, setAudioFolder] = useState('vocabulary/anki')
   const [globalTags, setGlobalTags] = useState('')
-  const [notebookName, setNotebookName] = useState('')
+  const [jlpt, setJlpt] = useState('')
+  const [partsOfSpeech, setPartsOfSpeech] = useState('')
+  const [targetMode, setTargetMode] = useState<'new' | 'existing'>('new')
   const [wordbookId, setWordbookId] = useState('')
+  const [seriesId, setSeriesId] = useState('')
+  const [newSeriesTitle, setNewSeriesTitle] = useState('')
+  const [newWordbookTitle, setNewWordbookTitle] = useState('')
+  const [seriesOptions, setSeriesOptions] = useState<WordbookSeriesOption[]>([])
   const [wordbookOptions, setWordbookOptions] = useState<
     Array<WordbookOption & { pathLabel: string }>
   >([])
@@ -67,6 +86,8 @@ export default function AnkiImportPanel() {
     created: number
     updated: number
     linkedSentences: number
+    reusedAudios?: number
+    addedReadingAudios?: number
     uploadedAudios: number
     sourceName?: string
     notebookName?: string
@@ -81,17 +102,30 @@ export default function AnkiImportPanel() {
     setSummary(null)
   }
 
+  const refreshTargets = useCallback(async () => {
+    try {
+      const [rows, series] = await Promise.all([
+        listSelectableWordbooks() as Promise<WordbookOption[]>,
+        listSelectableWordbookSeries() as Promise<WordbookSeriesOption[]>,
+      ])
+      setWordbookOptions(rows.map(item => ({ ...item, pathLabel: `${item.seriesTitle} / ${item.title}` })))
+      setSeriesOptions(series)
+      setWordbookId(current => rows.some(item => item.id === current) ? current : '')
+      setSeriesId(current => series.some(item => item.id === current) ? current : '')
+    } catch {
+      setWordbookOptions([])
+      setSeriesOptions([])
+      setPreview(null)
+      dialog.toast('词表列表加载失败，请重新打开导入页面。', { tone: 'error' })
+    }
+  }, [dialog])
+
   useEffect(() => {
-    void (async () => {
-      const rows = (await listSelectableWordbooks()) as WordbookOption[]
-      setWordbookOptions(
-        rows.map(item => ({
-          ...item,
-          pathLabel: `${item.seriesTitle} / ${item.title}`,
-        })),
-      )
-    })()
-  }, [])
+    void refreshTargets()
+    const refresh = () => { setPreview(null); void refreshTargets() }
+    window.addEventListener('focus', refresh)
+    return () => window.removeEventListener('focus', refresh)
+  }, [refreshTargets])
 
   const selectedWordbookPathLabel = useMemo(
     () => wordbookOptions.find(item => item.id === wordbookId)?.pathLabel || '',
@@ -102,6 +136,43 @@ export default function AnkiImportPanel() {
     () => wordbookOptions.find(item => item.id === wordbookId)?.title || '',
     [wordbookId, wordbookOptions],
   )
+
+  const selectedWordbookSeriesTitle = useMemo(
+    () =>
+      wordbookOptions.find(item => item.id === wordbookId)?.seriesTitle || '',
+    [wordbookId, wordbookOptions],
+  )
+
+  const selectedSeriesTitle = useMemo(
+    () => seriesOptions.find(item => item.id === seriesId)?.title || '',
+    [seriesId, seriesOptions],
+  )
+
+  const notebookName = useMemo(() => {
+    if (targetMode === 'existing') return ''
+    const seriesTitle = selectedSeriesTitle || newSeriesTitle.trim()
+    const wordbookTitle = newWordbookTitle.trim()
+    return seriesTitle && wordbookTitle ? `${seriesTitle}/${wordbookTitle}` : ''
+  }, [newSeriesTitle, newWordbookTitle, selectedSeriesTitle, targetMode])
+
+  const audioFolder = useMemo(() => {
+    const seriesTitle =
+      targetMode === 'existing'
+        ? selectedWordbookSeriesTitle
+        : selectedSeriesTitle || newSeriesTitle.trim()
+    const wordbookTitle =
+      targetMode === 'existing'
+        ? selectedWordbookTitle
+        : newWordbookTitle.trim()
+    return buildVocabularyAudioFolder(seriesTitle, wordbookTitle)
+  }, [
+    newSeriesTitle,
+    newWordbookTitle,
+    selectedSeriesTitle,
+    selectedWordbookSeriesTitle,
+    selectedWordbookTitle,
+    targetMode,
+  ])
 
   const wordbooksBySeries = useMemo(() => {
     const groups = new Map<string, { title: string; options: typeof wordbookOptions }>()
@@ -117,15 +188,20 @@ export default function AnkiImportPanel() {
   }, [wordbookOptions])
 
   const buildFormDataForPreview = () => {
-    const file = tsvRef.current?.files?.[0]
-    if (!file) return null
+    if (!importFile) return null
     const formData = new FormData()
-    formData.set('tsvFile', file)
-    formData.set('audioFolder', audioFolder)
+    formData.set('ankiFile', importFile)
     formData.set('globalTags', globalTags.trim())
+    formData.set('jlpt', jlpt)
+    formData.set('partsOfSpeech', partsOfSpeech.trim())
     formData.set('notebookName', notebookName.trim())
-    formData.set('wordbookId', wordbookId)
-    formData.set('wordbookTitle', selectedWordbookTitle)
+    formData.set('wordbookId', targetMode === 'existing' ? wordbookId : '')
+    formData.set('seriesId', targetMode === 'new' ? seriesId : '')
+    formData.set('seriesTitle', targetMode === 'new' ? newSeriesTitle.trim() : '')
+    formData.set(
+      'wordbookTitle',
+      targetMode === 'existing' ? selectedWordbookTitle : newWordbookTitle.trim(),
+    )
     const audioFiles = audioRef.current?.files || []
     Array.from(audioFiles).forEach(item => formData.append('audioFiles', item))
     return formData
@@ -133,9 +209,15 @@ export default function AnkiImportPanel() {
 
   const handlePreview = () => {
     startPreviewTransition(async () => {
+      if (targetMode === 'existing' && !wordbookId) {
+        dialog.toast('请选择要导入到的词表。', { tone: 'error' })
+        return
+      }
       const formData = buildFormDataForPreview()
       if (!formData) {
-        dialog.toast('请先选择 Anki TSV 文件。', { tone: 'error' })
+        dialog.toast('请先选择 Anki APKG、TXT 或 TSV 文件。', {
+          tone: 'error',
+        })
         return
       }
       const result = await previewAnkiImport(formData)
@@ -148,6 +230,22 @@ export default function AnkiImportPanel() {
         dialog.toast('预览结果为空', { tone: 'error' })
         setPreview(null)
         return
+      }
+      if (targetMode === 'new' && result.preview.notebookName) {
+        const [suggestedSeriesTitle, suggestedWordbookTitle] = result.preview.notebookName
+          .split(/[\\/]/)
+          .map(item => item.trim())
+          .filter(Boolean)
+        if (suggestedSeriesTitle && suggestedWordbookTitle) {
+          if (!seriesId && !newSeriesTitle.trim()) {
+            const existingSeries = seriesOptions.find(
+              item => item.title === suggestedSeriesTitle,
+            )
+            setSeriesId(existingSeries?.id || '')
+            setNewSeriesTitle(existingSeries ? '' : suggestedSeriesTitle)
+          }
+          if (!newWordbookTitle.trim()) setNewWordbookTitle(suggestedWordbookTitle)
+        }
       }
       setPreview(result.preview)
       setSummary(null)
@@ -163,14 +261,26 @@ export default function AnkiImportPanel() {
       }
       const formData = new FormData()
       formData.set('rowsJson', preview.rowsJson)
-      formData.set('audioFolder', audioFolder)
       formData.set('globalTags', globalTags.trim())
+      formData.set('jlpt', jlpt)
+      formData.set('partsOfSpeech', partsOfSpeech.trim())
       formData.set('notebookName', notebookName.trim())
-      formData.set('wordbookId', wordbookId)
+      formData.set('wordbookId', targetMode === 'existing' ? wordbookId : '')
+      formData.set('seriesId', targetMode === 'new' ? seriesId : '')
+      formData.set('seriesTitle', targetMode === 'new' ? newSeriesTitle.trim() : '')
+      formData.set('wordbookTitle', targetMode === 'new' ? newWordbookTitle.trim() : '')
+      if (importFile) formData.set('ankiFile', importFile)
       const audioFiles = audioRef.current?.files || []
       Array.from(audioFiles).forEach(item => formData.append('audioFiles', item))
 
-      const result = await runAnkiImport(formData)
+      let result
+      try {
+        result = await runAnkiImport(formData)
+      } catch {
+        dialog.toast('导入请求失败，请重新预览后重试。', { tone: 'error' })
+        await refreshTargets()
+        return
+      }
       if (!result.success) {
         dialog.toast(result.message || '导入失败', { tone: 'error' })
         return
@@ -179,6 +289,8 @@ export default function AnkiImportPanel() {
         dialog.toast('导入完成，但未返回统计信息。', { tone: 'info' })
         return
       }
+      await refreshTargets()
+      setPreview(null)
       setSummary(result.summary)
       dialog.toast('Anki 数据导入成功。', { tone: 'success' })
     })
@@ -232,41 +344,23 @@ export default function AnkiImportPanel() {
   return (
     <section className='w-full' aria-label='Anki 导入设置'>
       <div className='mx-auto max-w-6xl'>
-        <p className='max-w-3xl text-sm leading-6 text-slate-500'>
-          支持单词、注音、释义、例句、例句翻译、用法、单词发音和句子发音。音频文件可选；文件名会与 TSV 中的音频引用自动匹配。
-        </p>
-
-        <section className='mt-8 border-b border-slate-200 pb-8' aria-labelledby='anki-files-heading'>
-          <div className='mb-5 flex items-baseline gap-3'>
-            <span className='text-xs font-bold tracking-[0.16em] text-slate-400'>01</span>
-            <h2 id='anki-files-heading' className='text-xl font-semibold text-slate-950'>选择文件</h2>
+        <section className='border-b border-slate-200 pb-8' aria-labelledby='anki-files-heading'>
+          <h2 id='anki-files-heading' className='text-lg font-semibold text-slate-950'>文件</h2>
+          <div className='mt-4'>
+            <AnkiFileDropZone
+              file={importFile}
+              onChange={file => {
+                setImportFile(file)
+                invalidatePreview()
+              }}
+            />
           </div>
-          <div className='grid grid-cols-1 gap-5 md:grid-cols-2'>
+
+          <div className='mt-4 flex flex-col gap-3 border-t border-slate-200 pt-4 md:flex-row md:items-center md:justify-between'>
             <div>
-              <span className='block text-sm font-semibold text-slate-700'>Anki TXT / TSV</span>
-              <input
-                ref={tsvRef}
-                type='file'
-                accept='.txt,.tsv,text/plain,text/tab-separated-values'
-                aria-label='选择 Anki TXT 或 TSV 文件'
-                onChange={event => {
-                  setPickedTsvName(event.currentTarget.files?.[0]?.name || '')
-                  invalidatePreview()
-                }}
-                className='hidden'
-              />
-              <div className='mt-2 flex min-h-20 items-center justify-between gap-3 border border-slate-300 bg-white px-4 py-3'>
-                <div className='min-w-0'>
-                  <p className='truncate text-sm font-medium text-slate-800'>{pickedTsvName || '尚未选择文件'}</p>
-                  <p className='mt-1 text-xs text-slate-500'>支持 .txt 和 .tsv</p>
-                </div>
-                <button type='button' onClick={() => tsvRef.current?.click()} className='ui-btn ui-btn-sm shrink-0'>
-                  {pickedTsvName ? '重新选择' : '选择文件'}
-                </button>
-              </div>
+              <p className='text-sm font-semibold text-slate-700'>附加音频</p>
+              <p className='mt-0.5 text-xs text-slate-500'>TXT / TSV 可选</p>
             </div>
-            <div>
-              <span className='block text-sm font-semibold text-slate-700'>批量音频（可选）</span>
               <input
                 ref={audioRef}
                 type='file'
@@ -283,59 +377,137 @@ export default function AnkiImportPanel() {
                 onDragOver={handleAudioDragOver}
                 onDragLeave={handleAudioDragLeave}
                 onDrop={handleAudioDrop}
-                className={`mt-2 min-h-20 border px-4 py-3 transition-colors ${
-                  isAudioDragging ? 'border-indigo-300 bg-indigo-50' : 'border-slate-300 bg-white'
+                className={`flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 border px-3 py-2 transition-colors md:max-w-2xl ${
+                  isAudioDragging ? 'border-indigo-400 bg-indigo-50' : 'border-slate-300 bg-white'
                 }`}>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <button type='button' onClick={handleAudioPick} className='ui-btn ui-btn-sm'>
-                    选择音频文件
-                  </button>
-                  <span className='text-xs text-slate-500'>
-                    {pickedAudioNames.length > 0
-                      ? `已选择 ${pickedAudioNames.length} 个音频`
-                      : isAudioDragging
-                        ? '松开即可批量上传音频'
-                        : '可直接把多个音频拖进此区域'}
-                  </span>
-                </div>
-                {pickedAudioNames.length > 0 && (
-                  <div className='mt-3 max-h-24 overflow-y-auto border-t border-slate-200 pt-2 text-xs text-slate-600'>
-                    {pickedAudioNames.slice(0, 10).map((name, index) => (
-                      <div key={`anki-audio-picked-${name}-${index}`} className='truncate'>
-                        {name}
-                      </div>
-                    ))}
-                    {pickedAudioNames.length > 10 && (
-                      <div className='mt-1 text-[11px] text-slate-400'>还有 {pickedAudioNames.length - 10} 个文件…</div>
-                    )}
-                  </div>
-                )}
+                <span className='min-w-0 truncate text-xs text-slate-500'>
+                  {pickedAudioNames.length > 0
+                    ? `${pickedAudioNames.length} 个音频文件`
+                    : isAudioDragging
+                      ? '松开即可添加'
+                      : '拖入或选择音频'}
+                </span>
+                <button type='button' onClick={handleAudioPick} className='ui-btn ui-btn-sm shrink-0'>选择</button>
               </div>
-            </div>
           </div>
         </section>
 
         <section className='mt-8 border-b border-slate-200 pb-8' aria-labelledby='anki-target-heading'>
-          <div className='mb-5 flex items-baseline gap-3'>
-            <span className='text-xs font-bold tracking-[0.16em] text-slate-400'>02</span>
-            <h2 id='anki-target-heading' className='text-xl font-semibold text-slate-950'>设置目标</h2>
-          </div>
-          <div className='grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2'>
+          <h2 id='anki-target-heading' className='text-lg font-semibold text-slate-950'>保存到</h2>
+          <div className='mt-4 grid grid-cols-1 gap-x-5 gap-y-4 md:grid-cols-2'>
             <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
-              音频保存目录
-              <input
-                value={audioFolder}
+              保存方式
+              <CustomSelect
+                value={targetMode}
                 onChange={event => {
-                  setAudioFolder(event.currentTarget.value)
+                  setTargetMode(event.currentTarget.value as 'new' | 'existing')
+                  invalidatePreview()
+                }}
+                className='ui-input !h-10 text-left text-sm'>
+                <option value='new'>新建词表</option>
+                <option value='existing'>导入到已有词表</option>
+              </CustomSelect>
+            </label>
+
+            {targetMode === 'existing' ? (
+              <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+                已有词表
+                <CustomSelect
+                  value={wordbookId}
+                  onChange={event => {
+                    setWordbookId(event.currentTarget.value)
+                    invalidatePreview()
+                  }}
+                  className='ui-input !h-10 text-left text-sm'>
+                  <option value=''>请选择词表</option>
+                  {wordbooksBySeries.map(group => (
+                    <optgroup key={group.title} label={group.title}>
+                      {group.options.map(option => (
+                        <option key={`anki-wordbook-${option.id}`} value={option.id}>
+                          {option.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </CustomSelect>
+              </label>
+            ) : (
+              <>
+                <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+                  所在分组
+                  <CustomSelect
+                    value={seriesId}
+                    onChange={event => {
+                      setSeriesId(event.currentTarget.value)
+                      invalidatePreview()
+                    }}
+                    className='ui-input !h-10 text-left text-sm'>
+                    <option value=''>新建分组</option>
+                    {seriesOptions.map(series => (
+                      <option key={`anki-series-${series.id}`} value={series.id}>
+                        {series.title}
+                      </option>
+                    ))}
+                  </CustomSelect>
+                </label>
+                {!seriesId && (
+                  <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+                    分组名称
+                    <input
+                      value={newSeriesTitle}
+                      onChange={event => {
+                        setNewSeriesTitle(event.currentTarget.value)
+                        invalidatePreview()
+                      }}
+                      className='ui-input !h-10 text-sm'
+                      placeholder='N2語彙トレーニング'
+                    />
+                  </label>
+                )}
+                <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+                  词表名称
+                  <input
+                    value={newWordbookTitle}
+                    onChange={event => {
+                      setNewWordbookTitle(event.currentTarget.value)
+                      invalidatePreview()
+                    }}
+                    className='ui-input !h-10 text-sm'
+                    placeholder='Unit02 动词A'
+                  />
+                </label>
+              </>
+            )}
+
+            <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+              统一词性（可选）
+              <input
+                value={partsOfSpeech}
+                onChange={event => {
+                  setPartsOfSpeech(event.currentTarget.value)
                   invalidatePreview()
                 }}
                 className='ui-input !h-10 text-sm'
-                placeholder='vocabulary/anki'
+                placeholder='動詞'
               />
-              <span className='text-xs font-normal text-slate-500'>相对于 /public/audios</span>
             </label>
             <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
-              全局标签（逗号/分号分隔）
+              JLPT（当前词表）
+              <CustomSelect
+                value={jlpt}
+                onChange={event => {
+                  setJlpt(event.currentTarget.value)
+                  invalidatePreview()
+                }}
+                className='ui-input !h-10 text-left text-sm'>
+                <option value=''>未设置（可按词书名称推断）</option>
+                {JLPT_LEVELS.map(level => (
+                  <option key={`anki-jlpt-${level}`} value={level}>{level}</option>
+                ))}
+              </CustomSelect>
+            </label>
+            <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
+              标签
               <input
                 value={globalTags}
                 onChange={event => {
@@ -343,110 +515,93 @@ export default function AnkiImportPanel() {
                   invalidatePreview()
                 }}
                 className='ui-input !h-10 text-sm'
-                placeholder='例如：书籍:N2核心, 单元:Unit01, 主题:词汇'
+                placeholder='重点, 易混'
               />
             </label>
             <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
-              现有目标单词书（推荐）
-              <CustomSelect
-                value={wordbookId}
-                onChange={event => {
-                  const value = event.currentTarget.value
-                  setWordbookId(value)
-                  if (value) setNotebookName('')
-                  invalidatePreview()
-                }}
-                className='ui-input !h-10 text-left text-sm'>
-                <option value=''>不选择，按路径新建</option>
-                {wordbooksBySeries.map(group => (
-                  <optgroup key={group.title} label={group.title}>
-                    {group.options.map(option => (
-                      <option key={`anki-wordbook-${option.id}`} value={option.id}>
-                        {option.title}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
-              </CustomSelect>
-            </label>
-            <label className='flex flex-col gap-2 text-sm font-semibold text-slate-700'>
-              新建词书路径（系列 / 词书）
+              音频目录（按词表自动管理）
               <input
-                value={notebookName}
-                onChange={event => {
-                  setNotebookName(event.currentTarget.value)
-                  invalidatePreview()
-                }}
-                disabled={!!wordbookId}
-                className='ui-input !h-10 text-sm disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400'
-                placeholder='例如：红宝书/N1'
+                value={audioFolder}
+                readOnly
+                className='ui-input !h-10 bg-slate-50 text-sm text-slate-500'
+                placeholder='选择词书分组和词表后自动生成'
               />
             </label>
           </div>
-          <p className='mt-4 text-xs leading-5 text-slate-500'>
-            选择现有词书后不会创建新路径；新建时固定使用“系列 / 词书”两级结构。
-          </p>
         </section>
 
         <section className='mt-8 border-b border-slate-200 pb-8' aria-labelledby='anki-confirm-heading'>
-          <div className='mb-5 flex items-baseline gap-3'>
-            <span className='text-xs font-bold tracking-[0.16em] text-slate-400'>03</span>
-            <h2 id='anki-confirm-heading' className='text-xl font-semibold text-slate-950'>预览并导入</h2>
-          </div>
-          <p className='mb-4 text-sm leading-6 text-slate-500'>先生成预览。修改任一文件或设置后，需要重新预览才能导入。</p>
-          <div className='flex flex-wrap items-center gap-2'>
+          <h2 id='anki-confirm-heading' className='text-lg font-semibold text-slate-950'>确认</h2>
+          <div className='mt-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center'>
             <button
               type='button'
               onClick={handlePreview}
               disabled={isPreviewPending || isImportPending}
-              className={`ui-btn disabled:cursor-not-allowed disabled:opacity-40 ${preview ? '' : 'ui-btn-primary'}`}>
-              {isPreviewPending ? '识别中…' : preview ? '重新生成预览' : '生成导入预览'}
+              className={`ui-btn w-full disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto ${preview ? '' : 'ui-btn-primary'}`}>
+              {isPreviewPending ? '识别中…' : preview ? '重新预览' : '生成预览'}
             </button>
             <button
               type='button'
               onClick={handleImport}
               disabled={!preview || isImportPending || isPreviewPending}
-              className='ui-btn ui-btn-primary disabled:cursor-not-allowed disabled:opacity-40'>
-              {isImportPending ? '导入中…' : '确认并导入'}
+              className='ui-btn ui-btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto'>
+              {isImportPending ? '导入中…' : '导入'}
             </button>
             <button
               type='button'
               onClick={handleSyncSources}
               disabled={isSyncPending || isImportPending || isPreviewPending}
-              className='ui-btn ml-0 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto'>
-              {isSyncPending ? '同步中…' : '维护：同步已有来源'}
+              className='ui-btn ui-btn-sm w-full disabled:cursor-not-allowed disabled:opacity-40 sm:ml-auto sm:w-auto'>
+              {isSyncPending ? '同步中…' : '同步已有来源'}
             </button>
           </div>
         </section>
 
         {preview && (
           <section className='mt-8 border-y border-slate-200 bg-white px-4 py-6 md:px-5' aria-labelledby='anki-preview-heading'>
-            <h2 id='anki-preview-heading' className='text-xl font-semibold text-slate-950'>导入前预览</h2>
-            <div className='mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-xs text-slate-600 md:grid-cols-4'>
-              <Info label='总行数' value={String(preview.totalRows)} />
-              <Info label='有效行' value={String(preview.validRows)} />
-              <Info label='将新建词' value={String(preview.createWords)} />
-              <Info label='将更新词' value={String(preview.updateWords)} />
-              <Info label='带单词发音' value={String(preview.rowsWithWordAudioRef)} />
-              <Info label='单词发音匹配' value={String(preview.matchedWordAudioRows)} />
-              <Info label='带音频引用' value={String(preview.rowsWithAudioRef)} />
-              <Info label='音频已匹配' value={String(preview.matchedAudioRows)} />
-              <Info label='上传音频数' value={String(preview.uploadedAudioFiles)} />
-              <Info label='跳过行' value={String(preview.skippedRows)} />
+            <div className='flex flex-wrap items-baseline justify-between gap-2'>
+              <h2 id='anki-preview-heading' className='text-xl font-semibold text-slate-950'>导入预览</h2>
+              <span className='text-xs font-medium text-slate-500'>
+                {preview.fileKind.toUpperCase()}
+                {preview.embeddedAudioFiles > 0 ? ` · ${preview.embeddedAudioFiles} 个内置音频` : ''}
+              </span>
+            </div>
+            <div className='mt-5 grid grid-cols-2 gap-x-4 gap-y-3 text-xs text-slate-600 md:grid-cols-5'>
+              <Info label='可导入' value={String(preview.validRows)} />
+              <Info label='新建' value={String(preview.createWords)} />
+              <Info label='更新' value={String(preview.updateWords)} />
+              <Info label='跳过' value={String(preview.skippedRows)} />
               <Info
-                label='目标单词书'
-                value={
-                  preview.wordbookTitle ||
-                  selectedWordbookPathLabel ||
-                  preview.notebookName ||
-                  notebookName ||
-                  '未设置'
-                }
+                label='音频匹配'
+                value={`${preview.matchedWordAudioRows + preview.matchedAudioRows} / ${preview.rowsWithWordAudioRef + preview.rowsWithAudioRef}`}
               />
-              <Info label='全局标签' value={preview.globalTags || globalTags || '未设置'} />
+            </div>
+            <div className='mt-5 grid gap-2 border-t border-slate-200 pt-4 text-xs text-slate-600 md:grid-cols-3'>
+              <p className='min-w-0 truncate'>
+                <span className='text-slate-400'>目标</span>{' '}
+                <span className='font-medium text-slate-800'>
+                  {targetMode === 'existing'
+                    ? selectedWordbookPathLabel || preview.wordbookTitle || '未设置'
+                    : notebookName || preview.notebookName || '未设置'}
+                </span>
+              </p>
+              <p className='min-w-0 truncate'>
+                <span className='text-slate-400'>词性</span>{' '}
+                <span className='font-medium text-slate-800'>{partsOfSpeech || '—'}</span>
+              </p>
+              <p className='min-w-0 truncate'>
+                <span className='text-slate-400'>JLPT</span>{' '}
+                <span className='font-medium text-slate-800'>{jlpt || '按词书推断'}</span>
+              </p>
+              <p className='min-w-0 truncate md:text-right'>
+                <span className='text-slate-400'>牌组</span>{' '}
+                <span className='font-medium text-slate-800'>
+                  {preview.deckNames.length > 0 ? preview.deckNames.join(' / ') : '—'}
+                </span>
+              </p>
             </div>
 
-            <div className='mt-6 overflow-x-auto border-t border-slate-200'>
+            <div className='mt-5 overflow-x-auto border-t border-slate-200'>
               <table className='min-w-full text-left text-sm'>
                 <thead className='bg-slate-50 text-xs text-slate-500'>
                   <tr>
@@ -464,7 +619,7 @@ export default function AnkiImportPanel() {
                   {preview.sampleRows.map((row, index) => (
                     <tr key={`anki-preview-${row.rowNo}-${row.word}-${index}`} className='border-t border-slate-100 align-top'>
                       <td className='px-2 py-2 text-xs text-gray-500'>{row.rowNo}</td>
-                      <td className='px-2 py-2 font-semibold text-gray-900'>{row.word || '-'}</td>
+                      <td className='px-2 py-2 font-semibold text-gray-900'>{row.word || '-'}{row.etymologies?.length ? <p className='mt-1 text-xs font-normal text-slate-500'>词源：{row.etymologies.join(' · ')}</p> : null}</td>
                       <td className='px-2 py-2 text-gray-600'>{row.wordAudioName || '-'}</td>
                       <td className='px-2 py-2 text-gray-700'>{row.sentence || '-'}</td>
                       <td className='px-2 py-2 text-gray-600'>{row.sentenceTranslation || '-'}</td>
@@ -495,13 +650,15 @@ export default function AnkiImportPanel() {
               <Info label='新建词' value={String(summary.created)} />
               <Info label='更新词' value={String(summary.updated)} />
               <Info label='关联例句' value={String(summary.linkedSentences)} />
-              <Info label='上传音频' value={String(summary.uploadedAudios)} />
+              <Info label='新增音频文件' value={String(summary.uploadedAudios)} />
+              <Info label='复用音频文件' value={String(summary.reusedAudios || 0)} />
+              <Info label='新增读音音频' value={String(summary.addedReadingAudios || 0)} />
             </div>
-            <div className='mt-4 text-xs leading-5 text-emerald-700'>
-              来源：{summary.sourceName || selectedWordbookTitle || notebookName || 'Anki导入'} ｜ 笔记本：
-              {summary.notebookName || selectedWordbookPathLabel || notebookName || '未设置'} ｜ 标签：
-              {summary.globalTags || globalTags || '未设置'}
-            </div>
+            <p className='mt-4 text-xs font-medium text-emerald-700'>
+              {targetMode === 'existing'
+                ? selectedWordbookPathLabel || summary.notebookName || '未设置'
+                : notebookName || summary.notebookName || '未设置'}
+            </p>
           </section>
         )}
       </div>

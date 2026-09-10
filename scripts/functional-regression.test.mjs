@@ -36,7 +36,6 @@ import {
 } from "../utils/audioDialogue/sourceId.ts";
 import { createTrustedMarkupSlots } from "../components/exam/question-renderer/trustedMarkup.ts";
 import {
-  formatJlptListeningFilename,
   formatJlptListeningTitle,
   parseJlptListeningIdentity,
 } from "../utils/listening/jlptIdentity.ts";
@@ -107,11 +106,28 @@ import { reorderExamOptionsForSession } from "../lib/repositories/exam/exam-opti
 import { updateDialogueTextAtIndex } from "../features/listening/domain/dialogue-editor.ts";
 import { buildCollectionAudioFolder } from "../modules/import/audio/domain.ts";
 import {
+  buildPronunciationMapForText,
+  buildSurfaceAliasMapForText,
+  buildSurfaceVariantMapForText,
   buildJapaneseVocabularySearchTerms,
+  containsJapaneseVocabularyMatch,
   detectJapaneseInflection,
   resolveJapaneseTargetSurface,
 } from "../utils/vocabulary/japaneseInflection.ts";
+import {
+  buildVocabularyCanonicalKeys,
+  expandVocabularyHeadwordMatchVariants,
+  splitVocabularyHeadwordVariants,
+} from "../utils/vocabulary/vocabularyCanonical.ts";
+import {
+  extractVocabularyPronunciationVariants,
+  getVocabularyDisplayPronunciations,
+  getVocabularyMatchVariants,
+  selectVocabularyDisplayPronunciation,
+} from "../utils/text/pronunciation.ts";
 import { formatVocabularySentenceSource } from "../utils/vocabulary/sourceDisplay.ts";
+import { normalizeVocabularySentenceTextKey } from "../utils/vocabulary/sentenceQuality.ts";
+import { splitLineStringList } from "../utils/text/jsonList.ts";
 import { hasVocabularyMeaning } from "../utils/vocabulary/vocabularyMeaning.ts";
 import {
   buildPracticeQuestionGroups,
@@ -601,6 +617,13 @@ test("paper overview preserves material and subquestion hierarchy", () => {
 });
 
 test("Japanese inflection evidence excludes particles and restores suru lemmas", () => {
+  assert.deepEqual(
+    buildSurfaceAliasMapForText("問題の核心を突いている。", ["突く"]),
+    {
+      "突いて": "突く",
+      "突いている": "突く",
+    },
+  );
   assert.equal(
     detectJapaneseInflection({
       word: "野鳥",
@@ -624,6 +647,151 @@ test("Japanese inflection evidence excludes particles and restores suru lemmas",
       partsOfSpeech: ["形容詞"],
     }),
     { surface: "高かった", lemma: "高い" },
+  );
+});
+
+test("compound vocabulary headwords match and pronounce each displayed variant", () => {
+  const headword = "立つ / 発つ";
+  const text = "東京を発って、壇上に立った。";
+
+  assert.deepEqual(splitVocabularyHeadwordVariants(headword), ["立つ", "発つ"]);
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("立つ"));
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("発つ"));
+  assert.deepEqual(buildSurfaceAliasMapForText(text, [headword]), {
+    "立った": headword,
+    "発って": headword,
+  });
+  assert.deepEqual(buildSurfaceVariantMapForText(text, [headword]), {
+    "立った": "立つ",
+    "発って": "発つ",
+  });
+  assert.deepEqual(buildPronunciationMapForText(text, { [headword]: "たつ" }), {
+    "立った": "たった",
+    "発って": "たって",
+  });
+
+  const forms = buildJapaneseVocabularySearchTerms(headword, ["動詞"]);
+  assert.ok(forms.includes("立って"));
+  assert.ok(forms.includes("発って"));
+  assert.deepEqual(
+    buildSurfaceAliasMapForText("戦後の夏に旅立った。", [headword]),
+    {},
+  );
+});
+
+test("dictionary-style readings select the headword-aligned kana alias", () => {
+  const raw = "わりに / わりと / わりあい(に / と) わりと";
+  const pronunciation = selectVocabularyDisplayPronunciation("割と", [raw]);
+  const matchVariants = getVocabularyMatchVariants("割と", [raw]);
+
+  assert.equal(pronunciation, "わりと");
+  assert.deepEqual(extractVocabularyPronunciationVariants(raw), [
+    "わりに",
+    "わりと",
+    "わりあいに",
+    "わりあいと",
+  ]);
+  assert.deepEqual(getVocabularyDisplayPronunciations("割と", [raw, "わりと"]), [
+    "わりと",
+  ]);
+  assert.deepEqual(
+    buildJapaneseVocabularySearchTerms("割と", ["副詞"], matchVariants),
+    ["割と", "わりと", "わりに", "わりあいに", "わりあいと"],
+  );
+  assert.equal(
+    containsJapaneseVocabularyMatch(
+      "道が込んでいるかと思ったら、わりにすいていた。",
+      "わりに",
+      true,
+    ),
+    true,
+  );
+  assert.equal(
+    containsJapaneseVocabularyMatch("そのかわりに手伝った。", "わりに", true),
+    false,
+  );
+  assert.equal(
+    containsJapaneseVocabularyMatch("ネコの口のまわりにある。", "わりに", true),
+    false,
+  );
+  assert.equal(
+    containsJapaneseVocabularyMatch("今日はわりと静かだ。", "わりと"),
+    true,
+  );
+  assert.equal(
+    selectVocabularyDisplayPronunciation("人間", ["にん|げん"]),
+    "にん|げん",
+  );
+});
+
+test("katakana headword alternatives keep the slash and match both variants", () => {
+  const headword = "ダイヤ/ダイヤグラム";
+
+  assert.deepEqual(splitVocabularyHeadwordVariants(headword), [
+    "ダイヤ",
+    "ダイヤグラム",
+  ]);
+  assert.deepEqual(expandVocabularyHeadwordMatchVariants(headword), [
+    "ダイヤ",
+    "ダイヤグラム",
+  ]);
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("ダイヤ"));
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("ダイヤグラム"));
+});
+
+test("optional kana in vocabulary headwords matches every realized spelling", () => {
+  const headword = "仕方(が)ない";
+  const text = "仕方ないこともあれば、仕方がないこともある。";
+
+  assert.deepEqual(expandVocabularyHeadwordMatchVariants(headword), [
+    "仕方ない",
+    "仕方がない",
+  ]);
+  assert.deepEqual(expandVocabularyHeadwordMatchVariants("仕方（が）ない"), [
+    "仕方ない",
+    "仕方がない",
+  ]);
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("仕方ない"));
+  assert.ok(buildVocabularyCanonicalKeys(headword).includes("仕方がない"));
+  assert.deepEqual(buildJapaneseVocabularySearchTerms(headword, ["慣用句"]), [
+    "仕方ない",
+    "仕方がない",
+  ]);
+  assert.deepEqual(buildSurfaceAliasMapForText(text, [headword]), {
+    "仕方ない": headword,
+    "仕方がない": headword,
+  });
+  assert.deepEqual(buildSurfaceVariantMapForText(text, [headword]), {
+    "仕方ない": "仕方ない",
+    "仕方がない": "仕方がない",
+  });
+});
+
+test("Unit03 na-adjectives match their attributive, predicative and adverbial forms", () => {
+  const forms = buildJapaneseVocabularySearchTerms("深刻な", ["形容詞"]);
+
+  for (const surface of [
+    "深刻な",
+    "深刻だ",
+    "深刻です",
+    "深刻で",
+    "深刻に",
+    "深刻だった",
+    "深刻ではない",
+  ]) {
+    assert.ok(forms.includes(surface), `missing na-adjective form: ${surface}`);
+  }
+  const aliases = buildSurfaceAliasMapForText(
+    "問題は深刻で、以前ほど気楽ではない。",
+    ["深刻な", "気楽な"],
+  );
+  assert.equal(aliases["深刻で"], "深刻な");
+  assert.equal(aliases["気楽ではない"], "気楽な");
+  assert.ok(
+    Object.hasOwn(
+      buildSurfaceAliasMapForText("塩分を過剰に取る。", ["過剰な"]),
+      "過剰に",
+    ),
   );
 });
 
@@ -681,6 +849,20 @@ test("vocabulary sentence sources show parent materials instead of internal item
     "影视 · 非自然死亡 · S1E3",
   );
   assert.equal(formatVocabularySentenceSource({ source: "Unit1" }), "Unit1");
+});
+
+test("vocabulary sentence edits reuse the canonical sentence identity", () => {
+  assert.equal(
+    normalizeVocabularySentenceTextKey("  1. 道が込んでいる。\n"),
+    normalizeVocabularySentenceTextKey("道が込んでいる。"),
+  );
+});
+
+test("vocabulary meanings preserve punctuation and split only on lines", () => {
+  assert.deepEqual(splitLineStringList("比较，格外\n相对来说"), [
+    "比较，格外",
+    "相对来说",
+  ]);
 });
 
 test("listening timeline text edits preserve timing and uploaded metadata", () => {
@@ -1334,7 +1516,7 @@ test("reading upload and editing share footnote insertion and recognition", asyn
   assert.match(importer, />\s*插入注解\s*</);
 });
 
-test("reading annotations require a real non-empty meaning", async () => {
+test("reading wordbook highlights do not render numbered vocabulary annotations", async () => {
   assert.equal(
     hasVocabularyMeaning({
       pronunciations: ["わた"],
@@ -1367,11 +1549,12 @@ test("reading annotations require a real non-empty meaning", async () => {
     ),
   ]);
 
-  assert.match(reader, /filter\(\(\[, meta\]\) => hasVocabularyMeaning\(meta\)\)/);
+  assert.doesNotMatch(reader, /ARTICLE_ANNOTATION|activeChapterAnnotations|文章注释/);
+  assert.match(reader, /buildSurfaceAliasMapForText/);
+  assert.match(reader, /wordbookSurfaceToBaseWord/);
   assert.doesNotMatch(reader, /暂无注释/);
   assert.match(reader, /本文单词书分布/);
   assert.match(reader, /wordbookDistribution/);
-  assert.match(reader, /typeof value === 'string'/);
   assert.match(route, /getPaperWordbookDistribution/);
   assert.match(chart, /未加入任何单词书/);
 });
@@ -1592,7 +1775,7 @@ test("audio library keeps uploads organized and folders hierarchical", async () 
   assert.match(action, /replace\(\/\[\^\\p\{L\}\\p\{N\}/);
   assert.match(action, /prisma\.vocabulary\.updateMany/);
   assert.match(action, /wordAudio: nextPath/);
-  assert.match(ankiAction, /DEFAULT_ANKI_AUDIO_FOLDER = 'vocabulary\/anki'/);
+  assert.match(ankiAction, /buildVocabularyAudioFolder/);
   assert.match(page, /folderSummaries\.map/);
   assert.match(page, /上传到目录/);
   assert.match(page, /待整理/);
@@ -1756,7 +1939,6 @@ test("JLPT listening filenames preserve exam, section, and question identity", (
     sectionLabel: "ポイント理解",
   });
   assert.equal(formatJlptListeningTitle(identity), "問題2-06｜ポイント理解");
-  assert.equal(formatJlptListeningFilename(identity), "2025-07-N1-P02-Q06.mp3");
   assert.equal(parseJlptListeningIdentity("202507N1-02-06.mp3"), null);
   assert.equal(
     parseJlptListeningIdentity("問題1-03")?.sectionLabel,
@@ -2167,6 +2349,8 @@ test("listening management restores pagination and practice overview stays flat"
   assert.match(listeningList, /returnPage=\$\{normalizedManagePage\}/);
   assert.match(listeningPage, /initialManagePage=\{initialManagePage\}/);
   assert.match(listeningDetail, /`\/manage\/listening\?page=\$\{returnPage\}`/);
+  assert.match(listeningDetail, /href=\{material\.audioFile\}\s*download/);
+  assert.match(listeningDetail, /下载音频/);
   assert.doesNotMatch(
     practiceOverview,
     /试卷详情|类型:|语言:|排序:|更新于|每题独立音频/,
@@ -2243,8 +2427,9 @@ test("route surfaces use the shared editorial visual language", async () => {
     "utf8",
   );
 
-  assert.match(rootLayout, /className='flat-ui editorial-ui'/);
-  assert.match(globalStyles, /\.flat-ui main/);
+  assert.match(rootLayout, /className='editorial-ui'/);
+  assert.doesNotMatch(rootLayout, /flat-ui/);
+  assert.doesNotMatch(globalStyles, /\.flat-ui main/);
   assert.match(globalStyles, /--font-editorial-display/);
   assert.match(globalStyles, /--editorial-paper: #f6f5f1/);
   assert.match(globalStyles, /--editorial-paper-raised: #ffffff/);
@@ -2320,7 +2505,7 @@ test("body copy uses language-aware sans-serif font stacks", async () => {
   assert.doesNotMatch(articleReader, /className='font-reading-ja /);
 });
 
-test("listening import accepts MP3 uploads and supports multiple collections", async () => {
+test("listening import accepts MP3 uploads and presets database-informed questions", async () => {
   const uploadForm = await readFile(
     path.join(ROOT, "features/import/ui/UploadForm.tsx"),
     "utf8",
@@ -2339,6 +2524,10 @@ test("listening import accepts MP3 uploads and supports multiple collections", a
   );
   const paperEditorDomain = await readFile(
     path.join(ROOT, "modules/questions/domain/paper-editor.ts"),
+    "utf8",
+  );
+  const manageRepository = await readFile(
+    path.join(ROOT, "lib/repositories/manage/index.ts"),
     "utf8",
   );
 
@@ -2374,8 +2563,12 @@ test("listening import accepts MP3 uploads and supports multiple collections", a
   assert.match(questionEditor, /正确答案/);
   assert.match(
     questionEditor,
-    /const isEditing = batchMode \|\| editingQuestionId === q\.id/,
+    /const isEditing = draftMode \|\| editingQuestionId === q\.id/,
   );
+  assert.match(questionEditor, /length: resolvedQuestionsPerMaterial/);
+  assert.match(importPage, /defaultQuestionsPerMaterial=/);
+  assert.match(manageRepository, /getDefaultListeningQuestionsPerMaterial/);
+  assert.match(manageRepository, /ORDER BY "materialCount" DESC, "questionCount" DESC/);
   assert.match(
     questionEditor,
     /batchMode && q\.questionType === 'TOEIC_QUESTION_RESPONSE'/,
@@ -2556,6 +2749,10 @@ test("search results use domain editors instead of the hidden JSON tool", async 
     path.join(ROOT, "app/(knowledge)/vocabulary/VocabularyTabs.tsx"),
     "utf8",
   );
+  const vocabularyNavigation = await readFile(
+    path.join(ROOT, "modules/knowledge/vocabulary/domain/navigation.ts"),
+    "utf8",
+  );
 
   assert.match(
     searchHrefBuilder,
@@ -2578,6 +2775,8 @@ test("search results use domain editors instead of the hidden JSON tool", async 
     /`\/practice\/\$\{encodeURIComponent\(input\.paperId\)\}\/do\?qid=/,
   );
   assert.match(searchHrefBuilder, /`\/manage\/questions\/\$\{encodeURIComponent\(input\.materialId\)\}\?focus=/);
+  assert.match(searchHrefBuilder, /buildVocabularyFocusHref/);
+  assert.doesNotMatch(searchHrefBuilder, /params\.set\('q', word\)/);
   assert.match(searchPage, /释义、读音、关联例句/);
   assert.match(searchPage, /resultCacheRef/);
   assert.match(searchPage, /missingTypes = nextTypes\.filter/);
@@ -2588,6 +2787,36 @@ test("search results use domain editors instead of the hidden JSON tool", async 
     vocabularyTabs,
     /flashList\.findIndex\(item => item\.id === initialFocusId\)/,
   );
+  assert.match(vocabularyTabs, /useSearchParams/);
+  assert.match(vocabularyTabs, /searchParams\.get\('view'\)/);
+  assert.match(vocabularyNavigation, /params\.set\('view', 'card'\)/);
+  assert.match(vocabularyTabs, /initialViewMode === 'card' \? 'flashcard' : 'list'/);
+  const vocabularyToolbar = await readFile(
+    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyPageToolbar.tsx"),
+    "utf8",
+  );
+  assert.match(vocabularyTabs, /<VocabularyPageToolbar/);
+  assert.match(vocabularyToolbar, /mode: 'flashcard', label: '单词卡'/);
+});
+
+test("vocabulary cards continue across paginated server results", async () => {
+  const vocabularyTabs = await readFile(
+    path.join(ROOT, "app/(knowledge)/vocabulary/VocabularyTabs.tsx"),
+    "utf8",
+  );
+  const cardControls = await readFile(
+    path.join(
+      ROOT,
+      "modules/knowledge/vocabulary/components/MemoryCardControls.tsx",
+    ),
+    "utf8",
+  );
+
+  assert.match(vocabularyTabs, /navigateCardPage\(currentPage \+ 1, 0\)/);
+  assert.match(vocabularyTabs, /navigateCardPage\(currentPage - 1, pageSize - 1\)/);
+  assert.match(vocabularyTabs, /overallTotal=\{effectiveGroupTotal\}/);
+  assert.match(cardControls, /disabled=\{!canNext \|\| transitioning\}/);
+  assert.match(cardControls, /\{currentPosition\} \/ \{overallTotal\}/);
 });
 
 test("responsive and component-boundary regressions remain guarded", async () => {
@@ -2857,7 +3086,7 @@ test("project dropdowns use the custom listbox instead of native select menus", 
   const migratedFiles = [
     "features/listening/ui/ShadowingLibraryManager.tsx",
     "app/(admin)/manage/import/AnkiImportPanel.tsx",
-    "app/(admin)/manage/vocabulary/page.tsx",
+    "app/(admin)/manage/vocabulary/VocabularyManageClient.tsx",
     "features/import/ui/UploadCenterUI.tsx",
     "features/import/ui/UploadForm.tsx",
     "features/listening/ui/ListeningListClient.tsx",
@@ -2950,12 +3179,20 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
     path.join(ROOT, "components/AudioPlayer/AudioPlayer.tsx"),
     "utf8",
   );
+  const pronunciationHook = await readFile(
+    path.join(ROOT, "hooks/usePronunciationSource.ts"),
+    "utf8",
+  );
   const sentenceRow = await readFile(
     path.join(ROOT, "components/AudioPlayer/ListeningSentenceRow.tsx"),
     "utf8",
   );
   const listeningLanding = await readFile(
     path.join(ROOT, "app/(study)/listening/page.tsx"),
+    "utf8",
+  );
+  const listeningEntryCards = await readFile(
+    path.join(ROOT, "features/listening/ui/LibraryEntryCards.tsx"),
     "utf8",
   );
   const listeningRepository = await readFile(
@@ -2990,7 +3227,9 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
   assert.match(player, /annotateJapaneseTextWithSudachi/);
   assert.match(player, /formatJapaneseTextWithSudachiRubyNotation/);
   assert.match(player, /fetch\('\/api\/pronunciation'/);
-  assert.match(player, /PRONUNCIATION_SOURCE_STORAGE_KEY/);
+  // Preference state lives in the shared hook; the player only consumes it.
+  assert.match(player, /usePronunciationSource\(sudachiAvailable\)/);
+  assert.match(pronunciationHook, /PRONUNCIATION_SOURCE_STORAGE_KEY/);
   assert.equal(player.includes("播放一句后显示词汇"), false);
   assert.equal(player.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), false);
   assert.match(sentenceRow, /data-context-sentence='true'/);
@@ -3003,11 +3242,11 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
   );
   assert.match(listeningRepository, /lastPlayedAt: true/);
   assert.equal(listeningLanding.includes("最近收听"), false);
-  assert.match(listeningLanding, /group\/chapter/);
-  assert.match(listeningLanding, /group\/section/);
-  assert.match(listeningLanding, /max-h-\[min\(28rem,70vh\)\]/);
+  assert.match(listeningEntryCards, /group\/chapter/);
+  assert.match(listeningEntryCards, /group\/section/);
+  assert.match(listeningEntryCards, /max-h-\[min\(28rem,70vh\)\]/);
   assert.match(listeningLanding, /ListeningViewSwitcher/);
-  assert.match(listeningFilter, /筛选材料/);
+  assert.match(listeningFilter, /ui-section-head'>筛选/);
   assert.match(listeningFilter, /教材、章节或材料名/);
   assert.match(listeningFilter, /filters\.kind !== 'all'/);
   assert.match(listeningFilter, /filters\.language !== 'all'/);

@@ -351,9 +351,9 @@ export default function ReadingCenterClient({
 
         <main className='min-w-0 pt-5'>
           {visibleGroups.length === 0 ? (
-            <section className='rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center'>
-              <p className='text-lg font-semibold text-slate-950'>没有找到匹配的阅读材料</p>
-              <p className='mt-2 text-sm text-slate-500'>尝试缩短关键词，或者清空当前筛选。</p>
+            <section className='ui-empty'>
+              <p className='text-sm font-bold text-slate-800'>没有找到匹配的阅读材料</p>
+              <p className='mt-1'>尝试缩短关键词，或者清空当前筛选。</p>
               <button type='button' onClick={resetFilters} className='ui-btn ui-btn-primary mt-5'>清空筛选</button>
             </section>
           ) : (
@@ -378,7 +378,7 @@ export default function ReadingCenterClient({
                           : '未命名文章'
                       return (
                         <article key={item.id} className='flex items-center gap-3 transition hover:bg-white/60'>
-                          <Link href={href} className='group grid min-w-0 flex-1 grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 py-3.5'>
+                          <Link href={href} prefetch={false} className='group grid min-w-0 flex-1 grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 py-3.5'>
                             <span className='truncate text-xs tabular-nums text-slate-400'>
                               {item.kind === 'news'
                                 ? item.publishedDate
@@ -415,18 +415,20 @@ export default function ReadingCenterClient({
           )}
 
           {totalPages > 1 ? (
-            <nav aria-label='阅读材料分页' className='mt-9 flex items-center justify-center gap-2'>
+            <nav aria-label='阅读材料分页' className='mt-9 flex items-center justify-center gap-1'>
               <button
                 type='button'
+                aria-label='上一页'
                 disabled={normalizedPage <= 1}
                 onClick={() => setFilters(current => ({ ...current, page: Math.max(1, current.page - 1) }))}
-                className='ui-btn ui-btn-sm disabled:opacity-40'>上一页</button>
-              <span className='px-2 text-xs tabular-nums text-slate-500'>{normalizedPage} / {totalPages}</span>
+                className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>‹</button>
+              <span className='ui-meta px-2 tabular-nums'>{normalizedPage} / {totalPages}</span>
               <button
                 type='button'
+                aria-label='下一页'
                 disabled={normalizedPage >= totalPages}
                 onClick={() => setFilters(current => ({ ...current, page: Math.min(totalPages, current.page + 1) }))}
-                className='ui-btn ui-btn-sm disabled:opacity-40'>下一页</button>
+                className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>›</button>
             </nav>
           ) : null}
         </main>

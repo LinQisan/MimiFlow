@@ -13,6 +13,7 @@ import { QuestionRenderer } from './QuestionRenderer'
 import QuestionNoteEditor from './QuestionNoteEditor'
 import type { ExamQuestion } from './question-renderer/types'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import { applyVocabularyInspectorMetaUpdate, applyVocabularyInspectorPronunciationUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
 import {
   formatOptionLabel,
   normalizeOptionLabelFormat,
@@ -22,10 +23,7 @@ import {
   findPracticeQuestionGroupIndex,
 } from '@/modules/practice/domain/question-groups'
 import { buildAnswerCardSections } from '@/modules/practice/domain/answer-card-sections'
-import PronunciationSourceSelector, {
-  PRONUNCIATION_SOURCE_STORAGE_KEY,
-  type PronunciationSource,
-} from '@/components/ui/PronunciationSourceSelector'
+import PronunciationSourceSelector from '@/components/ui/PronunciationSourceSelector'
 import JlptScoreSummary from '@/features/practice/ui/JlptScoreSummary'
 import type { JlptScoreSummary as JlptScoreSummaryData } from '@/modules/practice/domain/jlpt-scoring'
 import {
@@ -33,16 +31,32 @@ import {
   useCurrentUser,
   userStorageKey,
 } from '@/context/UserContext'
+import { usePronunciationSource } from '@/hooks/usePronunciationSource'
 import { copyText } from '@/features/reading/ui/copy-text'
 import {
   formatJapaneseTextWithRubyNotation,
   formatJapaneseTextWithSudachiRubyNotation,
 } from '@/utils/language/japaneseRuby'
-import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
+import {
+  buildPronunciationMapForText,
+  buildSurfaceAliasMapForText,
+  buildSurfaceVariantMapForText,
+} from '@/utils/vocabulary/japaneseInflection'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
 import { buildExamAnnotationTexts } from '@/modules/practice/domain/exam-annotation-texts'
-import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
+import {
+  useStudyTextHighlights,
+} from '@/hooks/useStudyTextHighlights'
+import {
+  JLPT_LEVELS,
+  groupWordbookDistributionBySource,
+  isJlptVisibleWithHiddenLevels,
+  type JlptLevel,
+} from '@/features/reading/domain/wordbook-highlight-groups'
 import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
+import WordbookHighlightSelector from '@/features/reading/ui/WordbookHighlightSelector'
+import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
+import VocabularyWordbookInspector from '@/modules/knowledge/vocabulary/components/VocabularyWordbookInspector'
 
 const WordTooltip = dynamic(() => import('./WordTooltip'))
 
@@ -69,6 +83,7 @@ interface PracticePlayerProps {
   initialSubmitted?: boolean
   historyCorrectQuestionIds?: string[]
   historyWrongQuestionIds?: string[]
+  initialWordbookDistribution?: PaperWordbookDistribution | null
 }
 
 type AttemptStats = {
@@ -135,12 +150,9 @@ export function PracticePlayer({
   initialSubmitted = false,
   historyCorrectQuestionIds = [],
   historyWrongQuestionIds = [],
+  initialWordbookDistribution = null,
 }: PracticePlayerProps) {
   const currentUser = useCurrentUser()
-  const pronunciationStorageKey = userStorageKey(
-    currentUser.id,
-    PRONUNCIATION_SOURCE_STORAGE_KEY,
-  )
   const router = useRouter()
   const [selectionEnabled, setSelectionEnabled] = React.useState(true)
   const [learningPointsEnabled, setLearningPointsEnabled] = React.useState(false)
@@ -156,12 +168,31 @@ export function PracticePlayer({
     React.useState(initialSudachiLexicon)
   const [sudachiAvailable, setSudachiAvailable] =
     React.useState(initialSudachiAvailable)
-  const [pronunciationSource, setPronunciationSourceState] =
-    React.useState<PronunciationSource>(
-      sudachiAvailable ? 'sudachi' : 'personal',
-    )
+  const { pronunciationSource, setPronunciationSource } =
+    usePronunciationSource(sudachiAvailable, {
+      initialSource: initialSudachiAvailable ? 'sudachi' : 'personal',
+    })
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     React.useState(vocabularyMetaMap)
+  const [wordbookDistribution, setWordbookDistribution] =
+    React.useState<PaperWordbookDistribution | null>(
+      initialWordbookDistribution,
+    )
+  const [wordbookAnalysisLoaded, setWordbookAnalysisLoaded] =
+    React.useState(Boolean(initialWordbookDistribution))
+  const [hiddenWordbookIds, setHiddenWordbookIds] = React.useState<Set<string>>(
+    () => new Set(),
+  )
+  const [hiddenJlptLevels, setHiddenJlptLevels] = React.useState<Set<JlptLevel>>(
+    () => new Set(),
+  )
+  const [inspectedWord, setInspectedWord] = React.useState<{
+    word: string
+    matchedVariant: string
+    wordbookId: string
+    x: number
+    y: number
+  } | null>(null)
   const [attemptStatsByQuestion, setAttemptStatsByQuestion] = React.useState<
     Record<string, AttemptStats>
   >(() => initAttemptStats(questions))
@@ -223,11 +254,6 @@ export function PracticePlayer({
     session.currentIndex,
   )
   const currentGroup = questionGroups[currentGroupIndex]
-  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
-    rootRef: playerRootRef,
-    contentKey: `${currentGroupIndex}:${currentGroup?.key || ''}`,
-    showLearningPoints: learningPointsEnabled,
-  })
   const normalizedPaperLanguage = (paperLanguage || '').trim().toLowerCase()
   const isJapanesePaper =
     normalizedPaperLanguage === 'ja' ||
@@ -239,18 +265,251 @@ export function PracticePlayer({
     normalizedPaperLanguage.startsWith('en-') ||
     normalizedPaperLanguage.includes('english')
 
-  React.useEffect(() => {
-    const stored = readUserStorageValue(
-      currentUser.id,
-      PRONUNCIATION_SOURCE_STORAGE_KEY,
-    )
-    if (stored === 'personal' || (stored === 'sudachi' && sudachiAvailable)) {
-      setPronunciationSourceState(stored)
+  const displayedQuestionsForAnnotation = React.useMemo(() => {
+    const question = currentGroup?.questions[0]
+    if (!question) return []
+    const lessonId = question.lessonId || question.lesson?.id
+    if (lessonId) {
+      const matched = questions.filter(
+        item => (item.lessonId || item.lesson?.id) === lessonId,
+      )
+      return matched.length > 0 ? matched : currentGroup.questions
     }
-  }, [currentUser.id, pronunciationStorageKey, sudachiAvailable])
+    const passageId = question.passageId || question.passage?.id
+    if (passageId) {
+      const matched = questions.filter(
+        item => (item.passageId || item.passage?.id) === passageId,
+      )
+      return matched.length > 0 ? matched : currentGroup.questions
+    }
+    return currentGroup.questions
+  }, [currentGroup?.questions, questions])
+
+  const currentExamAnnotationTexts = React.useMemo(
+    () => buildExamAnnotationTexts(displayedQuestionsForAnnotation),
+    [displayedQuestionsForAnnotation],
+  )
+  const currentText = React.useMemo(
+    () => currentExamAnnotationTexts.join('\n'),
+    [currentExamAnnotationTexts],
+  )
+
+  const wordbookHighlightGroups = React.useMemo(() => {
+    const sources = groupWordbookDistributionBySource(
+      wordbookDistribution?.wordbooks || [],
+    )
+    const jlptByCanonicalWord = new Map<string, Set<JlptLevel>>()
+    sources.forEach(source => {
+      source.matchedWords.forEach(word => {
+        const levels = jlptByCanonicalWord.get(word) || new Set<JlptLevel>()
+        ;(source.jlptByWord[word] || []).forEach(level => levels.add(level))
+        jlptByCanonicalWord.set(word, levels)
+      })
+    })
+
+    return sources
+      .map(source => {
+        const matchedHeadwords = Array.from(
+          new Set(Object.values(source.matchedHeadwords)),
+        )
+        const aliases = buildSurfaceAliasMapForText(
+          currentText,
+          matchedHeadwords,
+        )
+        const variants = buildSurfaceVariantMapForText(
+          currentText,
+          matchedHeadwords,
+        )
+        const metadataByHeadword = new Map<
+          string,
+          { jlpt: Set<JlptLevel>; wordbookIds: Set<string> }
+        >()
+        source.matchedWords.forEach(word => {
+          const headword = source.matchedHeadwords[word] || word
+          const metadata = metadataByHeadword.get(headword) || {
+            jlpt: new Set<JlptLevel>(),
+            wordbookIds: new Set<string>(),
+          }
+          ;(source.jlptByWord[word] || []).forEach(level =>
+            metadata.jlpt.add(level),
+          )
+          ;(jlptByCanonicalWord.get(word) || []).forEach(level =>
+            metadata.jlpt.add(level),
+          )
+          ;(source.wordbookIdsByWord[word] || []).forEach(wordbookId =>
+            metadata.wordbookIds.add(wordbookId),
+          )
+          metadataByHeadword.set(headword, metadata)
+        })
+        const jlptByWord: Record<string, string[]> = {}
+        const wordbookIdsByWord: Record<string, string[]> = {}
+        source.matchedWords.forEach(word => {
+          jlptByWord[word] = [...(jlptByCanonicalWord.get(word) || [])]
+          wordbookIdsByWord[word] = source.wordbookIdsByWord[word] || []
+        })
+        metadataByHeadword.forEach((metadata, headword) => {
+          jlptByWord[headword] = [...metadata.jlpt]
+          wordbookIdsByWord[headword] = [...metadata.wordbookIds]
+        })
+        Object.entries(aliases).forEach(([surface, headword]) => {
+          const metadata = metadataByHeadword.get(headword)
+          jlptByWord[surface] = metadata ? [...metadata.jlpt] : []
+          wordbookIdsByWord[surface] = metadata
+            ? [...metadata.wordbookIds]
+            : source.wordbookIds
+        })
+        return {
+          id: source.id,
+          label: source.label,
+          words: Object.keys(aliases),
+          canonicalWords: Array.from(new Set(Object.values(aliases))),
+          jlptByWord,
+          wordbookIdsByWord,
+          aliases,
+          variants,
+        }
+      })
+      .filter(group => group.words.length > 0)
+      .sort((left, right) => left.label.localeCompare(right.label, 'ja'))
+  }, [currentText, wordbookDistribution])
+  const wordbookSurfaceToBaseWord = React.useMemo(
+    () =>
+      Object.assign(
+        {},
+        ...wordbookHighlightGroups.map(group => group.aliases || {}),
+      ) as Record<string, string>,
+    [wordbookHighlightGroups],
+  )
+  const visibleWordbookSourceGroups = React.useMemo(
+    () =>
+      wordbookHighlightGroups.filter(
+        group => !hiddenWordbookIds.has(group.id),
+      ),
+    [hiddenWordbookIds, wordbookHighlightGroups],
+  )
+  const visibleWordbookHighlightGroups = React.useMemo(
+    () =>
+      visibleWordbookSourceGroups
+        .map(group => ({
+          ...group,
+          words: group.words.filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+          canonicalWords: (group.canonicalWords || []).filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+        }))
+        .filter(group => group.words.length > 0),
+    [hiddenJlptLevels, visibleWordbookSourceGroups],
+  )
+  const wordbookTokenWords = React.useMemo(
+    () =>
+      showMeaning
+        ? Array.from(
+            new Set(
+              visibleWordbookSourceGroups.flatMap(group => group.words),
+            ),
+          )
+        : [],
+    [showMeaning, visibleWordbookSourceGroups],
+  )
+  const handleWordbookVisibilityChange = React.useCallback(
+    (wordbookIds: string[], visible: boolean) =>
+      setHiddenWordbookIds(current => {
+        const next = new Set(current)
+        wordbookIds.forEach(id => {
+          if (visible) next.delete(id)
+          else next.add(id)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleJlptVisibilityChange = React.useCallback(
+    (levels: JlptLevel[], visible: boolean) =>
+      setHiddenJlptLevels(current => {
+        const next = new Set(current)
+        levels.forEach(level => {
+          if (visible) next.delete(level)
+          else next.add(level)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleAllHighlightVisibilityChange = React.useCallback(
+    (visible: boolean) => {
+      setHiddenWordbookIds(
+        visible
+          ? new Set()
+          : new Set(wordbookHighlightGroups.map(group => group.id)),
+      )
+      setHiddenJlptLevels(
+        visible ||
+          !wordbookHighlightGroups.some(group =>
+            Object.values(group.jlptByWord || {}).some(levels => levels.length > 0),
+          )
+          ? new Set()
+          : new Set(JLPT_LEVELS),
+      )
+    },
+    [wordbookHighlightGroups],
+  )
+  const handleWordbookWordClick = React.useCallback(
+    (payload: { word: string; wordbookId: string; x: number; y: number }) => {
+      closeSelection()
+      setInspectedWord({
+        ...payload,
+        word: wordbookSurfaceToBaseWord[payload.word] || payload.word,
+        matchedVariant:
+          wordbookHighlightGroups
+            .find(
+              group =>
+                group.wordbookIdsByWord?.[payload.word]?.includes(
+                  payload.wordbookId,
+                ) || group.id === payload.wordbookId,
+            )
+            ?.variants?.[payload.word] || payload.word,
+      })
+    },
+    [closeSelection, wordbookHighlightGroups, wordbookSurfaceToBaseWord],
+  )
+  const displayedAnswersKey = displayedQuestionsForAnnotation
+    .map(q => session.answers[q.id] || '')
+    .join(':')
+  const displayedSortingKey = displayedQuestionsForAnnotation
+    .map(q => (session.sortingDrafts[q.id] || []).filter(Boolean).join('-'))
+    .join(':')
+  const {
+    learningPoints,
+    isLoadingLearningPoints,
+    learningPointSelection,
+    closeLearningPoint,
+    inspectLearningPoint,
+    inspectLearningPointWord,
+  } = useStudyTextHighlights({
+    rootRef: playerRootRef,
+    contentKey: `${session.currentIndex}:${currentGroupIndex}:${currentGroup?.key || ''}:${showMeaning}:${showPronunciation}:${pronunciationSource}:${session.submittedQuestionIds.length}:${session.isSubmitted}:${Object.keys(sudachiLexicon).length}:${displayedAnswersKey}:${displayedSortingKey}`,
+    showLearningPoints: learningPointsEnabled,
+    showWordbooks: showMeaning,
+    wordbookGroups: visibleWordbookHighlightGroups,
+    onWordbookWordClick: handleWordbookWordClick,
+  })
 
   React.useEffect(() => {
-    if (!loadSudachiInBackground || sudachiAvailable) return
+    setInspectedWord(previous => (previous ? null : previous))
+  }, [currentGroupIndex, session.currentIndex])
+
+  React.useEffect(() => {
+    const needsSudachi = loadSudachiInBackground && !sudachiAvailable
+    const needsWordbooks = showMeaning && !wordbookAnalysisLoaded
+    if (!isJapanesePaper || (!needsSudachi && !needsWordbooks)) return
     const controller = new AbortController()
     const texts = buildExamAnnotationTexts(questions)
     if (texts.length === 0) return
@@ -258,7 +517,7 @@ export function PracticePlayer({
     void fetch('/api/pronunciation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts }),
+      body: JSON.stringify({ texts, includeWordbookAnalysis: needsWordbooks }),
       signal: controller.signal,
     })
       .then(async response => {
@@ -267,18 +526,34 @@ export function PracticePlayer({
           available?: boolean
           pronunciationMap?: Record<string, string>
           lexicon?: Record<string, SudachiLexeme>
+          wordbookDistribution?: PaperWordbookDistribution
         }
       })
       .then(result => {
-        if (!result?.available) return
+        if (!result) return
+        if (needsWordbooks) setWordbookAnalysisLoaded(true)
+        if (result.wordbookDistribution) {
+          setWordbookDistribution(result.wordbookDistribution)
+        } else if (needsWordbooks) {
+          const fallbackWords = Object.keys(localVocabularyMetaMap)
+          if (fallbackWords.length > 0) {
+            void fetch('/api/reading/wordbook-distribution', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ words: fallbackWords }),
+              signal: controller.signal,
+            })
+              .then(res => (res.ok ? res.json() : null))
+              .then(dist => {
+                if (dist) setWordbookDistribution(dist)
+              })
+              .catch(() => {})
+          }
+        }
+        if (!result.available) return
         setSudachiPronunciationMap(result.pronunciationMap || {})
         setSudachiLexicon(result.lexicon || {})
         setSudachiAvailable(true)
-        const stored = readUserStorageValue(
-          currentUser.id,
-          PRONUNCIATION_SOURCE_STORAGE_KEY,
-        )
-        if (stored !== 'personal') setPronunciationSourceState('sudachi')
       })
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -287,9 +562,13 @@ export function PracticePlayer({
     return () => controller.abort()
   }, [
     currentUser.id,
+    isJapanesePaper,
     loadSudachiInBackground,
+    localVocabularyMetaMap,
     questions,
+    showMeaning,
     sudachiAvailable,
+    wordbookAnalysisLoaded,
   ])
 
   React.useEffect(() => {
@@ -361,12 +640,6 @@ export function PracticePlayer({
     session.currentIndex,
   ])
 
-  const setPronunciationSource = (source: PronunciationSource) => {
-    if (source === 'sudachi' && !sudachiAvailable) return
-    setPronunciationSourceState(source)
-    window.localStorage.setItem(pronunciationStorageKey, source)
-  }
-
   const handleSelectOption = React.useCallback(
     (questionId: string, optionId: string) => {
       session.selectOption(questionId, optionId)
@@ -415,6 +688,7 @@ export function PracticePlayer({
         event.altKey ||
         session.showSheet ||
         selection.isVisible ||
+        Boolean(inspectedWord) ||
         isEditableKeyboardTarget(event.target)
       ) {
         return
@@ -476,6 +750,7 @@ export function PracticePlayer({
     goToNextGroup,
     goToPreviousGroup,
     handleSelectOption,
+    inspectedWord,
     questionGroups.length,
     selection.isVisible,
     session,
@@ -776,7 +1051,7 @@ export function PracticePlayer({
       className={`relative flex min-h-screen flex-col bg-[#f7f7f5] font-sans ${
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
-      <header className='sticky top-0 z-40 border-b border-slate-200 bg-[#f7f7f5]/95 backdrop-blur'>
+      <header className='sticky top-0 z-40 border-b border-slate-200 bg-[#f7f7f5]'>
         <div className='mx-auto grid min-h-14 max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 md:flex md:h-14 md:gap-2 md:px-6'>
           <div className='flex h-12 min-w-0 items-center gap-2 md:h-auto md:flex-1'>
             {mode !== 'single' && (
@@ -1040,11 +1315,28 @@ export function PracticePlayer({
         )}
       </header>
 
-      {learningPointsEnabled ? (
+      {showMeaning && wordbookHighlightGroups.length > 0 ? (
+        <div className='mx-auto w-full max-w-7xl px-3 pt-1 md:px-6'>
+          <WordbookHighlightSelector
+            groups={wordbookHighlightGroups}
+            hiddenWordbookIds={hiddenWordbookIds}
+            onVisibilityChange={handleWordbookVisibilityChange}
+            hiddenJlptLevels={hiddenJlptLevels}
+            onJlptVisibilityChange={handleJlptVisibilityChange}
+            onAllVisibilityChange={handleAllHighlightVisibilityChange}
+          />
+        </div>
+      ) : null}
+
+      {learningPointsEnabled || (showMeaning && learningPoints.length > 0) ? (
         <div className='mx-auto w-full max-w-7xl px-3 pt-3 md:px-6'>
           <LearningPointHighlightPanel
             points={learningPoints}
             isLoading={isLoadingLearningPoints}
+            selection={learningPointSelection}
+            onClose={closeLearningPoint}
+            onInspect={inspectLearningPoint}
+            onInspectWord={inspectLearningPointWord}
           />
         </div>
       ) : null}
@@ -1239,13 +1531,17 @@ export function PracticePlayer({
           isJapanesePaper={isJapanesePaper}
           annotation={{
             showPronunciation,
-            showMeaning,
+            showMeaning: false,
             groupKanji: pronunciationSource === 'sudachi',
             pronunciationMap:
               pronunciationSource === 'sudachi'
                 ? sudachiPronunciationMap
                 : localPronunciationMap,
             vocabularyMetaMap: localVocabularyMetaMap,
+            sudachiLexicon:
+              Object.keys(sudachiLexicon).length > 0 ? sudachiLexicon : undefined,
+            pronunciationSource,
+            tokenWords: showMeaning ? wordbookTokenWords : [],
           }}
         />
 
@@ -1271,18 +1567,32 @@ export function PracticePlayer({
             sourceId={selection.sourceId}
             detectedWord={selection.detectedWord}
             initialMeta={localVocabularyMetaMap[selection.text]}
-            onSaved={({ word, meta }) => {
-              setLocalVocabularyMetaMap(prev => ({ ...prev, [word]: meta }))
-              if (meta.pronunciations[0]) {
-                setLocalPronunciationMap(prev => ({
-                  ...prev,
-                  [word]: meta.pronunciations[0],
-                }))
-              }
+            onSaved={update => {
+              setLocalVocabularyMetaMap(prev => applyVocabularyInspectorMetaUpdate(prev, update))
+              setLocalPronunciationMap(prev => applyVocabularyInspectorPronunciationUpdate(prev, update))
             }}
             onClose={closeSelection}
           />
         )}
+
+        {inspectedWord ? (
+          <VocabularyWordbookInspector
+            word={inspectedWord.word}
+            matchedVariant={inspectedWord.matchedVariant}
+            wordbookId={inspectedWord.wordbookId}
+            x={inspectedWord.x}
+            y={inspectedWord.y}
+            onClose={() => setInspectedWord(null)}
+            onSaved={({ membershipsChanged, ...update }) => {
+              setLocalVocabularyMetaMap(current => applyVocabularyInspectorMetaUpdate(current, update))
+              setLocalPronunciationMap(current => applyVocabularyInspectorPronunciationUpdate(current, update))
+              if (membershipsChanged) {
+                setWordbookDistribution(null)
+                setWordbookAnalysisLoaded(false)
+              }
+            }}
+          />
+        ) : null}
       </main>
 
     </div>

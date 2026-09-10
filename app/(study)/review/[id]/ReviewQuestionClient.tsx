@@ -110,7 +110,14 @@ export default function ReviewQuestionClient({
     () => items.map(mapRetryItemToExamQuestion),
     [items],
   )
-  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+  const {
+    learningPoints,
+    isLoadingLearningPoints,
+    learningPointSelection,
+    closeLearningPoint,
+    inspectLearningPoint,
+    inspectLearningPointWord,
+  } = useStudyTextHighlights({
     rootRef: reviewRootRef,
     contentKey: `${currentIndex}:${items.map(entry => entry.questionId).join(',')}`,
     showLearningPoints: learningPointsEnabled,
@@ -323,7 +330,7 @@ export default function ReviewQuestionClient({
       <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur'>
         <div className='mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-3 md:px-8'>
           <div className='min-w-0'>
-            <h1 className='text-base font-black text-slate-900 md:text-lg'>
+            <h1 className='text-base font-bold text-slate-900 md:text-lg'>
               错题回看
             </h1>
             <p className='truncate text-xs text-slate-500'>
@@ -374,6 +381,10 @@ export default function ReviewQuestionClient({
           <LearningPointHighlightPanel
             points={learningPoints}
             isLoading={isLoadingLearningPoints}
+            selection={learningPointSelection}
+            onClose={closeLearningPoint}
+            onInspect={inspectLearningPoint}
+            onInspectWord={inspectLearningPointWord}
           />
         </div>
       ) : null}

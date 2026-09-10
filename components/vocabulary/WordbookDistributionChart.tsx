@@ -34,6 +34,8 @@ export default function WordbookDistributionChart({
       matchedCount: distribution.outsideCount,
       coverageRate: distribution.outsideRate,
       matchedWords: distribution.outsideWords || [],
+      matchedHeadwords: {},
+      matchedJlpt: {},
       kind: 'outside' as const,
     },
   ].filter(row => row.matchedCount > 0)

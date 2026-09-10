@@ -11,6 +11,10 @@ import {
   decodeMaterialPayload,
   encodeMaterialPayload,
 } from '@/lib/codecs/material-payload'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 type ImportEpubState = {
   success: boolean
@@ -80,6 +84,8 @@ export async function importEpubAction(
       select: { id: true },
     })
     materialId = material.id
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
   } catch (error) {
     const message = error instanceof Error ? error.message : '导入失败。'
     return { success: false, message }
@@ -135,6 +141,8 @@ export async function importPastedBookAction(
       select: { id: true },
     })
     materialId = material.id
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
   } catch (error) {
     const message = error instanceof Error ? error.message : '导入失败。'
     return { success: false, message }
@@ -164,6 +172,7 @@ export async function deleteEpubAction(id: string) {
   }
 
   await prisma.material.delete({ where: { id: material.id } })
+  invalidatePracticeVocabularyAnalytics()
   revalidatePath('/reading')
   return { success: true, message: '电子书已删除。' }
 }

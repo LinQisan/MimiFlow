@@ -57,7 +57,7 @@ test('paper frequency reports leaf wordbook coverage and outside words', () => {
       { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 0 },
     ],
     memberships: [
-      { word: '環境', wordbookIds: ['n1'] },
+      { word: '環境', headword: '環境 / 環境問題', wordbookIds: ['n1'] },
       { word: '語彙', wordbookIds: ['n2'] },
     ],
   })
@@ -73,6 +73,9 @@ test('paper frequency reports leaf wordbook coverage and outside words', () => {
       ['n2', 1, ['語彙']],
     ],
   )
+  assert.deepEqual(distribution.wordbooks[0].matchedHeadwords, {
+    環境: '環境 / 環境問題',
+  })
 })
 
 test('wordbook distribution orders matches by coverage before series order', () => {
@@ -90,6 +93,49 @@ test('wordbook distribution orders matches by coverage before series order', () 
   })
 
   assert.deepEqual(distribution.wordbooks.map(row => row.id), ['large', 'small'])
+})
+
+test('wordbook distribution keeps explicit multi-JLPT metadata independent from sources', () => {
+  const distribution = buildPaperWordbookDistribution({
+    words: ['視線', '進む', 'フェリー'],
+    wordbooks: [
+      {
+        id: 'red-unit',
+        name: 'Unit01',
+        pathLabel: '红宝书 / Unit01',
+        depth: 0,
+        sourceId: 'red-series',
+        sourceLabel: '红宝书',
+      },
+      {
+        id: 'n1-unit',
+        name: 'Unit01',
+        pathLabel: 'N1語彙トレーニング / Unit01',
+        depth: 0,
+        sourceId: 'n1-series',
+        sourceLabel: 'N1語彙トレーニング',
+      },
+    ],
+    memberships: [
+      {
+        word: '視線',
+        wordbookIds: ['red-unit', 'n1-unit'],
+        jlpt: ['N1', 'N2'],
+      },
+      { word: '進む', wordbookIds: ['n1-unit'], jlpt: 'N4' },
+      // A book name must never supply a missing JLPT value.
+      { word: 'フェリー', wordbookIds: ['n1-unit'] },
+    ],
+  })
+
+  const rowsBySource = new Map(
+    distribution.wordbooks.map(row => [row.sourceId, row]),
+  )
+  assert.deepEqual([...rowsBySource.keys()].sort(), ['n1-series', 'red-series'])
+  assert.deepEqual(rowsBySource.get('red-series')?.matchedJlpt['視線'], ['N1', 'N2'])
+  assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['視線'], ['N1', 'N2'])
+  assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['進む'], ['N4'])
+  assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['フェリー'], [])
 })
 
 test('paper overview exposes Sudachi word frequency in a dialog', async () => {
@@ -128,6 +174,8 @@ test('paper overview exposes Sudachi word frequency in a dialog', async () => {
   assert.match(chart, /未收录置底 · 点击查看单词/)
   assert.match(server, /word: \{ in: batch \}/)
   assert.match(server, /seriesTitle: row\.series\.title/)
+  assert.match(server, /select: \{ wordbookId: true, jlpt: true \}/)
+  assert.match(server, /sourceId: sourceByWordbookId\.get\(option\.id\)\?\.id/)
   assert.doesNotMatch(server, /ancestorIdsFor/)
   assert.match(nextConfig, /'\/practice\/\*'/)
 })

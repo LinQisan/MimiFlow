@@ -171,14 +171,14 @@ export default async function MediaSubtitleDetailPage({
           <div className='flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between'>
             <div className='min-w-0 max-w-4xl'>
               <div className='flex flex-wrap items-center gap-2'>
-                <span className='rounded border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-black text-teal-700'>
+                <span className='rounded border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-bold text-teal-700'>
                   {sourceType === 'TV' ? '电视剧' : '电影'}
                 </span>
                 <span className='text-sm font-bold text-slate-500'>
                   {episodeLabel}
                 </span>
               </div>
-              <h1 className='mt-3 break-words text-3xl font-black tracking-tight text-slate-950 md:text-4xl'>
+              <h1 className='mt-3 break-words text-3xl font-bold tracking-tight text-slate-950 md:text-4xl'>
                 {metaTitle}
               </h1>
               <p className='mt-2 text-sm font-semibold text-slate-500'>
@@ -198,25 +198,25 @@ export default async function MediaSubtitleDetailPage({
           <div className='mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
             <div className='rounded-lg border border-slate-200 bg-slate-50 px-4 py-3'>
               <p className='text-xs font-bold text-slate-500'>字幕行数</p>
-              <p className='mt-1 text-2xl font-black text-slate-950'>
+              <p className='mt-1 text-2xl font-bold text-slate-950'>
                 {dialogues.length}
               </p>
             </div>
             <div className='rounded-lg border border-amber-200 bg-amber-50 px-4 py-3'>
               <p className='text-xs font-bold text-slate-500'>收藏</p>
-              <p className='mt-1 text-2xl font-black text-slate-950'>
+              <p className='mt-1 text-2xl font-bold text-slate-950'>
                 {favoriteCount}
               </p>
             </div>
             <div className='rounded-lg border border-slate-200 bg-slate-50 px-4 py-3'>
               <p className='text-xs font-bold text-slate-500'>音频状态</p>
-              <p className='mt-2 text-sm font-black text-slate-800'>
+              <p className='mt-2 text-sm font-bold text-slate-800'>
                 {subtitleNoAudio ? '仅字幕' : '含音频'}
               </p>
             </div>
             <div className='rounded-lg border border-teal-200 bg-teal-50 px-4 py-3'>
               <p className='text-xs font-bold text-slate-500'>阅读模式</p>
-              <p className='mt-2 text-sm font-black text-slate-800'>
+              <p className='mt-2 text-sm font-bold text-slate-800'>
                 可搜索 · 可注音 · 可复制
               </p>
             </div>

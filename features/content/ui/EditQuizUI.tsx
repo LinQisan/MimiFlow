@@ -288,7 +288,7 @@ export default function EditQuizUI({
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder='输入题库名称'
-              className='w-full text-2xl md:text-3xl font-black bg-transparent border-none outline-none focus:ring-0 p-0 pl-1 text-gray-900 placeholder-gray-300 transition-all'
+              className='w-full text-2xl md:text-3xl font-bold bg-transparent border-none outline-none focus:ring-0 p-0 pl-1 text-gray-900 placeholder-gray-300 transition-all'
             />
             <p className='mt-2 pl-1 text-xs text-gray-500'>
               支持拖拽调整题目顺序，编辑后统一保存。
@@ -307,7 +307,7 @@ export default function EditQuizUI({
 
       <section className='flex w-full flex-col border-t border-slate-200 py-6 md:py-8'>
         <div className='flex items-center justify-between mb-8 shrink-0 relative'>
-          <h2 className='text-xl font-black text-gray-800'>题目列表</h2>
+          <h2 className='text-xl font-bold text-gray-800'>题目列表</h2>
 
           <div className='relative z-20'>
             <button
@@ -397,7 +397,7 @@ export default function EditQuizUI({
                         className={`group relative cursor-default rounded-xl border border-slate-300 p-5 transition-colors md:p-6 ${tConfig.color.split(' ')[0]}`}>
                         <div className='flex justify-between items-center mb-5'>
                           <div className='flex items-center gap-2.5'>
-                            <span className='px-2.5 py-1 rounded text-[10px] font-black bg-gray-900 text-white animate-pulse tracking-wider'>
+                            <span className='px-2.5 py-1 rounded text-[10px] font-bold bg-gray-900 text-white animate-pulse tracking-wider'>
                               编辑中 Q{index + 1}
                             </span>
                             <QuestionTypeBadge type={q.questionType} />
@@ -416,7 +416,7 @@ export default function EditQuizUI({
                           {q.questionType !== 'LISTENING' &&
                             supportsSeparateQuestionContext(q.questionType) && (
                           <div>
-                            <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
+                            <label className='text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block'>
                               语境句（可选）
                             </label>
                             <textarea
@@ -437,7 +437,7 @@ export default function EditQuizUI({
                           <div className='grid grid-cols-1 md:grid-cols-2 gap-5'>
                             {usesExplicitQuestionTargetWord(q.questionType) && (
                               <div>
-                                <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
+                                <label className='text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block'>
                                   目标词
                                 </label>
                                 <input
@@ -462,7 +462,7 @@ export default function EditQuizUI({
                                   ? 'md:col-span-2'
                                   : ''
                               }>
-                            <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
+                            <label className='text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block'>
                                 题干
                               </label>
                               <input
@@ -483,7 +483,7 @@ export default function EditQuizUI({
 
                           <div>
                             <div className='flex flex-wrap items-center justify-between gap-2 mb-2'>
-                            <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider'>
+                            <label className='text-[10px] font-bold text-gray-500 uppercase tracking-wider'>
                               选项（{q.options.length} 个，最少 {MIN_QUESTION_OPTION_COUNT} 个）
                             </label>
                             <div className='flex items-center gap-2'>
@@ -528,7 +528,7 @@ export default function EditQuizUI({
                                     }
                                     className='w-5 h-5 text-emerald-600 focus:ring-emerald-500 cursor-pointer'
                                   />
-                                  <span className='text-sm font-black text-gray-300'>
+                                  <span className='text-sm font-bold text-gray-300'>
                                     {String.fromCharCode(65 + i)}
                                   </span>
                                   {!isAudioOnly(q.id) && (
@@ -561,7 +561,7 @@ export default function EditQuizUI({
                           </div>
 
                           <div>
-                            <label className='text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1.5 block'>
+                            <label className='text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 block'>
                               解析说明
                             </label>
                             <textarea
@@ -586,7 +586,7 @@ export default function EditQuizUI({
                             <ActionInterceptor>
                               <DragHandle />
                             </ActionInterceptor>
-                            <span className='bg-gray-800 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-wider'>
+                            <span className='bg-gray-800 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-wider'>
                               Q{index + 1}
                             </span>
                             <QuestionTypeBadge type={q.questionType} />
@@ -659,7 +659,7 @@ export default function EditQuizUI({
                                   {isAudioOnly(q.id) ? '' : opt.text}
                                 </span>
                                 {opt.isCorrect && (
-                                  <span className='text-emerald-500 font-black'>
+                                  <span className='text-emerald-500 font-bold'>
                                     ✅
                                   </span>
                                 )}

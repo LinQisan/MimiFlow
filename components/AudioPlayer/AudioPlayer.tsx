@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useEffect, useMemo } from 'react'
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { StudyTimeKind } from '@prisma/client'
 
@@ -25,22 +25,28 @@ import useStudyTimeHeartbeat from '@/hooks/useStudyTimeHeartbeat'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { useStudyTextHighlights } from '@/hooks/useStudyTextHighlights'
 import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
+import VocabularyWordbookInspector from '@/modules/knowledge/vocabulary/components/VocabularyWordbookInspector'
 import { useAudioController } from './useAudioController'
 import { getCleanSelectionText } from '@/utils/text/selection'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 import ListeningPlayerHeader from './ListeningPlayerHeader'
 import ListeningSentenceRow from './ListeningSentenceRow'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
-import {
-  PRONUNCIATION_SOURCE_STORAGE_KEY,
-  type PronunciationSource,
-} from '@/components/ui/PronunciationSourceSelector'
-import {
-  readUserStorageValue,
-  useCurrentUser,
-  userStorageKey,
-} from '@/context/UserContext'
+import { usePronunciationSource } from '@/hooks/usePronunciationSource'
 import { copyText } from '@/features/reading/ui/copy-text'
+import WordbookHighlightSelector from '@/features/reading/ui/WordbookHighlightSelector'
+import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
+import {
+  JLPT_LEVELS,
+  groupWordbookDistributionBySource,
+  isJlptVisibleWithHiddenLevels,
+  type JlptLevel,
+} from '@/features/reading/domain/wordbook-highlight-groups'
+import {
+  buildSurfaceAliasMapForText,
+  buildSurfaceVariantMapForText,
+} from '@/utils/vocabulary/japaneseInflection'
+import { applyVocabularyInspectorMetaUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
 
 // ================= 类型定义 =================
 type DialogueItem = {
@@ -88,11 +94,6 @@ export default function AudioPlayer({
   isEmbedded = false,
   forceBlindMode,
 }: Props) {
-  const currentUser = useCurrentUser()
-  const pronunciationStorageKey = userStorageKey(
-    currentUser.id,
-    PRONUNCIATION_SOURCE_STORAGE_KEY,
-  )
   const router = useRouter()
   const {
     audioRef,
@@ -107,20 +108,39 @@ export default function AudioPlayer({
     playSentence,
     toggleLoop,
   } = useAudioController(lesson.dialogue)
-  const { selection, closeSelection } = useTextSelection()
-
   const [isBlindMode, setIsBlindMode] = useState(false)
+  const { selection, closeSelection } = useTextSelection(!isBlindMode)
+  const [showAnnotations, setShowAnnotations] = useState(true)
   const [showLearningPoints, setShowLearningPoints] = useState(false)
   const [savingDialogueId, setSavingDialogueId] = useState<number | null>(null)
   const [dialogueSaveState, setDialogueSaveState] =
     useState<TooltipSaveState>('idle')
   const { showPronunciation, setShowPronunciation } = useShowPronunciation()
-  const [pronunciationSource, setPronunciationSourceState] =
-    useState<PronunciationSource>('personal')
   const [sudachiLexicon, setSudachiLexicon] = useState<
     Record<string, SudachiLexeme>
   >({})
   const [sudachiAvailable, setSudachiAvailable] = useState(false)
+  const [wordbookDistribution, setWordbookDistribution] =
+    useState<PaperWordbookDistribution | null>(null)
+  const [wordbookAnalysisState, setWordbookAnalysisState] = useState<
+    'idle' | 'loading' | 'ready' | 'error'
+  >('idle')
+  const [wordbookRetryKey, setWordbookRetryKey] = useState(0)
+  const [hiddenWordbookIds, setHiddenWordbookIds] = useState<Set<string>>(
+    () => new Set(),
+  )
+  const [hiddenJlptLevels, setHiddenJlptLevels] = useState<Set<JlptLevel>>(
+    () => new Set(),
+  )
+  const [inspectedWord, setInspectedWord] = useState<{
+    word: string
+    matchedVariant: string
+    wordbookId: string
+    x: number
+    y: number
+  } | null>(null)
+  const { pronunciationSource, setPronunciationSource } =
+    usePronunciationSource(sudachiAvailable)
   const [localVocabularyMetaMap, setLocalVocabularyMetaMap] =
     useState(vocabularyMetaMap)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
@@ -141,10 +161,207 @@ export default function AudioPlayer({
   const dirtySecondsRef = useRef(0)
   const isFlushingRef = useRef(false)
   const playerRootRef = useRef<HTMLDivElement>(null)
-  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+  const transcriptPlainText = useMemo(
+    () =>
+      lesson.dialogue
+        .map(item => item.text.trim())
+        .filter(Boolean)
+        .join('\n'),
+    [lesson.dialogue],
+  )
+  const wordbookHighlightGroups = useMemo(() => {
+    const sources = groupWordbookDistributionBySource(
+      wordbookDistribution?.wordbooks || [],
+    )
+    const jlptByCanonicalWord = new Map<string, Set<JlptLevel>>()
+    sources.forEach(source => {
+      source.matchedWords.forEach(word => {
+        const levels = jlptByCanonicalWord.get(word) || new Set<JlptLevel>()
+        ;(source.jlptByWord[word] || []).forEach(level => levels.add(level))
+        jlptByCanonicalWord.set(word, levels)
+      })
+    })
+    return sources
+      .map(source => {
+        const matchedHeadwords = Array.from(
+          new Set(Object.values(source.matchedHeadwords)),
+        )
+        const aliases = buildSurfaceAliasMapForText(
+          transcriptPlainText,
+          matchedHeadwords,
+        )
+        const variants = buildSurfaceVariantMapForText(
+          transcriptPlainText,
+          matchedHeadwords,
+        )
+        const metadataByHeadword = new Map<
+          string,
+          { jlpt: Set<JlptLevel>; wordbookIds: Set<string> }
+        >()
+        source.matchedWords.forEach(word => {
+          const headword = source.matchedHeadwords[word] || word
+          const metadata = metadataByHeadword.get(headword) || {
+            jlpt: new Set<JlptLevel>(),
+            wordbookIds: new Set<string>(),
+          }
+          ;(source.jlptByWord[word] || []).forEach(level =>
+            metadata.jlpt.add(level),
+          )
+          ;(jlptByCanonicalWord.get(word) || []).forEach(level =>
+            metadata.jlpt.add(level),
+          )
+          ;(source.wordbookIdsByWord[word] || []).forEach(wordbookId =>
+            metadata.wordbookIds.add(wordbookId),
+          )
+          metadataByHeadword.set(headword, metadata)
+        })
+        const jlptByWord: Record<string, string[]> = {}
+        const wordbookIdsByWord: Record<string, string[]> = {}
+        source.matchedWords.forEach(word => {
+          jlptByWord[word] = [...(jlptByCanonicalWord.get(word) || [])]
+          wordbookIdsByWord[word] = source.wordbookIdsByWord[word] || []
+        })
+        metadataByHeadword.forEach((metadata, headword) => {
+          jlptByWord[headword] = [...metadata.jlpt]
+          wordbookIdsByWord[headword] = [...metadata.wordbookIds]
+        })
+        Object.entries(aliases).forEach(([surface, headword]) => {
+          const metadata = metadataByHeadword.get(headword)
+          jlptByWord[surface] = metadata ? [...metadata.jlpt] : []
+          wordbookIdsByWord[surface] = metadata
+            ? [...metadata.wordbookIds]
+            : source.wordbookIds
+        })
+        return {
+          id: source.id,
+          label: source.label,
+          words: Object.keys(aliases),
+          canonicalWords: Array.from(new Set(Object.values(aliases))),
+          jlptByWord,
+          wordbookIdsByWord,
+          aliases,
+          variants,
+        }
+      })
+      .filter(group => group.words.length > 0)
+      .sort((left, right) => left.label.localeCompare(right.label, 'ja'))
+  }, [transcriptPlainText, wordbookDistribution])
+  const visibleWordbookSourceGroups = useMemo(
+    () =>
+      wordbookHighlightGroups.filter(group => !hiddenWordbookIds.has(group.id)),
+    [hiddenWordbookIds, wordbookHighlightGroups],
+  )
+  const visibleWordbookHighlightGroups = useMemo(
+    () =>
+      visibleWordbookSourceGroups
+        .map(group => ({
+          ...group,
+          words: group.words.filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+          canonicalWords: (group.canonicalWords || []).filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+        }))
+        .filter(group => group.words.length > 0),
+    [hiddenJlptLevels, visibleWordbookSourceGroups],
+  )
+  const wordbookTokenWords = useMemo(
+    () =>
+      showAnnotations
+        ? Array.from(
+            new Set(
+              visibleWordbookSourceGroups.flatMap(group => group.words),
+            ),
+          )
+        : [],
+    [showAnnotations, visibleWordbookSourceGroups],
+  )
+  const wordbookSurfaceToBaseWord = useMemo(
+    () =>
+      Object.assign(
+        {},
+        ...wordbookHighlightGroups.map(group => group.aliases || {}),
+      ) as Record<string, string>,
+    [wordbookHighlightGroups],
+  )
+  const handleWordbookVisibilityChange = useCallback(
+    (wordbookIds: string[], visible: boolean) =>
+      setHiddenWordbookIds(current => {
+        const next = new Set(current)
+        wordbookIds.forEach(id => {
+          if (visible) next.delete(id)
+          else next.add(id)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleJlptVisibilityChange = useCallback(
+    (levels: JlptLevel[], visible: boolean) =>
+      setHiddenJlptLevels(current => {
+        const next = new Set(current)
+        levels.forEach(level => {
+          if (visible) next.delete(level)
+          else next.add(level)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleAllHighlightVisibilityChange = useCallback((visible: boolean) => {
+    setHiddenWordbookIds(
+      visible
+        ? new Set()
+        : new Set(wordbookHighlightGroups.map(group => group.id)),
+    )
+    setHiddenJlptLevels(
+      visible ||
+        !wordbookHighlightGroups.some(group =>
+          Object.values(group.jlptByWord || {}).some(levels => levels.length > 0),
+        )
+        ? new Set()
+        : new Set(JLPT_LEVELS),
+    )
+  }, [wordbookHighlightGroups])
+  const handleWordbookWordClick = useCallback((payload: {
+    word: string
+    wordbookId: string
+    x: number
+    y: number
+  }) => {
+    setInspectedWord({
+      ...payload,
+      word: wordbookSurfaceToBaseWord[payload.word] || payload.word,
+      matchedVariant:
+        wordbookHighlightGroups.find(
+          group =>
+            group.wordbookIdsByWord?.[payload.word]?.includes(
+              payload.wordbookId,
+            ) || group.id === payload.wordbookId,
+        )?.variants?.[payload.word] || payload.word,
+    })
+  }, [wordbookHighlightGroups, wordbookSurfaceToBaseWord])
+  const {
+    learningPoints,
+    isLoadingLearningPoints,
+    learningPointSelection,
+    closeLearningPoint,
+    inspectLearningPoint,
+    inspectLearningPointWord,
+  } = useStudyTextHighlights({
     rootRef: playerRootRef,
-    contentKey: lesson.materialId,
-    showLearningPoints,
+    contentKey: `${lesson.materialId}:${showAnnotations}:${showPronunciation}:${pronunciationSource}:${Object.keys(sudachiLexicon).length}`,
+    showLearningPoints: showLearningPoints && !isBlindMode,
+    showWordbooks: showAnnotations && !isBlindMode,
+    wordbookGroups: visibleWordbookHighlightGroups,
+    onWordbookWordClick: handleWordbookWordClick,
   })
   const activeSentenceIndex =
     activeId === null
@@ -154,14 +371,6 @@ export default function AudioPlayer({
     activeSentenceIndex > 0
       ? (lesson.dialogue[activeSentenceIndex - 1]?.id ?? null)
       : null
-  const transcriptPlainText = useMemo(
-    () =>
-      lesson.dialogue
-        .map(item => item.text.trim())
-        .filter(Boolean)
-        .join('\n'),
-    [lesson.dialogue],
-  )
   const transcriptTexts = useMemo(
     () => lesson.dialogue.map(item => item.text.trim()).filter(Boolean),
     [lesson.dialogue],
@@ -184,7 +393,10 @@ export default function AudioPlayer({
   )
   const selectedVocabularyMeta = useMemo(() => {
     if (!selection.text) return undefined
-    const existing = localVocabularyMetaMap[selection.text]
+    const existing =
+      localVocabularyMetaMap[selection.detectedWord?.dictionaryForm || ''] ||
+      localVocabularyMetaMap[selection.detectedWord?.surface || ''] ||
+      localVocabularyMetaMap[selection.text]
     return {
       pronunciations: existing?.pronunciations || [],
       meanings: existing?.meanings || [],
@@ -194,22 +406,28 @@ export default function AudioPlayer({
         existing?.partsOfSpeech || [],
       ),
     }
-  }, [localVocabularyMetaMap, selection.contextSentence, selection.text])
+  }, [
+    localVocabularyMetaMap,
+    selection.contextSentence,
+    selection.detectedWord,
+    selection.text,
+  ])
   const annotateSentence = (text: string) => {
-    if (!showPronunciation) return text
-    if (
-      pronunciationSource === 'sudachi' &&
-      Object.keys(sudachiLexicon).length > 0
-    ) {
+    const hasSudachiLexicon = Object.keys(sudachiLexicon).length > 0
+    const hasTokenWords = wordbookTokenWords.length > 0
+    if (!showPronunciation && !hasTokenWords) return text
+    if (hasSudachiLexicon) {
       const html = annotateJapaneseTextWithSudachi(text, sudachiLexicon, {
         pronunciationMap: buildPronunciationMapForText(
           text,
           personalPronunciationMap,
         ),
-        useSudachiReading: true,
-        rubyEnabled: true,
+        useSudachiReading: pronunciationSource === 'sudachi',
+        rubyEnabled: showPronunciation,
         rubyClassName: 'text-slate-900 dark:text-slate-100',
         rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
+        tokenClassName: hasTokenWords ? 'vocab-token' : undefined,
+        tokenWords: hasTokenWords ? wordbookTokenWords : undefined,
       })
       return <TrustedHtml html={html} />
     }
@@ -217,18 +435,15 @@ export default function AudioPlayer({
       text,
       personalPronunciationMap,
     )
-    if (Object.keys(pronMap).length === 0) return text
+    if (Object.keys(pronMap).length === 0 && !hasTokenWords) return text
     const html = annotateJapaneseText(text, pronMap, {
+      rubyEnabled: showPronunciation,
       rubyClassName: 'text-slate-900 dark:text-slate-100',
       rtClassName: 'text-[10px] font-bold text-slate-500 dark:text-slate-300',
+      tokenClassName: hasTokenWords ? 'vocab-token' : undefined,
+      tokenWords: hasTokenWords ? wordbookTokenWords : undefined,
     })
     return <TrustedHtml html={html} />
-  }
-
-  const setPronunciationSource = (source: PronunciationSource) => {
-    if (source === 'sudachi' && !sudachiAvailable) return
-    setPronunciationSourceState(source)
-    window.localStorage.setItem(pronunciationStorageKey, source)
   }
 
   // ---------------- 音频控制逻辑 ----------------
@@ -306,58 +521,71 @@ export default function AudioPlayer({
 
   // ---------------- 副作用钩子 ----------------
   useEffect(() => {
-    const stored = readUserStorageValue(
-      currentUser.id,
-      PRONUNCIATION_SOURCE_STORAGE_KEY,
-    )
-    if (stored === 'personal') setPronunciationSourceState('personal')
-  }, [currentUser.id])
-
-  useEffect(() => {
     if (transcriptTexts.length === 0) {
       setSudachiLexicon({})
       setSudachiAvailable(false)
+      setWordbookDistribution(null)
+      setWordbookAnalysisState('idle')
       return
     }
     const controller = new AbortController()
     setSudachiLexicon({})
     setSudachiAvailable(false)
+    setWordbookDistribution(null)
+    setWordbookAnalysisState('loading')
 
     void fetch('/api/pronunciation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texts: transcriptTexts }),
+      body: JSON.stringify({
+        texts: transcriptTexts,
+        includeWordbookAnalysis: true,
+      }),
       signal: controller.signal,
     })
       .then(async response => {
         if (!response.ok) return null
         return (await response.json()) as {
           available?: boolean
+          wordbookDistribution?: PaperWordbookDistribution
           lexicon?: Record<string, SudachiLexeme>
         }
       })
       .then(result => {
-        if (!result?.available) return
+        if (!result) {
+          setWordbookAnalysisState('error')
+          return
+        }
+        setWordbookDistribution(result.wordbookDistribution || null)
+        setWordbookAnalysisState('ready')
+        if (!result.available) return
         setSudachiLexicon(result.lexicon || {})
         setSudachiAvailable(true)
-        const stored = readUserStorageValue(
-          currentUser.id,
-          PRONUNCIATION_SOURCE_STORAGE_KEY,
-        )
-        if (stored !== 'personal') setPronunciationSourceState('sudachi')
       })
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return
+        setWordbookAnalysisState('error')
       })
 
     return () => controller.abort()
-  }, [currentUser.id, transcriptTextKey, transcriptTexts])
+    // transcriptTextKey is the stringified form of transcriptTexts, so
+    // depending on the key alone avoids refetching (and aborting the in-flight
+    // POST, which the server can observe as an empty/truncated body) when a
+    // parent re-render recreates the texts array with identical content.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transcriptTextKey, wordbookRetryKey])
 
   useEffect(() => {
     if (forceBlindMode !== undefined) {
       setIsBlindMode(forceBlindMode)
     }
   }, [forceBlindMode])
+
+  useEffect(() => {
+    setHiddenWordbookIds(new Set())
+    setHiddenJlptLevels(new Set())
+    setInspectedWord(null)
+  }, [lesson.id])
 
   useEffect(() => {
     // 仅在切换材料时重置会话计时，避免上报后 props 回流导致每 10s 清零。
@@ -460,12 +688,12 @@ export default function AudioPlayer({
   return (
     <div
       ref={playerRootRef}
-      className={`relative bg-slate-50 dark:bg-slate-950 ${
+      className={`relative bg-[var(--editorial-paper)] ${
         isEmbedded ? 'min-h-full h-full overflow-y-auto' : 'min-h-screen'
       }`}>
       <audio ref={audioRef} src={lesson.audioFile} preload='metadata' />
 
-      {selection.isVisible && selection.sourceType !== '' ? (
+      {!isBlindMode && selection.isVisible && selection.sourceType !== '' ? (
         <>
           <div className='pointer-events-none fixed inset-0 z-40'>
             {selection.rects.map((rect, index) => (
@@ -492,12 +720,13 @@ export default function AudioPlayer({
             detectedWord={selection.detectedWord}
             initialMeta={selectedVocabularyMeta}
             onClose={closeSelection}
-            onSaved={({ word, meta }) =>
+            onSaved={({ word, meta }) => {
               setLocalVocabularyMetaMap(prev => ({
                 ...prev,
                 [word]: meta,
               }))
-            }
+              setWordbookRetryKey(value => value + 1)
+            }}
           />
         </>
       ) : null}
@@ -512,6 +741,7 @@ export default function AudioPlayer({
         isTrackLoop={isTrackLoop}
         playbackRate={playbackRate}
         showPronunciation={showPronunciation}
+        showAnnotations={showAnnotations}
         showLearningPoints={showLearningPoints}
         pronunciationSource={pronunciationSource}
         sudachiAvailable={sudachiAvailable}
@@ -526,18 +756,70 @@ export default function AudioPlayer({
         onToggleTrackLoop={toggleTrackLoop}
         onTogglePlaybackRate={togglePlaybackRate}
         onShowPronunciationChange={setShowPronunciation}
+        onAnnotationsChange={setShowAnnotations}
         onLearningPointsChange={setShowLearningPoints}
         onPronunciationSourceChange={setPronunciationSource}
         onBlindModeChange={setIsBlindMode}
       />
 
-      {showLearningPoints ? (
+      {showAnnotations && !isBlindMode && wordbookHighlightGroups.length > 0 ? (
+        <div className='mx-auto w-full max-w-5xl px-3 pt-1 md:px-5'>
+          <WordbookHighlightSelector
+            groups={wordbookHighlightGroups}
+            hiddenWordbookIds={hiddenWordbookIds}
+            onVisibilityChange={handleWordbookVisibilityChange}
+            hiddenJlptLevels={hiddenJlptLevels}
+            onJlptVisibilityChange={handleJlptVisibilityChange}
+            onAllVisibilityChange={handleAllHighlightVisibilityChange}
+          />
+        </div>
+      ) : null}
+
+      {showAnnotations && !isBlindMode && wordbookAnalysisState === 'error' ? (
+        <div className='mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-3 pt-2 text-xs text-slate-500 md:px-5'>
+          <span>单词书注释加载失败。</span>
+          <button
+            type='button'
+            onClick={() => setWordbookRetryKey(value => value + 1)}
+            className='font-semibold text-slate-700 underline underline-offset-4 hover:text-slate-950 dark:text-slate-200'>
+            重试
+          </button>
+        </div>
+      ) : null}
+
+      {!isBlindMode &&
+      (showLearningPoints || (showAnnotations && learningPoints.length > 0)) ? (
         <div className='mx-auto w-full max-w-5xl px-3 pt-3 md:px-5'>
           <LearningPointHighlightPanel
             points={learningPoints}
             isLoading={isLoadingLearningPoints}
+            selection={learningPointSelection}
+            onClose={closeLearningPoint}
+            onInspect={inspectLearningPoint}
+            onInspectWord={inspectLearningPointWord}
           />
         </div>
+      ) : null}
+
+      {inspectedWord && showAnnotations && !isBlindMode ? (
+        <VocabularyWordbookInspector
+          word={inspectedWord.word}
+          matchedVariant={inspectedWord.matchedVariant}
+          wordbookId={inspectedWord.wordbookId}
+          x={inspectedWord.x}
+          y={inspectedWord.y}
+          onClose={() => setInspectedWord(null)}
+          onSaved={update => {
+            setLocalVocabularyMetaMap(current =>
+              applyVocabularyInspectorMetaUpdate(current, update),
+            )
+            setWordbookRetryKey(value => value + 1)
+          }}
+          onDeleted={() => {
+            setInspectedWord(null)
+            setWordbookRetryKey(value => value + 1)
+          }}
+        />
       ) : null}
 
       <div className='mx-auto w-full max-w-5xl px-3 py-4 md:px-5 md:py-5'>

@@ -1,36 +1,49 @@
 'use server'
 
+import { normalizeInspectorDefinitions, type InspectorDefinition } from './domain/inspector-definitions'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
-import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
+import { invalidateVocabularyGroupsCache } from './server/repository'
+import { toJsonStringList } from '@/utils/text/jsonList'
 import { sanitizePronunciations } from '@/utils/text/pronunciation'
-import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
-import { invalidateVocabularyGroupsCache, normalizeSentencePosTags } from './server/repository'
+import { Prisma } from '@prisma/client'
+import { computeSingleVocabularyPronunciation } from './server/pronunciation-service'
+import { PRONUNCIATION_VERSION } from './domain/pronunciation'
+import { hasJapanese } from '@/modules/language/domain/text'
+import type { VocabularyInspectorEntryDraft } from './domain/inspector-entry'
+import { executeAction } from '@/lib/actions/result'
+import {
+  findVocabularyInspectorData,
+  updateFullVocabularyFromInspector as persistFullVocabularyFromInspector,
+} from './server/inspector-entry-service'
 
-export type VocabularyDefinitionDraft = {
-  language: 'ZH' | 'JA'
-  dictionaryName: string
-  definition: string
-}
+export type VocabularyDefinitionDraft = InspectorDefinition
 
 export type VocabularyInspectorData = {
   id: string
   word: string
+  etymologies?: string[]
   pronunciations: string[]
   partsOfSpeech: string[]
+  tags: string[]
   meanings: string[]
+  expressions: Array<{ id: string; type: string; text: string; reading: string | null; meaning: string | null; senseOrder: number }>
+  relations: Array<{ id: string; type: string; text: string; reading: string | null; senseOrder: number | null }>
+  structured: boolean
   wordAudio: string | null
   sentences: Array<{
     text: string
     translation: string | null
+    audioFile: string | null
     source: string
     posTags: string[]
   }>
   memberships: Array<{ id: string; label: string }>
   availableWordbooks: Array<{ id: string; label: string }>
   definitions: Array<VocabularyDefinitionDraft & { id: string }>
+  entry: VocabularyInspectorEntryDraft
 }
 
 const normalizeList = (values: string[], limit = 20) =>
@@ -42,128 +55,35 @@ const normalizeList = (values: string[], limit = 20) =>
     ),
   ).slice(0, limit)
 
-const wordbookLabel = (wordbook: { title: string; series: { title: string } }) =>
-  [wordbook.series.title, wordbook.title].filter(Boolean).join(' / ')
-
-export async function getVocabularyInspectorData(word: string) {
+export async function getVocabularyInspectorData(
+  word: string,
+  wordbookId?: string,
+) {
   const userId = await getCurrentUserId()
   const normalizedWord = word.normalize('NFKC').trim()
   if (!normalizedWord) {
     return { success: false as const, message: '单词为空' }
   }
-
-  const [vocabulary, wordbooks] = await Promise.all([
-    prisma.vocabulary.findFirst({
-      where: { userId, word: { equals: normalizedWord, mode: 'insensitive' } },
-      select: {
-        id: true,
-        word: true,
-        pronunciations: true,
-        partsOfSpeech: true,
-        meanings: true,
-        wordAudio: true,
-        definitions: {
-          orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-          select: {
-            id: true,
-            language: true,
-            dictionaryName: true,
-            definition: true,
-          },
-        },
-        sentenceLinks: {
-          orderBy: { createdAt: 'desc' },
-          select: {
-            posTags: true,
-            meaningIndex: true,
-            sentence: {
-              select: {
-                text: true,
-                translation: true,
-                source: true,
-                sourceUrl: true,
-                sourceType: true,
-              },
-            },
-          },
-        },
-        wordbooks: {
-          select: {
-            wordbook: {
-              select: {
-                id: true,
-                title: true,
-                series: { select: { title: true } },
-              },
-            },
-          },
-        },
-      },
-    }),
-    prisma.wordbook.findMany({
-      where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
-      orderBy: [
-        { series: { sortOrder: 'asc' } },
-        { series: { createdAt: 'asc' } },
-        { sortOrder: 'asc' },
-        { createdAt: 'asc' },
-      ],
-      select: {
-        id: true,
-        title: true,
-        series: { select: { title: true } },
-      },
-    }),
-  ])
-
-  if (!vocabulary) {
+  const data = await findVocabularyInspectorData(userId, normalizedWord, wordbookId)
+  if (!data) {
     return { success: false as const, message: '没有找到这个单词的收藏记录' }
   }
-  return {
-    success: true as const,
-    data: {
-      id: vocabulary.id,
-      word: vocabulary.word,
-      pronunciations: parseJsonStringList(vocabulary.pronunciations),
-      partsOfSpeech: parseJsonStringList(vocabulary.partsOfSpeech),
-      meanings: parseJsonStringList(vocabulary.meanings),
-      wordAudio: vocabulary.wordAudio || null,
-      sentences: dedupeAndRankSentences(
-        vocabulary.sentenceLinks.map(link => ({
-          text: link.sentence.text.trim(),
-          translation: link.sentence.translation?.trim() || null,
-          source: link.sentence.source.trim(),
-          sourceUrl: link.sentence.sourceUrl,
-          sourceType: link.sentence.sourceType,
-          meaningIndex: link.meaningIndex,
-          posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
-        })),
-        12,
-      ).map(({ text, translation, source, posTags }) => ({
-        text,
-        translation,
-        source,
-        posTags,
-      })),
-      memberships: vocabulary.wordbooks.map(({ wordbook }) => ({
-        id: wordbook.id,
-        label: wordbookLabel(wordbook),
-      })),
-      availableWordbooks: wordbooks.map(wordbook => ({
-        id: wordbook.id,
-        label: wordbookLabel(wordbook),
-      })),
-      definitions: vocabulary.definitions.flatMap(definition =>
-        definition.language === 'ZH' || definition.language === 'JA'
-          ? [{ ...definition, language: definition.language }]
-          : [],
-      ),
-    } satisfies VocabularyInspectorData,
-  }
+  return { success: true as const, data }
+}
+
+export async function updateFullVocabularyFromInspector(input: unknown) {
+  return executeAction(
+    async () => {
+      const userId = await getCurrentUserId()
+      return persistFullVocabularyFromInspector(userId, input)
+    },
+    { successMessage: '词条已保存', fallbackMessage: '词条保存失败，请保留当前内容后重试' },
+  )
 }
 
 export async function updateVocabularyFromInspector(input: {
   id: string
+  etymologies?: string[]
   pronunciations: string[]
   partsOfSpeech: string[]
   meanings: string[]
@@ -174,7 +94,7 @@ export async function updateVocabularyFromInspector(input: {
     const userId = await getCurrentUserId()
     const vocabulary = await prisma.vocabulary.findFirst({
       where: { id: input.id.trim(), userId },
-      select: { id: true, word: true, wordAudio: true },
+      select: { id: true, word: true, wordAudio: true, senses: { orderBy: { order: 'asc' }, select: { id: true } }, definitions: { select: { id: true, senseId: true } } },
     })
     if (!vocabulary) {
       return { success: false as const, message: '单词不存在或无权编辑' }
@@ -185,18 +105,16 @@ export async function updateVocabularyFromInspector(input: {
       normalizeList(input.pronunciations),
     )
     const partsOfSpeech = normalizeList(input.partsOfSpeech)
-    const meanings = normalizeList(input.meanings, 50)
-    const definitions = input.definitions
-      .flatMap(definition => {
-        const language = definition.language === 'JA' ? 'JA' : 'ZH'
-        const dictionaryName = definition.dictionaryName
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 120)
-        const text = definition.definition.trim().slice(0, 5_000)
-        return text ? [{ language, dictionaryName, definition: text }] : []
-      })
-      .slice(0, 50)
+    let meanings = normalizeList(input.meanings, 50)
+    const definitions = normalizeInspectorDefinitions(input.definitions)
+    const ownedDefinitions = new Map(vocabulary.definitions.map(item => [item.id, item]))
+    const ids = definitions.flatMap(item => item.id ? [item.id] : [])
+    if (new Set(ids).size !== ids.length || ids.some(id => !ownedDefinitions.has(id))) {
+      return { success: false as const, message: '定义已变化，请重新打开后编辑。' }
+    }
+    if (vocabulary.senses.length) {
+      meanings = definitions.filter(item => /^zh(?:-|$)/i.test(item.language)).map(item => item.definition)
+    }
     const requestedWordbookIds = Array.from(
       new Set(input.wordbookIds.map(id => id.trim()).filter(Boolean)),
     )
@@ -208,13 +126,22 @@ export async function updateVocabularyFromInspector(input: {
       : []
     const wordbookIds = ownedWordbooks.map(wordbook => wordbook.id)
 
-    await prisma.$transaction(async tx => {
+    const primaryPron = pronunciations[0] || null
+    const computedPronData = hasJapanese(vocabulary.word)
+      ? await computeSingleVocabularyPronunciation(vocabulary.word, primaryPron)
+      : null
+
+    const savedDefinitions = await prisma.$transaction(async tx => {
       await tx.vocabulary.update({
         where: { id: vocabulary.id },
         data: {
           pronunciations: toJsonStringList(pronunciations),
           partsOfSpeech: toJsonStringList(partsOfSpeech),
           meanings: toJsonStringList(meanings),
+          pronunciationData: computedPronData
+            ? (computedPronData as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
+          pronunciationVersion: computedPronData ? PRONUNCIATION_VERSION : null,
         },
       })
       await tx.wordbookVocabulary.deleteMany({
@@ -235,19 +162,26 @@ export async function updateVocabularyFromInspector(input: {
         })
       }
       await tx.vocabularyDefinition.deleteMany({
-        where: { vocabularyId: vocabulary.id },
+        where: { vocabularyId: vocabulary.id, id: { notIn: ids } },
       })
-      if (definitions.length > 0) {
-        await tx.vocabularyDefinition.createMany({
-          data: definitions.map((definition, sortOrder) => ({
-            vocabularyId: vocabulary.id,
-            language: definition.language,
-            dictionaryName: definition.dictionaryName,
-            definition: definition.definition,
-            sortOrder,
-          })),
-        })
+      for (const [sortOrder, definition] of definitions.entries()) {
+        const { id, ...fields } = definition
+        if (id) {
+          await tx.vocabularyDefinition.update({
+            where: { id, vocabularyId: vocabulary.id },
+            data: { ...fields, sortOrder },
+          })
+        } else {
+          await tx.vocabularyDefinition.create({
+            data: { ...fields, vocabularyId: vocabulary.id, senseId: vocabulary.senses[0]?.id || null, sortOrder },
+          })
+        }
       }
+      return tx.vocabularyDefinition.findMany({
+        where: { vocabularyId: vocabulary.id },
+        orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+        select: { id: true, language: true, dictionaryName: true, definition: true },
+      })
     })
 
     revalidatePath('/vocabulary')
@@ -256,6 +190,7 @@ export async function updateVocabularyFromInspector(input: {
     return {
       success: true as const,
       message: '单词信息已更新',
+      definitions: savedDefinitions,
       meta: {
         pronunciations,
         partsOfSpeech,

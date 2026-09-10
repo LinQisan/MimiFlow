@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { SourceType } from '@prisma/client'
 import { useTextSelection } from '@/hooks/useTextSelection'
@@ -14,12 +14,19 @@ import {
 import {
   buildPronunciationMapForText,
   buildSurfaceAliasMapForText,
+  buildSurfaceVariantMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
-import { hasVocabularyMeaning } from '@/utils/vocabulary/vocabularyMeaning'
+import { applyVocabularyInspectorMetaUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
 import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
 import WordbookDistributionChart from '@/components/vocabulary/WordbookDistributionChart'
 import { removeRepeatedEbookHeadings } from '@/lib/ebooks/chapter-display'
+import {
+  JLPT_LEVELS,
+  groupWordbookDistributionBySource,
+  isJlptVisibleWithHiddenLevels,
+  type JlptLevel,
+} from '@/features/reading/domain/wordbook-highlight-groups'
 import {
   parseArticleContentBlocks,
   type ArticleContentBlock,
@@ -30,22 +37,16 @@ import {
 } from '@/features/reading/domain/article-footnotes'
 import { copyText } from '@/features/reading/ui/copy-text'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
-import PronunciationSourceSelector, {
-  PRONUNCIATION_SOURCE_STORAGE_KEY,
-  type PronunciationSource,
-} from '@/components/ui/PronunciationSourceSelector'
-import {
-  readUserStorageValue,
-  useCurrentUser,
-  userStorageKey,
-} from '@/context/UserContext'
+import PronunciationSourceSelector from '@/components/ui/PronunciationSourceSelector'
+import { usePronunciationSource } from '@/hooks/usePronunciationSource'
 import {
   useStudyTextHighlights,
-  resolveWordbookHighlightSlot,
-  wordbookHighlightKeyClass,
 } from '@/hooks/useStudyTextHighlights'
 import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
 import VocabularyWordbookInspector from '@/modules/knowledge/vocabulary/components/VocabularyWordbookInspector'
+import PersonalPronunciationText from '@/modules/language/components/PersonalPronunciationText'
+import { occurrenceReadings, personalReadingCandidates, type PronunciationChoice } from '@/modules/language/domain/personal-pronunciation'
+import WordbookHighlightSelector from '@/features/reading/ui/WordbookHighlightSelector'
 
 const MathExpression = dynamic(
   () => import('@/features/reading/ui/MathExpression'),
@@ -70,6 +71,7 @@ export default function ArticleReaderClient({
   content,
   chapters,
   initialVocabularyMetaMap,
+  initialPronunciationChoices = [],
   initialSudachiPronunciationMap = {},
   initialSudachiLexicon = {},
   initialWordbookDistributionWords = [],
@@ -81,6 +83,7 @@ export default function ArticleReaderClient({
   articleId: string
   content: string
   chapters: ReaderChapter[]
+  initialPronunciationChoices?: PronunciationChoice[]
   initialVocabularyMetaMap: Record<string, VocabularyMeta>
   initialSudachiPronunciationMap?: Record<string, string>
   initialSudachiLexicon?: Record<string, SudachiLexeme>
@@ -90,11 +93,6 @@ export default function ArticleReaderClient({
   mode?: 'article' | 'ebook'
   documentTitle?: string
 }) {
-  const currentUser = useCurrentUser()
-  const pronunciationStorageKey = userStorageKey(
-    currentUser.id,
-    PRONUNCIATION_SOURCE_STORAGE_KEY,
-  )
   const initialChapterIndex =
     chapters.length > 1
       ? Math.min(
@@ -104,12 +102,16 @@ export default function ArticleReaderClient({
       : 0
   const [activeChapterIndex, setActiveChapterIndex] =
     useState(initialChapterIndex)
+  const [pronunciationChoices, setPronunciationChoices] = useState(initialPronunciationChoices)
   const [selectionEnabled, setSelectionEnabled] = useState(true)
   const [rubyEnabled, setRubyEnabled] = useState(true)
-  const [pronunciationSource, setPronunciationSourceState] =
-    useState<PronunciationSource>(sudachiAvailable ? 'sudachi' : 'personal')
   const [automaticPronunciationAvailable, setAutomaticPronunciationAvailable] =
     useState(sudachiAvailable)
+  const { pronunciationSource, setPronunciationSource } =
+    usePronunciationSource(automaticPronunciationAvailable, {
+      initialSource: sudachiAvailable ? 'sudachi' : 'personal',
+      disabled: mode !== 'article',
+    })
   const [sudachiPronunciationMap, setSudachiPronunciationMap] = useState(
     initialSudachiPronunciationMap,
   )
@@ -122,8 +124,13 @@ export default function ArticleReaderClient({
   const [hiddenWordbookIds, setHiddenWordbookIds] = useState<Set<string>>(
     () => new Set(),
   )
+  const [hiddenJlptLevels, setHiddenJlptLevels] = useState<Set<JlptLevel>>(
+    () => new Set(),
+  )
   const [inspectedWord, setInspectedWord] = useState<{
     word: string
+    matchedVariant: string
+    wordbookId: string
     x: number
     y: number
   } | null>(null)
@@ -176,6 +183,7 @@ export default function ArticleReaderClient({
           pronunciationMap: Record<string, string>
           lexicon: Record<string, SudachiLexeme>
           wordbookDistributionWords?: string[]
+          wordbookDistribution?: PaperWordbookDistribution
         }
       })
       .then(result => {
@@ -187,7 +195,8 @@ export default function ArticleReaderClient({
             ? result.wordbookDistributionWords
             : Object.keys(initialVocabularyMetaMap),
         )
-        setWordbookDistribution(null)
+        setWordbookDistribution(result.wordbookDistribution || null)
+        setDistributionLoadState('idle')
       })
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -197,35 +206,22 @@ export default function ArticleReaderClient({
     return () => controller.abort()
   }, [analysisTexts, initialVocabularyMetaMap, mode, sudachiAvailable])
 
-  useEffect(() => {
-    if (mode !== 'article') return
-    const stored = readUserStorageValue(
-      currentUser.id,
-      PRONUNCIATION_SOURCE_STORAGE_KEY,
-    )
-    if (
-      stored === 'personal' ||
-      (stored === 'sudachi' && automaticPronunciationAvailable)
-    ) {
-      setPronunciationSourceState(stored)
-    }
-  }, [
-    automaticPronunciationAvailable,
-    currentUser.id,
-    mode,
-    pronunciationStorageKey,
-  ])
-
-  const setPronunciationSource = (source: PronunciationSource) => {
-    if (source === 'sudachi' && !automaticPronunciationAvailable) return
-    setPronunciationSourceState(source)
-    window.localStorage.setItem(pronunciationStorageKey, source)
-  }
-
   const handleCopyContent = async () => {
     const text = activeChapter?.text || content
     if (!text.trim()) return
     try {
+      const copyReadings: Record<number, string> = {}
+      let sourceCursor = 0
+      readerRef.current?.querySelectorAll<HTMLElement>('[data-pronunciation-location]').forEach(element => {
+        const sourceText = element.dataset.pronunciationText || ''
+        const location = element.dataset.pronunciationLocation || ''
+        const start = text.indexOf(sourceText, sourceCursor)
+        if (!sourceText || start < 0) return
+        Object.entries(occurrenceReadings(sourceText, location, pronunciationChoices)).forEach(([offset, reading]) => {
+          copyReadings[start + Number(offset)] = reading
+        })
+        sourceCursor = start + sourceText.length
+      })
       const textToCopy = !rubyEnabled
         ? text
         : pronunciationSource === 'sudachi'
@@ -236,6 +232,7 @@ export default function ArticleReaderClient({
           : formatJapaneseTextWithRubyNotation(
               text,
               buildPronunciationMapForText(text, basePronMap),
+              copyReadings,
             )
       await copyText(textToCopy)
       setCopyLabel('已复制')
@@ -317,7 +314,7 @@ export default function ArticleReaderClient({
     () =>
       Object.entries(localVocabularyMetaMap).reduce<Record<string, string>>(
         (acc, [word, meta]) => {
-          const pron = meta.pronunciations[0]
+          const pron = personalReadingCandidates(word, { [word]: meta })[0]
           if (pron) acc[word] = pron
           return acc
         },
@@ -343,85 +340,6 @@ export default function ArticleReaderClient({
     [footnoteDocument.footnotes],
   )
   const footnoteAnchorPrefix = `article-${articleId}-${activeChapterIndex}-note`
-  const annotationAnchorPrefix = `article-${articleId}-${activeChapterIndex}-annotation`
-
-  const activeChapterAnnotations = useMemo(() => {
-    const chapterText = footnoteDocument.body
-    const wordsWithMeanings = Object.entries(localVocabularyMetaMap)
-      .filter(([, meta]) => hasVocabularyMeaning(meta))
-      .map(([word]) => word)
-    const aliasMap = buildSurfaceAliasMapForText(
-      chapterText,
-      wordsWithMeanings,
-    )
-    const firstOccurrenceByWord = new Map<
-      string,
-      { word: string; surface: string; position: number; meta: VocabularyMeta }
-    >()
-
-    Object.entries(aliasMap).forEach(([surface, word]) => {
-      const position = chapterText.indexOf(surface)
-      const meta = localVocabularyMetaMap[word]
-      if (position < 0 || !meta) return
-      const current = firstOccurrenceByWord.get(word)
-      if (
-        !current ||
-        position < current.position ||
-        (position === current.position && surface.length > current.surface.length)
-      ) {
-        firstOccurrenceByWord.set(word, { word, surface, position, meta })
-      }
-    })
-
-    const selected: Array<{
-      word: string
-      surface: string
-      position: number
-      meta: VocabularyMeta
-    }> = []
-    Array.from(firstOccurrenceByWord.values())
-      .sort(
-        (left, right) =>
-          left.position - right.position || right.surface.length - left.surface.length,
-      )
-      .forEach(candidate => {
-        const candidateEnd = candidate.position + candidate.surface.length
-        const overlaps = selected.some(item => {
-          const itemEnd = item.position + item.surface.length
-          return candidate.position < itemEnd && candidateEnd > item.position
-        })
-        if (!overlaps) selected.push(candidate)
-      })
-
-    return selected.map((item, index) => ({ ...item, label: index + 1 }))
-  }, [footnoteDocument.body, localVocabularyMetaMap])
-
-  useEffect(() => {
-    if (mode !== 'article' || !noteEnabled) return
-    const scrollToArticleHash = () => {
-      let targetId = ''
-      try {
-        targetId = decodeURIComponent(window.location.hash.slice(1))
-      } catch {
-        return
-      }
-      if (!targetId.startsWith(`${annotationAnchorPrefix}-`)) return
-      window.requestAnimationFrame(() => {
-        document.getElementById(targetId)?.scrollIntoView({ block: 'start' })
-      })
-    }
-    scrollToArticleHash()
-    window.addEventListener('hashchange', scrollToArticleHash)
-    return () => window.removeEventListener('hashchange', scrollToArticleHash)
-  }, [
-    activeChapterAnnotations.length,
-    annotationAnchorPrefix,
-    mode,
-    noteEnabled,
-    pronunciationSource,
-    rubyEnabled,
-    sudachiLexicon,
-  ])
 
   useEffect(() => {
     if (
@@ -459,52 +377,211 @@ export default function ArticleReaderClient({
     wordbookDistribution,
   ])
 
-  const annotatedChapterBody = useMemo(() => {
-    if (!noteEnabled) return footnoteDocument.body
-    let next = footnoteDocument.body
-    ;[...activeChapterAnnotations]
-      .sort((left, right) => right.position - left.position)
-      .forEach(annotation => {
-        const markerPosition = annotation.position + annotation.surface.length
-        next = `${next.slice(0, markerPosition)}[[ARTICLE_ANNOTATION_${annotation.label}]]${next.slice(markerPosition)}`
-      })
-    return next
-  }, [activeChapterAnnotations, footnoteDocument.body, noteEnabled])
-
   const wordbookHighlightGroups = useMemo(
-    () =>
-      (wordbookDistribution?.wordbooks || [])
-        .map(wordbook => ({
-          id: wordbook.id,
-          label: wordbook.pathLabel,
-          words: wordbook.matchedWords,
-          slot: resolveWordbookHighlightSlot(wordbook.pathLabel),
-        }))
+    () => {
+      const sources = groupWordbookDistributionBySource(
+        wordbookDistribution?.wordbooks || [],
+      )
+      const jlptByCanonicalWord = new Map<string, Set<JlptLevel>>()
+      sources.forEach(source => {
+        source.matchedWords.forEach(word => {
+          const levels = jlptByCanonicalWord.get(word) || new Set<JlptLevel>()
+          ;(source.jlptByWord[word] || []).forEach(level => levels.add(level))
+          jlptByCanonicalWord.set(word, levels)
+        })
+      })
+
+      return sources.map(source => {
+          const matchedHeadwords = Array.from(
+            new Set(Object.values(source.matchedHeadwords)),
+          )
+          const aliases = buildSurfaceAliasMapForText(
+            footnoteDocument.body,
+            matchedHeadwords,
+          )
+          const variants = buildSurfaceVariantMapForText(
+            footnoteDocument.body,
+            matchedHeadwords,
+          )
+          const metadataByHeadword = new Map<
+            string,
+            { jlpt: Set<JlptLevel>; wordbookIds: Set<string> }
+          >()
+          source.matchedWords.forEach(word => {
+            const headword = source.matchedHeadwords[word] || word
+            const metadata = metadataByHeadword.get(headword) || {
+              jlpt: new Set<JlptLevel>(),
+              wordbookIds: new Set<string>(),
+            }
+            ;(source.jlptByWord[word] || []).forEach(level =>
+              metadata.jlpt.add(level),
+            )
+            ;(jlptByCanonicalWord.get(word) || []).forEach(level =>
+              metadata.jlpt.add(level),
+            )
+            ;(source.wordbookIdsByWord[word] || []).forEach(wordbookId =>
+              metadata.wordbookIds.add(wordbookId),
+            )
+            metadataByHeadword.set(headword, metadata)
+          })
+          const jlptByWord: Record<string, string[]> = {}
+          const wordbookIdsByWord: Record<string, string[]> = {}
+          source.matchedWords.forEach(word => {
+            jlptByWord[word] = [
+              ...(jlptByCanonicalWord.get(word) || []),
+            ]
+            wordbookIdsByWord[word] = source.wordbookIdsByWord[word] || []
+          })
+          metadataByHeadword.forEach((metadata, headword) => {
+            jlptByWord[headword] = [...metadata.jlpt]
+            wordbookIdsByWord[headword] = [...metadata.wordbookIds]
+          })
+          Object.entries(aliases).forEach(([surface, headword]) => {
+            const metadata = metadataByHeadword.get(headword)
+            jlptByWord[surface] = metadata ? [...metadata.jlpt] : []
+            wordbookIdsByWord[surface] = metadata
+              ? [...metadata.wordbookIds]
+              : source.wordbookIds
+          })
+          return {
+            id: source.id,
+            label: source.label,
+            words: Object.keys(aliases),
+            canonicalWords: Array.from(new Set(Object.values(aliases))),
+            jlptByWord,
+            wordbookIdsByWord,
+            aliases,
+            variants,
+          }
+        })
+        .filter(group => group.words.length > 0)
         .sort(
-          (left, right) =>
-            left.slot - right.slot ||
-            Number(!/\/\s*N[1-5]\s*$/i.test(left.label)) -
-              Number(!/\/\s*N[1-5]\s*$/i.test(right.label)) ||
-            left.label.localeCompare(right.label, 'ja'),
-        ),
-    [wordbookDistribution],
+          (left, right) => left.label.localeCompare(right.label, 'ja'),
+        )
+    },
+    [footnoteDocument.body, wordbookDistribution],
   )
-  const visibleWordbookHighlightGroups = useMemo(
+  const wordbookSurfaceToBaseWord = useMemo(
+    () =>
+      Object.assign(
+        {},
+        ...wordbookHighlightGroups.map(group => group.aliases || {}),
+      ) as Record<string, string>,
+    [wordbookHighlightGroups],
+  )
+  const visibleWordbookSourceGroups = useMemo(
     () =>
       wordbookHighlightGroups.filter(group => !hiddenWordbookIds.has(group.id)),
     [hiddenWordbookIds, wordbookHighlightGroups],
   )
-  const { learningPoints, isLoadingLearningPoints } = useStudyTextHighlights({
+  const visibleWordbookHighlightGroups = useMemo(
+    () =>
+      visibleWordbookSourceGroups
+        .map(group => ({
+          ...group,
+          words: group.words.filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+          canonicalWords: (group.canonicalWords || []).filter(word =>
+            isJlptVisibleWithHiddenLevels(
+              group.jlptByWord?.[word] || [],
+              hiddenJlptLevels,
+            ),
+          ),
+        }))
+        .filter(group => group.words.length > 0),
+    [hiddenJlptLevels, visibleWordbookSourceGroups],
+  )
+  const wordbookTokenWords = useMemo(
+    () =>
+      noteEnabled
+        ? Array.from(
+            new Set(
+              visibleWordbookSourceGroups.flatMap(group => group.words),
+            ),
+          )
+        : [],
+    [noteEnabled, visibleWordbookSourceGroups],
+  )
+  const handleWordbookVisibilityChange = useCallback(
+    (wordbookIds: string[], visible: boolean) =>
+      setHiddenWordbookIds(current => {
+        const next = new Set(current)
+        wordbookIds.forEach(id => {
+          if (visible) next.delete(id)
+          else next.add(id)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleJlptVisibilityChange = useCallback(
+    (levels: JlptLevel[], visible: boolean) =>
+      setHiddenJlptLevels(current => {
+        const next = new Set(current)
+        levels.forEach(level => {
+          if (visible) next.delete(level)
+          else next.add(level)
+        })
+        return next
+      }),
+    [],
+  )
+  const handleAllHighlightVisibilityChange = useCallback(
+    (visible: boolean) => {
+      setHiddenWordbookIds(
+        visible
+          ? new Set()
+          : new Set(wordbookHighlightGroups.map(group => group.id)),
+      )
+      setHiddenJlptLevels(
+        visible ||
+          !wordbookHighlightGroups.some(group =>
+            Object.values(group.jlptByWord || {}).some(levels => levels.length > 0),
+          )
+          ? new Set()
+          : new Set(JLPT_LEVELS),
+      )
+    },
+    [wordbookHighlightGroups],
+  )
+  const handleWordbookWordClick = useCallback(
+    (payload: { word: string; wordbookId: string; x: number; y: number }) =>
+      setInspectedWord({
+        ...payload,
+        word: wordbookSurfaceToBaseWord[payload.word] || payload.word,
+        matchedVariant:
+          wordbookHighlightGroups
+            .find(group =>
+              group.wordbookIdsByWord?.[payload.word]?.includes(
+                payload.wordbookId,
+              ) || group.id === payload.wordbookId,
+            )
+            ?.variants?.[payload.word] || payload.word,
+      }),
+    [wordbookHighlightGroups, wordbookSurfaceToBaseWord],
+  )
+  const {
+    learningPoints,
+    isLoadingLearningPoints,
+    learningPointSelection,
+    closeLearningPoint,
+    inspectLearningPoint,
+    inspectLearningPointWord,
+  } = useStudyTextHighlights({
     rootRef: readerRef,
-    contentKey: `${articleId}:${activeChapterIndex}:${noteEnabled}:${rubyEnabled}:${pronunciationSource}:${Object.keys(sudachiLexicon).length}`,
+    contentKey: `${articleId}:${activeChapterIndex}:${noteEnabled}:${rubyEnabled}:${pronunciationSource}:${Object.keys(sudachiLexicon).length}:${JSON.stringify(pronunciationChoices)}`,
     showLearningPoints: learningPointsEnabled,
     showWordbooks: noteEnabled,
     wordbookGroups: visibleWordbookHighlightGroups,
-    onWordbookWordClick: setInspectedWord,
+    onWordbookWordClick: handleWordbookWordClick,
   })
 
   const contentBlocks = useMemo(() => {
-    const items = splitParagraphs(annotatedChapterBody)
+    const items = splitParagraphs(footnoteDocument.body)
     const visibleItems = mode !== 'ebook'
       ? items
       : removeRepeatedEbookHeadings(
@@ -513,9 +590,9 @@ export default function ArticleReaderClient({
           activeChapter?.title || '',
         )
     return parseArticleContentBlocks(visibleItems)
-  }, [activeChapter?.title, annotatedChapterBody, documentTitle, mode])
+  }, [activeChapter?.title, documentTitle, footnoteDocument.body, mode])
 
-  const renderInlineText = (text: string) => {
+  const renderInlineText = (text: string, location = 'body') => {
     const pattern = /\\\(([^\n]+?)\\\)|(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g
     const parts: React.ReactNode[] = []
     let cursor = 0
@@ -527,12 +604,26 @@ export default function ArticleReaderClient({
       underlined = false,
     ) => {
       if (!value) return
-      const annotationPattern = /\[\[ARTICLE_ANNOTATION_(\d+)\]\]/g
-      let annotationCursor = 0
-      let annotationMatch: RegExpExecArray | null
-      let annotationIndex = 0
       const pushJapaneseSegment = (segment: string, segmentKey: string) => {
         if (!segment) return
+        if (mode === 'article' && pronunciationSource === 'personal') {
+          parts.push(<PersonalPronunciationText key={`${activeChapter.id}:${location}:${segmentKey}`}
+            materialId={articleId} location={`${activeChapter.id}:${location}:${segmentKey}`}
+            text={segment} metadata={localVocabularyMetaMap}
+            lexicalSurfaces={Object.values(sudachiLexicon).map(lexeme => lexeme.surface)}
+            pronunciationMap={buildPronunciationMapForText(segment, basePronMap)}
+            onInspect={(surface, x, y) => {
+              const group = wordbookHighlightGroups.find(item => item.wordbookIdsByWord[surface]?.length)
+              const wordbookId = group?.wordbookIdsByWord[surface]?.[0]
+              if (wordbookId) handleWordbookWordClick({ word: surface, wordbookId, x, y })
+            }}
+            choices={pronunciationChoices} rubyEnabled={rubyEnabled} tokenWords={wordbookTokenWords}
+            className={`${underlined ? 'exam-text-underline ' : ''}[&_rt]:text-[0.6em] [&_ruby]:mx-0.5`}
+            onSaved={choice => setPronunciationChoices(current => [
+              ...current.filter(item => item.location !== choice.location || item.start !== choice.start), choice,
+            ])} />)
+          return
+        }
         if (mode === 'article' && Object.keys(sudachiLexicon).length > 0) {
           const personalPronunciationMap = buildPronunciationMapForText(
             segment,
@@ -552,6 +643,8 @@ export default function ArticleReaderClient({
                     rubyEnabled,
                     rubyClassName: 'text-slate-900',
                     rtClassName: 'text-slate-500',
+                    tokenClassName: 'vocab-token',
+                    tokenWords: wordbookTokenWords,
                   },
                 ),
               }}
@@ -559,20 +652,26 @@ export default function ArticleReaderClient({
           )
           return
         }
-        if (!rubyEnabled) {
-          parts.push(
-            <span
-              key={segmentKey}
-              className={underlined ? 'exam-text-underline' : ''}>
-              {segment}
-            </span>,
-          )
-          return
-        }
         const pronMap =
           pronunciationSource === 'sudachi'
             ? sudachiPronunciationMap
             : buildPronunciationMapForText(segment, selectedPronunciationMap)
+        if (!rubyEnabled) {
+          parts.push(
+            <span
+              key={segmentKey}
+              className={underlined ? 'exam-text-underline' : ''}
+              dangerouslySetInnerHTML={{
+                __html: annotateJapaneseText(segment, pronMap, {
+                  rubyEnabled: false,
+                  tokenClassName: 'vocab-token',
+                  tokenWords: wordbookTokenWords,
+                }),
+              }}
+            />,
+          )
+          return
+        }
         parts.push(
           <span
             key={segmentKey}
@@ -582,35 +681,15 @@ export default function ArticleReaderClient({
                 rubyClassName: 'text-slate-900',
                 rtClassName: 'text-slate-500',
                 groupKanji: pronunciationSource === 'sudachi',
+                tokenClassName: 'vocab-token',
+                tokenWords: wordbookTokenWords,
               }),
             }}
           />,
         )
       }
 
-      while ((annotationMatch = annotationPattern.exec(value)) !== null) {
-        pushJapaneseSegment(
-          value.slice(annotationCursor, annotationMatch.index),
-          `${key}-text-${annotationIndex}`,
-        )
-        const label = Number(annotationMatch[1])
-        parts.push(
-          <sup key={`${key}-annotation-${annotationIndex}`} className='mx-0.5'>
-            <a
-              id={`${annotationAnchorPrefix}-${label}-ref`}
-              href={`#${annotationAnchorPrefix}-${label}`}
-              className='rounded px-0.5 text-[0.65em] font-semibold text-slate-500 no-underline transition hover:bg-slate-100 hover:text-slate-950'>
-              释{label}
-            </a>
-          </sup>,
-        )
-        annotationCursor = annotationMatch.index + annotationMatch[0].length
-        annotationIndex += 1
-      }
-      pushJapaneseSegment(
-        value.slice(annotationCursor),
-        `${key}-text-${annotationIndex}`,
-      )
+      pushJapaneseSegment(value, `${key}-text`)
     }
     const pushMarkedText = (value: string, key: string) => {
       if (!value) return
@@ -728,7 +807,7 @@ export default function ArticleReaderClient({
                         key={cellIndex}
                         {...(Cell === 'th' ? { scope: 'row' as const } : {})}
                         className={`border-r border-slate-100 px-4 py-3 align-top last:border-r-0 ${Cell === 'th' ? 'whitespace-nowrap bg-slate-50/60 font-semibold' : ''}`}>
-                        {renderInlineText(cell)}
+                        {renderInlineText(cell, `block-${index}-row-${rowIndex}-cell-${cellIndex}`)}
                       </Cell>
                     )
                   })}
@@ -744,7 +823,7 @@ export default function ArticleReaderClient({
       <p
         key={`text-${index}`}
         className='whitespace-pre-line text-justify [text-justify:inter-ideograph] text-[1.05rem] leading-[2.15] text-slate-800 md:text-[1.15rem] md:leading-[2.25]'>
-        {renderInlineText(block.text)}
+        {renderInlineText(block.text, `block-${index}`)}
       </p>
     )
   }
@@ -840,74 +919,26 @@ export default function ArticleReaderClient({
           </div>
         </div>
         {noteEnabled && wordbookHighlightGroups.length > 0 ? (
-          <div className='mt-2 border-t border-slate-200 pt-2'>
-            <div className='mb-2 flex items-center justify-between gap-3 text-[11px] text-slate-400'>
-              <span>单词本高亮</span>
-              <button
-                type='button'
-                onClick={() =>
-                  setHiddenWordbookIds(current =>
-                    current.size > 0
-                      ? new Set()
-                      : new Set(wordbookHighlightGroups.map(group => group.id)),
-                  )
-                }
-                className='font-semibold text-slate-500 transition hover:text-slate-900'>
-                {hiddenWordbookIds.size > 0 ? '全部显示' : '全部隐藏'}
-              </button>
-            </div>
-            <div className='flex flex-wrap justify-end gap-1.5'>
-              {wordbookHighlightGroups.map(group => {
-                const hidden = hiddenWordbookIds.has(group.id)
-                const parts = group.label
-                  .split(/\s*\/\s*/)
-                  .map(part => part.trim())
-                  .filter(Boolean)
-                const shortName = parts.at(-1) || group.label
-                return (
-                  <button
-                    key={group.id}
-                    type='button'
-                    aria-pressed={!hidden}
-                    onClick={() =>
-                      setHiddenWordbookIds(current => {
-                        const next = new Set(current)
-                        if (next.has(group.id)) next.delete(group.id)
-                        else next.add(group.id)
-                        return next
-                      })
-                    }
-                    title={`${hidden ? '显示' : '隐藏'} ${group.label}`}
-                    className={`flex h-7 items-center gap-1.5 rounded-md border bg-white px-2 text-left transition ${
-                      hidden
-                        ? 'border-dashed border-slate-200 text-slate-400 opacity-65 hover:opacity-100'
-                        : `border-b-2 border-x-slate-200 border-t-slate-200 text-slate-700 ${wordbookHighlightKeyClass(group.slot)}`
-                    }`}>
-                    <span
-                      aria-hidden='true'
-                      className={`size-2 shrink-0 rounded-full border-4 ${
-                        hidden
-                          ? 'border-slate-300'
-                          : wordbookHighlightKeyClass(group.slot)
-                      }`}
-                    />
-                    <span className='text-xs font-semibold'>{shortName}</span>
-                    <span className='text-[10px] tabular-nums text-slate-400'>
-                      {group.words.length}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+          <WordbookHighlightSelector
+            groups={wordbookHighlightGroups}
+            hiddenWordbookIds={hiddenWordbookIds}
+            onVisibilityChange={handleWordbookVisibilityChange}
+            hiddenJlptLevels={hiddenJlptLevels}
+            onJlptVisibilityChange={handleJlptVisibilityChange}
+            onAllVisibilityChange={handleAllHighlightVisibilityChange}
+          />
         ) : null}
       </div>
 
-      {learningPointsEnabled ? (
+      {learningPointsEnabled || (noteEnabled && learningPoints.length > 0) ? (
         <div className='mx-auto mb-6 max-w-[44rem]'>
           <LearningPointHighlightPanel
             points={learningPoints}
             isLoading={isLoadingLearningPoints}
+            selection={learningPointSelection}
+            onClose={closeLearningPoint}
+            onInspect={inspectLearningPoint}
+            onInspectWord={inspectLearningPointWord}
           />
         </div>
       ) : null}
@@ -946,7 +977,7 @@ export default function ArticleReaderClient({
           }`}>
           {readerChapters.length > 1 ? (
             <div className='flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between'>
-              <h3 className='text-xl font-black text-slate-900'>
+              <h3 className='text-xl font-bold text-slate-900'>
                 {activeChapter.title}
               </h3>
               <div className='flex items-center gap-2'>
@@ -1001,10 +1032,10 @@ export default function ArticleReaderClient({
                       <span>
                         {footnote.term ? (
                           <strong className='font-semibold text-slate-800'>
-                            {renderInlineText(footnote.term)}：
+                            {renderInlineText(footnote.term, `note-${footnote.id}-term`)}：
                           </strong>
                         ) : null}
-                        {renderInlineText(footnote.definition)}
+                        {renderInlineText(footnote.definition, `note-${footnote.id}-definition`)}
                       </span>
                       {footnoteDocument.body.includes(`[^${footnote.id}]`) ? (
                         <a
@@ -1014,46 +1045,6 @@ export default function ArticleReaderClient({
                           ↩
                         </a>
                       ) : null}
-                    </li>
-                  ),
-                )}
-              </ol>
-            </aside>
-          ) : null}
-
-          {noteEnabled && activeChapterAnnotations.length > 0 ? (
-            <aside aria-label='文章注释' className='mt-12'>
-              <ol className='space-y-2.5 text-sm leading-7 text-slate-600'>
-                {activeChapterAnnotations.map(
-                  ({ word, meta, label }) => (
-                    <li
-                      key={word}
-                      id={`${annotationAnchorPrefix}-${label}`}
-                      className='scroll-mt-24 grid grid-cols-[2.5rem_minmax(0,1fr)_auto] gap-2 border-b border-slate-100 pb-2.5 last:border-b-0'>
-                      <span className='text-xs font-semibold tabular-nums text-slate-400'>
-                        释{label}
-                      </span>
-                      <span>
-                        <strong className='font-semibold text-slate-800'>
-                          {word}
-                        </strong>
-                        <span className='ml-2 text-slate-500'>
-                          {[meta.pronunciations[0], ...meta.meanings]
-                            .filter(
-                              (value): value is string =>
-                                typeof value === 'string',
-                            )
-                            .map(value => value.trim())
-                            .filter(Boolean)
-                            .join(' · ')}
-                        </span>
-                      </span>
-                      <a
-                        href={`#${annotationAnchorPrefix}-${label}-ref`}
-                        aria-label={`返回释${label}在正文中的位置`}
-                        className='text-xs text-slate-400 transition hover:text-slate-900'>
-                        ↩
-                      </a>
                     </li>
                   ),
                 )}
@@ -1119,11 +1110,8 @@ export default function ArticleReaderClient({
             }
             detectedWord={selection.detectedWord}
             onClose={closeSelection}
-            onSaved={({ word, meta }) =>
-              setLocalVocabularyMetaMap(prev => ({
-                ...prev,
-                [word]: meta,
-              }))
+            onSaved={update =>
+              setLocalVocabularyMetaMap(prev => applyVocabularyInspectorMetaUpdate(prev, update))
             }
           />
         </>
@@ -1132,11 +1120,13 @@ export default function ArticleReaderClient({
       {inspectedWord ? (
         <VocabularyWordbookInspector
           word={inspectedWord.word}
+          matchedVariant={inspectedWord.matchedVariant}
+          wordbookId={inspectedWord.wordbookId}
           x={inspectedWord.x}
           y={inspectedWord.y}
           onClose={() => setInspectedWord(null)}
-          onSaved={({ word, meta, membershipsChanged }) => {
-            setLocalVocabularyMetaMap(current => ({ ...current, [word]: meta }))
+          onSaved={({ membershipsChanged, ...update }) => {
+            setLocalVocabularyMetaMap(current => applyVocabularyInspectorMetaUpdate(current, update))
             if (membershipsChanged) {
               setWordbookDistribution(null)
               setDistributionRetryKey(value => value + 1)

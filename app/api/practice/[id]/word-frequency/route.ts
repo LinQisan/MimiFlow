@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { buildPaperFrequencyDocuments } from '@/features/practice/domain/paper-word-frequency'
 import { getPaperWordbookDistribution } from '@/features/practice/server/paper-wordbook-distribution'
 import { buildWordFrequency } from '@/modules/language/domain/sudachi'
-import { getSudachiPronunciationMap } from '@/features/reading/server/sudachi-pronunciation'
+import { getSudachiPronunciationMap } from '@/modules/language/server/sudachi-pronunciation'
 import { findPaperDetailById } from '@/lib/repositories/exam'
 
 export async function GET(

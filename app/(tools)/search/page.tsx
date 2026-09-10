@@ -235,9 +235,9 @@ export default function SearchPage() {
   }, [])
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl'>
-        <section className='overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm'>
+        <section className='border-b border-slate-200'>
           <div className='p-5 md:p-8'>
             <form
               role='search'
@@ -312,31 +312,30 @@ export default function SearchPage() {
               {SEARCH_TYPES.map(item => (
                 <button key={item.key} type='button' onClick={() => { setSelectedTypes([item.key]); inputRef.current?.focus() }} className='grid w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 bg-white px-4 py-3 text-left transition hover:bg-slate-50'>
                   <span className={`inline-block h-2.5 w-2.5 rounded-full ${typeConfig[item.key].dot}`} />
-                  <h2 className='text-sm font-black text-slate-900'>{item.label}</h2>
+                  <h2 className='text-sm font-bold text-slate-900'>{item.label}</h2>
                   <p className='col-start-2 mt-0.5 text-xs text-slate-500'>{item.description}</p>
                 </button>
               ))}
             </div>
           ) : isSearching ? (
-            <div className='space-y-3' aria-live='polite' aria-label='正在搜索'>
+            <div className='divide-y divide-slate-200 border-y border-slate-200' aria-live='polite' aria-label='正在搜索'>
               {[0, 1, 2].map(item => (
-                <div key={item} className='animate-pulse rounded-2xl border border-slate-200 bg-white p-5'>
+                <div key={item} className='animate-pulse px-1 py-4'>
                   <div className='h-4 w-28 rounded bg-slate-200' />
-                  <div className='mt-4 h-4 w-2/3 rounded bg-slate-100' />
+                  <div className='mt-3 h-4 w-2/3 rounded bg-slate-100' />
                   <div className='mt-2 h-3 w-1/2 rounded bg-slate-100' />
                 </div>
               ))}
             </div>
           ) : results.length === 0 ? (
-            <div className='rounded-3xl border border-dashed border-slate-300 bg-white px-5 py-16 text-center'>
-              <p className='text-lg font-black text-slate-800'>没有找到“{searchedKeyword}”</p>
-              <p className='mt-2 text-sm text-slate-500'>尝试缩短关键词、切换搜索范围，或使用日文原词。</p>
+            <div className='ui-empty'>
+              <p className='text-sm font-bold text-slate-800'>没有找到“{searchedKeyword}”</p>
+              <p className='mt-1'>尝试缩短关键词、切换搜索范围，或使用日文原词。</p>
               <button type='button' onClick={clearSearch} className='ui-btn ui-btn-sm mt-5'>重新搜索</button>
             </div>
           ) : (
             <div className='grid gap-5 lg:grid-cols-[190px_minmax(0,1fr)]'>
-              <aside className='h-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-20'>
-                <p className='px-2 pb-2 text-xs font-black text-slate-400'>结果概览</p>
+              <aside className='h-fit lg:sticky lg:top-20'>
                 <div className='space-y-1'>
                   <a href='#search-results' className='flex items-center justify-between rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white'>全部结果 <span>{results.length}</span></a>
                   {groups.map(group => (
@@ -349,17 +348,26 @@ export default function SearchPage() {
 
               <div id='search-results' className='min-w-0 space-y-4 scroll-mt-20'>
                 <div className='flex flex-wrap items-baseline justify-between gap-2 px-1'>
-                  <h2 className='text-lg font-black text-slate-900'>“{searchedKeyword}”的搜索结果</h2>
+                  <h2 className='text-lg font-bold text-slate-900'>“{searchedKeyword}”的搜索结果</h2>
                   <p className='text-xs font-semibold text-slate-500'>共 {results.length} 条</p>
                 </div>
                 {groups.map(group => (
-                  <section id={`search-${group.key}`} key={group.key} className='scroll-mt-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm'>
-                    <header className='flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-4 py-3 md:px-5'>
+                  <section id={`search-${group.key}`} key={group.key} className='scroll-mt-20 border-b border-slate-200'>
+                    <header className='flex items-center justify-between py-3'>
                       <div className='flex items-center gap-2'>
                         <span className={`h-2.5 w-2.5 rounded-full ${typeConfig[group.key].dot}`} />
-                        <h3 className='text-sm font-black text-slate-900'>{group.label}</h3>
+                        <h3 className='ui-section-head'>{group.label}</h3>
                       </div>
-                      <span className='text-xs font-bold text-slate-400'>{group.items.length}</span>
+                      <span className='flex items-center gap-3'>
+                        {group.key === 'vocabulary' ? (
+                          <Link
+                            href={`/vocabulary?q=${encodeURIComponent(searchedKeyword)}`}
+                            className='text-[11px] font-semibold text-slate-400 transition hover:text-slate-900'>
+                            在词库中找 →
+                          </Link>
+                        ) : null}
+                        <span className='ui-meta'>{group.items.length}</span>
+                      </span>
                     </header>
                     <div className='divide-y divide-slate-100'>
                       {group.items.map(item => (

@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
+import { once } from 'node:events'
 import path from 'node:path'
 import test from 'node:test'
 import {
-  buildVocabularyCandidates,
   buildWordFrequency,
   isSudachiContentWord,
   mergeWordFrequencyRows,
+  normalizeSudachiTokenReadings,
   sortWordFrequencyRows,
 } from '../modules/language/domain/sudachi.ts'
 import {
@@ -16,6 +17,8 @@ import {
   buildJapaneseRubyHtml,
   formatJapaneseTextWithSudachiRubyNotation,
 } from '../utils/language/japaneseRuby.ts'
+import { filterReadingFrequencyRowsByWordbooks } from '../features/reading/domain/word-frequency.ts'
+import { resolveWordbookFilterIds } from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
 const ROOT = process.cwd()
 
 test('article reading wires SudachiPy as an optional pronunciation source', async () => {
@@ -74,7 +77,6 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
   assert.doesNotMatch(articlePage, /getSudachiPronunciationMap/)
   assert.match(reader, /fetch\('\/api\/pronunciation'/)
   assert.match(reader, /includeWordbookAnalysis: true/)
-  assert.doesNotMatch(pronunciationRoute, /buildVocabularyCandidates/)
   assert.match(pronunciationRoute, /buildWordFrequency/)
   assert.doesNotMatch(ebookPage, /getSudachiPronunciationMap/)
   assert.match(reader, /PronunciationSourceSelector/)
@@ -97,6 +99,53 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
   assert.match(frequencyDialog, /仅新闻/)
   assert.match(frequencyDialog, /仅真题文章/)
   assert.match(frequencyDialog, /全部年份/)
+  assert.match(frequencyDialog, /WordbookScopeFilter/)
+})
+
+test('reading frequency can be scoped to selected wordbooks and uncollected words', () => {
+  const rows = [
+    { word: '準備', reading: 'じゅんび', partOfSpeech: '名詞', count: 2, documentCount: 1, learningScore: 1 },
+    { word: '確認', reading: 'かくにん', partOfSpeech: '名詞', count: 1, documentCount: 1, learningScore: 1 },
+    { word: '未収録', reading: 'みしゅうろく', partOfSpeech: '名詞', count: 1, documentCount: 1, learningScore: 1 },
+  ]
+  const wordbooks = [
+    { id: 'red-book', matchedWords: ['準備'] },
+    { id: 'blue-book', matchedWords: ['確認'] },
+  ]
+
+  assert.deepEqual(
+    filterReadingFrequencyRowsByWordbooks(
+      rows,
+      new Set(['red-book']),
+      false,
+      wordbooks,
+      ['未収録'],
+    ).map(row => row.word),
+    ['準備'],
+  )
+  assert.deepEqual(
+    filterReadingFrequencyRowsByWordbooks(
+      rows,
+      new Set(['red-book']),
+      true,
+      wordbooks,
+      ['未収録'],
+    ).map(row => row.word),
+    ['準備', '未収録'],
+  )
+})
+
+test('wordbook series filter selects every leaf wordbook in the series', () => {
+  const wordbooks = [
+    { id: 'n1', pathLabel: '红宝书 / N1' },
+    { id: 'n2', pathLabel: '红宝书 / N2' },
+    { id: 'unit-1', pathLabel: 'N2語彙トレーニング / Unit01' },
+  ]
+
+  assert.deepEqual(
+    [...resolveWordbookFilterIds(wordbooks, 'series:红宝书')],
+    ['n1', 'n2'],
+  )
 })
 
 test(
@@ -123,6 +172,109 @@ test(
     assert.equal(inflected.dictionaryReading, 'かんがえる')
     assert.equal(inflected.partsOfSpeech[0], '動詞')
     assert.equal(payload.lexicon['考え'].dictionaryForm, '考える')
+  },
+)
+
+test('Sudachi contextual normalization corrects 交通の便 per occurrence', () => {
+  const token = (surface, reading, textIndex, begin, end) => ({
+    surface,
+    dictionaryForm: surface,
+    normalizedForm: surface,
+    reading,
+    dictionaryReading: reading,
+    partsOfSpeech: ['名詞'],
+    textIndex,
+    begin,
+    end,
+  })
+  const tokens = [
+    token('交通', 'こうつう', 0, 0, 2),
+    token('の', 'の', 0, 2, 3),
+    token('便', 'びん', 0, 3, 4),
+    token('郵便', 'ゆうびん', 1, 0, 2),
+    token('の', 'の', 1, 2, 3),
+    token('便', 'びん', 1, 3, 4),
+  ]
+
+  assert.deepEqual(
+    normalizeSudachiTokenReadings(tokens).map(item => item.reading),
+    ['こうつう', 'の', 'べん', 'ゆうびん', 'の', 'びん'],
+  )
+})
+
+test(
+  'Sudachi persistent worker initializes once and serves newline-delimited requests',
+  { skip: !existsSync(path.join(ROOT, '.venv/bin/python')) },
+  async () => {
+    const child = spawn(
+      path.join(ROOT, '.venv/bin/python'),
+      [path.join(ROOT, 'scripts/sudachi_pronunciation.py'), '--worker'],
+      { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] },
+    )
+    child.stdout.setEncoding('utf8')
+    let buffer = ''
+    const queued = []
+    const waiters = []
+    const flush = () => {
+      let newlineIndex = buffer.indexOf('\n')
+      while (newlineIndex >= 0) {
+        const line = buffer.slice(0, newlineIndex)
+        buffer = buffer.slice(newlineIndex + 1)
+        if (line.trim()) {
+          const message = JSON.parse(line)
+          const waiter = waiters.shift()
+          if (waiter) waiter(message)
+          else queued.push(message)
+        }
+        newlineIndex = buffer.indexOf('\n')
+      }
+    }
+    child.stdout.on('data', chunk => {
+      buffer += chunk
+      flush()
+    })
+
+    const nextMessage = () => {
+      if (queued.length > 0) return Promise.resolve(queued.shift())
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error('Sudachi worker test timed out')),
+          15_000,
+        )
+        waiters.push(message => {
+          clearTimeout(timeout)
+          resolve(message)
+        })
+      })
+    }
+
+    try {
+      const ready = await nextMessage()
+      assert.equal(ready.type, 'ready')
+      assert.equal(typeof ready.timings.sudachiImportMs, 'number')
+      assert.equal(typeof ready.timings.dictionaryInitializationMs, 'number')
+
+      child.stdin.write(
+        `${JSON.stringify({ id: 'first', texts: ['今日は日本語を勉強します。'] })}\n`,
+      )
+      const first = await nextMessage()
+      assert.equal(first.type, 'result')
+      assert.equal(first.id, 'first')
+      assert.equal(first.pronunciationMap['日本語'], 'にほんご')
+      assert.equal(first.timings.worker, true)
+
+      child.stdin.write(
+        `${JSON.stringify({ id: 'second', texts: ['日本語を復習します。'] })}\n`,
+      )
+      const second = await nextMessage()
+      assert.equal(second.type, 'result')
+      assert.equal(second.id, 'second')
+      assert.equal(second.timings.sudachiImportMs, 0)
+      assert.equal(second.timings.dictionaryInitializationMs, 0)
+    } finally {
+      child.stdin.end()
+      await once(child, 'close')
+    }
   },
 )
 
@@ -312,15 +464,6 @@ test('word extraction and frequency merge inflections by dictionary form', () =>
     },
   ]
 
-  assert.deepEqual(buildVocabularyCandidates(tokens), [
-    {
-      word: '考える',
-      surface: '考え',
-      reading: 'かんがえる',
-      partOfSpeech: '动词',
-      count: 2,
-    },
-  ])
   assert.deepEqual(buildWordFrequency(tokens), [
     {
       word: '考える',

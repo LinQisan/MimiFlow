@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const words = await getPracticeVocabularyWordbookEntries(ids)
     return NextResponse.json(
       { words },
-      { headers: { 'Cache-Control': 'private, max-age=60' } },
+      { headers: { 'Cache-Control': 'private, no-store' } },
     )
   } catch (error) {
     console.error('加载单词书词汇失败:', error)

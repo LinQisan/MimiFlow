@@ -43,9 +43,7 @@ export default function LessonSiblingNav({
   if (lessons.length <= 1) return null
 
   return (
-    <details className={practiceAppearance
-      ? 'mb-4 rounded-2xl border border-slate-200 bg-white'
-      : 'mb-4 rounded-2xl border border-gray-200 bg-white shadow-sm'}>
+    <details className='mb-4 border-y border-slate-200 py-3'>
       <summary className='cursor-pointer list-none p-3 md:p-4 flex items-center justify-between text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors [&::-webkit-details-marker]:hidden'>
         <span className='flex items-center gap-2'>
           同组材料
@@ -77,7 +75,7 @@ export default function LessonSiblingNav({
                   <div className='flex items-center gap-2 text-sm min-w-0'>
                     <DragHandle />
                     {!practiceAppearance ? (
-                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-black ${
+                      <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
                         isCurrent ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'
                       }`}>
                         {i + 1}

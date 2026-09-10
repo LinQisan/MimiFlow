@@ -402,7 +402,7 @@ export async function searchGlobalContent(
           ? meanings.join('；')
           : shortText(firstSentence?.text || '暂无释义', 80),
       href: buildSearchDetailHref(`vocab-${item.id}`, 'vocabulary', q),
-      targetHref: buildVocabularyTargetHref(item.id, item.word),
+      targetHref: buildVocabularyTargetHref(item.id),
       meta: pronunciations.length > 0 ? pronunciations.join(' / ') : '单词',
       keyword: q,
     })
@@ -432,7 +432,7 @@ export async function searchGlobalContent(
         title: vocabulary.word,
         snippet: shortText(sentence.text, 100),
         href: buildSearchDetailHref(`vocab-${vocabulary.id}`, 'vocabulary', q),
-        targetHref: buildVocabularyTargetHref(vocabulary.id, vocabulary.word),
+        targetHref: buildVocabularyTargetHref(vocabulary.id),
         meta:
           pronunciations.length > 0
             ? pronunciations.join(' / ')

@@ -649,7 +649,7 @@ export default function ArticleImportPanel({
                 <div key={qIndex} className="border-b border-slate-200">
                   <div className="flex items-center justify-between gap-3 border-b border-slate-200 py-3">
                     <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
-                      <span className="text-sm font-black text-slate-900">
+                      <span className="text-sm font-bold text-slate-900">
                         题目 {qIndex + 1}
                       </span>
                       <span className="text-xs font-semibold text-slate-400">

@@ -4,6 +4,7 @@ import { useCallback, useMemo, useReducer, type SetStateAction } from 'react'
 import type { Rating } from 'ts-fsrs'
 
 import type { FolderItem, SentenceItem, VocabItem } from '../types'
+import { filterAndSortVocabulary } from '../domain/workbench'
 
 type VocabularyWorkspaceState = {
   activeTab: string
@@ -21,24 +22,15 @@ type VocabularyWorkspaceState = {
   selectedVocabIds: Set<string>
   bulkTagsInput: string
   bulkTagPanelOpen: boolean
-  activeTagEditorId: string | null
-  tagDraft: string
-  isSavingTags: boolean
   isSelectAllChecked: boolean
   bulkWordbookId: string
   isBulkAddingToWordbook: boolean
   sortMode: 'recent' | 'word' | 'pos'
   selectedPosFilter: string
+  selectedTagFilter: string
   selectedFolderFilter: string
   selectedGroupFilter: string
   folderList: FolderItem[]
-  selectedFolderManageId: string | null
-  activePronEditId: string | null
-  pronInput: string
-  activeMeaningEditId: string | null
-  meaningDraft: string
-  isSavingMeanings: boolean
-  activeFolderEditId: string | null
   expandedInflectionIds: Record<string, boolean>
   dragOffsetX: number
   cardTransitionState: 'idle' | 'leaving' | 'entering'
@@ -46,7 +38,6 @@ type VocabularyWorkspaceState = {
   searchingId: string | null
   isSearchingMore: boolean
   searchResults: Record<string, SentenceItem[]>
-  pendingSentenceIndex: number | null
 }
 
 type WorkspaceAction = {
@@ -62,6 +53,9 @@ function reducer(state: VocabularyWorkspaceState, action: WorkspaceAction) {
     typeof action.value === 'function'
       ? (action.value as (value: typeof current) => typeof current)(current)
       : action.value
+  if (Object.is(current, next)) {
+    return state
+  }
   return { ...state, [action.key]: next }
 }
 
@@ -70,13 +64,33 @@ export function useVocabularyWorkspaceState(input: {
   folders: FolderItem[]
   initialFolderFilter: string
   initialGroupFilter?: string
+  initialPosFilter?: string
+  initialTagFilter?: string
+  initialViewMode?: 'list' | 'card'
+  initialFocusId?: string
 }) {
+  const groupNames = Object.keys(input.groupedData)
+  const focusGroup = input.initialFocusId
+    ? groupNames.find(group =>
+        input.groupedData[group]?.some(item => item.id === input.initialFocusId),
+      )
+    : undefined
+  const initialActiveTab =
+    input.initialGroupFilter || focusGroup || groupNames[0] || '未分类'
+  const initialItems = filterAndSortVocabulary(
+    input.groupedData[initialActiveTab] || [],
+    input.initialPosFilter || 'all',
+    'all',
+    'recent',
+  )
+  const initialFocusIndex = input.initialFocusId
+    ? initialItems.findIndex(item => item.id === input.initialFocusId)
+    : -1
   const [state, dispatch] = useReducer(reducer, {
-    activeTab:
-      input.initialGroupFilter || Object.keys(input.groupedData)[0] || '未分类',
+    activeTab: initialActiveTab,
     localData: input.groupedData,
-    viewMode: 'list',
-    currentIndex: 0,
+    viewMode: input.initialViewMode === 'card' ? 'flashcard' : 'list',
+    currentIndex: Math.max(0, initialFocusIndex),
     memoryMode: false,
     randomOrder: false,
     shuffleSeed: 1,
@@ -88,24 +102,15 @@ export function useVocabularyWorkspaceState(input: {
     selectedVocabIds: new Set<string>(),
     bulkTagsInput: '',
     bulkTagPanelOpen: false,
-    activeTagEditorId: null,
-    tagDraft: '',
-    isSavingTags: false,
     isSelectAllChecked: false,
     bulkWordbookId: 'none',
     isBulkAddingToWordbook: false,
     sortMode: 'recent',
-    selectedPosFilter: 'all',
+    selectedPosFilter: input.initialPosFilter || 'all',
+    selectedTagFilter: input.initialTagFilter || 'all',
     selectedFolderFilter: input.initialFolderFilter,
     selectedGroupFilter: input.initialGroupFilter || '',
     folderList: input.folders,
-    selectedFolderManageId: null,
-    activePronEditId: null,
-    pronInput: '',
-    activeMeaningEditId: null,
-    meaningDraft: '',
-    isSavingMeanings: false,
-    activeFolderEditId: null,
     expandedInflectionIds: {},
     dragOffsetX: 0,
     cardTransitionState: 'idle',
@@ -113,7 +118,6 @@ export function useVocabularyWorkspaceState(input: {
     searchingId: null,
     isSearchingMore: false,
     searchResults: {},
-    pendingSentenceIndex: null,
   })
   const setter = useCallback(
     <Key extends keyof VocabularyWorkspaceState>(key: Key) =>
@@ -138,24 +142,15 @@ export function useVocabularyWorkspaceState(input: {
       setSelectedVocabIds: setter('selectedVocabIds'),
       setBulkTagsInput: setter('bulkTagsInput'),
       setBulkTagPanelOpen: setter('bulkTagPanelOpen'),
-      setActiveTagEditorId: setter('activeTagEditorId'),
-      setTagDraft: setter('tagDraft'),
-      setIsSavingTags: setter('isSavingTags'),
       setIsSelectAllChecked: setter('isSelectAllChecked'),
       setBulkWordbookId: setter('bulkWordbookId'),
       setIsBulkAddingToWordbook: setter('isBulkAddingToWordbook'),
       setSortMode: setter('sortMode'),
       setSelectedPosFilter: setter('selectedPosFilter'),
+      setSelectedTagFilter: setter('selectedTagFilter'),
       setSelectedFolderFilter: setter('selectedFolderFilter'),
       setSelectedGroupFilter: setter('selectedGroupFilter'),
       setFolderList: setter('folderList'),
-      setSelectedFolderManageId: setter('selectedFolderManageId'),
-      setActivePronEditId: setter('activePronEditId'),
-      setPronInput: setter('pronInput'),
-      setActiveMeaningEditId: setter('activeMeaningEditId'),
-      setMeaningDraft: setter('meaningDraft'),
-      setIsSavingMeanings: setter('isSavingMeanings'),
-      setActiveFolderEditId: setter('activeFolderEditId'),
       setExpandedInflectionIds: setter('expandedInflectionIds'),
       setDragOffsetX: setter('dragOffsetX'),
       setCardTransitionState: setter('cardTransitionState'),
@@ -163,7 +158,6 @@ export function useVocabularyWorkspaceState(input: {
       setSearchingId: setter('searchingId'),
       setIsSearchingMore: setter('isSearchingMore'),
       setSearchResults: setter('searchResults'),
-      setPendingSentenceIndex: setter('pendingSentenceIndex'),
     }),
     [setter],
   )

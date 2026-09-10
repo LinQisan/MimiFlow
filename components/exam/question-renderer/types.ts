@@ -1,5 +1,7 @@
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import type { OptionLabelFormat } from '@/utils/questions/optionLabels'
+import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
+import type { PronunciationSource } from '@/components/ui/PronunciationSourceSelector'
 
 export type ExamQuestionOption = {
   id: string
@@ -58,4 +60,7 @@ export type ExamAnnotationSettings = {
   groupKanji?: boolean
   pronunciationMap: Record<string, string>
   vocabularyMetaMap: Record<string, VocabularyMeta>
+  sudachiLexicon?: Record<string, SudachiLexeme>
+  pronunciationSource?: PronunciationSource
+  tokenWords?: string[]
 }

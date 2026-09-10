@@ -107,14 +107,11 @@ export default function PapersListClient({
 
       <div className='mx-auto grid max-w-7xl gap-8 px-4 py-8 md:px-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
         <aside className='lg:sticky lg:top-24 lg:self-start'>
-          <div className='rounded-2xl border border-slate-200/80 bg-white/80 p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] backdrop-blur-sm md:p-5 lg:p-4'>
+          <div className='border-b border-slate-200 py-4 lg:border-b-0 lg:py-0'>
             <div className='flex items-center justify-between gap-3'>
-              <div>
-                <p className='text-[10px] font-bold tracking-[0.14em] text-slate-400'>试卷库</p>
-                <h2 className='mt-0.5 text-sm font-semibold text-slate-950'>快速筛选</h2>
-              </div>
+              <h2 className='ui-section-head'>筛选</h2>
               <div className='flex items-center gap-2'>
-                <span className='rounded-full bg-slate-950 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-white'>
+                <span className='ui-meta'>
                   {filteredPaperCount} 套
                 </span>
                 {hasActiveFilter ? (
@@ -169,7 +166,6 @@ export default function PapersListClient({
 
           {filteredLevels.length > 1 ? (
             <nav aria-label='试卷分组' className='mt-5 hidden space-y-1 lg:block'>
-              <p className='mb-2 px-2 text-[11px] font-bold tracking-[0.08em] text-slate-400'>试卷分组</p>
               {filteredLevels.map(item => (
                 <a key={item.id} href={`#paper-level-${item.id}`} className='flex items-center justify-between rounded-lg px-2 py-2 text-sm text-slate-600 transition hover:bg-white hover:text-slate-950'>
                   <span>{item.title}</span>
@@ -182,9 +178,9 @@ export default function PapersListClient({
 
         <main className='min-w-0'>
           {filteredLevels.length === 0 ? (
-            <section className='rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center'>
-              <p className='text-lg font-semibold text-slate-950'>没有找到匹配的试卷</p>
-              <p className='mt-2 text-sm text-slate-500'>尝试缩短关键词，或者清空语言与等级筛选。</p>
+            <section className='ui-empty'>
+              <p className='text-sm font-semibold text-slate-800'>没有找到匹配的试卷</p>
+              <p className='mt-1'>尝试缩短关键词，或者清空语言与等级筛选。</p>
               <button type='button' onClick={reset} className='ui-btn ui-btn-primary mt-5'>清空筛选</button>
             </section>
           ) : (
@@ -193,10 +189,7 @@ export default function PapersListClient({
                 <section key={levelGroup.id} id={`paper-level-${levelGroup.id}`} className='scroll-mt-24'>
                   {filteredLevels.length > 1 ? (
                     <div className='mb-5 flex items-end justify-between gap-4 border-b border-slate-900/10 pb-3'>
-                      <div>
-                        <p className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>COLLECTION</p>
-                        <h2 className='mt-1 text-xl font-semibold tracking-tight text-slate-950'>{levelGroup.title}</h2>
-                      </div>
+                      <h2 className='text-xl font-semibold tracking-tight text-slate-950'>{levelGroup.title}</h2>
                       <span className='text-xs font-medium text-slate-500'>{levelGroup.papers.length} 套试卷</span>
                     </div>
                   ) : null}

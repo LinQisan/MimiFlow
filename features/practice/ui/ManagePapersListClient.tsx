@@ -42,7 +42,7 @@ export default function ManagePapersListClient({ levels }: Props) {
     <main className='min-h-full px-3 py-4 md:px-6 md:py-6'>
       <div className='mx-auto max-w-5xl space-y-5'>
         <div className='flex items-center justify-between gap-3'>
-          <h1 className='text-xl font-black text-slate-950 md:text-2xl'>试卷</h1>
+          <p className='ui-meta'>{levels.reduce((sum, level) => sum + level.papers.length, 0)} 套试卷</p>
           <Link
             href='/manage/import?type=questions'
             className='ui-btn ui-btn-sm ui-btn-primary'>
@@ -60,18 +60,18 @@ export default function ManagePapersListClient({ levels }: Props) {
         />
 
         {filteredLevels.length === 0 ? (
-          <p className='rounded-lg border border-dashed border-slate-300 px-3 py-5 text-sm text-slate-500'>
+          <p className='ui-empty'>
             暂无试卷
           </p>
         ) : (
           filteredLevels.map(level => (
             <section key={level.id} className='space-y-2'>
               <div className='flex items-center gap-2'>
-                <h2 className='text-sm font-bold text-slate-500'>{level.title}</h2>
-                <span className='text-xs text-slate-400'>{level.papers.length}</span>
+                <h2 className='ui-section-head'>{level.title}</h2>
+                <span className='ui-meta'>{level.papers.length}</span>
               </div>
 
-              <div className='space-y-2'>
+              <div className='divide-y divide-slate-200 border-y border-slate-200'>
                 {level.papers.map(paper => {
                   const isExpanded = expandedPaperId === paper.id
                   const breakdown = getPaperQuestionBreakdown(paper)
@@ -79,7 +79,7 @@ export default function ManagePapersListClient({ levels }: Props) {
                   return (
                     <article
                       key={paper.id}
-                      className='rounded-xl border border-slate-200 bg-white p-3'>
+                      className='py-3'>
                       <div className='flex flex-col gap-3 sm:flex-row sm:items-center'>
                         <div className='min-w-0 flex-1'>
                           <div className='flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-400'>
@@ -88,10 +88,10 @@ export default function ManagePapersListClient({ levels }: Props) {
                             <span>{paper.moduleCount} 模块</span>
                             <span>{paper.questionCount} 题</span>
                           </div>
-                          <h3 className='mt-1 truncate font-bold text-slate-900'>
+                          <h3 className='mt-0.5 truncate font-bold text-slate-900'>
                             {paper.name}
                           </h3>
-                          <div className='mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500'>
+                          <div className='mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500'>
                             {breakdown.map(item => (
                               <span key={item.label}>
                                 {item.label} {item.value}
@@ -111,6 +111,7 @@ export default function ManagePapersListClient({ levels }: Props) {
                           </a>
                           <Link
                             href={`/manage/practice/${encodeURIComponent(paper.id)}`}
+                            prefetch={false}
                             className='ui-btn ui-btn-sm ui-btn-primary'>
                             编辑
                           </Link>

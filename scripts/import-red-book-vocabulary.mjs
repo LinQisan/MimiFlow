@@ -363,6 +363,7 @@ async function applyDatabaseImport(prisma, records, userId) {
       id,
       userId,
       word: record.word,
+      normalizedWord: record.word.normalize('NFKC').trim().toLocaleLowerCase('ja'),
       sourceType: SourceType.ARTICLE_TEXT,
       sourceId,
       wordAudio: webAudio,
@@ -381,7 +382,15 @@ async function applyDatabaseImport(prisma, records, userId) {
   }
   for (const update of updates) {
     const { id, ...data } = update
-    await prisma.vocabulary.update({ where: { id }, data })
+    await prisma.vocabulary.update({
+      where: { id },
+      data: {
+        ...data,
+        ...(typeof data.word === 'string'
+          ? { normalizedWord: data.word.normalize('NFKC').trim().toLocaleLowerCase('ja') }
+          : {}),
+      },
+    })
   }
 
   const links = []
@@ -392,6 +401,7 @@ async function applyDatabaseImport(prisma, records, userId) {
         id: randomUUID(),
         wordbookId: wordbooks.get(level),
         vocabularyId,
+        jlpt: level,
         sortOrder: record.sourceOrder,
       })
     }

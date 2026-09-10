@@ -71,11 +71,8 @@ export default async function ManageFsrsPage() {
   return (
     <main className='min-h-screen bg-slate-50 px-4 pb-12 text-slate-900 md:px-8'>
       <div className='mx-auto max-w-5xl'>
-        <header className='flex flex-col gap-4 border-b border-slate-200 py-5 sm:flex-row sm:items-center sm:justify-between'>
-          <div>
-            <p className='text-sm font-semibold text-slate-900'>复习调度</p>
-            <p className='mt-1 text-xs text-slate-500'>查看系统是否正常，不需要手动调整参数。</p>
-          </div>
+        <header className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-4'>
+          <p className='ui-meta'>复习调度</p>
           <div className='flex gap-2'>
             <Link href='/manage/system' className='ui-btn ui-btn-sm'>返回系统</Link>
             <Link href='/review/memory' className='ui-btn ui-btn-primary ui-btn-sm'>开始记忆复习</Link>

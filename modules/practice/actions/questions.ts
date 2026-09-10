@@ -7,6 +7,10 @@ import prisma from '@/lib/prisma'
 import { executeAction } from '@/lib/actions/result'
 import { parseInput } from '@/lib/validation/schema'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'
@@ -53,6 +57,18 @@ export async function updateSortOrder(
   return executeAction(
     async () => {
       const input = parseInput(sortOrderInputSchema, { model, orderedIds })
+      const affectedMaterialIds = input.model === 'Question'
+        ? Array.from(
+            new Set(
+              (
+                await prisma.question.findMany({
+                  where: { id: { in: input.orderedIds } },
+                  select: { materialId: true },
+                })
+              ).map(question => question.materialId),
+            ),
+          )
+        : []
       const updatePromises = input.orderedIds.map((id, index) =>
         input.model === 'Question'
           ? prisma.question.update({
@@ -66,6 +82,8 @@ export async function updateSortOrder(
       )
 
       await prisma.$transaction(updatePromises)
+      await precomputePracticeVocabularyMaterialAnalyses(affectedMaterialIds)
+      invalidatePracticeVocabularyAnalytics()
 
       // Keep manage/public pages in sync after drag-sort persistence.
       revalidatePath('/')

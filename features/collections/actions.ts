@@ -5,6 +5,10 @@ import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 async function isCollectionMoveValid(
   collectionId: string,
@@ -139,6 +143,17 @@ export async function updateCollectionAttributes(formData: FormData) {
         sortOrder,
       },
     })
+
+    if (current.collectionType === CollectionType.PAPER) {
+      const materials = await prisma.collectionMaterial.findMany({
+        where: { collectionId },
+        select: { materialId: true },
+      })
+      await precomputePracticeVocabularyMaterialAnalyses(
+        materials.map(item => item.materialId),
+      )
+      invalidatePracticeVocabularyAnalytics()
+    }
 
     revalidatePath('/')
     revalidatePath('/manage/shadowing')

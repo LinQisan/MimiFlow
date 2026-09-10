@@ -1,6 +1,7 @@
 import { MaterialType } from '@prisma/client'
 import { readString } from '@/lib/validation/schema'
 import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
+import { buildVocabularyFocusHref } from '@/modules/knowledge/vocabulary/domain/navigation'
 
 export const shortText = (text: string, max = 96) => {
   const value = (text || '').trim()
@@ -109,12 +110,8 @@ export const buildSearchDetailHref = (
   return '/manage/practice'
 }
 
-export const buildVocabularyTargetHref = (id: string, word: string) => {
-  const params = new URLSearchParams()
-  params.set('focus', id)
-  params.set('q', word)
-  return `/vocabulary?${params.toString()}`
-}
+export const buildVocabularyTargetHref = (id: string) =>
+  buildVocabularyFocusHref(id)
 
 export const buildQuestionTargetHref = (input: {
   questionId: string

@@ -20,8 +20,8 @@ export default async function RootLayout({
   const { currentUser, users } = await getUserContext()
 
   return (
-    <html lang='zh' data-lang='zh' suppressHydrationWarning>
-      <body className='flat-ui editorial-ui' suppressHydrationWarning>
+    <html lang='zh' data-lang='zh'>
+      <body className='editorial-ui'>
         <UserProvider user={currentUser}>
           <I18nProvider>
             <DialogProvider>

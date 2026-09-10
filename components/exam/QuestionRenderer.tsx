@@ -48,10 +48,12 @@ function ReadingQuestion({
   isJapanesePaper = false,
   annotation,
 }: QuestionRendererProps) {
+  const passageId = question.passageId || question.passage?.id
   const relatedFillBlankQuestions = allQuestions
     .filter(
       item =>
-        item.passageId === question.passageId &&
+        Boolean(passageId) &&
+        (item.passageId || item.passage?.id) === passageId &&
         (item.questionType === 'FILL_BLANK' ||
           item.questionType === 'TOEIC_TEXT_COMPLETION'),
     )
@@ -70,7 +72,7 @@ function ReadingQuestion({
       <section className='custom-scrollbar relative w-full overflow-y-auto py-2 md:py-3 lg:max-h-[82vh]'>
         <article
           data-source-type='ARTICLE_TEXT'
-          data-source-id={question.passage?.id || ''}
+          data-source-id={question.passage?.id || question.passageId || ''}
           data-context-block='true'
           data-context-role='reading-passage'
           className={`reading-passage-body mx-auto max-w-[88ch] whitespace-pre-wrap text-[1.12rem] leading-[2.08] text-slate-700 md:text-[1.2rem] md:leading-[2.15] ${
@@ -124,7 +126,7 @@ function ListeningQuestion({
   const dialogues = question.lesson?.dialogues || []
   const lessonId = question.lesson?.id || question.lessonId || question.id
   const lessonQuestions = allQuestions.filter(
-    item => item.lessonId && item.lessonId === lessonId,
+    item => (item.lessonId || item.lesson?.id) === lessonId,
   )
   const displayedQuestions =
     lessonQuestions.length > 0 ? lessonQuestions : [question]
@@ -378,7 +380,7 @@ export function QuestionRenderer({
     return <div className='p-10 text-center text-gray-500'>加载题目失败...</div>
   }
 
-  if (question.passageId) {
+  if (question.passageId || question.passage?.id) {
     return (
       <ReadingQuestion
         question={question}
@@ -398,7 +400,7 @@ export function QuestionRenderer({
     )
   }
 
-  if (question.lessonId) {
+  if (question.lessonId || question.lesson?.id) {
     return (
       <ListeningQuestion
         question={question}

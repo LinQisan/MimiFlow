@@ -80,14 +80,12 @@ export default async function CustomPaperDoingPage({
 
   if (examData.questions.length === 0) {
     return (
-      <div className='flex min-h-screen flex-col items-center justify-center bg-slate-50 p-6 text-center'>
-        <div className='max-w-md rounded-[20px] bg-white px-6 py-8 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
-          <h1 className='text-xl font-bold tracking-tight text-slate-900'>
+      <div className='flex min-h-screen flex-col items-center justify-center bg-[#f6f5f1] p-6 text-center'>
+        <div className='ui-empty max-w-md'>
+          <p className='text-base font-bold text-slate-900'>
             未找到可用题目
-          </h1>
-          <p className='mt-2 text-sm text-slate-500'>
-            当前筛选条件下暂无题目，请调整题型或数量后再试。
           </p>
+          <p className='mt-1'>当前筛选条件下暂无题目，请调整题型或数量后再试。</p>
           <Link
             href='/practice/custom'
             className='ui-btn ui-btn-primary mt-5'>

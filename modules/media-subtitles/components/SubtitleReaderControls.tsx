@@ -100,7 +100,7 @@ export default function SubtitleReaderControls({
       </div>
 
       <div className='rounded-lg border border-slate-200 bg-white p-3'>
-        <p className='mb-2 text-xs font-black text-slate-700'>显示选项</p>
+        <p className='mb-2 text-xs font-bold text-slate-700'>显示选项</p>
         <div className='grid grid-cols-2 gap-2'>
           <ToggleSwitch
             checked={showPronunciation}

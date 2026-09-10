@@ -74,9 +74,9 @@ export default function ListeningViewSwitcher({
   return (
     <div className='grid gap-8 py-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
       <aside className='lg:sticky lg:top-24 lg:self-start'>
-        <div className='rounded-2xl border border-slate-200/80 bg-white p-4 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)]'>
+        <div className='border-b border-slate-200 py-4 lg:border-b-0 lg:py-0'>
           <div className='flex items-center justify-between gap-3'>
-            <h2 className='text-sm font-semibold text-slate-950'>筛选材料</h2>
+            <h2 className='ui-section-head'>筛选</h2>
             {hasActiveFilter ? (
               <button
                 type='button'
@@ -133,7 +133,7 @@ export default function ListeningViewSwitcher({
 
       <main className='min-w-0'>
         {filteredEntries.length === 0 ? (
-          <section className='rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center'>
+            <section className='ui-empty'>
             <p className='text-lg font-semibold text-slate-950'>没有找到匹配的听力材料</p>
             <p className='mt-2 text-sm text-slate-500'>尝试缩短关键词，或者清空材料类型与语言筛选。</p>
             <button

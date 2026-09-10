@@ -51,6 +51,7 @@ type Props = {
   defaultLanguage?: string
   collectionScope?: 'paper' | 'material'
   defaultQuestionType?: QuestionType | string
+  defaultQuestionsPerMaterial?: number
   toeicPartLabel?: string
   defaultListeningSectionNumber?: string
   listeningSectionLabel?: string
@@ -64,6 +65,7 @@ export default function UploadForm({
   defaultLanguage = 'ja',
   collectionScope = 'material',
   defaultQuestionType,
+  defaultQuestionsPerMaterial,
   toeicPartLabel,
   defaultListeningSectionNumber,
   listeningSectionLabel,
@@ -992,7 +994,7 @@ export default function UploadForm({
           <div>
             {isMediaSubtitleVariant && (
               <div className='mb-4 border border-slate-200 bg-slate-50 p-3 md:p-4'>
-                <p className='mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500'>
+                <p className='mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500'>
                   字幕归属
                 </p>
                 <div className='grid grid-cols-1 gap-2 md:grid-cols-2'>
@@ -1047,7 +1049,7 @@ export default function UploadForm({
                 <div className='border-t border-slate-200 p-3 md:p-4'>
                   <div className='mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between'>
                     <div>
-                      <p className='text-[11px] font-black uppercase tracking-wider text-emerald-700'>
+                      <p className='text-[11px] font-bold uppercase tracking-wider text-emerald-700'>
                         粘贴字幕提取文本
                       </p>
                       <p className='mt-1 text-xs font-semibold text-slate-500'>
@@ -1058,7 +1060,7 @@ export default function UploadForm({
                       type='button'
                       onClick={handleCopyPastedSubtitleText}
                       disabled={!pastedSubtitleText}
-                      className={`border px-3 py-2 text-xs font-black transition ${
+                      className={`border px-3 py-2 text-xs font-bold transition ${
                         pastedSubtitleText
                           ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                           : 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
@@ -1082,7 +1084,7 @@ export default function UploadForm({
 
                   <div className='mt-3 border border-slate-200 bg-slate-50 p-3'>
                     <div className='mb-2 flex items-center justify-between gap-2'>
-                      <p className='text-xs font-black text-slate-700'>
+                      <p className='text-xs font-bold text-slate-700'>
                         提取结果
                       </p>
                       <span className='text-xs font-bold text-slate-500'>
@@ -1501,6 +1503,7 @@ export default function UploadForm({
             draftMode
             language={defaultLanguage}
             defaultQuestionType={defaultQuestionType}
+            defaultQuestionsPerMaterial={defaultQuestionsPerMaterial}
             toeicPartLabel={toeicPartLabel}
             listeningSectionLabel={listeningSectionLabel}
             batchFileNames={selectedFileNames}

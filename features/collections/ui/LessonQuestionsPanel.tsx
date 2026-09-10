@@ -84,6 +84,7 @@ export default function LessonQuestionsPanel({
   draftMode = false,
   language = 'ja',
   defaultQuestionType,
+  defaultQuestionsPerMaterial,
   toeicPartLabel,
   listeningSectionLabel,
   batchFileNames = [],
@@ -95,6 +96,7 @@ export default function LessonQuestionsPanel({
   draftMode?: boolean
   language?: string
   defaultQuestionType?: QuestionType | string
+  defaultQuestionsPerMaterial?: number
   toeicPartLabel?: string
   listeningSectionLabel?: string
   batchFileNames?: string[]
@@ -121,11 +123,12 @@ export default function LessonQuestionsPanel({
     'TOEIC_PHOTOGRAPH') as QuestionType
   const toeicPart = getToeicPartByQuestionType(toeicQuestionType)
   const batchMode = draftMode && batchFileNames.length > 1
-  const defaultQuestionsPerMaterial =
-    toeicQuestionType === 'TOEIC_CONVERSATIONS' ||
+  const resolvedQuestionsPerMaterial =
+    defaultQuestionsPerMaterial ??
+    (toeicQuestionType === 'TOEIC_CONVERSATIONS' ||
     toeicQuestionType === 'TOEIC_TALKS'
       ? 3
-      : 1
+      : 1)
   const createDraftQuestion = (
     sourceFileName: string | null = null,
     sequence = 0,
@@ -162,13 +165,13 @@ export default function LessonQuestionsPanel({
     }
   }
   const initialEditorQuestions =
-    initialQuestions.length > 0 || !batchMode
+    initialQuestions.length > 0 || !draftMode || batchFileNames.length === 0
       ? initialQuestions
       : batchFileNames.flatMap((fileName, fileIndex) =>
-          Array.from({ length: defaultQuestionsPerMaterial }, (_, index) =>
+          Array.from({ length: resolvedQuestionsPerMaterial }, (_, index) =>
             createDraftQuestion(
               fileName,
-              fileIndex * defaultQuestionsPerMaterial + index,
+              fileIndex * resolvedQuestionsPerMaterial + index,
             ),
           ),
         )
@@ -204,7 +207,7 @@ export default function LessonQuestionsPanel({
     setQuestionsPerMaterial,
   } = useLessonQuestionPageState(
     initialSectionNumber,
-    defaultQuestionsPerMaterial,
+    resolvedQuestionsPerMaterial,
   )
 
   // ─── Add single question ───
@@ -569,10 +572,10 @@ export default function LessonQuestionsPanel({
     <section
       className={
         practiceAppearance
-          ? 'mt-0 overflow-hidden rounded-2xl border border-slate-200 bg-white'
+          ? 'mt-0 border-y border-slate-200 py-5'
           : importAppearance
             ? 'mt-0 border-b border-slate-200 py-5'
-          : 'mt-4 rounded-2xl border border-gray-200 bg-white shadow-sm'
+          : 'mt-4 border-y border-slate-200 py-5'
       }>
       {draftMode ? (
         <input
@@ -652,7 +655,7 @@ export default function LessonQuestionsPanel({
                 setIsDirty(true)
               }}
               aria-label='材料所属問題'
-              className='!h-8 !min-h-0 !w-10 !rounded-none border-0 border-b border-slate-300 bg-transparent px-1 py-0 text-center text-sm font-black leading-none text-slate-900 outline-none focus:border-slate-900 focus:ring-0'
+              className='!h-8 !min-h-0 !w-10 !rounded-none border-0 border-b border-slate-300 bg-transparent px-1 py-0 text-center text-sm font-bold leading-none text-slate-900 outline-none focus:border-slate-900 focus:ring-0'
               placeholder='1'
             />
           </label>
@@ -762,10 +765,10 @@ export default function LessonQuestionsPanel({
                   <div key={i} className={importAppearance
                     ? 'flex items-start gap-2 border-b border-slate-200 py-3'
                     : 'flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3'}>
-                    <span className={`shrink-0 bg-gray-800 px-1.5 py-0.5 text-[10px] font-black text-white ${importAppearance ? '' : 'rounded'}`}>
+                    <span className={`shrink-0 bg-gray-800 px-1.5 py-0.5 text-[10px] font-bold text-white ${importAppearance ? '' : 'rounded'}`}>
                       Q{i + 1}
                     </span>
-                    <span className={`shrink-0 border px-1.5 py-0.5 text-[10px] font-black ${importAppearance ? '' : 'rounded'} ${tc.color}`}>
+                    <span className={`shrink-0 border px-1.5 py-0.5 text-[10px] font-bold ${importAppearance ? '' : 'rounded'} ${tc.color}`}>
                       {tc.label}
                     </span>
                     <div className='flex-1 text-xs text-gray-700 font-medium leading-relaxed line-clamp-2'>
@@ -835,7 +838,7 @@ export default function LessonQuestionsPanel({
             action={handleReorderQuestions}
             className='flex flex-col space-y-3'>
             {questions.map((q, index) => {
-              const isEditing = batchMode || editingQuestionId === q.id
+              const isEditing = draftMode || editingQuestionId === q.id
               const compactBatchAnswerEditor =
                 batchMode && q.questionType === 'TOEIC_QUESTION_RESPONSE'
               const tConfig = getTypeConfig(q.questionType)
@@ -848,7 +851,7 @@ export default function LessonQuestionsPanel({
                     <div className={importAppearance ? 'bg-transparent' : 'border-y border-slate-300 bg-white'}>
                       <div className={`flex items-center justify-between gap-3 border-b border-slate-200 ${importAppearance ? 'bg-transparent px-0 py-3' : 'bg-white px-1 py-2.5 md:px-2'}`}>
                         <div className='flex min-w-0 items-center gap-2'>
-                          <span className='text-sm font-black text-slate-900'>
+                          <span className='text-sm font-bold text-slate-900'>
                             题目 {index + 1}
                           </span>
                           {q.sourceFileName ? (
@@ -860,15 +863,30 @@ export default function LessonQuestionsPanel({
                             {tConfig.label}
                           </span>
                         </div>
-                        {!batchMode &&
-                        !(draftMode && q.questionType === 'TOEIC_PHOTOGRAPH') ? (
-                          <ActionInterceptor>
-                            <button
-                              onClick={() => setEditingQuestionId(null)}
-                              className='ui-btn ui-btn-sm'>
-                              收起
-                            </button>
-                          </ActionInterceptor>
+                        {!batchMode ? (
+                          <div className='flex items-center gap-2'>
+                            {draftMode ? (
+                              <ActionInterceptor>
+                                <button
+                                  type='button'
+                                  onClick={() =>
+                                    void handleRemoveQuestion(q.id, index)
+                                  }
+                                  className='ui-btn ui-btn-sm border-rose-200 text-rose-600 hover:bg-rose-50'>
+                                  移除
+                                </button>
+                              </ActionInterceptor>
+                            ) : (
+                              <ActionInterceptor>
+                                <button
+                                  type='button'
+                                  onClick={() => setEditingQuestionId(null)}
+                                  className='ui-btn ui-btn-sm'>
+                                  收起
+                                </button>
+                              </ActionInterceptor>
+                            )}
+                          </div>
                         ) : null}
                       </div>
 
@@ -1201,10 +1219,10 @@ export default function LessonQuestionsPanel({
                   ) : (
                     /* ═══ Display mode ═══ */
                     <div className={practiceAppearance
-                      ? 'group relative rounded-2xl border border-slate-200 bg-white p-4 transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_16px_38px_-30px_rgba(15,23,42,0.45)] md:p-5'
+                      ? 'group relative border-b border-slate-200 py-4'
                       : importAppearance
                         ? 'group relative bg-white py-4'
-                      : 'bg-white p-4 md:p-5 rounded-2xl border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-md transition-all group relative'}>
+                      : 'group relative border-b border-slate-200 py-4'}>
                       <div className='flex justify-between items-start mb-3 gap-2'>
                         <div className='flex items-center gap-2.5 flex-wrap'>
                           <ActionInterceptor>
@@ -1212,7 +1230,7 @@ export default function LessonQuestionsPanel({
                           </ActionInterceptor>
                           <span className={importAppearance
                             ? 'text-sm font-bold text-slate-900'
-                            : 'bg-gray-800 text-white text-[10px] font-black px-2 py-0.5 rounded tracking-wider'}>
+                            : 'bg-gray-800 text-white text-[10px] font-bold px-2 py-0.5 rounded tracking-wider'}>
                             {importAppearance ? index + 1 : `Q${index + 1}`}
                           </span>
                           {q.sourceFileName ? (
@@ -1306,7 +1324,7 @@ export default function LessonQuestionsPanel({
                                 {isAudioOnly(q.id) ? '' : opt.text}
                               </span>
                               )}
-                              {opt.isCorrect && <span className='text-emerald-500 font-black'>✅</span>}
+                              {opt.isCorrect && <span className='text-emerald-500 font-bold'>✅</span>}
                             </div>
                           ))}
                         </div>

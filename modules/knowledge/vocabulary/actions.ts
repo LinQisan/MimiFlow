@@ -23,7 +23,6 @@ import {
   sanitizePronunciations,
 } from '@/utils/text/pronunciation'
 import {
-  cleanupOrphanSentence,
   findExistingVocabularyCandidate,
   findSentenceLinkByText,
   listVocabularySentenceRecords,
@@ -40,7 +39,15 @@ import {
   buildCompletedSortingText,
 } from '@/modules/practice/domain/question-text'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
-import { buildJapaneseVocabularySearchTerms } from '@/utils/vocabulary/japaneseInflection'
+import { filterVocabularyTags } from './domain/jlpt'
+import {
+  buildJapaneseVocabularySearchTerms,
+  containsJapaneseVocabularyMatch,
+} from '@/utils/vocabulary/japaneseInflection'
+import { computeSingleVocabularyPronunciation } from './server/pronunciation-service'
+import { PRONUNCIATION_VERSION } from './domain/pronunciation'
+import { hasJapanese } from '@/modules/language/domain/text'
+import { normalizeVocabularyWord } from './domain/normalized-word'
 
 
 
@@ -176,10 +183,22 @@ export async function saveVocabulary(
       }
     }
 
+    let pronunciationData: Prisma.InputJsonValue | undefined = undefined
+    if (hasJapanese(normalizedWord)) {
+      const computed = await computeSingleVocabularyPronunciation(
+        normalizedWord,
+        normalizedPrimaryPronunciation,
+      )
+      if (computed) {
+        pronunciationData = computed as unknown as Prisma.InputJsonValue
+      }
+    }
+
     const created = await prisma.vocabulary.create({
       data: {
         userId,
         word: normalizedWord,
+        normalizedWord: normalizeVocabularyWord(normalizedWord),
         sourceType: sourceType,
         sourceId: sourceId,
         pronunciations: toJsonStringList([
@@ -188,6 +207,8 @@ export async function saveVocabulary(
         ]),
         partsOfSpeech: toJsonStringList(normalizedPartsOfSpeech),
         meanings: toJsonStringList(normalizedMeanings),
+        pronunciationData,
+        pronunciationVersion: pronunciationData ? PRONUNCIATION_VERSION : null,
       },
     })
     if (normalizedContextSentence) {
@@ -221,88 +242,13 @@ export async function saveVocabulary(
   }
 }
 
-export async function updateVocabularyPronunciationById(
-  id: string,
-  pronunciation: string,
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const target = await prisma.vocabulary.findFirst({
-      where: { id, userId },
-      select: { word: true },
-    })
-    if (!target) return { success: false }
-    const nextPron = sanitizePronunciation(target.word, pronunciation)
-    await prisma.vocabulary.update({
-      where: { id },
-      data: {
-        pronunciations: toJsonStringList(nextPron ? [nextPron] : []),
-      },
-    })
-    invalidateVocabularyGroupsCache()
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false }
-  }
-}
-
-export async function updateVocabularyPartsOfSpeechById(
-  id: string,
-  partsOfSpeech: string[],
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const normalized = Array.from(
-      new Set(partsOfSpeech.map(item => item.trim()).filter(Boolean)),
-    )
-    const updated = await prisma.vocabulary.updateMany({
-      where: { id, userId },
-      data: {
-        partsOfSpeech: toJsonStringList(normalized),
-      },
-    })
-    if (updated.count === 0) return { success: false, message: '单词不存在' }
-    revalidatePath('/vocabulary')
-    invalidateVocabularyGroupsCache()
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '词性保存失败' }
-  }
-}
-
-export async function updateVocabularyMeaningsById(
-  id: string,
-  meanings: string[],
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const normalized = Array.from(
-      new Set(meanings.map(item => item.trim()).filter(Boolean)),
-    )
-    const updated = await prisma.vocabulary.updateMany({
-      where: { id, userId },
-      data: { meanings: toJsonStringList(normalized) },
-    })
-    if (updated.count === 0) return { success: false, message: '单词不存在' }
-    revalidatePath('/vocabulary')
-    revalidatePath('/reading')
-    invalidateVocabularyGroupsCache()
-    return { success: true, meanings: normalized }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '释义保存失败' }
-  }
-}
-
-
-
 export async function deleteVocabulary(id: string) {
   try {
     const userId = await getCurrentUserId()
     const deleted = await prisma.vocabulary.deleteMany({ where: { id, userId } })
     if (deleted.count === 0) return { success: false, message: '单词不存在' }
+    revalidatePath('/vocabulary')
+    revalidatePath('/reading')
     invalidateVocabularyGroupsCache()
     return { success: true, message: '删除成功' }
   } catch (error) {
@@ -314,9 +260,14 @@ export async function deleteVocabulary(id: string) {
 export async function searchSentencesForWord(
   word: string,
   partsOfSpeech: string[] = [],
+  matchVariants: string[] = [],
 ) {
   try {
-    const searchTerms = buildJapaneseVocabularySearchTerms(word, partsOfSpeech)
+    const searchTerms = buildJapaneseVocabularySearchTerms(
+      word,
+      partsOfSpeech,
+      matchVariants,
+    )
     if (searchTerms.length === 0) return { success: true, data: [] }
     const articleTextFilters: Prisma.MaterialWhereInput[] = searchTerms.flatMap(
       term => [
@@ -342,8 +293,15 @@ export async function searchSentencesForWord(
       STRPOS(LOWER(COALESCE(q."options"::text, '')), LOWER(${term})) > 0
       OR STRPOS(LOWER(COALESCE(q."answer"::text, '')), LOWER(${term})) > 0
     `)
+    const additionalVariantSet = new Set(matchVariants.slice(1))
     const includesSearchTerm = (text: string) =>
-      searchTerms.some(term => text.includes(term))
+      searchTerms.some(term =>
+        containsJapaneseVocabularyMatch(
+          text,
+          term,
+          additionalVariantSet.has(term),
+        ),
+      )
     const [articles, questionCandidates] = await Promise.all([
       prisma.material.findMany({
         where: {
@@ -488,6 +446,7 @@ export async function searchSentencesForWord(
 export async function addVocabularySentence(
   id: string,
   newSentenceObj: { text: string; source: string; sourceUrl: string },
+  meaningIndex = 0,
 ) {
   try {
     const userId = await getCurrentUserId()
@@ -512,13 +471,26 @@ export async function addVocabularySentence(
         sentences: await listVocabularySentenceRecords(id),
       }
     }
+    const sense = await prisma.vocabularySense.findUnique({
+      where: { vocabularyId_order: { vocabularyId: id, order: meaningIndex } },
+      select: { id: true },
+    })
     await upsertVocabularySentenceLink(id, {
       text: normalizedSentence.text,
       source: normalizedSentence.source,
       sourceUrl: normalizedSentence.sourceUrl,
-      meaningIndex: null,
+      meaningIndex: sense ? meaningIndex : null,
       posTags: [],
     })
+    if (sense) {
+      const link = await findSentenceLinkByText(id, normalizedSentence.text)
+      if (link) {
+        await prisma.vocabularySentenceLink.update({
+          where: { id: link.id },
+          data: { senseId: sense.id, meaningIndex },
+        })
+      }
+    }
     return {
       success: true,
       message: '例句已添加',
@@ -526,133 +498,6 @@ export async function addVocabularySentence(
     }
   } catch {
     return { success: false, message: '添加失败' }
-  }
-}
-
-export async function assignVocabularySentenceMeaning(
-  id: string,
-  sentenceText: string,
-  meaningIndex: number,
-) {
-  try {
-    if (!sentenceText.trim()) {
-      return { success: false, message: '句子不能为空' }
-    }
-    if (!Number.isInteger(meaningIndex) || meaningIndex < 0) {
-      return { success: false, message: '释义索引不合法' }
-    }
-
-    const userId = await getCurrentUserId()
-    const vocab = await prisma.vocabulary.findFirst({ where: { id, userId } })
-    if (!vocab) return { success: false, message: '单词不存在' }
-
-    const targetText = sentenceText.trim()
-    const link = await findSentenceLinkByText(id, targetText)
-    if (!link) {
-      return { success: false, message: '未找到该例句' }
-    }
-    await prisma.vocabularySentenceLink.update({
-      where: { id: link.id },
-      data: { meaningIndex },
-    })
-    revalidatePath('/vocabulary')
-    return { success: true, message: '释义匹配已保存' }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '保存失败' }
-  }
-}
-
-export async function clearVocabularySentenceMeaning(
-  id: string,
-  sentenceText: string,
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const vocab = await prisma.vocabulary.findFirst({ where: { id, userId } })
-    if (!vocab) return { success: false, message: '单词不存在' }
-    const targetText = sentenceText.trim()
-    const link = await findSentenceLinkByText(id, targetText)
-    if (link) {
-      await prisma.vocabularySentenceLink.update({
-        where: { id: link.id },
-        data: { meaningIndex: null },
-      })
-    }
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '取消匹配失败' }
-  }
-}
-
-export async function updateVocabularySentencePosTags(
-  id: string,
-  sentenceText: string,
-  posTags: string[] | string,
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const vocab = await prisma.vocabulary.findFirst({ where: { id, userId } })
-    if (!vocab) return { success: false, message: '单词不存在' }
-
-    const targetText = sentenceText.trim()
-    const normalized = normalizeSentencePosTags(
-      Array.isArray(posTags) ? posTags : [posTags],
-    )
-    const link = await findSentenceLinkByText(id, targetText)
-    if (link) {
-      await prisma.$transaction(async tx => {
-        await tx.vocabularySentenceLink.update({
-          where: { id: link.id },
-          data: { posTags: toJsonStringList(normalized) },
-        })
-        if (normalized.length > 0) {
-          const merged = Array.from(
-            new Set([
-              ...parseJsonStringList(vocab.partsOfSpeech),
-              ...normalized,
-            ]),
-          )
-          await tx.vocabulary.update({
-            where: { id },
-            data: {
-              partsOfSpeech: toJsonStringList(merged),
-            },
-          })
-        }
-      })
-    } else {
-      return { success: false, message: '未找到该句子' }
-    }
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '句子词性更新失败' }
-  }
-}
-
-export async function deleteVocabularySentence(
-  id: string,
-  sentenceText: string,
-) {
-  try {
-    const userId = await getCurrentUserId()
-    const vocab = await prisma.vocabulary.findFirst({ where: { id, userId } })
-    if (!vocab) return { success: false, message: '单词不存在' }
-    const targetText = sentenceText.trim()
-    const link = await findSentenceLinkByText(id, targetText)
-    if (link) {
-      await prisma.vocabularySentenceLink.delete({ where: { id: link.id } })
-      await cleanupOrphanSentence(link.sentenceId)
-    }
-    revalidatePath('/vocabulary')
-    return { success: true }
-  } catch (error) {
-    console.error(error)
-    return { success: false, message: '句子删除失败' }
   }
 }
 
@@ -666,9 +511,9 @@ export async function updateVocabularyTags(
       return { success: false, message: '缺少词汇 ID' }
     }
 
-    const normalizedTags = Array.from(
+    const normalizedTags = filterVocabularyTags(Array.from(
       new Set(tagNames.map(tag => tag.trim()).filter(Boolean)),
-    )
+    ))
 
     const ownedVocabulary = await prisma.vocabulary.findFirst({
       where: { id: vocabId, userId },

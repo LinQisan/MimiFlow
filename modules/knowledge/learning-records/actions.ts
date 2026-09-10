@@ -8,6 +8,9 @@ import {
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { executeAction } from '@/lib/actions/result'
+import { DomainError } from '@/lib/errors/domain-error'
+import { matchesLearningRecordSelection } from './selection'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { normalizeLearningFragments } from './domain'
 
@@ -157,4 +160,35 @@ export async function updateLearningRecord(input: UpdateLearningRecordInput) {
     console.error('更新学习记录失败:', error)
     return { success: false, message: '保存失败，请重试。' }
   }
+}
+
+export async function findLearningRecordsForSelection(input: {
+  sourceType: SourceType
+  sourceId: string
+  selection: string
+  contextSentence: string
+}) {
+  return executeAction(async () => {
+    const userId = await getCurrentUserId()
+    if (!Object.values(SourceType).includes(input.sourceType) || !input.sourceId.trim() || !input.selection.trim()) {
+      throw new DomainError('VALIDATION_ERROR', '缺少选区或来源。')
+    }
+    const records = await prisma.learningRecord.findMany({
+      where: { userId, sourceType: input.sourceType, sourceId: input.sourceId.trim() },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      select: { id: true, kind: true, category: true, title: true, fragments: true, sentenceText: true, note: true, sourceType: true },
+    })
+    return { records: records.map(record => ({ ...record, fragments: normalizeLearningFragments(record.fragments) }))
+      .filter(record => matchesLearningRecordSelection(record, input.selection, input.contextSentence)) }
+  }, { fallbackMessage: '已有记录加载失败，请重试。' })
+}
+
+export async function deleteLearningRecord(id: string) {
+  return executeAction(async () => {
+    const userId = await getCurrentUserId()
+    const result = await prisma.learningRecord.deleteMany({ where: { id: id.trim(), userId } })
+    if (!result.count) throw new DomainError('NOT_FOUND', '记录不存在或无权删除。')
+    revalidatePath('/learning-points')
+    return {}
+  }, { successMessage: '记录已删除。', fallbackMessage: '删除失败，请重试。' })
 }

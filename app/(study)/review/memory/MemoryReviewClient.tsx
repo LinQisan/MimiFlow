@@ -34,7 +34,7 @@ export default function MemoryReviewClient({
   if (!current) {
     return (
       <section className='rounded-[1.75rem] border border-slate-200 bg-white p-8 text-center shadow-sm'>
-        <h1 className='text-2xl font-black text-slate-900'>今日记忆复习已完成</h1>
+        <h1 className='text-2xl font-bold text-slate-900'>今日记忆复习已完成</h1>
         <p className='mt-2 text-sm text-slate-600'>没有更多到期的单词或句子。</p>
         <div className='mt-6 flex flex-wrap justify-center gap-2'>
           <Link href='/review' className='ui-btn ui-btn-primary'>
@@ -90,7 +90,7 @@ export default function MemoryReviewClient({
       </div>
 
       <div className='flex min-h-64 flex-col items-center justify-center py-8 text-center'>
-        <h2 className='text-3xl font-black leading-relaxed text-slate-900'>
+        <h2 className='text-3xl font-bold leading-relaxed text-slate-900'>
           {current.text}
         </h2>
         {current.kind === 'vocabulary' && revealed ? (

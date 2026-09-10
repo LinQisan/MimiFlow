@@ -229,26 +229,28 @@ export default function ReadingListClient({
 
         {totalPages > 1 ? (
           <div className="mb-3 flex items-center justify-end gap-2">
-            <span className="text-xs text-slate-500">
+            <span className="ui-meta tabular-nums">
               第 {normalizedPage}/{totalPages} 页
             </span>
             <button
               type="button"
+              aria-label="上一页"
               disabled={normalizedPage <= 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
-              className="ui-btn ui-btn-sm disabled:opacity-40"
+              className="inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40"
             >
-              上一页
+              ‹
             </button>
             <button
               type="button"
+              aria-label="下一页"
               disabled={normalizedPage >= totalPages}
               onClick={() =>
                 setPage((current) => Math.min(totalPages, current + 1))
               }
-              className="ui-btn ui-btn-sm disabled:opacity-40"
+              className="inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40"
             >
-              下一页
+              ›
             </button>
           </div>
         ) : null}
@@ -327,6 +329,7 @@ export default function ReadingListClient({
                     {!isEbook ? (
                       <Link
                         href={`/manage/reading/${item.id}?returnTo=${encodeURIComponent(returnTo)}`}
+                        prefetch={false}
                         className={`ui-btn ui-btn-sm ${
                           needsQuestions ? 'ui-btn-primary' : ''
                         }`}
@@ -340,6 +343,7 @@ export default function ReadingListClient({
                           ? `/reading/ebooks/${item.id}`
                           : `/reading/articles/${item.id}`
                       }
+                      prefetch={false}
                       className="ui-btn ui-btn-sm"
                     >
                       {isEbook ? '打开' : '预览'}

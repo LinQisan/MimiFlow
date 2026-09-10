@@ -13,15 +13,38 @@ export type SudachiToken = SudachiLexeme & {
   end: number
 }
 
-export type VocabularyCandidate = {
+const BEN_CONTEXT_PRECEDERS = new Set(['交通', '通勤', '通学'])
+
+/**
+ * Sudachi's dictionary can choose びん for 便 even in the fixed expression
+ * 「交通の便」 (and its close commuting/schooling variants), where the
+ * contextual reading is べん. Keep this correction deliberately narrow and
+ * occurrence-based so unrelated compounds such as 郵便 remain untouched.
+ */
+export const normalizeSudachiTokenReadings = (tokens: SudachiToken[]) =>
+  tokens.map((token, index) => {
+    if (token.surface !== '便' || token.reading !== 'びん') return token
+    const particle = tokens[index - 1]
+    const preceding = tokens[index - 2]
+    if (
+      !particle ||
+      !preceding ||
+      particle.textIndex !== token.textIndex ||
+      preceding.textIndex !== token.textIndex ||
+      particle.surface !== 'の' ||
+      !BEN_CONTEXT_PRECEDERS.has(preceding.surface)
+    ) {
+      return token
+    }
+    return { ...token, reading: 'べん' }
+  })
+
+export type WordFrequencyRow = {
   word: string
   surface: string
   reading: string
   partOfSpeech: string
   count: number
-}
-
-export type WordFrequencyRow = VocabularyCandidate & {
   documentCount: number
 }
 
@@ -131,51 +154,10 @@ export const isSudachiContentWord = (token: SudachiLexeme) => {
   return true
 }
 
-export const buildVocabularyCandidates = (
-  tokens: SudachiToken[],
-  existingWords: Iterable<string> = [],
-  limit = 60,
-): VocabularyCandidate[] => {
-  const existing = new Set(
-    Array.from(existingWords, word => word.normalize('NFKC').trim()).filter(Boolean),
-  )
-  const counts = new Map<string, VocabularyCandidate>()
-
-  tokens.forEach(token => {
-    if (!isSudachiContentWord(token)) return
-    const word = token.dictionaryForm.normalize('NFKC').trim()
-    if (existing.has(word) || existing.has(token.surface)) return
-    const current = counts.get(word)
-    if (current) {
-      current.count += 1
-      return
-    }
-    counts.set(word, {
-      word,
-      surface: token.surface,
-      reading: token.dictionaryReading || token.reading,
-      partOfSpeech: translateSudachiPartOfSpeech(token.partsOfSpeech),
-      count: 1,
-    })
-  })
-
-  return [...counts.values()]
-    .sort((left, right) => {
-      const foundationalDifference =
-        Number(isFoundationalWord(left.word)) - Number(isFoundationalWord(right.word))
-      return (
-        foundationalDifference ||
-        right.count - left.count ||
-        left.word.localeCompare(right.word, 'ja')
-      )
-    })
-    .slice(0, Math.max(0, limit))
-}
-
 export const buildWordFrequency = (tokens: SudachiToken[]): WordFrequencyRow[] => {
   const rows = new Map<
     string,
-    VocabularyCandidate & { documentIndexes: Set<number> }
+    Omit<WordFrequencyRow, 'documentCount'> & { documentIndexes: Set<number> }
   >()
 
   tokens.forEach(token => {

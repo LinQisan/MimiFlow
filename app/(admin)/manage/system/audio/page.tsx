@@ -448,18 +448,10 @@ export default function ManageAudioPage() {
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
       <div className='mx-auto max-w-7xl space-y-5'>
-        <section className='rounded-2xl border border-slate-200 bg-white p-5 md:p-7'>
-          <p className='text-[11px] font-semibold tracking-[0.22em] text-slate-400 uppercase'>
-            System / Audio library
-          </p>
-          <div className='mt-3 flex flex-wrap items-end justify-between gap-4'>
-            <div>
-              <h1 className='text-2xl font-bold text-slate-950 md:text-3xl'>录音文件</h1>
-              <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
-                按目录管理听力、阅读与跟读音频。移动或重命名文件时，系统会同步更新材料引用。
-              </p>
-            </div>
-            <p className='text-xs text-slate-400'>存储位置：public/audios</p>
+        <section className='border-b border-slate-200 py-5'>
+          <div className='flex flex-wrap items-end justify-between gap-4'>
+            <h1 className='text-xl font-bold text-slate-950'>录音文件</h1>
+            <p className='ui-meta'>存储位置：public/audios</p>
           </div>
           <div className='mt-6 grid grid-cols-2 gap-y-4 border-y border-slate-200 py-4 md:grid-cols-5 md:divide-x md:divide-slate-200'>
             {[
@@ -477,7 +469,7 @@ export default function ManageAudioPage() {
           </div>
         </section>
 
-        <section className='rounded-2xl border border-slate-200 bg-white p-4 md:p-5'>
+        <section className='border-y border-slate-200 py-4'>
           <div className='grid gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto]'>
             <input
               type='search'
@@ -575,7 +567,7 @@ export default function ManageAudioPage() {
         </section>
 
         <div className='grid items-start gap-5 lg:grid-cols-[17rem_minmax(0,1fr)]'>
-          <aside className='rounded-2xl border border-slate-200 bg-white p-3 lg:sticky lg:top-20'>
+          <aside className='py-4 lg:sticky lg:top-20'>
             <div className='flex items-center justify-between px-2 py-2'>
               <h2 className='text-sm font-semibold text-slate-900'>目录</h2>
               <span className='text-[11px] text-slate-400'>{summary.folderCount}</span>
@@ -621,7 +613,7 @@ export default function ManageAudioPage() {
             </div>
           </aside>
 
-          <section className='overflow-hidden rounded-2xl border border-slate-200 bg-white'>
+          <section className='overflow-hidden border-y border-slate-200 bg-white'>
             <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
               <div className='min-w-0'>
                 <p className='truncate text-sm font-semibold text-slate-900'>{folder || '全部录音'}</p>
@@ -739,10 +731,10 @@ export default function ManageAudioPage() {
             </div>
 
             <div className='flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500'>
-              <span>第 {currentPage} / {totalPages} 页</span>
-              <div className='flex gap-2'>
-                <button type='button' disabled={currentPage <= 1} onClick={() => setCurrentPage(page => Math.max(1, page - 1))} className='ui-btn ui-btn-sm disabled:opacity-40'>上一页</button>
-                <button type='button' disabled={currentPage >= totalPages} onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} className='ui-btn ui-btn-sm disabled:opacity-40'>下一页</button>
+              <span className='ui-meta tabular-nums'>第 {currentPage} / {totalPages} 页</span>
+              <div className='flex items-center gap-0.5'>
+                <button type='button' aria-label='上一页' disabled={currentPage <= 1} onClick={() => setCurrentPage(page => Math.max(1, page - 1))} className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>‹</button>
+                <button type='button' aria-label='下一页' disabled={currentPage >= totalPages} onClick={() => setCurrentPage(page => Math.min(totalPages, page + 1))} className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>›</button>
               </div>
             </div>
           </section>

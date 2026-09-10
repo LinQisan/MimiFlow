@@ -162,7 +162,7 @@ export default function BulkQuizPanel({
           <div className='py-6'>
             <div className='mb-5 flex items-center justify-between gap-3'>
               <div>
-                <span className='text-sm font-black text-slate-950'>
+                <span className='text-sm font-bold text-slate-950'>
                   第 {bulkEditingIndex + 1} 题
                 </span>
                 <span className='ml-2 text-xs font-semibold text-slate-400'>
@@ -306,7 +306,7 @@ export default function BulkQuizPanel({
                     aria-label={`将选项 ${optionIndex + 1} 设为正确答案`}
                     className='shrink-0 accent-slate-900'
                   />
-                  <span className='w-5 shrink-0 text-xs font-black text-slate-400'>
+                  <span className='w-5 shrink-0 text-xs font-bold text-slate-400'>
                     {optionIndex + 1}
                   </span>
                   <input

@@ -786,7 +786,7 @@ export default function PaperQuestionEditor({
             </Link>
             <div className='min-w-0 flex-1'>
               <div className='flex min-w-0 items-baseline gap-3'>
-                <h1 className='truncate text-xl font-black text-slate-950 md:text-2xl'>
+                <h1 className='truncate text-xl font-bold text-slate-950 md:text-2xl'>
                   {paper.title}
                 </h1>
                 <p className='shrink-0 text-xs text-slate-500'>
@@ -891,7 +891,7 @@ export default function PaperQuestionEditor({
               id={`question-section-${group.key}`}
               className='scroll-mt-24 space-y-1'>
               <div className='sticky top-16 z-10 flex items-center gap-3 border-b border-slate-300 bg-[#f6f5f1]/95 py-2.5 backdrop-blur-sm'>
-                <h2 className='text-sm font-black text-slate-900'>
+                <h2 className='text-sm font-bold text-slate-900'>
                   問題{group.sectionNumber}｜{group.title}
                 </h2>
                 <span className='text-xs text-slate-400'>
@@ -991,7 +991,7 @@ export default function PaperQuestionEditor({
                                 {material.materialType !== 'LISTENING' &&
                                 material.materialType !== 'VOCAB_GRAMMAR' &&
                                 material.materialType !== 'READING' ? (
-                                  <span className='inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 px-1.5 text-xs font-black text-white'>
+                                  <span className='inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 px-1.5 text-xs font-bold text-white'>
                                     {question.sortOrder || index + 1}
                                   </span>
                                 ) : null}
@@ -1059,7 +1059,7 @@ export default function PaperQuestionEditor({
                                 <div className='grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]'>
                                   <section className='space-y-4 rounded-xl border border-slate-200 bg-white p-4'>
                                     <div className='flex items-center justify-between gap-3'>
-                                      <h4 className='text-sm font-black text-slate-900'>
+                                      <h4 className='text-sm font-bold text-slate-900'>
                                         题目内容
                                       </h4>
                                       {material.materialType === 'LISTENING' ? (
@@ -1169,7 +1169,7 @@ export default function PaperQuestionEditor({
                                   <section className='rounded-xl border border-slate-200 bg-white p-4'>
                                     <div className='flex flex-wrap items-center justify-between gap-2'>
                                       <div>
-                                        <h4 className='text-sm font-black text-slate-900'>
+                                        <h4 className='text-sm font-bold text-slate-900'>
                                           选项与答案
                                         </h4>
                                         <p className='mt-0.5 text-xs text-slate-400'>
@@ -1346,7 +1346,7 @@ export default function PaperQuestionEditor({
                                                   ? 'border-emerald-300 bg-emerald-50/70'
                                                   : 'border-slate-200 bg-slate-50/60'
                                               }`}>
-                                              <span className='inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-white px-1.5 text-xs font-black text-slate-600 shadow-sm ring-1 ring-slate-200'>
+                                              <span className='inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-white px-1.5 text-xs font-bold text-slate-600 shadow-sm ring-1 ring-slate-200'>
                                                 {optionLabel}
                                               </span>
                                               <input
@@ -1451,7 +1451,7 @@ export default function PaperQuestionEditor({
         <div className='fixed inset-x-0 bottom-0 z-50 border-t border-slate-300 bg-[#f6f5f1]/95 px-3 py-2.5 shadow-[0_-14px_35px_-28px_rgba(15,23,42,0.45)] backdrop-blur-md'>
           <div className='mx-auto flex max-w-5xl flex-col gap-2 sm:flex-row sm:items-center'>
             <div className='flex items-center justify-between gap-3 sm:shrink-0'>
-              <span className='px-1 text-sm font-black text-slate-900'>
+              <span className='px-1 text-sm font-bold text-slate-900'>
                 已选 {selectedCount} 题
               </span>
               <button

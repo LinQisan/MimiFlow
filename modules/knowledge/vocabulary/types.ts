@@ -1,4 +1,9 @@
+import type { VocabularyPronunciationData } from './domain/pronunciation'
+import type { VocabularyReadingAudio } from './domain/reading-audio'
+
 export type SentenceItem = {
+  senseId?: string | null
+  id?: string
   text: string
   source: string
   sourceUrl: string
@@ -8,6 +13,61 @@ export type SentenceItem = {
   sourceType?: string | null
   meaningIndex?: number | null
   posTags?: string[]
+  pronunciationData?: VocabularyPronunciationData | null
+  pronunciationVersion?: number | null
+}
+
+export type VocabularyGrammarPartOfSpeech =
+  | 'noun'
+  | 'verb'
+  | 'i_adjective'
+  | 'na_adjective'
+  | 'adverb'
+  | 'adnominal'
+  | 'other'
+
+export type VocabularyTransitivity =
+  | 'intransitive'
+  | 'transitive'
+  | 'both'
+
+export type VocabularyRelationItem = {
+  id: string
+  type:
+    | 'compound'
+    | 'synonym'
+    | 'antonym'
+    | 'related'
+    | 'collocation'
+    | 'transitivity_pair'
+    | 'derived'
+  targetVocabularyId?: string | null
+  targetText: string
+  targetReading?: string | null
+  targetPartOfSpeech?: string | null
+  marker?: string | null
+  pattern?: string | null
+}
+
+export type VocabularySenseItem = {
+  id: string
+  order: number
+  definitions: Array<{ id: string; language: string; text: string }>
+  examples: SentenceItem[]
+  patterns: Array<{ id: string; text: string; meaning?: string | null }>
+  expressions: Array<{
+    id: string
+    type: 'collocation' | 'compound' | 'idiom'
+    text: string
+    reading?: string | null
+    meaning?: string | null
+  }>
+  relations: VocabularyRelationItem[]
+  notes: Array<{
+    id: string
+    type: 'usage' | 'register' | 'restriction' | 'grammar' | 'nuance' | 'warning'
+    text: string
+  }>
 }
 
 type AudioData = {
@@ -16,10 +76,11 @@ type AudioData = {
   end: number
 }
 
-type VocabularyWordbookMembership = {
+export type VocabularyWordbookMembership = {
   id: string
   name: string
   pathLabel: string
+  jlpt?: string | null
 }
 
 type VocabularyWordbookSource = VocabularyWordbookMembership & {
@@ -34,11 +95,18 @@ export type VocabItem = {
   id: string
   word: string
   languageCode?: string
+  readingAudios?: VocabularyReadingAudio[]
   wordAudio?: string | null
   pronunciation?: string | null
+  etymologies?: string[]
   pronunciations?: string[]
+  pronunciationData?: VocabularyPronunciationData | null
+  pronunciationVersion?: number | null
   partOfSpeech?: string | null
   partsOfSpeech?: string[]
+  grammarPartOfSpeech?: VocabularyGrammarPartOfSpeech | null
+  transitivity?: VocabularyTransitivity | null
+  conjugationType?: string | null
   meanings?: string[]
   tags?: string[]
   createdAt: Date
@@ -47,8 +115,10 @@ export type VocabItem = {
   recordIds?: string[]
   wordbooks?: VocabularyWordbookMembership[]
   wordbookSources?: VocabularyWordbookSource[]
-  sourceType: string
+  sourceType?: string
   sentences: SentenceItem[]
+  senses?: VocabularySenseItem[]
+  relations?: VocabularyRelationItem[]
   review?: {
     id: string
     due: Date | string

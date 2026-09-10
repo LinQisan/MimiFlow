@@ -2,8 +2,11 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { parseJsonStringList } from '@/utils/text/jsonList'
+import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 import WordbookDetailClient from './WordbookDetailClient'
-import { syncAnkiSentenceSourcesForWordbook } from '@/modules/knowledge/wordbooks/actions'
+import { listVocabularyPartOfSpeechHierarchyAdmin } from '@/features/vocabulary/admin-actions'
+import { normalizeWordbookQuery } from '@/modules/knowledge/wordbooks/entry-query'
+import { filterVocabularyTags } from '@/modules/knowledge/vocabulary/domain/jlpt'
 import {
   findWordbookDetail,
   listWordbookEntries,
@@ -31,41 +34,46 @@ export default async function WordbookDetailPage({
     ? Math.max(1, Math.floor(rawPage))
     : 1
   const PAGE_SIZE = 50
+  const queryValue = resolvedSearchParams.q
+  const query = normalizeWordbookQuery(Array.isArray(queryValue) ? queryValue[0] || '' : queryValue || '')
+  const viewMode = resolvedSearchParams.view === 'card' ? 'flashcard' : 'list'
 
-  const [wordbook, seriesOptions] = await Promise.all([
+  const [wordbook, seriesOptions, partOfSpeechHierarchy] = await Promise.all([
     findWordbookDetail(id),
     listWordbookSeries(),
+    listVocabularyPartOfSpeechHierarchyAdmin(),
   ])
 
   if (!wordbook) notFound()
 
-  await syncAnkiSentenceSourcesForWordbook(id)
-
   const {
     totalCount,
+    filteredCount,
     totalPages,
     page: normalizedPage,
     rows,
-  } = await listWordbookEntries({ wordbookId: id, page: currentPage, pageSize: PAGE_SIZE })
+  } = await listWordbookEntries({ wordbookId: id, page: currentPage, pageSize: PAGE_SIZE, query })
 
   return (
-    <main className='min-h-screen bg-slate-50 text-slate-900'>
-      <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-8'>
-        <header className='mb-5'>
+    <main className='min-h-screen bg-[var(--editorial-paper)] text-slate-900 dark:text-slate-100'>
+      <div className='mx-auto max-w-6xl px-4 py-6 md:px-8 md:py-9'>
+        <header className='mb-4 border-b border-slate-200 dark:border-slate-800 pb-4'>
           <Link
-            href='/vocabulary?view=wordbooks'
-            className='text-sm font-semibold text-slate-500 transition hover:text-slate-900'>
-            ← 单词书
+            href={`/vocabulary?wordbook=${encodeURIComponent(wordbook.id)}`}
+            className='text-xs font-semibold text-slate-500 dark:text-slate-400 transition hover:text-slate-950'>
+            ← 返回词汇
           </Link>
-          <div className='mt-3 flex items-end justify-between gap-4'>
-            <h1 className='min-w-0 truncate text-2xl font-black tracking-tight text-slate-950'>
-              {wordbook.title}
-            </h1>
-            <span className='shrink-0 text-sm text-slate-500'>{totalCount} 词</span>
+          <div className='mt-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
+            <div className='min-w-0'>
+              <p className='font-word-ja text-xs font-medium text-slate-500 dark:text-slate-400'>{wordbook.series.title}</p>
+              <h1 className='font-word-ja mt-1 break-words text-2xl font-semibold text-slate-950 dark:text-slate-100 md:text-3xl'>{wordbook.title}</h1>
+            </div>
+            <span className='shrink-0 text-sm font-medium tabular-nums text-slate-500 dark:text-slate-400'>{totalCount} 个词</span>
           </div>
         </header>
 
         <WordbookDetailClient
+          key={`${id}:${query}:${normalizedPage}`}
           wordbookId={wordbook.id}
           wordbookTitle={wordbook.title}
           series={{ id: wordbook.series.id, title: wordbook.series.title }}
@@ -76,13 +84,29 @@ export default async function WordbookDetailPage({
           currentPage={normalizedPage}
           totalPages={totalPages}
           totalCount={totalCount}
+          filteredCount={filteredCount}
+          initialQuery={query}
+          initialViewMode={viewMode}
+          pageSize={PAGE_SIZE}
+          partOfSpeechHierarchy={partOfSpeechHierarchy.map(item => ({
+            id: item.id,
+            name: item.name,
+            parentName: item.parent?.name || null,
+          }))}
           items={rows.map(row => ({
             id: row.vocabulary.id,
+            jlpt: row.jlpt,
             word: row.vocabulary.word,
             wordAudio: row.vocabulary.wordAudio || null,
             pronunciations: parseJsonStringList(row.vocabulary.pronunciations),
+            etymologies: parseJsonStringList(row.vocabulary.etymologies),
+            meanings: parseJsonStringList(row.vocabulary.meanings),
+            entryNumber: row.entryNumber,
+            section: row.section,
+            page: row.page,
             partsOfSpeech: parseJsonStringList(row.vocabulary.partsOfSpeech),
-            sentences: row.vocabulary.sentenceLinks
+            tags: filterVocabularyTags(row.vocabulary.tags.map(link => link.tag.name)),
+            sentences: dedupeAndRankSentences(row.vocabulary.sentenceLinks
               .map(link => ({
                 text: link.sentence.text,
                 translation: link.sentence.translation || null,
@@ -90,7 +114,7 @@ export default async function WordbookDetailPage({
                 source: link.sentence.source || '',
                 sourceUrl: link.sentence.sourceUrl || '',
               }))
-              .filter(item => item.text.trim().length > 0),
+              .filter(item => item.text.trim().length > 0)),
           }))}
         />
       </div>

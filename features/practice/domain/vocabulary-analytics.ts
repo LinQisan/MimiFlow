@@ -11,6 +11,8 @@ const PRACTICE_VOCABULARY_CATEGORIES = [
   { key: 'LISTENING', label: '聴解' },
 ] as const
 
+const JAPANESE_COLLATOR = new Intl.Collator('ja')
+
 export type PracticeVocabularyCategory =
   (typeof PRACTICE_VOCABULARY_CATEGORIES)[number]['key']
 
@@ -32,9 +34,7 @@ export type PracticeVocabularyWordInsight = {
   optionCount: number
   targetCount: number
   learningValue: number
-  inWordbook: boolean
   wordbookIds: string[]
-  wordbookNames: string[]
   isMastered: boolean
   categoryCounts: Record<PracticeVocabularyCategory, number>
   yearCounts: Record<string, number>
@@ -44,6 +44,8 @@ export type PracticeVocabularyWordbookOption = {
   id: string
   name: string
   pathLabel: string
+  seriesId: string
+  seriesTitle: string
   depth: number
   totalCount: number
 }
@@ -54,6 +56,7 @@ export type PracticeVocabularyWordbookEntry = {
   partOfSpeech: string
   wordbookIds: string[]
   wordbookNames: string[]
+  isMastered?: boolean
 }
 
 export function rankPracticeVocabularyTrendWords(
@@ -93,7 +96,7 @@ export function rankPracticeVocabularyTrendWords(
         right.trendScore - left.trendScore ||
         right.total - left.total ||
         right.row.learningValue - left.row.learningValue ||
-        left.row.word.localeCompare(right.row.word, 'ja'),
+        JAPANESE_COLLATOR.compare(left.row.word, right.row.word),
     )
     .slice(0, limit)
     .map(candidate => candidate.row)
@@ -103,6 +106,7 @@ type PracticeVocabularyWordbookRow = {
   id: string
   title: string
   seriesTitle: string
+  seriesId: string
   count: number
 }
 
@@ -110,15 +114,15 @@ export function buildPracticeVocabularyWordbookOptions(
   rows: PracticeVocabularyWordbookRow[],
 ): PracticeVocabularyWordbookOption[] {
   return rows
-    .filter(row => row.count > 0)
     .map(row => ({
       id: row.id,
       name: row.title,
+      seriesId: row.seriesId,
+      seriesTitle: row.seriesTitle,
       pathLabel: `${row.seriesTitle} / ${row.title}`,
       depth: 0,
       totalCount: row.count,
     }))
-    .sort((left, right) => left.pathLabel.localeCompare(right.pathLabel, 'ja'))
 }
 
 export type PracticeVocabularyAnalytics = {
@@ -142,14 +146,219 @@ export type PracticeVocabularyAnalytics = {
   }>
 }
 
+export type PracticeVocabularySummaryWord = Pick<
+  PracticeVocabularyWordInsight,
+  'word' | 'count' | 'optionCount' | 'targetCount' | 'yearCounts' | 'isMastered'
+>
+
+export type PracticeVocabularyAnalyticsSummary = Omit<
+  PracticeVocabularyAnalytics,
+  'words' | 'wordbooks'
+> & {
+  wordCount: number
+  topItems: {
+    words: PracticeVocabularySummaryWord[]
+    rankings: {
+      learning: string[]
+      option: string[]
+      katakana: string[]
+      compounds: string[]
+      tested: string[]
+      trends: string[]
+    }
+  }
+}
+
+export type PracticeVocabularyAnalyticsWordsResponse = {
+  words: PracticeVocabularyWordInsight[]
+  wordbooks: PracticeVocabularyWordbookOption[]
+  total: number
+  page: number
+  limit: number | null
+  hasNextPage: boolean
+}
+
+export const isPracticeVocabularyCategory = (
+  value: string,
+): value is PracticeVocabularyCategory =>
+  PRACTICE_VOCABULARY_CATEGORIES.some(category => category.key === value)
+
+export const PRACTICE_VOCABULARY_CATEGORY_OPTIONS: ReadonlyArray<{
+  key: PracticeVocabularyCategory
+  label: string
+}> = PRACTICE_VOCABULARY_CATEGORIES.map(({ key, label }) => ({ key, label }))
+
+export type PracticeWordRecommendReason =
+  | 'full-coverage'
+  | 'top-tested'
+  | 'top-distractor'
+  | 'frequent'
+  | 'multi-category'
+  | 'complex-form'
+
+export const PRACTICE_WORD_RECOMMEND_REASON_LABELS: Record<
+  PracticeWordRecommendReason,
+  string
+> = {
+  'full-coverage': '全卷覆盖',
+  'top-tested': '高频考点',
+  'top-distractor': '高频干扰词',
+  frequent: '高频',
+  'multi-category': '多题型出现',
+  'complex-form': '词形复杂',
+}
+
+// Presentation-level cutoffs for reason chips. They only decide which
+// explanation chips render next to a word — sorting always uses
+// learningValue, so tuning these never reorders anything.
+const RECOMMEND_CUTOFFS = {
+  testedCount: 3,
+  distractorCount: 8,
+  frequentCount: 10,
+  multiCategoryBreadth: 3,
+  complexKanjiCount: 3,
+} as const
+
+const countKanji = (word: string) => word.match(HAN_PATTERN)?.length || 0
+
+const countActiveCategories = (
+  categoryCounts?: Partial<Record<PracticeVocabularyCategory, number>>,
+) =>
+  PRACTICE_VOCABULARY_CATEGORIES.reduce(
+    (sum, category) => sum + Number((categoryCounts?.[category.key] || 0) > 0),
+    0,
+  )
+
+/**
+ * Explains, from already-computed insight fields, why a word is worth
+ * learning first. Every field is optional so summary-level rows (which lack
+ * paper coverage and category breakdowns) degrade gracefully instead of
+ * inventing reasons.
+ */
+export function getPracticeWordRecommendReasons(
+  row: {
+    word: string
+    count: number
+    paperCount?: number | null
+    optionCount: number
+    targetCount: number
+    categoryCounts?: Partial<Record<PracticeVocabularyCategory, number>> | null
+  },
+  totalPapers: number,
+): PracticeWordRecommendReason[] {
+  const reasons: PracticeWordRecommendReason[] = []
+  if (
+    totalPapers > 0 &&
+    (row.paperCount || 0) >= totalPapers &&
+    row.count > 0
+  ) {
+    reasons.push('full-coverage')
+  }
+  if (row.targetCount >= RECOMMEND_CUTOFFS.testedCount) {
+    reasons.push('top-tested')
+  }
+  if (row.optionCount >= RECOMMEND_CUTOFFS.distractorCount) {
+    reasons.push('top-distractor')
+  }
+  if (row.count >= RECOMMEND_CUTOFFS.frequentCount) {
+    reasons.push('frequent')
+  }
+  if (
+    countActiveCategories(row.categoryCounts || undefined) >=
+    RECOMMEND_CUTOFFS.multiCategoryBreadth
+  ) {
+    reasons.push('multi-category')
+  }
+  if (countKanji(row.word) >= RECOMMEND_CUTOFFS.complexKanjiCount) {
+    reasons.push('complex-form')
+  }
+  return reasons.slice(0, 3)
+}
+
+export type PriorityReviewPlan = {
+  /** Minimum paper coverage ("N 套试卷") behind the headline number. */
+  threshold: number
+  totalPapers: number
+  words: Array<{
+    word: string
+    count: number
+    paperCount: number
+    targetCount: number
+    optionCount: number
+    learningValue: number
+  }>
+}
+
+/**
+ * The "优先复习" headline: unmastered words covering at least `threshold`
+ * papers, ordered by the existing learningValue score. For small corpora the
+ * threshold stays at full coverage so the promise never overstates.
+ */
+export function buildPriorityReviewPlan(
+  words: Array<{
+    word: string
+    count: number
+    paperCount: number
+    targetCount: number
+    optionCount: number
+    learningValue: number
+    isMastered: boolean
+  }>,
+  totalPapers: number,
+): PriorityReviewPlan {
+  const threshold = totalPapers >= 4 ? totalPapers - 1 : Math.max(totalPapers, 1)
+  const qualified = words
+    .filter(row => !row.isMastered && row.paperCount >= threshold)
+    .sort(
+      (left, right) =>
+        right.learningValue - left.learningValue ||
+        right.count - left.count ||
+        JAPANESE_COLLATOR.compare(left.word, right.word),
+    )
+  return {
+    threshold,
+    totalPapers,
+    words: qualified.map(
+      ({ word, count, paperCount, targetCount, optionCount, learningValue }) => ({
+        word,
+        count,
+        paperCount,
+        targetCount,
+        optionCount,
+        learningValue,
+      }),
+    ),
+  }
+}
+
+export function filterPracticeVocabularyWords(
+  words: PracticeVocabularyWordInsight[],
+  {
+    profile,
+    query,
+  }: {
+    profile?: PracticeVocabularyCategory
+    query?: string
+  } = {},
+) {
+  const normalizedQuery = query
+    ? normalizePracticeVocabularyWord(query)
+    : ''
+  return words.filter(row => {
+    if (profile && row.categoryCounts[profile] <= 0) return false
+    if (!normalizedQuery) return true
+    return normalizePracticeVocabularyWord(
+      `${row.word} ${row.reading} ${row.partOfSpeech}`,
+    ).includes(normalizedQuery)
+  })
+}
+
 type InternalWord = Omit<
   PracticeVocabularyWordInsight,
   | 'paperCount'
   | 'coverageRate'
   | 'learningValue'
-  | 'inWordbook'
   | 'wordbookIds'
-  | 'wordbookNames'
   | 'isMastered'
 > & {
   paperIds: Set<string>
@@ -189,22 +398,17 @@ export function applyPracticeVocabularyKnowledge(
   wordbookEntries: Array<{
     word: string
     wordbookIds: string[]
-    wordbookNames: string[]
   }>,
   masteredWords: Iterable<string>,
   wordbooks: PracticeVocabularyWordbookOption[] = [],
 ): PracticeVocabularyAnalytics {
   const wordbookIdsByWord = new Map<string, Set<string>>()
-  const wordbookNamesByWord = new Map<string, Set<string>>()
   wordbookEntries.forEach(entry => {
     const word = normalizePracticeVocabularyWord(entry.word)
     if (!word) return
     const ids = wordbookIdsByWord.get(word) || new Set<string>()
     entry.wordbookIds.forEach(id => ids.add(id))
     wordbookIdsByWord.set(word, ids)
-    const names = wordbookNamesByWord.get(word) || new Set<string>()
-    entry.wordbookNames.forEach(name => names.add(name))
-    wordbookNamesByWord.set(word, names)
   })
   const mastered = new Set(
     Array.from(masteredWords, normalizePracticeVocabularyWord),
@@ -216,12 +420,9 @@ export function applyPracticeVocabularyKnowledge(
     words: analytics.words.map(row => {
       const normalizedWord = normalizePracticeVocabularyWord(row.word)
       const wordbookIds = [...(wordbookIdsByWord.get(normalizedWord) || [])]
-      const wordbookNames = [...(wordbookNamesByWord.get(normalizedWord) || [])]
       return {
         ...row,
-        inWordbook: wordbookIds.length > 0,
         wordbookIds,
-        wordbookNames,
         isMastered: mastered.has(normalizedWord),
       }
     }),
@@ -233,7 +434,11 @@ const getLearningValue = (
 ) => {
   const characterCount = Array.from(row.word).length
   const kanjiCount = row.word.match(HAN_PATTERN)?.length || 0
-  const categoryBreadth = Object.values(row.categoryCounts).filter(Boolean).length
+  const categoryBreadth =
+    Number(row.categoryCounts.TEXT_VOCAB > 0) +
+    Number(row.categoryCounts.GRAMMAR > 0) +
+    Number(row.categoryCounts.READING > 0) +
+    Number(row.categoryCounts.LISTENING > 0)
   const lexicalComplexity =
     Math.min(kanjiCount, 4) * 1.6 +
     Math.min(characterCount, 8) * 0.35 -
@@ -245,6 +450,106 @@ const getLearningValue = (
     row.targetCount * 8 +
     categoryBreadth * 1.5
   return Math.round((evidence + lexicalComplexity) * 10) / 10
+}
+
+const compareProfileRows = (
+  category: PracticeVocabularyCategory,
+  left: PracticeVocabularyWordInsight,
+  right: PracticeVocabularyWordInsight,
+) =>
+  right.learningValue - left.learningValue ||
+  right.categoryCounts[category] - left.categoryCounts[category] ||
+  JAPANESE_COLLATOR.compare(left.word, right.word)
+
+const KATAKANA_WORD_PATTERN = /^[\p{Script=Katakana}ー]+$/u
+const TWO_KANJI_WORD_PATTERN = /^\p{Script=Han}{2}$/u
+const KANJI_WORD_PATTERN = /\p{Script=Han}/u
+
+const toSummaryWord = (
+  row: PracticeVocabularyWordInsight,
+  masteredWords: ReadonlySet<string>,
+): PracticeVocabularySummaryWord => ({
+  word: row.word,
+  count: row.count,
+  optionCount: row.optionCount,
+  targetCount: row.targetCount,
+  yearCounts: row.yearCounts,
+  isMastered: masteredWords.has(normalizePracticeVocabularyWord(row.word)),
+})
+
+export function buildPracticeVocabularyAnalyticsSummary(
+  analytics: PracticeVocabularyAnalytics,
+  masteredWords: Iterable<string> = [],
+): PracticeVocabularyAnalyticsSummary {
+  const mastered = new Set(
+    Array.from(masteredWords, normalizePracticeVocabularyWord),
+  )
+  const rankedWords = analytics.words.map(row => ({
+    ...row,
+    isMastered: mastered.has(normalizePracticeVocabularyWord(row.word)),
+  }))
+  const learningRows = rankedWords.filter(row => !row.isMastered)
+  const optionRows = rankedWords
+    .filter(row => row.optionCount > 0 && !row.isMastered)
+    .sort((left, right) => right.optionCount - left.optionCount)
+  const katakanaRows = rankedWords.filter(row =>
+    KATAKANA_WORD_PATTERN.test(row.word),
+  )
+  const compoundRows = rankedWords.filter(row =>
+    TWO_KANJI_WORD_PATTERN.test(row.word) && !row.isMastered,
+  )
+  const testedRows = rankedWords
+    .filter(row => row.targetCount > 0 && KANJI_WORD_PATTERN.test(row.word))
+    .sort(
+      (left, right) =>
+        right.targetCount - left.targetCount || right.count - left.count,
+    )
+  const trendRows = rankPracticeVocabularyTrendWords(
+    rankedWords.filter(row => !row.isMastered),
+    analytics.years,
+  ).map(row => toSummaryWord(row, mastered))
+  const profiles = analytics.profiles.map(profile => ({
+    ...profile,
+    topWords: rankedWords
+      .filter(row =>
+        !row.isMastered && row.categoryCounts[profile.key] > 0,
+      )
+      .slice(0, 16)
+      .map(row => ({
+        word: row.word,
+        count: row.categoryCounts[profile.key],
+      })),
+  }))
+  const rankingRows = {
+    learning: learningRows.slice(0, 10).map(row => toSummaryWord(row, mastered)),
+    option: optionRows.slice(0, 10).map(row => toSummaryWord(row, mastered)),
+    katakana: katakanaRows.slice(0, 10).map(row => toSummaryWord(row, mastered)),
+    compounds: compoundRows.slice(0, 10).map(row => toSummaryWord(row, mastered)),
+    tested: testedRows.slice(0, 10).map(row => toSummaryWord(row, mastered)),
+    trends: trendRows,
+  }
+  const topItems = new Map<string, PracticeVocabularySummaryWord>()
+  Object.values(rankingRows).forEach(rows => {
+    rows.forEach(row => topItems.set(row.word, row))
+  })
+
+  return {
+    totalPapers: analytics.totalPapers,
+    totalOccurrences: analytics.totalOccurrences,
+    wordCount: analytics.words.length,
+    kanji: analytics.kanji.slice(0, 20),
+    years: analytics.years,
+    profiles,
+    topItems: {
+      words: [...topItems.values()],
+      rankings: Object.fromEntries(
+        Object.entries(rankingRows).map(([key, rows]) => [
+          key,
+          rows.map(row => row.word),
+        ]),
+      ) as PracticeVocabularyAnalyticsSummary['topItems']['rankings'],
+    },
+  }
 }
 
 export function buildPracticeVocabularyAnalytics({
@@ -330,6 +635,20 @@ export function buildPracticeVocabularyAnalytics({
 
   const denominator = Math.max(0, totalPapers)
   const allWords = [...words.values()]
+  let totalOccurrences = 0
+  const profileStats: Record<
+    PracticeVocabularyCategory,
+    {
+      totalOccurrences: number
+      uniqueWords: number
+      topRows: PracticeVocabularyWordInsight[]
+    }
+  > = {
+    TEXT_VOCAB: { totalOccurrences: 0, uniqueWords: 0, topRows: [] },
+    GRAMMAR: { totalOccurrences: 0, uniqueWords: 0, topRows: [] },
+    READING: { totalOccurrences: 0, uniqueWords: 0, topRows: [] },
+    LISTENING: { totalOccurrences: 0, uniqueWords: 0, topRows: [] },
+  }
   allWords.forEach(row => {
     row.count = row.countUnitIds.size
     row.optionCount = row.optionUnitIds.size
@@ -340,8 +659,8 @@ export function buildPracticeVocabularyAnalytics({
     row.yearCounts = Object.fromEntries(
       [...row.yearUnitIds].map(([year, units]) => [year, units.size]),
     )
+    totalOccurrences += row.count
   })
-  const totalOccurrences = allWords.reduce((sum, row) => sum + row.count, 0)
   const normalizedWords = allWords
     .filter(row => row.count > 0 || row.targetCount > 0)
     .map(row => {
@@ -359,15 +678,31 @@ export function buildPracticeVocabularyAnalytics({
           denominator > 0
             ? Math.round((row.paperIds.size / denominator) * 1000) / 10
             : 0,
-        inWordbook: false,
         wordbookIds: [],
-        wordbookNames: [],
         isMastered: false,
       }
-      return {
+      const withLearningValue = {
         ...normalized,
         learningValue: getLearningValue(normalized),
       }
+      PRACTICE_VOCABULARY_CATEGORIES.forEach(category => {
+        const categoryCount = normalized.categoryCounts[category.key]
+        if (categoryCount <= 0) return
+        const stats = profileStats[category.key]
+        stats.totalOccurrences += categoryCount
+        stats.uniqueWords += 1
+        if (
+          stats.topRows.length < 20 ||
+          compareProfileRows(category.key, withLearningValue, stats.topRows.at(-1)!) < 0
+        ) {
+          stats.topRows.push(withLearningValue)
+          stats.topRows.sort((left, right) =>
+            compareProfileRows(category.key, left, right),
+          )
+          if (stats.topRows.length > 20) stats.topRows.pop()
+        }
+      })
+      return withLearningValue
     })
     .sort(
       (left, right) =>
@@ -375,27 +710,17 @@ export function buildPracticeVocabularyAnalytics({
         right.targetCount - left.targetCount ||
         right.paperCount - left.paperCount ||
         right.count - left.count ||
-        left.word.localeCompare(right.word, 'ja'),
+        JAPANESE_COLLATOR.compare(left.word, right.word),
     )
 
   const profiles = PRACTICE_VOCABULARY_CATEGORIES.map(category => {
-    const categoryWords = normalizedWords
-      .filter(row => row.categoryCounts[category.key] > 0)
-      .sort(
-        (left, right) =>
-          right.learningValue - left.learningValue ||
-          right.categoryCounts[category.key] - left.categoryCounts[category.key] ||
-          left.word.localeCompare(right.word, 'ja'),
-      )
+    const stats = profileStats[category.key]
     return {
       key: category.key,
       label: category.label,
-      totalOccurrences: categoryWords.reduce(
-        (sum, row) => sum + row.categoryCounts[category.key],
-        0,
-      ),
-      uniqueWords: categoryWords.length,
-      topWords: categoryWords.slice(0, 20).map(row => ({
+      totalOccurrences: stats.totalOccurrences,
+      uniqueWords: stats.uniqueWords,
+      topWords: stats.topRows.map(row => ({
         word: row.word,
         count: row.categoryCounts[category.key],
       })),
@@ -421,7 +746,7 @@ export function buildPracticeVocabularyAnalytics({
         (left, right) =>
           right.count - left.count ||
           right.paperCount - left.paperCount ||
-          left.character.localeCompare(right.character, 'ja'),
+          JAPANESE_COLLATOR.compare(left.character, right.character),
       )
       .slice(0, 100),
     years,

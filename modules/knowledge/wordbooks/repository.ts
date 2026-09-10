@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { normalizeWordbookQuery, wordbookEntryWhere } from './entry-query'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { VOCABULARY_GROUPS_CACHE_TAG } from '@/modules/knowledge/vocabulary/server/repository'
 
@@ -64,16 +65,23 @@ export async function listWordbookEntries(input: {
   wordbookId: string
   page: number
   pageSize: number
+  query?: string
 }) {
   const userId = await getCurrentUserId()
-  const totalCount = await prisma.wordbookVocabulary.count({
-    where: { wordbookId: input.wordbookId, wordbook: { userId } },
-  })
-  const totalPages = Math.max(1, Math.ceil(totalCount / input.pageSize))
+  const query = normalizeWordbookQuery(input.query || '')
+  const where = wordbookEntryWhere(userId, input.wordbookId, query)
+  const countAll = Promise.resolve(prisma.wordbookVocabulary.count({
+    where: wordbookEntryWhere(userId, input.wordbookId),
+  }))
+  const [totalCount, filteredCount] = await Promise.all([
+    countAll,
+    query ? prisma.wordbookVocabulary.count({ where }) : countAll,
+  ])
+  const totalPages = Math.max(1, Math.ceil(filteredCount / input.pageSize))
   const page = Math.min(Math.max(1, input.page), totalPages)
   const rows = await prisma.wordbookVocabulary.findMany({
-    where: { wordbookId: input.wordbookId, wordbook: { userId } },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
+    where,
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
     skip: (page - 1) * input.pageSize,
     take: input.pageSize,
     include: {
@@ -83,7 +91,10 @@ export async function listWordbookEntries(input: {
           word: true,
           wordAudio: true,
           pronunciations: true,
+          etymologies: true,
+          meanings: true,
           partsOfSpeech: true,
+          tags: { select: { tag: { select: { name: true } } } },
           createdAt: true,
           sentenceLinks: {
             orderBy: { createdAt: 'asc' },
@@ -94,5 +105,5 @@ export async function listWordbookEntries(input: {
       },
     },
   })
-  return { totalCount, totalPages, page, rows }
+  return { totalCount, filteredCount, totalPages, page, rows }
 }

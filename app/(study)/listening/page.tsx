@@ -1,29 +1,20 @@
 // Listening library route.
-import Link from 'next/link'
+// Library entry cards render client-side from plain row data so the server
+// does not serialize hidden row trees into the RSC stream on every request.
 import { listListeningMaterialsForShadowing } from '@/lib/repositories/materials'
 import { getListeningLibrarySource } from '@/features/listening/server/library-service'
 import ListeningViewSwitcher, {
   type ListeningLibraryEntry,
 } from '@/features/listening/ui/ListeningViewSwitcher'
-import DeferredDetails from '@/features/listening/ui/DeferredDetails'
+import LibraryEntryContent, {
+  type LibraryEntryRow,
+} from '@/features/listening/ui/LibraryEntryCards'
 
 export const revalidate = 60
 
 type ShadowingRow = Awaited<
   ReturnType<typeof listListeningMaterialsForShadowing>
 >[number]
-
-function formatPlaytimeCompact(seconds: number) {
-  const safe = Math.max(0, Math.floor(seconds))
-  const day = Math.floor(safe / 86400)
-  const hour = Math.floor((safe % 86400) / 3600)
-  const minute = Math.floor((safe % 3600) / 60)
-  const sec = safe % 60
-  if (day > 0) return hour > 0 ? `${day}天${hour}小时` : `${day}天`
-  if (hour > 0) return minute > 0 ? `${hour}小时${minute}分` : `${hour}小时`
-  if (minute > 0) return `${minute}分钟`
-  return `${sec}秒`
-}
 
 function formatTotalSpeakingTime(seconds: number) {
   const safe = Math.max(0, Math.floor(seconds))
@@ -37,13 +28,17 @@ function formatTotalSpeakingTime(seconds: number) {
   return `${sec}秒`
 }
 
-function PlaytimeLabel({ seconds }: { seconds: number }) {
-  if (seconds <= 0) return null
-  return (
-    <span className='shrink-0 text-[11px] font-semibold text-slate-500'>
-      {formatPlaytimeCompact(seconds)}
-    </span>
-  )
+function toEntryRow(
+  item: ShadowingRow,
+  playtimeByMaterialId: Record<string, number>,
+): LibraryEntryRow {
+  return {
+    id: item.id,
+    title: item.title,
+    materialId: item.materialId,
+    totalSeconds: playtimeByMaterialId[item.materialId] || 0,
+    chapterLabel: (item.chapterName || '').trim() || undefined,
+  }
 }
 
 function sortByOrderAndTitle<T extends { sortOrder: number; title: string }>(
@@ -81,83 +76,6 @@ function sortMaterial(a: ShadowingRow, b: ShadowingRow) {
   const byTitle = compareNaturalText(a.title, b.title)
   if (byTitle !== 0) return byTitle
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-}
-
-function MaterialCard({
-  item,
-  totalSeconds,
-}: {
-  item: ShadowingRow
-  totalSeconds: number
-}) {
-  const chapterLabel = (item.chapterName || '').trim()
-  const showChapter = chapterLabel && chapterLabel !== item.title.trim()
-  return (
-    <Link
-      href={`/listening/${item.id}`}
-      className='group block rounded-xl border border-slate-200 bg-white px-4 py-4 transition hover:border-slate-300 hover:shadow-[0_12px_30px_-28px_rgba(15,23,42,0.5)]'>
-      <h3 className='line-clamp-2 text-base font-semibold leading-snug tracking-tight text-slate-900'>
-        {showChapter ? (
-          <span className='text-slate-500'>{chapterLabel} · </span>
-        ) : null}
-        {item.title}
-      </h3>
-      {totalSeconds > 0 && (
-        <p className='mt-3 text-xs font-semibold text-slate-500'>
-          已听 {formatPlaytimeCompact(totalSeconds)}
-        </p>
-      )}
-    </Link>
-  )
-}
-
-function ChapterScrollItem({
-  chapterTitle,
-  rows,
-  playtimeByMaterialId,
-}: {
-  chapterTitle: string
-  rows: ShadowingRow[]
-  playtimeByMaterialId: Record<string, number>
-}) {
-  return (
-    <DeferredDetails
-      className='group/chapter overflow-hidden rounded-xl border border-slate-200 bg-white transition open:border-slate-300'
-      summary={
-        <summary className='flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:content-none'>
-        <h3 className='line-clamp-1 text-sm font-semibold tracking-tight text-slate-900'>
-          {chapterTitle}
-        </h3>
-        <span className='flex shrink-0 items-center gap-2'>
-          <span className='rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600'>{rows.length} 条</span>
-          <span
-            aria-hidden
-            className='inline-flex h-6 w-6 items-center justify-center rounded-full text-xs text-slate-400 transition-transform group-open/chapter:rotate-180'>
-            ⌄
-          </span>
-        </span>
-        </summary>
-      }>
-      <div className='max-h-[min(28rem,70vh)] overflow-y-auto border-t border-slate-100 px-3'>
-        {rows.map((item, index) => (
-          <Link
-            key={item.id}
-            href={`/listening/${item.id}`}
-            className='group grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 py-3 text-sm last:border-b-0 hover:bg-slate-50'>
-            <span className='text-xs font-semibold tabular-nums text-slate-400'>
-              {String(index + 1).padStart(2, '0')}
-            </span>
-            <span className='line-clamp-1 font-medium text-slate-700 group-hover:text-slate-900'>
-              {item.title}
-            </span>
-            <PlaytimeLabel
-              seconds={playtimeByMaterialId[item.materialId] || 0}
-            />
-          </Link>
-        ))}
-      </div>
-    </DeferredDetails>
-  )
 }
 
 function buildSectionData(
@@ -198,45 +116,6 @@ function isBookOrChapterCollection(
   value: string,
 ): value is 'BOOK' | 'CHAPTER' {
   return value === 'BOOK' || value === 'CHAPTER'
-}
-
-function MaterialBookCard({
-  title,
-  chapters,
-  playtimeByMaterialId,
-}: {
-  title: string
-  chapters: Array<{ id: string; title: string; rows: ShadowingRow[] }>
-  playtimeByMaterialId: Record<string, number>
-}) {
-  const totalMaterials = chapters.reduce((sum, chapter) => sum + chapter.rows.length, 0)
-  return (
-    <DeferredDetails
-      className='group w-full overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_10px_30px_-28px_rgba(15,23,42,0.45)] transition open:border-slate-300 open:shadow-[0_18px_42px_-30px_rgba(15,23,42,0.4)]'
-      summary={
-        <summary className='flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 marker:content-none md:px-6'>
-        <div className='min-w-0'>
-          <h3 className='text-base font-semibold leading-snug tracking-tight text-slate-900 md:text-lg'>{title}</h3>
-          <p className='mt-1 text-xs text-slate-400'>{chapters.length} 个章节</p>
-        </div>
-        <span className='flex shrink-0 items-center gap-2'>
-          <span className='rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600'>{totalMaterials} 条</span>
-          <span aria-hidden className='inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400 transition-transform group-open:rotate-180'>⌄</span>
-        </span>
-        </summary>
-      }>
-      <div className='space-y-2 border-t border-slate-100 bg-slate-50/60 p-3 md:p-4'>
-        {chapters.map(chapter => (
-          <ChapterScrollItem
-            key={chapter.id}
-            chapterTitle={chapter.title}
-            rows={chapter.rows}
-            playtimeByMaterialId={playtimeByMaterialId}
-          />
-        ))}
-      </div>
-    </DeferredDetails>
-  )
 }
 
 function rowSearchText(row: ShadowingRow) {
@@ -284,29 +163,32 @@ function buildShadowingEntries(
 ): ListeningLibraryEntry[] {
   const { books, chapters, materialsByChapter, unclassifiedRows } = buildSectionData(rows, collections)
   const bookEntries = books.flatMap(book => {
-    const visibleChapters = chapters
+    const sourceChapters = chapters
       .filter(chapter => chapter.parentId === book.id)
       .map(chapter => ({
         id: chapter.id,
         title: chapter.title,
-        rows: materialsByChapter[chapter.id] || [],
+        sourceRows: materialsByChapter[chapter.id] || [],
       }))
-      .filter(chapter => chapter.rows.length > 0)
-    if (visibleChapters.length === 0) return []
-    const bookRows = visibleChapters.flatMap(chapter => chapter.rows)
-    const languages = entryLanguages(bookRows, book.title)
+      .filter(chapter => chapter.sourceRows.length > 0)
+    if (sourceChapters.length === 0) return []
+    const sourceRows = sourceChapters.flatMap(chapter => chapter.sourceRows)
+    const visibleChapters = sourceChapters.map(chapter => ({
+      id: chapter.id,
+      title: chapter.title,
+      rows: chapter.sourceRows.map(item => toEntryRow(item, playtimeByMaterialId)),
+    }))
+    const languages = entryLanguages(sourceRows, book.title)
     return [{
       id: `shadowing-book:${book.id}`,
       kind: 'shadowing' as const,
       title: book.title,
-      searchText: [book.title, ...languages, ...visibleChapters.map(chapter => chapter.title), ...bookRows.map(rowSearchText)].join(' '),
+      searchText: [book.title, ...languages, ...visibleChapters.map(chapter => chapter.title), ...sourceRows.map(rowSearchText)].join(' '),
       languages,
-      itemCount: bookRows.length,
+      itemCount: sourceRows.length,
       content: (
-        <MaterialBookCard
-          title={book.title}
-          chapters={visibleChapters}
-          playtimeByMaterialId={playtimeByMaterialId}
+        <LibraryEntryContent
+          data={{ variant: 'book', title: book.title, chapters: visibleChapters }}
         />
       ),
     }]
@@ -319,9 +201,8 @@ function buildShadowingEntries(
     languages: [materialLanguageLabel(item.language, rowSearchText(item))],
     itemCount: 1,
     content: (
-      <MaterialCard
-        item={item}
-        totalSeconds={playtimeByMaterialId[item.materialId] || 0}
+      <LibraryEntryContent
+        data={{ variant: 'material', row: toEntryRow(item, playtimeByMaterialId) }}
       />
     ),
   }))
@@ -331,64 +212,7 @@ function buildShadowingEntries(
 type ListeningPaperSectionGroup = {
   key: string
   title: string
-  items: ShadowingRow[]
-}
-
-function ListeningPaperCard({
-  title,
-  items,
-  sections,
-  playtimeByMaterialId,
-}: {
-  title: string
-  items: ShadowingRow[]
-  sections: ListeningPaperSectionGroup[]
-  playtimeByMaterialId: Record<string, number>
-}) {
-  return (
-    <DeferredDetails
-      className='group w-full overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_10px_30px_-28px_rgba(15,23,42,0.45)] transition open:border-slate-300 open:shadow-[0_18px_42px_-30px_rgba(15,23,42,0.4)]'
-      summary={
-        <summary className='flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 marker:content-none md:px-6'>
-        <div className='min-w-0'>
-          <h3 className='text-base font-semibold leading-snug tracking-tight text-slate-900 md:text-lg'>{title}</h3>
-          <p className='mt-1 text-xs text-slate-400'>{sections.length} 个問題</p>
-        </div>
-        <span className='flex shrink-0 items-center gap-2'>
-          <span className='rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600'>{items.length} 条</span>
-          <span aria-hidden className='inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400 transition-transform group-open:rotate-180'>⌄</span>
-        </span>
-        </summary>
-      }>
-      <div className='space-y-2 border-t border-slate-100 bg-slate-50/60 p-3 md:p-4'>
-        {sections.map(section => (
-          <DeferredDetails
-            key={section.key}
-            className='group/section overflow-hidden rounded-xl border border-slate-200 bg-white transition open:border-slate-300'
-            summary={<summary className='flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2.5 marker:content-none'>
-              <span className='text-sm font-semibold text-slate-900'>{section.title}</span>
-              <span className='flex items-center gap-2'>
-                <span className='rounded-lg bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600'>{section.items.length} 条</span>
-                <span aria-hidden className='inline-flex h-6 w-6 items-center justify-center rounded-full text-xs text-slate-400 transition-transform group-open/section:rotate-180'>⌄</span>
-              </span>
-            </summary>}>
-            <div className='max-h-[min(28rem,70vh)] overflow-y-auto border-t border-slate-100 px-3'>
-              {section.items.map((item, index) => (
-                <Link
-                  key={item.id}
-                  href={`/listening/${item.id}`}
-                  className='group/item grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 py-3 text-sm last:border-b-0 hover:bg-slate-50'>
-                  <span className='text-xs font-semibold tabular-nums text-slate-400'>{String(index + 1).padStart(2, '0')}</span>
-                  <span className='line-clamp-1 font-medium text-slate-700 group-hover/item:text-slate-900'>{item.title}</span>
-                  <PlaytimeLabel seconds={playtimeByMaterialId[item.materialId] || 0} />
-                </Link>
-              ))}
-            </div>
-          </DeferredDetails>
-        ))}
-      </div>
-    </DeferredDetails>
-  )
+  items: LibraryEntryRow[]
 }
 
 function buildListeningPaperEntries(
@@ -417,8 +241,9 @@ function buildListeningPaperEntries(
       const key = sectionNumber ? `section:${sectionNumber}` : 'section:other'
       const title = sectionNumber ? `問題${sectionNumber}` : '其他材料'
       const current = acc.find(section => section.key === key)
-      if (current) current.items.push(item)
-      else acc.push({ key, title, items: [item] })
+      const row = toEntryRow(item, playtimeByMaterialId)
+      if (current) current.items.push(row)
+      else acc.push({ key, title, items: [row] })
       return acc
     }, [])
     sections.sort((a, b) => compareNaturalText(a.title, b.title))
@@ -430,11 +255,8 @@ function buildListeningPaperEntries(
       languages: entryLanguages(group.items, group.paperTitle),
       itemCount: group.items.length,
       content: (
-        <ListeningPaperCard
-          title={group.paperTitle}
-          items={group.items}
-          sections={sections}
-          playtimeByMaterialId={playtimeByMaterialId}
+        <LibraryEntryContent
+          data={{ variant: 'paper', title: group.paperTitle, sections }}
         />
       ),
     }

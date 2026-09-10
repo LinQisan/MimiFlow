@@ -7,7 +7,10 @@ import type {
   ExamHubPaperSummary,
   PracticePerformanceGroup,
 } from '@/lib/repositories/exam'
-import type { PracticeVocabularyAnalytics } from '@/features/practice/domain/vocabulary-analytics'
+import type {
+  PracticeVocabularyAnalyticsSummary,
+  PracticeVocabularyAnalyticsWordsResponse,
+} from '@/features/practice/domain/vocabulary-analytics'
 
 const PerformanceStatsDialog = dynamic(
   () => import('@/features/practice/ui/PerformanceStatsDialog'),
@@ -85,50 +88,82 @@ export function VocabularyAnalyticsLauncher({
 }: {
   disabled?: boolean
 }) {
-  const [analytics, setAnalytics] =
-    useState<PracticeVocabularyAnalytics | null>(null)
+  const [summary, setSummary] =
+    useState<PracticeVocabularyAnalyticsSummary | null>(null)
+  const [wordsData, setWordsData] =
+    useState<PracticeVocabularyAnalyticsWordsResponse | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [loadState, setLoadState] = useState<LoadState>('idle')
-  const requestRef = useRef<Promise<PracticeVocabularyAnalytics> | null>(null)
+  const summaryRequestRef = useRef<
+    Promise<PracticeVocabularyAnalyticsSummary> | null
+  >(null)
+  const wordsRequestRef = useRef<
+    Promise<PracticeVocabularyAnalyticsWordsResponse> | null
+  >(null)
 
-  const loadAnalytics = useCallback(() => {
-    if (analytics) return Promise.resolve(analytics)
-    if (requestRef.current) return requestRef.current
+  const loadSummary = useCallback(() => {
+    if (summary) return Promise.resolve(summary)
+    if (summaryRequestRef.current) return summaryRequestRef.current
 
     setLoadState('loading')
-    requestRef.current = fetch('/api/practice/vocabulary-analytics').then(
+    const request = fetch('/api/practice/vocabulary-analytics', {
+      cache: 'no-store',
+    }).then(
       async response => {
         if (!response.ok) throw new Error('request failed')
-        return (await response.json()) as PracticeVocabularyAnalytics
+        return (await response.json()) as PracticeVocabularyAnalyticsSummary
       },
     )
-    requestRef.current = requestRef.current
+    summaryRequestRef.current = request
       .then(data => {
-        setAnalytics(data)
+        setSummary(data)
         setLoadState('idle')
         return data
       })
       .catch(error => {
-        requestRef.current = null
+        summaryRequestRef.current = null
         setLoadState('error')
         throw error
       })
-    return requestRef.current
-  }, [analytics])
+    return summaryRequestRef.current
+  }, [summary])
+
+  const loadWords = useCallback(() => {
+    if (wordsData) return Promise.resolve(wordsData)
+    if (wordsRequestRef.current) return wordsRequestRef.current
+
+    const request = fetch(
+      '/api/practice/vocabulary-analytics/words?all=true',
+      { cache: 'no-store' },
+    ).then(async response => {
+      if (!response.ok) throw new Error('request failed')
+      return (await response.json()) as PracticeVocabularyAnalyticsWordsResponse
+    })
+    wordsRequestRef.current = request
+      .then(data => {
+        setWordsData(data)
+        return data
+      })
+      .catch(error => {
+        wordsRequestRef.current = null
+        throw error
+      })
+    return wordsRequestRef.current
+  }, [wordsData])
 
   const prefetchAnalytics = useCallback(() => {
-    if (disabled || analytics || requestRef.current) return
+    if (disabled || summary || summaryRequestRef.current) return
     void import('@/features/practice/ui/PracticeVocabularyAnalyticsDialog')
-    void loadAnalytics().catch(() => undefined)
-  }, [analytics, disabled, loadAnalytics])
+    void loadSummary().catch(() => undefined)
+  }, [disabled, loadSummary, summary])
 
   const openDialog = async () => {
-    if (analytics) {
+    if (summary) {
       setIsDialogOpen(true)
       return
     }
     try {
-      await loadAnalytics()
+      await loadSummary()
       setIsDialogOpen(true)
     } catch {
       // The retry state is rendered on the launcher button.
@@ -153,14 +188,17 @@ export function VocabularyAnalyticsLauncher({
             : '词汇分析'}
       </button>
 
-      {analytics !== null && isDialogOpen ? (
+      {summary !== null && isDialogOpen ? (
         <PracticeVocabularyAnalyticsDialog
-          analytics={analytics}
+          summary={summary}
+          initialWords={wordsData?.words}
+          initialWordbooks={wordsData?.wordbooks}
           initialOpen
           hideTrigger
           onDismiss={() => setIsDialogOpen(false)}
+          onLoadWords={loadWords}
           onWordMasteryChange={(word, mastered) =>
-            setAnalytics(current =>
+            setWordsData(current =>
               current
                 ? {
                     ...current,

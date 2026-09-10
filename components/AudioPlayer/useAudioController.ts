@@ -87,6 +87,16 @@ export function useAudioController(dialogue: DialogueItem[]) {
     audio.loop = isTrackLoop
   }, [isTrackLoop])
 
+  // 卸载时确保停止播放，防止 SPA 软导航切走后音频泄漏
+  useEffect(() => {
+    const audio = audioRef.current
+    return () => {
+      if (audio && !audio.paused) {
+        audio.pause()
+      }
+    }
+  }, [])
+
   // 仅在播放时逐帧同步高亮与单句循环，暂停时不持续占用主线程。
   useEffect(() => {
     const audio = audioRef.current

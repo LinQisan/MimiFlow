@@ -1,7 +1,16 @@
 import { Rating } from 'ts-fsrs'
 
+import {
+  getVocabularyDisplayPronunciations as resolveVocabularyDisplayPronunciations,
+  getVocabularyMatchVariants as resolveVocabularyMatchVariants,
+  selectVocabularyDisplayPronunciation,
+} from '@/utils/text/pronunciation'
 import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
 import { formatVocabularySentenceSource } from '@/utils/vocabulary/sourceDisplay'
+import {
+  getVocabularyPartOfSpeechFilterOptions,
+  matchesVocabularyPartsOfSpeech,
+} from '@/utils/vocabulary/partOfSpeech'
 import type {
   InflectionFamily,
   InflectionVariant,
@@ -9,6 +18,7 @@ import type {
 } from '../types'
 
 export {
+  listWordbookFilterOptions,
   listWordbooks,
 } from './wordbook-list.ts'
 
@@ -39,8 +49,21 @@ export const firstSentencePosTag = (tags?: string[]) => {
 }
 
 export const getPrimaryPronunciation = (vocab: VocabItem) =>
-  (vocab.pronunciations || []).map(item => item.trim()).find(Boolean) ||
-  (vocab.pronunciation || '').trim()
+  selectVocabularyDisplayPronunciation(vocab.word, [
+    ...(vocab.pronunciations || []),
+    vocab.pronunciation || '',
+  ])
+
+export const getVocabularyMatchVariants = (vocab: VocabItem) =>
+  resolveVocabularyMatchVariants(vocab.word, [
+    ...(vocab.pronunciations || []),
+    vocab.pronunciation || '',
+  ])
+
+export const getVocabularyDisplayPronunciations = (
+  word: string,
+  pronunciations: string[],
+) => resolveVocabularyDisplayPronunciations(word, pronunciations)
 
 export const normalizeLanguageCode = (value: string) => {
   const text = value.trim().toLowerCase()
@@ -148,12 +171,8 @@ export const buildInflectionFamilyMap = (
 }
 
 export const getVocabularyPosOptions = (items: VocabItem[]) =>
-  Array.from(
-    new Set(
-      items.flatMap(item =>
-        (item.partsOfSpeech || []).map(pos => pos.trim()).filter(Boolean),
-      ),
-    ),
+  getVocabularyPartOfSpeechFilterOptions(
+    items.flatMap(item => item.partsOfSpeech || []),
   ).sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
 
 export const filterAndSortVocabulary = (
@@ -164,9 +183,10 @@ export const filterAndSortVocabulary = (
 ) =>
   items
     .filter(item => {
-      const matchesPos =
-        selectedPos === 'all' ||
-        (item.partsOfSpeech || []).some(pos => pos === selectedPos)
+      const matchesPos = matchesVocabularyPartsOfSpeech(
+        item.partsOfSpeech || [],
+        selectedPos,
+      )
       const matchesFolder =
         selectedFolder === 'all' ||
         (selectedFolder === 'none'

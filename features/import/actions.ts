@@ -36,158 +36,14 @@ import { encodeQuestionContent } from '@/lib/codecs/question-content'
 import { toQuestionOptionsAndAnswer } from '@/modules/practice/domain/question-record'
 import { getToeicPartByQuestionType } from '@/modules/questions/domain/toeic'
 import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
-
-function assTimeToSeconds(timeStr: string): number {
-  const [h, m, s] = timeStr.split(':')
-  return parseInt(h) * 3600 + parseInt(m) * 60 + parseFloat(s)
-}
-
-type RawSubtitle = {
-  id: number
-  text: string
-  rawStart: number
-  rawEnd: number
-}
-
-type ProcessedSubtitle = {
-  id: number
-  stableId: string
-  text: string
-  start: number
-  end: number
-  sequenceId: number
-}
-
-function splitDialogueTextToLines(text: string) {
-  return text
-    .replace(/\r\n?/g, '\n')
-    .split('\n')
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-function parseAssToRawSubs(assContent: string): RawSubtitle[] {
-  const subs: RawSubtitle[] = []
-  const lines = assContent
-    .replace(/^\uFEFF/, '')
-    .replace(/\r\n?/g, '\n')
-    .trim()
-    .split('\n')
-  let eventsStarted = false
-  let dialogueId = 1
-  let formatFields: string[] = []
-  let startIndex = 1
-  let endIndex = 2
-  let textIndex = 9
-
-  for (let line of lines) {
-    line = line.trim()
-    if (line === '[Events]') {
-      eventsStarted = true
-      continue
-    }
-    if (!eventsStarted) continue
-    if (line.startsWith('Format:')) {
-      formatFields = line
-        .replace('Format:', '')
-        .split(',')
-        .map(item => item.trim().toLowerCase())
-      const sIndex = formatFields.indexOf('start')
-      const eIndex = formatFields.indexOf('end')
-      const tIndex = formatFields.indexOf('text')
-      if (sIndex >= 0) startIndex = sIndex
-      if (eIndex >= 0) endIndex = eIndex
-      if (tIndex >= 0) textIndex = tIndex
-      continue
-    }
-    if (!line.startsWith('Dialogue:')) continue
-
-    const row = line.replace('Dialogue:', '').trim()
-    const splitLimit = formatFields.length > 0 ? formatFields.length : textIndex + 1
-    const parts: string[] = []
-    let cursor = 0
-    for (let idx = 0; idx < splitLimit - 1; idx += 1) {
-      const commaIndex = row.indexOf(',', cursor)
-      if (commaIndex === -1) break
-      parts.push(row.slice(cursor, commaIndex))
-      cursor = commaIndex + 1
-    }
-    parts.push(row.slice(cursor))
-    if (parts.length <= Math.max(startIndex, endIndex, textIndex)) continue
-
-    const startStr = parts[startIndex]
-    const endStr = parts[endIndex]
-    const text = parts[textIndex]
-      .replace(/\\N/g, '\n')
-      .replace(/\\n/g, '\n')
-      .replace(/\{[^}]*\}/g, '')
-      .trim()
-    if (!text) continue
-
-    const rawStart = assTimeToSeconds(startStr)
-    const rawEnd = assTimeToSeconds(endStr)
-    if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) continue
-    if (rawEnd <= rawStart) continue
-
-    const sentenceLines = splitDialogueTextToLines(text)
-    for (const sentenceText of sentenceLines) {
-      subs.push({
-        id: dialogueId,
-        text: sentenceText,
-        rawStart,
-        rawEnd,
-      })
-      dialogueId += 1
-    }
-  }
-
-  return subs.sort((a, b) => a.rawStart - b.rawStart || a.rawEnd - b.rawEnd)
-}
-
-function applySmartPadding(
-  subs: RawSubtitle[],
-  padStart = 0.1,
-  padEnd = 0.3,
-  minGap = 0.05,
-): ProcessedSubtitle[] {
-  const minDuration = 0.05
-  const result: ProcessedSubtitle[] = []
-
-  for (let i = 0; i < subs.length; i += 1) {
-    const sub = subs[i]
-    let actualPadStart = padStart
-    let actualPadEnd = padEnd
-
-    if (i > 0) {
-      const prevResultEnd = result[i - 1].end
-      const availableSpace = sub.rawStart - prevResultEnd - minGap
-      actualPadStart = availableSpace < 0 ? 0 : Math.min(padStart, availableSpace)
-    }
-
-    if (i < subs.length - 1) {
-      const nextRawStart = subs[i + 1].rawStart
-      const availableSpace = nextRawStart - sub.rawEnd - minGap
-      actualPadEnd = availableSpace < 0 ? 0 : Math.min(padEnd, availableSpace)
-    }
-
-    const finalStart = Math.max(0, sub.rawStart - actualPadStart)
-    let finalEnd = sub.rawEnd + actualPadEnd
-    if (finalEnd < finalStart + minDuration) {
-      finalEnd = finalStart + minDuration
-    }
-
-    result.push({
-      id: i + 1,
-      stableId: randomUUID(),
-      text: sub.text,
-      start: Number(finalStart.toFixed(2)),
-      end: Number(finalEnd.toFixed(2)),
-      sequenceId: i + 1,
-    })
-  }
-
-  return result
-}
+import {
+  applyAssTimelinePadding,
+  parseAssToRawSubtitles,
+} from '@/modules/import/audio/ass'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 const AUDIO_EXTENSIONS = new Set([
   '.mp3',
@@ -890,12 +746,17 @@ export async function uploadAssAndSaveData(formData: FormData) {
         isBatch,
       )
       const fileContent = await file.text()
-      const rawSubs = parseAssToRawSubs(fileContent)
+      const rawSubs = parseAssToRawSubtitles(fileContent)
       if (rawSubs.length === 0) {
         throw new Error(`文件 ${file.name} 未解析到有效字幕行。`)
       }
 
-      const processedSubs = applySmartPadding(rawSubs, 0.1, 0.3, 0.05)
+      const processedSubs = applyAssTimelinePadding(
+        rawSubs,
+        0.1,
+        0.3,
+        0.05,
+      ).map(dialogue => ({ ...dialogue, stableId: randomUUID() }))
       const fileBase = getBaseNameWithoutExt(file.name)
       const draftTitle = isBatch ? (title ? `${title} · ${fileBase}` : fileBase) : title || fileBase
       const stem = normalizeStem(fileBase)
@@ -1118,6 +979,11 @@ export async function uploadAssAndSaveData(formData: FormData) {
           : '未成功导入任何字幕文件。',
       )
     }
+
+    await precomputePracticeVocabularyMaterialAnalyses(
+      createdMaterials.map(material => material.id),
+    )
+    invalidatePracticeVocabularyAnalytics()
 
     const summary: string[] = []
     if (matchedFromUpload.length > 0) summary.push(`上传配对 ${matchedFromUpload.length}`)

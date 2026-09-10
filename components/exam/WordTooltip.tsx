@@ -15,18 +15,24 @@ import {
   SourceType,
 } from '@prisma/client'
 
-import { saveLearningRecord } from '@/modules/knowledge/learning-records/actions'
-import { LEARNING_POINT_CATEGORY_LABELS } from '@/modules/knowledge/learning-records/domain'
+import { findLearningRecordsForSelection, saveLearningRecord } from '@/modules/knowledge/learning-records/actions'
+import LearningRecordFields from '@/modules/knowledge/learning-records/components/LearningRecordFields'
 import { saveVocabulary } from '@/modules/knowledge/vocabulary/actions'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
+import type { VocabularyInspectorMetaUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
+import LearningRecordItem from '@/modules/knowledge/learning-records/components/LearningRecordItem'
+import VocabularyWordbookInspector from '@/modules/knowledge/vocabulary/components/VocabularyWordbookInspector'
+import { getVocabularyInspectorData } from '@/modules/knowledge/vocabulary/inspector-actions'
 import WordAudioButton from '@/components/vocabulary/WordAudioButton'
+
+import SelectionAttributeEditor from '@/modules/knowledge/vocabulary/components/SelectionAttributeEditor'
 
 const POS_OPTIONS = ['名词', '动词', '形容词', '副词', '助词', '接续词']
 const BASE_INPUT_CLASS =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-100'
-const LABEL_CLASS = 'text-xs font-bold text-slate-700'
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-100 dark:bg-slate-900 dark:text-slate-100 dark:border-slate-700'
+const LABEL_CLASS = 'text-xs font-bold text-slate-700 dark:text-slate-300'
 
-type RecordMode = 'word' | 'learning-point' | 'sentence'
+type RecordMode = 'attribute' | 'word' | 'learning-point' | 'sentence'
 type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 
 const splitListInput = (value: string) =>
@@ -81,8 +87,16 @@ export default function WordTooltip({
     partOfSpeech: string
   } | null
   onClose?: () => void
-  onSaved?: (payload: { word: string; meta: VocabularyMeta }) => void
+  onSaved?: (payload: VocabularyInspectorMetaUpdate) => void
 }) {
+  const [savedWord, setSavedWord] = useState<string | null>(null)
+  const [existingWord, setExistingWord] = useState<string | null>(null)
+  const [records, setRecords] = useState<Array<Extract<Awaited<ReturnType<typeof findLearningRecordsForSelection>>, { success: true }>['records'][number]>>([])
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [revision, setRevision] = useState(0)
+  const [draftDirty, setDraftDirty] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [panelOpen, setPanelOpen] = useState(false)
   const [mode, setMode] = useState<RecordMode>(() =>
     defaultModeForSelection(detectedWord),
@@ -93,6 +107,8 @@ export default function WordTooltip({
   const [pronunciationValue, setPronunciationValue] = useState('')
   const [meaningValue, setMeaningValue] = useState('')
   const [partOfSpeechValue, setPartOfSpeechValue] = useState('')
+  const [sentenceText, setSentenceText] = useState(contextSentence || word)
+  const selectionIdentityRef = useRef('')
   const [pointTitle, setPointTitle] = useState('')
   const [fragmentsValue, setFragmentsValue] = useState('')
   const [pointNote, setPointNote] = useState('')
@@ -101,8 +117,6 @@ export default function WordTooltip({
   )
   const popupRef = useRef<HTMLDivElement>(null)
   const primaryInputRef = useRef<HTMLInputElement>(null)
-  const closeTimerRef = useRef<number | null>(null)
-  const titleInputId = useId()
   const contextId = useId()
   const [popupHeight, setPopupHeight] = useState(42)
   const [viewport, setViewport] = useState(() => ({
@@ -113,8 +127,14 @@ export default function WordTooltip({
   }))
 
   useEffect(() => {
+    const identity = JSON.stringify([word, sourceType, sourceId, contextSentence])
+    if (selectionIdentityRef.current === identity) return
+    selectionIdentityRef.current = identity
+    setSavedWord(null)
+    setSentenceText(contextSentence || word)
     const detectedHeadword = detectedWord?.dictionaryForm?.trim() || word
     setPanelOpen(false)
+    setDraftDirty(false)
     setMode(defaultModeForSelection(detectedWord))
     setSaveState('idle')
     setStatusMessage('')
@@ -130,10 +150,52 @@ export default function WordTooltip({
     setFragmentsValue(word)
     setPointNote('')
     setCategory(LearningPointCategory.GRAMMAR)
-  }, [word, sourceType, sourceId, initialMeta, detectedWord])
+  }, [word, sourceType, sourceId, contextSentence, initialMeta, detectedWord])
+
+  useEffect(() => {
+    if (!panelOpen) return
+    let active = true
+    setLoading(true)
+    setLoadError('')
+    setCreating(false)
+    void Promise.all([
+      getVocabularyInspectorData(savedWord || detectedWord?.dictionaryForm?.trim() || word),
+      findLearningRecordsForSelection({ sourceType, sourceId, selection: word, contextSentence }),
+    ]).then(([vocabulary, learning]) => {
+      if (!active) return
+      if (!learning.success) { setLoadError(learning.message); return }
+      setExistingWord(vocabulary.success ? vocabulary.data.word : null)
+      setRecords(learning.records)
+    }).catch(() => { if (active) setLoadError('已有定义加载失败，请重试。') })
+      .finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [panelOpen, word, savedWord, detectedWord?.dictionaryForm, sourceType, sourceId, contextSentence, revision])
+
+  const cancelCreation = useCallback(() => {
+    setHeadwordValue(detectedWord?.dictionaryForm?.trim() || word)
+    setPronunciationValue((initialMeta?.pronunciations || []).join(' / ') || detectedWord?.reading || '')
+    setPartOfSpeechValue(initialMeta?.partsOfSpeech?.[0] || detectedWord?.partOfSpeech || '')
+    setMeaningValue((initialMeta?.meanings || []).join('; '))
+    setPointTitle(word)
+    setFragmentsValue(word)
+    setSentenceText(contextSentence || word)
+    setPointNote('')
+    setCategory(LearningPointCategory.GRAMMAR)
+    setSaveState('idle')
+    setStatusMessage('')
+    setPanelOpen(false)
+    setCreating(false)
+    setDraftDirty(false)
+  }, [word, detectedWord, initialMeta, contextSentence])
+
+  const matchingRecords = records.filter(record => record.kind === (mode === 'sentence' ? LearningRecordKind.SENTENCE : LearningRecordKind.LEARNING_POINT))
+  const showingExisting = mode !== 'attribute' && !creating && (mode === 'word' ? Boolean(existingWord) : matchingRecords.length > 0)
 
   const requestClose = useCallback(() => {
-    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
+    if (popupRef.current?.querySelector('[data-selection-editor="true"]')) {
+      setStatusMessage('请先保存或取消当前编辑。')
+      return
+    }
     onClose?.()
   }, [onClose])
 
@@ -151,7 +213,7 @@ export default function WordTooltip({
     if (!panelOpen) return
     const frame = window.requestAnimationFrame(() => primaryInputRef.current?.focus())
     return () => window.cancelAnimationFrame(frame)
-  }, [panelOpen, mode])
+  }, [panelOpen, mode, loading, showingExisting])
 
   useEffect(() => {
     const updateViewport = () => {
@@ -176,21 +238,16 @@ export default function WordTooltip({
 
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || saveState === 'saving') return
+      if (draftDirty && !showingExisting) { event.preventDefault(); cancelCreation(); return }
+      if (popupRef.current?.querySelector('[data-selection-editor="true"]')) return
       event.preventDefault()
       if (panelOpen) setPanelOpen(false)
       else requestClose()
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [panelOpen, requestClose])
-
-  useEffect(
-    () => () => {
-      if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current)
-    },
-    [],
-  )
+  }, [panelOpen, requestClose, draftDirty, showingExisting, saveState, cancelCreation])
 
   const panelWidth = panelOpen ? Math.min(380, viewport.width - 24) : 68
   const viewportPadding = 12
@@ -220,6 +277,11 @@ export default function WordTooltip({
   }, [saveState])
 
   const changeMode = (nextMode: RecordMode) => {
+    if (popupRef.current?.querySelector('[data-selection-editor="true"]')) {
+      setStatusMessage('请先保存或取消当前编辑。')
+      return
+    }
+    setCreating(false)
     setMode(nextMode)
     setSaveState('idle')
     setStatusMessage('')
@@ -258,6 +320,7 @@ export default function WordTooltip({
           result.word &&
           result.meta
         ) {
+          setSavedWord(result.word)
           onSaved?.({ word: result.word, meta: result.meta })
           setSaveState('saved')
           setStatusMessage(result.message || '已保存到生词本。')
@@ -275,8 +338,8 @@ export default function WordTooltip({
           category: mode === 'learning-point' ? category : null,
           title: mode === 'sentence' ? pointTitle || contextSentence : pointTitle,
           fragments:
-            mode === 'learning-point' ? splitListInput(fragmentsValue) : [],
-          sentenceText: contextSentence || word,
+            mode === 'learning-point' ? fragmentsValue.split(/\n+/) : [],
+          sentenceText,
           note: pointNote,
           sourceType,
           sourceId,
@@ -291,7 +354,10 @@ export default function WordTooltip({
           mode === 'sentence' ? '已保存为句子记录。' : result.message,
         )
       }
-      closeTimerRef.current = window.setTimeout(requestClose, 900)
+      window.dispatchEvent(new Event('learning-records-changed'))
+      setRevision(value => value + 1)
+      setSaveState('idle')
+      setDraftDirty(false)
     } catch (error) {
       console.error('Save failed:', error)
       setSaveState('error')
@@ -302,6 +368,7 @@ export default function WordTooltip({
   return (
     <div
       ref={popupRef}
+      data-highlight-ignore='true'
       role={panelOpen ? 'dialog' : undefined}
       aria-label={panelOpen ? `记录所选内容：${word}` : undefined}
       aria-describedby={panelOpen ? contextId : undefined}
@@ -316,7 +383,7 @@ export default function WordTooltip({
         transform:
           shouldOpenDown || !isTop ? 'translate(-50%, 0)' : 'translate(-50%, -100%)',
       }}
-      className={`ui-pop fixed z-50 overflow-y-auto overscroll-contain border border-slate-200 bg-white shadow-2xl transition-[width] ${
+      className={`ui-pop fixed z-50 overflow-y-auto overscroll-contain border border-slate-200 bg-white dark:bg-slate-950 dark:text-slate-100 dark:border-slate-700 shadow-2xl transition-[width] ${
         panelOpen ? 'rounded-2xl' : 'rounded-full'
       }`}>
       {!panelOpen ? (
@@ -328,12 +395,12 @@ export default function WordTooltip({
         </button>
       ) : (
         <>
-          <header className='sticky top-0 z-10 border-b border-slate-100 bg-white px-3 pt-3'>
+          <header className='sticky top-0 z-10 border-b border-slate-100 bg-white dark:bg-slate-950 px-3 pt-3'>
             <div className='flex items-center justify-between gap-3'>
               <div className='min-w-0'>
                 <p className='text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400'>记录选区</p>
                 <div className='mt-0.5 flex min-w-0 items-center gap-1'>
-                  <p className='max-w-[15rem] truncate text-sm font-bold text-slate-950'>{word}</p>
+                  <p className='max-w-[15rem] truncate text-sm font-bold text-slate-950 dark:text-slate-100'>{word}</p>
                   <WordAudioButton
                     key={initialMeta?.wordAudio || 'no-word-audio'}
                     audioFile={initialMeta?.wordAudio}
@@ -350,9 +417,11 @@ export default function WordTooltip({
                 ×
               </button>
             </div>
-            <div className='mt-3 grid grid-cols-3 gap-1' role='tablist' aria-label='记录层级'>
+            <p role='status' className='text-xs text-slate-500'>{statusMessage}</p>
+            <div className='mt-3 grid grid-cols-4 gap-1' role='tablist' aria-label='记录层级'>
               {[
                 { value: 'word' as const, label: '单词' },
+                { value: 'attribute' as const, label: '搭配 / 关联' },
                 { value: 'learning-point' as const, label: '学习点' },
                 { value: 'sentence' as const, label: '句子' },
               ].map(item => (
@@ -360,21 +429,41 @@ export default function WordTooltip({
                   key={item.value}
                   type='button'
                   role='tab'
+                  disabled={loading || saveState === 'saving'}
                   aria-selected={mode === item.value}
                   onClick={() => changeMode(item.value)}
                   className={`border-b-2 px-2 py-2 text-xs font-bold transition ${
                     mode === item.value
-                      ? 'border-slate-900 text-slate-950'
+                      ? 'border-slate-900 text-slate-950 dark:border-slate-100 dark:text-slate-100'
                       : 'border-transparent text-slate-400 hover:text-slate-700'
                   }`}>
-                  {item.label}
+                  {item.label}{!loading && item.value !== 'attribute' && (item.value === 'word' ? existingWord : records.some(record => record.kind === (item.value === 'sentence' ? LearningRecordKind.SENTENCE : LearningRecordKind.LEARNING_POINT))) ? ' · 已有' : ''}
                 </button>
               ))}
             </div>
           </header>
 
-          <div className='space-y-4 px-4 py-4'>
-            <p id={contextId} className='rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600'>
+          {mode === 'attribute' ? <SelectionAttributeEditor key={word + sourceId} text={word} contextSentence={contextSentence} sourceType={sourceType} sourceId={sourceId} onCancel={() => { setMode(defaultModeForSelection(detectedWord)); setStatusMessage('') }} /> : loading || loadError ? <div className='p-4 text-sm' role='status'>
+            {loading ? '正在匹配已有定义…' : loadError}
+            {loadError ? <button className='ui-btn mt-3' onClick={() => setRevision(value => value + 1)}>重试</button> : null}
+          </div> : showingExisting ? (
+            mode === 'word' && existingWord ? <VocabularyWordbookInspector
+              embedded word={existingWord} matchedVariant={word} x={x} y={y}
+              onClose={() => setPanelOpen(false)}
+              onSaved={payload => {
+                if (payload.previousWord && payload.previousWord !== payload.word) {
+                  setSavedWord(payload.word)
+                  setExistingWord(payload.word)
+                }
+                onSaved?.(payload)
+              }}
+              onDeleted={() => { setSavedWord(null); setExistingWord(null); setRevision(value => value + 1) }}
+            /> : <div className='px-4'>
+              {matchingRecords.map(record => <LearningRecordItem compact key={record.id} record={{ ...record, sourceHref: null, updatedAtLabel: '已保存' }} onChanged={() => setRevision(value => value + 1)} />)}
+              <button type='button' className='ui-btn mb-3' onClick={() => { if (popupRef.current?.querySelector('[data-selection-editor="true"]')) { setStatusMessage('请先保存或取消当前编辑。'); return }; setCreating(true) }}>另建{mode === 'sentence' ? '句子' : '学习点'}</button>
+            </div>
+          ) : <div data-selection-editor={draftDirty || saveState === 'saving' ? 'true' : undefined} onChange={() => setDraftDirty(true)} onKeyDown={event => { if (event.key === 'Escape' && saveState !== 'saving') { event.stopPropagation(); cancelCreation() } }} className='space-y-4 px-4 py-4'>
+            <p id={contextId} className='rounded-lg bg-slate-50 dark:bg-slate-900 dark:text-slate-300 px-3 py-2 text-xs leading-5 text-slate-600'>
               {contextSentence || word}
             </p>
 
@@ -395,7 +484,7 @@ export default function WordTooltip({
                       <button
                         key={option}
                         type='button'
-                        onClick={() => setPartOfSpeechValue(current => current === option ? '' : option)}
+                        onClick={() => { setPartOfSpeechValue(current => current === option ? '' : option); setDraftDirty(true) }}
                         className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
                           partOfSpeechValue === option
                             ? 'border-slate-900 bg-slate-900 text-white'
@@ -413,65 +502,19 @@ export default function WordTooltip({
                 </label>
               </>
             ) : (
-              <>
-                <label className='block space-y-1.5'>
-                  <span className={LABEL_CLASS}>{mode === 'sentence' ? '句子标题' : '学习点名称'}</span>
-                  <input
-                    ref={primaryInputRef}
-                    id={titleInputId}
-                    value={pointTitle}
-                    onChange={event => setPointTitle(event.target.value)}
-                    placeholder={mode === 'sentence' ? '可选，方便以后检索' : '如：～ざるを得ない'}
-                    className={BASE_INPUT_CLASS}
-                  />
-                </label>
-                {mode === 'learning-point' ? (
-                  <>
-                    <section className='space-y-2'>
-                      <span className={LABEL_CLASS}>类型</span>
-                      <div className='flex flex-wrap gap-1.5'>
-                        {Object.values(LearningPointCategory).map(option => (
-                          <button
-                            key={option}
-                            type='button'
-                            onClick={() => setCategory(option)}
-                            className={`rounded-full border px-2 py-1 text-[10px] font-semibold ${
-                              category === option
-                                ? 'border-slate-900 bg-slate-900 text-white'
-                                : 'border-slate-200 text-slate-500'
-                            }`}>
-                            {LEARNING_POINT_CATEGORY_LABELS[option]}
-                          </button>
-                        ))}
-                      </div>
-                    </section>
-                    <label className='block space-y-1.5'>
-                      <span className={LABEL_CLASS}>句内片段</span>
-                      <textarea
-                        value={fragmentsValue}
-                        onChange={event => setFragmentsValue(event.target.value)}
-                        rows={3}
-                        placeholder='每行一个片段，可记录不连续的多个位置'
-                        className={`${BASE_INPUT_CLASS} resize-y`}
-                      />
-                      <span className='block text-[10px] leading-4 text-slate-400'>每行一个片段；保存的是文本与原句，不保存 DOM 节点。</span>
-                    </label>
-                  </>
-                ) : null}
-                <label className='block space-y-1.5'>
-                  <span className={LABEL_CLASS}>笔记</span>
-                  <textarea
-                    value={pointNote}
-                    onChange={event => setPointNote(event.target.value)}
-                    rows={4}
-                    placeholder={mode === 'sentence' ? '拆解长难句结构、逻辑或翻译' : '写下规则、含义、对比或易错原因'}
-                    className={`${BASE_INPUT_CLASS} resize-y`}
-                  />
-                </label>
-              </>
+              <LearningRecordFields kind={mode === 'sentence' ? LearningRecordKind.SENTENCE : LearningRecordKind.LEARNING_POINT}
+                value={{ title: pointTitle, category, fragments: fragmentsValue, sentenceText, note: pointNote }}
+                onChange={next => {
+                  setPointTitle(next.title)
+                  setCategory(next.category)
+                  setFragmentsValue(next.fragments)
+                  setSentenceText(next.sentenceText)
+                  setPointNote(next.note)
+                  setDraftDirty(true)
+                }} />
             )}
 
-            <div className='flex items-center justify-between gap-3 border-t border-slate-100 pt-3'>
+            <div className='sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-white py-3 dark:bg-slate-950'>
               <p
                 aria-live='polite'
                 className={`min-h-4 text-[11px] font-semibold ${
@@ -483,6 +526,7 @@ export default function WordTooltip({
                 }`}>
                 {statusMessage}
               </p>
+              <button type='button' className='ui-btn' disabled={saveState === 'saving'} onClick={cancelCreation}>取消</button>
               <button
                 type='button'
                 onClick={handleSave}
@@ -491,7 +535,7 @@ export default function WordTooltip({
                 {saveButton.label}
               </button>
             </div>
-          </div>
+          </div>}
         </>
       )}
     </div>

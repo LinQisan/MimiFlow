@@ -204,7 +204,7 @@ export function OptionsList({
               : 'border-slate-200 bg-white hover:border-slate-400 hover:bg-slate-50'
           const content = (
             <>
-              <span className={`absolute left-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center bg-white px-1.5 text-xs font-black shadow-sm ${
+              <span className={`absolute left-2 top-2 z-10 flex h-7 min-w-7 items-center justify-center bg-white px-1.5 text-xs font-bold shadow-sm ${
                 isSelected ? 'text-slate-950' : 'text-slate-500'
               }`}>
                 {label}

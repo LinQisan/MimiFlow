@@ -12,6 +12,9 @@ export const parseJsonStringList = (raw?: string | null): string[] => {
 export const normalizeStringList = (list: string[]): string[] =>
   Array.from(new Set(list.map(item => item.trim()).filter(Boolean)))
 
+export const splitLineStringList = (raw: string): string[] =>
+  normalizeStringList(raw.split(/\r?\n/))
+
 export const toJsonStringList = (list: string[]): string | null => {
   const normalized = normalizeStringList(list)
   return normalized.length ? JSON.stringify(normalized) : null

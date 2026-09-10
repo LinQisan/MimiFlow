@@ -187,31 +187,26 @@ export default async function MediaSubtitlesPage() {
     0,
   )
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 text-slate-900 md:px-8 md:py-8'>
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 text-slate-900 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl'>
         <header className='border-b border-slate-200 py-4'>
-          <p className='text-xs tracking-wide text-slate-500'>
+          <p className='ui-meta'>
             {tvGroups.length} 部电视剧 · {tvEpisodeCount} 集 · {movieGroups.length} 部电影 · {totalDialogues} 行字幕
           </p>
         </header>
 
         <div className='mt-5'>
           {items.length === 0 ? (
-          <section className='rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500'>
+          <section className='ui-empty'>
             还没有影视字幕，去上传页导入第一个 `.ass` 文件吧。
           </section>
         ) : (
           <div className='min-w-0'>
             <div className='min-w-0 space-y-5'>
-              <section className='min-w-0 border border-slate-200 bg-white'>
+              <section className='min-w-0 border-b border-slate-200'>
                 <div className='flex flex-col gap-2 border-b border-slate-200 px-4 py-4 md:flex-row md:items-end md:justify-between'>
-                  <div>
-                    <h2 className='text-xl font-black text-slate-950'>电视剧</h2>
-                    <p className='mt-1 text-sm text-slate-500'>
-                      按作品、季、集分层，最近更新的作品排在前面。
-                    </p>
-                  </div>
-                  <span className='text-sm font-bold text-teal-700'>
+                  <h2 className='ui-section-head'>电视剧</h2>
+                  <span className='ui-meta'>
                     {tvGroups.length} 部剧 · {tvEpisodeCount} 集
                   </span>
                 </div>
@@ -230,7 +225,7 @@ export default async function MediaSubtitlesPage() {
                         <summary className='flex cursor-pointer list-none flex-col gap-3 px-4 py-4 transition hover:bg-slate-50 marker:content-none md:flex-row md:items-center md:justify-between'>
                           <div className='min-w-0'>
                             <div className='flex flex-wrap items-center gap-2'>
-                              <h3 className='truncate text-lg font-black text-slate-950'>
+                              <h3 className='truncate text-lg font-bold text-slate-950'>
                                 {group.workTitle}
                               </h3>
                               <span className='rounded border border-teal-200 bg-teal-50 px-2 py-0.5 text-[11px] font-bold text-teal-700'>
@@ -262,7 +257,7 @@ export default async function MediaSubtitlesPage() {
                                 key={`season-${group.key}-${season.seasonLabel}`}
                                 className='min-w-0'>
                                 <div className='mb-2 flex items-center justify-between gap-2'>
-                                  <h4 className='text-sm font-black text-slate-800'>
+                                  <h4 className='text-sm font-bold text-slate-800'>
                                     {season.seasonLabel === '特别篇'
                                       ? '特别篇'
                                       : `第 ${season.seasonLabel} 季`}
@@ -276,10 +271,11 @@ export default async function MediaSubtitlesPage() {
                                     <Link
                                       key={item.id}
                                       href={item.href}
+                                      prefetch={false}
                                       className='block min-w-0 px-3 py-3 transition hover:bg-teal-50/40'>
                                       <div className='flex items-start justify-between gap-3'>
                                         <div className='min-w-0'>
-                                          <p className='truncate text-sm font-black text-slate-950'>
+                                          <p className='truncate text-sm font-bold text-slate-950'>
                                             {item.episode
                                               ? `第 ${item.episode} 集`
                                               : item.title}
@@ -309,15 +305,10 @@ export default async function MediaSubtitlesPage() {
                 )}
               </section>
 
-              <section className='min-w-0 border border-slate-200 bg-white'>
+              <section className='min-w-0 border-b border-slate-200'>
                 <div className='flex flex-col gap-2 border-b border-slate-200 px-4 py-4 md:flex-row md:items-end md:justify-between'>
-                  <div>
-                    <h2 className='text-xl font-black text-slate-950'>电影</h2>
-                    <p className='mt-1 text-sm text-slate-500'>
-                      以作品为单位归档，同名版本会收在一起。
-                    </p>
-                  </div>
-                  <span className='text-sm font-bold text-amber-700'>
+                  <h2 className='ui-section-head'>电影</h2>
+                  <span className='ui-meta'>
                     {movieGroups.length} 部
                   </span>
                 </div>
@@ -334,7 +325,7 @@ export default async function MediaSubtitlesPage() {
                         className='py-4'>
                         <div className='flex items-start justify-between gap-3'>
                           <div className='min-w-0'>
-                            <h3 className='truncate text-base font-black text-slate-950'>
+                            <h3 className='truncate text-base font-bold text-slate-950'>
                               {group.workTitle}
                             </h3>
                             <p className='mt-1 text-xs text-slate-500'>
@@ -351,6 +342,7 @@ export default async function MediaSubtitlesPage() {
                             <Link
                               key={item.id}
                               href={item.href}
+                              prefetch={false}
                               className='block border-t border-slate-200 px-1 py-2 transition hover:bg-amber-50/50'>
                               <p className='truncate text-sm font-bold text-slate-900'>
                                 {item.title}

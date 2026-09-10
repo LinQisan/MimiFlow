@@ -1,8 +1,15 @@
 import UploadCenterUI from '@/features/import/ui/UploadCenterUI'
 import EpubImportForm from '@/features/reading/ui/EpubImportForm'
-import { getUploadPageSeedData } from '@/lib/repositories/manage'
+import {
+  getDefaultListeningQuestionsPerMaterial,
+  getUploadPageSeedData,
+} from '@/lib/repositories/manage'
 import type { UploadCenterTab } from '@/modules/import/types'
-import type { CollectionType, MaterialType } from '@prisma/client'
+import type {
+  CollectionType,
+  MaterialType,
+  QuestionType,
+} from '@prisma/client'
 import Link from 'next/link'
 import PageHeader from '@/components/layout/PageHeader'
 import AnkiImportPanel from './AnkiImportPanel'
@@ -227,14 +234,36 @@ export default async function UnifiedImportPage({
     activeGroup.scope === 'vocabulary'
       ? undefined
       : collectionTypesByScope[activeGroup.scope]
-  const { dbLevels, dbCollections } = needsCollections
-    ? await getUploadPageSeedData({
-        includeLessons: needsLessons,
-        materialType: resolvedMaterialType,
-        language,
-        collectionTypes,
-      })
-    : { dbLevels: [], dbCollections: [] }
+  const defaultQuestionType = (toeicPart?.questionType ||
+    (japaneseListeningSection ? 'LISTENING' : undefined)) as
+    | QuestionType
+    | undefined
+  const fallbackQuestionsPerMaterial =
+    toeicPart?.questionType === 'TOEIC_CONVERSATIONS' ||
+    toeicPart?.questionType === 'TOEIC_TALKS'
+      ? 3
+      : 1
+  const [uploadSeedData, databaseQuestionsPerMaterial] = await Promise.all([
+    needsCollections
+      ? getUploadPageSeedData({
+          includeLessons: needsLessons,
+          materialType: resolvedMaterialType,
+          language,
+          collectionTypes,
+        })
+      : Promise.resolve({ dbLevels: [], dbCollections: [] }),
+    resolvedMaterialType === 'LISTENING' && defaultQuestionType
+      ? getDefaultListeningQuestionsPerMaterial({
+          language,
+          questionType: defaultQuestionType,
+          listeningSectionNumber:
+            japaneseListeningSection?.sectionNumber ?? toeicPart?.part,
+        })
+      : Promise.resolve(null),
+  ])
+  const { dbLevels, dbCollections } = uploadSeedData
+  const defaultQuestionsPerMaterial =
+    databaseQuestionsPerMaterial ?? fallbackQuestionsPerMaterial
   return (
     <main className='manage-upload-surface min-h-screen bg-[#f6f5f1] pb-16 font-sans text-slate-900'>
       <div className='mx-auto max-w-6xl px-4 py-5 md:px-8 lg:py-8'>
@@ -251,7 +280,7 @@ export default async function UnifiedImportPage({
             <PageHeader
               showTitle
               title={activeItem.label}
-              description={`${importLanguages.find(item => item.value === language)?.label ?? language} · ${activeGroup.label}。请先检查文件和目标位置，再预览确认后导入。`}
+              description={`${importLanguages.find(item => item.value === language)?.label ?? language} · ${activeGroup.label}`}
             />
 
             {toeicPart ? (
@@ -327,10 +356,8 @@ export default async function UnifiedImportPage({
                 collectionScope={
                   activeGroup.scope === 'paper' ? 'paper' : 'material'
                 }
-                defaultQuestionType={
-                  toeicPart?.questionType ||
-                  (japaneseListeningSection ? 'LISTENING' : undefined)
-                }
+                defaultQuestionType={defaultQuestionType}
+                defaultQuestionsPerMaterial={defaultQuestionsPerMaterial}
                 defaultListeningSectionNumber={
                   japaneseListeningSection
                     ? String(japaneseListeningSection.sectionNumber)

@@ -15,6 +15,7 @@ import {
   getNewsTypeLabel,
   normalizeNewsMetadata,
 } from '@/features/reading/domain/news-metadata'
+import { getMaterialPronunciationChoices } from '@/modules/language/pronunciation-choice-actions'
 import ArticleSiblingNav from '@/features/reading/ui/ArticleSiblingNav'
 
 export const revalidate = 0
@@ -34,6 +35,8 @@ export default async function ArticleDetailPage({
   if (isEbookSourceKind(article.sourceKind)) {
     redirect(`/reading/ebooks/${encodeURIComponent(article.id)}`)
   }
+
+  const pronunciationChoices = await getMaterialPronunciationChoices(id)
 
   const news = normalizeNewsMetadata({
     ...article,
@@ -130,6 +133,7 @@ export default async function ArticleDetailPage({
           content={article.content}
           chapters={article.chapters}
           initialVocabularyMetaMap={article.vocabularyMetaMap}
+          initialPronunciationChoices={pronunciationChoices}
         />
 
         {article.category?.collectionType === 'PAPER' ? (

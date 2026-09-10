@@ -32,6 +32,10 @@ import {
   normalizePaperAttributes,
   PAPER_ACCEPTED_MATERIAL_TYPES,
 } from '@/features/practice/domain/paper-attributes'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 type QuestionOptionInput = {
   text?: string | null
@@ -225,14 +229,14 @@ export async function createArticle(data: CreateArticlePayload) {
         ? getPaperReadingMaterialTitle(paperQuestionType)
         : articleTitle || '未命名阅读材料'
 
-    await prisma.$transaction(async tx => {
+    const createdMaterial = await prisma.$transaction(async tx => {
       const lastMaterial = await tx.collectionMaterial.aggregate({
         where: { collectionId },
         _max: { sortOrder: true },
       })
       const nextMaterialOrder = (lastMaterial._max.sortOrder ?? -1) + 1
 
-      await tx.material.create({
+      return tx.material.create({
         data: {
           type: MaterialType.READING,
           title: materialTitle,
@@ -290,8 +294,11 @@ export async function createArticle(data: CreateArticlePayload) {
             })),
           },
         },
+        select: { id: true },
       })
     })
+    await precomputePracticeVocabularyMaterialAnalyses([createdMaterial.id])
+    invalidatePracticeVocabularyAnalytics()
     return {
       success: true,
       message:
@@ -388,6 +395,9 @@ export async function moveReadingMaterialToPaper(input: {
         },
       })
     })
+
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePath('/manage/practice')
     revalidatePath(`/manage/practice/${sourcePaperId}`)
@@ -551,6 +561,8 @@ export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
         sortOrder: nextOrder,
       },
     })
+    await precomputePracticeVocabularyMaterialAnalyses([quizMaterialId])
+    invalidatePracticeVocabularyAnalytics()
     return { success: true, message: '题目录入成功！' }
   } catch (error) {
     console.error(error)
@@ -704,6 +716,8 @@ export async function updateArticleWithQuestions(
         },
       })
     })
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePath('/')
     revalidatePath('/manage/import')
@@ -904,6 +918,8 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
         },
       })
     })
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePath('/')
     revalidatePath('/manage/import')
@@ -1098,6 +1114,8 @@ export async function updateLessonQuestions(
         },
       })
     })
+    await precomputePracticeVocabularyMaterialAnalyses([materialId])
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePath('/')
     revalidatePath('/manage/import')

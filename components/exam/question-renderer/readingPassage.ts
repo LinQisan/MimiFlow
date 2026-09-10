@@ -170,6 +170,7 @@ export const buildReadingPassageParts = ({
       renderSafeStructuredText(
         annotateExamText({
           text: htmlContent,
+          protectedTokens: trustedMarkup.tokens,
           preserveNewlines: true,
           settings: { ...annotation, showMeaning: false },
         }),

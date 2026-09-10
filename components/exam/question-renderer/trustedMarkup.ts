@@ -22,5 +22,11 @@ export const createTrustedMarkupSlots = (sourceText: string) => {
       renderedHtml,
     )
 
-  return { add, restore }
+  return {
+    add,
+    restore,
+    get tokens() {
+      return slots.map(slot => slot.token)
+    },
+  }
 }

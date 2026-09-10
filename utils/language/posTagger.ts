@@ -1,4 +1,8 @@
 import { guessLanguageCode } from './langDetector'
+import {
+  normalizeJapanesePartOfSpeech,
+  normalizeSavedJapanesePartsOfSpeech,
+} from './partOfSpeech'
 
 const unique = (list: string[]) => Array.from(new Set(list.filter(Boolean)))
 
@@ -46,8 +50,8 @@ const EN_POS_OPTIONS = [
 const JA_POS_OPTIONS = [
   '名詞',
   '動詞',
-  '形容詞',
-  '形容動詞',
+  'い形容詞',
+  'な形容詞',
   '副詞',
   '助詞',
   '助動詞',
@@ -69,22 +73,6 @@ const normalizeEnglishPos = (raw: string) => {
   if (lower.startsWith('conj')) return 'conj.'
   if (lower.startsWith('int')) return 'interj.'
   return raw.trim()
-}
-
-const normalizeJapanesePos = (raw: string) => {
-  const value = raw.trim()
-  if (!value) return ''
-  if (value.includes('名')) return '名詞'
-  if (value.includes('動')) return '動詞'
-  if (value.includes('形容動')) return '形容動詞'
-  if (value.includes('形容')) return '形容詞'
-  if (value.includes('副')) return '副詞'
-  if (value.includes('助詞')) return '助詞'
-  if (value.includes('助動')) return '助動詞'
-  if (value.includes('連体')) return '連体詞'
-  if (value.includes('接続')) return '接続詞'
-  if (value.includes('感動')) return '感動詞'
-  return value
 }
 
 const detectLanguage = (word: string, sentence: string) => {
@@ -137,11 +125,11 @@ const inferJapanesePos = (word: string) => {
   if (JA_CONJ.has(w)) result.push('接続詞')
   if (JA_INTERJ.has(w)) result.push('感動詞')
   if (/(する|した|して|します|できる|できた|なる|なった)$/.test(w)) result.push('動詞')
-  if (/(い)$/.test(w) && /[\u4e00-\u9fff]/.test(w)) result.push('形容詞')
-  if (/(的|な)$/.test(w)) result.push('形容動詞')
+  if (/(い)$/.test(w)) result.push('い形容詞')
+  if (/(的|な)$/.test(w)) result.push('な形容詞')
   if (/(に)$/.test(w) && /[\u3040-\u30ff]/.test(w)) result.push('副詞')
   if (result.length === 0) result.push('名詞')
-  return unique(result).map(normalizeJapanesePos)
+  return unique(result).map(normalizeJapanesePartOfSpeech)
 }
 
 export const inferContextualPos = (
@@ -152,8 +140,11 @@ export const inferContextualPos = (
   const lang = detectLanguage(word, sentence)
   const normalizedExisting =
     lang === 'ja'
-      ? existingPos.map(normalizeJapanesePos)
+      ? normalizeSavedJapanesePartsOfSpeech(existingPos)
       : existingPos.map(normalizeEnglishPos)
+
+  const saved = unique(normalizedExisting)
+  if (saved.length > 0) return saved
 
   const inferred =
     lang === 'ja'
@@ -162,12 +153,5 @@ export const inferContextualPos = (
         ? inferEnglishPos(word, sentence)
         : normalizedExisting
 
-  const intersect = inferred.filter(pos => normalizedExisting.includes(pos))
-  if (intersect.length > 0) return unique(intersect)
-  return unique([...inferred, ...normalizedExisting]).slice(0, 3)
-}
-
-export const posBadgeClass = (pos?: string) => {
-  void pos
-  return 'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700'
+  return unique(inferred).slice(0, 3)
 }

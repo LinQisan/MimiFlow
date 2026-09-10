@@ -9,7 +9,10 @@ import { revalidateTag, unstable_cache } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
-import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
+import {
+  dedupeAndRankSentences,
+  normalizeVocabularySentenceTextKey,
+} from '@/utils/vocabulary/sentenceQuality'
 import {
   findAudioDialogueTiming,
   parseAudioDialogueSourceId,
@@ -17,14 +20,34 @@ import {
 import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import { getReadingCardTitle } from '@/lib/repositories/materials/material-title'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { isVocabularyStructureTag } from '../domain/jlpt'
+import { computeSingleSentencePronunciation } from './pronunciation-service'
+import { PRONUNCIATION_VERSION } from '../domain/pronunciation'
+import { hasJapanese } from '@/modules/language/domain/text'
+import { normalizeVocabularyWord } from '../domain/normalized-word'
 
-const VOCABULARY_DETAIL_INCLUDE = {
+const VOCABULARY_RELATION_SELECT = {
+  id: true, type: true, targetVocabularyId: true, targetText: true,
+  targetReading: true, marker: true, pattern: true,
+  targetVocabulary: { select: { word: true, pronunciations: true, partsOfSpeech: true } },
+} satisfies Prisma.VocabularyRelationSelect
+
+const VOCABULARY_DETAIL_SELECT = {
+  id: true, word: true, sourceType: true, wordAudio: true,
+  readingAudios: {
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { reading: true, audioFile: true },
+  },
+  etymologies: true,
+  pronunciations: true, partsOfSpeech: true, meanings: true,
+  grammarPartOfSpeech: true, transitivity: true, conjugationType: true,
+  pronunciationData: true, pronunciationVersion: true, createdAt: true, updatedAt: true,
   wordbooks: {
     where: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } },
     orderBy: { createdAt: 'asc' },
-    include: { wordbook: { select: { id: true, title: true } } },
+    select: { jlpt: true, wordbook: { select: { id: true, title: true } } },
   },
-  tags: { include: { tag: { select: { name: true } } } },
+  tags: { select: { tag: { select: { name: true } } } },
   review: {
     select: {
       id: true,
@@ -40,10 +63,29 @@ const VOCABULARY_DETAIL_INCLUDE = {
       last_review: true,
     },
   },
-} satisfies Prisma.VocabularyInclude
+  senses: {
+    orderBy: { order: 'asc' },
+    select: {
+      id: true, order: true,
+      definitions: { orderBy: { sortOrder: 'asc' }, select: { id: true, language: true, definition: true } },
+      patterns: { orderBy: { sortOrder: 'asc' }, select: { id: true, text: true, meaning: true } },
+      expressions: { orderBy: { sortOrder: 'asc' }, select: { id: true, type: true, text: true, reading: true, meaning: true } },
+      relations: {
+        orderBy: { sortOrder: 'asc' },
+        select: VOCABULARY_RELATION_SELECT,
+      },
+      notes: { orderBy: { sortOrder: 'asc' }, select: { id: true, type: true, text: true } },
+    },
+  },
+  relations: {
+    where: { senseId: null },
+    orderBy: { sortOrder: 'asc' },
+    select: VOCABULARY_RELATION_SELECT,
+  },
+} satisfies Prisma.VocabularySelect
 
 export type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
-  include: typeof VOCABULARY_DETAIL_INCLUDE
+  select: typeof VOCABULARY_DETAIL_SELECT
 }>
 
 export const VOCABULARY_GROUPS_CACHE_TAG = 'vocabulary-groups'
@@ -61,9 +103,8 @@ const getCachedVocabularyGroups = unstable_cache(
       select: {
         id: true,
         word: true,
+        etymologies: true,
         pronunciations: true,
-        // partsOfSpeech keeps the POS-filter options working; it is part of
-        // the current row shape consumed by the vocabulary page.
         partsOfSpeech: true,
         sourceType: true,
       },
@@ -81,20 +122,29 @@ export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
   return getCachedVocabularyGroups(userId, JSON.stringify(where))
 }
 
+export async function listVocabularyTagOptions() {
+  const userId = await getCurrentUserId()
+  const rows = await prisma.vocabularyTag.findMany({
+    where: {
+      userId,
+      vocabularies: { some: { vocabulary: { userId } } },
+    },
+    orderBy: { name: 'asc' },
+    select: {
+      name: true,
+      _count: { select: { vocabularies: true } },
+    },
+  })
+  return rows.filter(row => !isVocabularyStructureTag(row.name))
+}
+
 export async function listVocabularyDetailsByWords(words: string[]) {
   if (words.length === 0) return Promise.resolve([] as VocabularyDetailRow[])
   const userId = await getCurrentUserId()
+  const normalizedWords = Array.from(new Set(words.map(normalizeVocabularyWord)))
   return prisma.vocabulary.findMany({
-    where: { userId, word: { in: Array.from(new Set(words)) } },
-    include: VOCABULARY_DETAIL_INCLUDE,
-  })
-}
-
-export async function findVocabularyDetail(id: string) {
-  const userId = await getCurrentUserId()
-  return prisma.vocabulary.findFirst({
-    where: { id, userId },
-    include: VOCABULARY_DETAIL_INCLUDE,
+    where: { userId, normalizedWord: { in: normalizedWords } },
+    select: VOCABULARY_DETAIL_SELECT,
   })
 }
 
@@ -103,8 +153,14 @@ export async function listVocabularySentenceLinks(vocabularyIds: string[]) {
   const userId = await getCurrentUserId()
   return prisma.vocabularySentenceLink.findMany({
     where: { vocabularyId: { in: vocabularyIds }, vocabulary: { userId } },
-    include: { sentence: true },
-    orderBy: { createdAt: 'asc' },
+    select: {
+      id: true, vocabularyId: true, meaningIndex: true, senseId: true, posTags: true,
+      sentence: { select: {
+        text: true, source: true, sourceUrl: true, translation: true, audioFile: true,
+        sourceType: true, sourceId: true, pronunciationData: true, pronunciationVersion: true,
+      } },
+    },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
   })
 }
 
@@ -338,7 +394,7 @@ export async function resolveVocabularySentenceSources(
 export const normalizeSentencePosTags = (list?: string[] | null) =>
   Array.from(
     new Set((list || []).map(item => item.trim()).filter(Boolean)),
-  ).slice(0, 1)
+  ).slice(0, 20)
 
 export type VocabularySentenceRecord = {
   text: string
@@ -433,15 +489,6 @@ export const findExistingVocabularyCandidate = async (normalizedWord: string) =>
   return bestCandidate
 }
 
-const normalizeSentenceKey = (text: string) =>
-  text
-    .normalize('NFKC')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
-    .replace(/^[\s([{【（]*\d+[\]).】、．\s-]*/, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-
 export const upsertVocabularySentenceLink = async (
   vocabularyId: string,
   sentence: {
@@ -466,8 +513,16 @@ export const upsertVocabularySentenceLink = async (
   const text = sentence.text.trim()
   if (!text) return
   const sourceUrl = sentence.sourceUrl.trim() || '#'
-  const normalizedText = normalizeSentenceKey(text)
+  const normalizedText = normalizeVocabularySentenceTextKey(text)
   if (!normalizedText) return
+
+  let sentencePronunciationData: Prisma.InputJsonValue | undefined = undefined
+  if (hasJapanese(text)) {
+    const computed = await computeSingleSentencePronunciation(text)
+    if (computed) {
+      sentencePronunciationData = computed as unknown as Prisma.InputJsonValue
+    }
+  }
 
   const sentenceRow = await prisma.vocabularySentence.upsert({
     where: {
@@ -483,6 +538,12 @@ export const upsertVocabularySentenceLink = async (
       source: sentence.source.trim() || '未知来源',
       sourceType: sentence.sourceType,
       sourceId: sentence.sourceId || null,
+      ...(sentencePronunciationData
+        ? {
+            pronunciationData: sentencePronunciationData,
+            pronunciationVersion: PRONUNCIATION_VERSION,
+          }
+        : {}),
     },
     create: {
       text,
@@ -493,6 +554,8 @@ export const upsertVocabularySentenceLink = async (
       sourceUrl,
       sourceType: sentence.sourceType,
       sourceId: sentence.sourceId || null,
+      pronunciationData: sentencePronunciationData,
+      pronunciationVersion: sentencePronunciationData ? PRONUNCIATION_VERSION : null,
     },
   })
 
@@ -527,7 +590,7 @@ export const findSentenceLinkByText = async (
   sentenceText: string,
 ) => {
   const userId = await getCurrentUserId()
-  const normalized = normalizeSentenceKey(sentenceText)
+  const normalized = normalizeVocabularySentenceTextKey(sentenceText)
   if (!normalized) return null
   return prisma.vocabularySentenceLink.findFirst({
     where: {
@@ -541,15 +604,6 @@ export const findSentenceLinkByText = async (
       sentence: true,
     },
   })
-}
-
-export const cleanupOrphanSentence = async (sentenceId: string) => {
-  const count = await prisma.vocabularySentenceLink.count({
-    where: { sentenceId },
-  })
-  if (count === 0) {
-    await prisma.vocabularySentence.delete({ where: { id: sentenceId } })
-  }
 }
 
 export const resolveVocabularySourceMeta = async (

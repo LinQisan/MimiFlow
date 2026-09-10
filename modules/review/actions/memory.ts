@@ -387,10 +387,13 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
     const wasRecallSuccess = rating >= Rating.Hard
 
     await prisma.$transaction(async tx => {
-      await tx.sentenceReview.update({
-        where: { id: reviewId },
+      // updateMany with the owner in the filter fails closed instead of
+      // writing to a card that changed hands mid-request.
+      const updated = await tx.sentenceReview.updateMany({
+        where: { id: reviewId, userId },
         data: toStoredFsrsUpdate(nextCard),
       })
+      if (updated.count === 0) throw new Error('找不到复习记录')
 
       await tx.reviewEvent.create({
         data: {
@@ -501,16 +504,18 @@ export async function addSentenceToReview(dialogueId: number) {
 }
 
 const ensureVocabularyReviewCard = async (vocabularyId: string, userId: string) => {
-  const existing = await prisma.vocabularyReview.findUnique({
-    where: { vocabularyId },
-  })
-  if (existing) return existing
-
+  // Ownership is verified before touching the globally-addressed review card,
+  // so one user can never read or extend another user's card by id.
   const vocabulary = await prisma.vocabulary.findFirst({
     where: { id: vocabularyId, userId },
     select: { id: true },
   })
   if (!vocabulary) throw new Error('找不到单词记录')
+
+  const existing = await prisma.vocabularyReview.findUnique({
+    where: { vocabularyId },
+  })
+  if (existing) return existing
 
   const emptyCard = createEmptyCard()
   return prisma.vocabularyReview.create({
@@ -555,10 +560,11 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
     const wasRecallSuccess = rating >= Rating.Hard
 
     await prisma.$transaction(async tx => {
-      await tx.vocabularyReview.update({
-        where: { id: record.id },
+      const updated = await tx.vocabularyReview.updateMany({
+        where: { id: record.id, vocabulary: { userId } },
         data: toStoredFsrsUpdate(nextCard),
       })
+      if (updated.count === 0) throw new Error('找不到单词记录')
 
       await tx.reviewEvent.create({
         data: {

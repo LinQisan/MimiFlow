@@ -5,9 +5,10 @@ export type RankedSentenceLike = {
   sourceType?: string | null
   meaningIndex?: number | null
   posTags?: string[] | null
+  audioFile?: string | null
 }
 
-const normalizeTextKey = (value: string) =>
+export const normalizeVocabularySentenceTextKey = (value: string) =>
   value
     .normalize('NFKC')
     .replace(/[\u200B-\u200D\uFEFF]/g, '')
@@ -15,6 +16,11 @@ const normalizeTextKey = (value: string) =>
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase()
+
+// Distinct external clips may contain identical dialogue. Keep their identities
+// through the existing sentence display pipeline, including the display limit.
+const isNadeshikoSentence = (item: RankedSentenceLike) =>
+  Boolean(item.sourceUrl?.startsWith('https://nadeshiko.co/sentence/'))
 
 const resolveSourceType = (item: RankedSentenceLike) => {
   if (item.sourceType) return item.sourceType
@@ -53,11 +59,16 @@ export function dedupeAndRankSentences<T extends RankedSentenceLike>(
 
   const map = new Map<string, { item: T; score: number }>()
   for (const item of list) {
-    const key = normalizeTextKey(item.text || '')
+    const key = isNadeshikoSentence(item)
+      ? item.sourceUrl!
+      : normalizeVocabularySentenceTextKey(item.text || '')
     if (!key) continue
     const score = sentenceScore(item)
     const existed = map.get(key)
-    if (!existed || score > existed.score) {
+    // Reimports can leave an older, silent copy of the same example. Keep
+    // source/meaning ranking, but prefer playable audio when scores tie.
+    const addsAudio = Boolean(item.audioFile?.trim()) && !existed?.item.audioFile?.trim()
+    if (!existed || score > existed.score || (score === existed.score && addsAudio)) {
       map.set(key, { item, score })
     }
   }
@@ -69,6 +80,6 @@ export function dedupeAndRankSentences<T extends RankedSentenceLike>(
       const lenB = Array.from((b.item.text || '').trim()).length
       return lenA - lenB
     })
-    .slice(0, Math.max(1, limit))
+    .filter((entry, index) => index < Math.max(1, limit) || isNadeshikoSentence(entry.item))
     .map(entry => entry.item)
 }

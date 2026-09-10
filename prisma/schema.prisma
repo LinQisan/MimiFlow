@@ -15,6 +15,47 @@ enum SourceType {
   QUIZ_QUESTION // 来自选择题
 }
 
+enum VocabularyPartOfSpeechKind {
+  noun
+  verb
+  i_adjective
+  na_adjective
+  adverb
+  adnominal
+  other
+}
+
+enum VocabularyTransitivity {
+  intransitive
+  transitive
+  both
+}
+
+enum VocabularyExpressionType {
+  collocation
+  compound
+  idiom
+}
+
+enum VocabularyRelationType {
+  compound
+  synonym
+  antonym
+  related
+  collocation
+  transitivity_pair
+  derived
+}
+
+enum VocabularyUsageNoteType {
+  usage
+  register
+  restriction
+  grammar
+  nuance
+  warning
+}
+
 enum LearningRecordKind {
   LEARNING_POINT
   SENTENCE
@@ -98,10 +139,24 @@ model Material {
   studyProgresses     MaterialStudyProgress[]
   playtimeStats       MaterialPlaytimeStat[]
   mediaSubtitleLines  MediaSubtitleLine[]
+  pronunciationChoices MaterialPronunciationChoice[]
+  sudachiAnalysis     MaterialSudachiAnalysis?
 
   @@index([type, createdAt])
   @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "materials_title_trgm_idx")
   @@map("materials")
+}
+
+model MaterialSudachiAnalysis {
+  materialId       String   @id @map("material_id")
+  sourceHash       String   @map("source_hash")
+  tokenizerVersion String   @map("tokenizer_version")
+  tokenizedAt      DateTime @default(now()) @map("tokenized_at")
+  tokens           Json
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@map("material_sudachi_analyses")
 }
 
 model MediaSubtitleLine {
@@ -133,26 +188,38 @@ model MediaSubtitleLine {
 }
 
 model Vocabulary {
-  id     String @id @default(cuid())
-  userId String @map("user_id")
-  word   String
+  id             String @id @default(cuid())
+  userId         String @map("user_id")
+  word           String
+  normalizedWord String @map("normalized_word")
 
-  sourceType     SourceType
-  sourceId       String
-  wordAudio      String?
-  pronunciations String?
-  partsOfSpeech  String?
-  meanings       String?
-  wordbooks      WordbookVocabulary[]
-  review         VocabularyReview?
-  createdAt      DateTime                    @default(now())
-  updatedAt      DateTime                    @default(now()) @updatedAt
-  sentenceLinks  VocabularySentenceLink[]
-  tags           VocabularyTagOnVocabulary[]
-  definitions    VocabularyDefinition[]
-  user           User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sourceType           SourceType
+  sourceId             String
+  readingAudios        VocabularyReadingAudio[]
+  wordAudio            String?
+  pronunciations       String?
+  etymologies          String?
+  partsOfSpeech        String?
+  meanings             String?
+  grammarPartOfSpeech  VocabularyPartOfSpeechKind? @map("grammar_part_of_speech")
+  transitivity         VocabularyTransitivity?
+  conjugationType      String?                     @map("conjugation_type")
+  pronunciationData    Json?                       @map("pronunciation_data")
+  pronunciationVersion Int?                        @map("pronunciation_version")
+  wordbooks            WordbookVocabulary[]
+  review               VocabularyReview?
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @default(now()) @updatedAt
+  sentenceLinks        VocabularySentenceLink[]
+  tags                 VocabularyTagOnVocabulary[]
+  definitions          VocabularyDefinition[]
+  senses               VocabularySense[]
+  relations            VocabularyRelation[]        @relation("VocabularyRelationSource")
+  incomingRelations    VocabularyRelation[]        @relation("VocabularyRelationTarget")
+  user                 User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, word])
+  @@index([userId, normalizedWord, createdAt(sort: Desc)], map: "vocabulary_user_normalized_created_idx")
   @@index([userId, createdAt])
   @@index([createdAt])
   @@index([sourceType, sourceId])
@@ -163,18 +230,34 @@ model Vocabulary {
   @@index([meanings(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_meanings_trgm_idx")
 }
 
+model VocabularyReadingAudio {
+  id           String @id @default(cuid())
+  vocabularyId String
+  reading      String
+  audioFile    String
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  vocabulary   Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+
+  @@unique([vocabularyId, reading, audioFile])
+  @@index([vocabularyId, sortOrder])
+}
+
 model VocabularyDefinition {
-  id             String     @id @default(cuid())
-  vocabularyId   String     @map("vocabulary_id")
+  id             String           @id @default(cuid())
+  vocabularyId   String           @map("vocabulary_id")
+  senseId        String?          @map("sense_id")
   language       String
-  dictionaryName String     @map("dictionary_name")
-  definition     String     @db.Text
-  sortOrder      Int        @default(0) @map("sort_order")
-  createdAt      DateTime   @default(now()) @map("created_at")
-  updatedAt      DateTime   @updatedAt @map("updated_at")
-  vocabulary     Vocabulary @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  dictionaryName String           @map("dictionary_name")
+  definition     String           @db.Text
+  sortOrder      Int              @default(0) @map("sort_order")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  vocabulary     Vocabulary       @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  sense          VocabularySense? @relation(fields: [senseId], references: [id], onDelete: Cascade)
 
   @@index([vocabularyId, sortOrder], map: "vocabulary_definitions_vocabulary_sort_idx")
+  @@index([senseId, sortOrder], map: "vocabulary_definitions_sense_sort_idx")
   @@map("vocabulary_definitions")
 }
 
@@ -198,6 +281,22 @@ model VocabularyTagOnVocabulary {
 
   @@id([vocabularyId, tagId])
   @@index([tagId])
+}
+
+model VocabularyPartOfSpeech {
+  id           String                   @id @default(cuid())
+  userId       String                   @map("user_id")
+  languageCode String                   @default("ja") @map("language_code")
+  name         String
+  parentId     String?                  @map("parent_id")
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  parent       VocabularyPartOfSpeech?  @relation("VocabularyPartOfSpeechHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children     VocabularyPartOfSpeech[] @relation("VocabularyPartOfSpeechHierarchy")
+  user         User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, languageCode, name])
+  @@index([userId, languageCode, parentId])
+  @@map("vocabulary_parts_of_speech")
 }
 
 model VocabularyReview {
@@ -259,6 +358,10 @@ model WordbookVocabulary {
   id           String     @id @default(cuid())
   wordbookId   String     @map("wordbook_id")
   vocabularyId String     @map("vocabulary_id")
+  jlpt         String?
+  section      String?
+  entryNumber  String?    @map("entry_number")
+  page         String?
   sortOrder    Int        @default(0) @map("sort_order")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @default(now()) @updatedAt @map("updated_at")
@@ -267,26 +370,33 @@ model WordbookVocabulary {
 
   @@unique([wordbookId, vocabularyId])
   @@index([wordbookId, sortOrder])
+  @@index([wordbookId, jlpt])
   @@index([vocabularyId])
   @@map("wordbook_vocabularies")
 }
 
 model VocabularySentence {
-  id              String                   @id @default(cuid())
-  text            String
-  normalizedText  String
-  translation     String?
-  audioFile       String?
-  source          String
-  sourceUrl       String
-  sourceType      SourceType?
-  sourceId        String?
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @default(now()) @updatedAt
-  links           VocabularySentenceLink[]
-  grammarExamples GrammarExample[]
+  id                   String                   @id @default(cuid())
+  provider             String?
+  externalId           String?                  @map("external_id")
+  sourceMetadata       Json?                    @map("source_metadata")
+  text                 String
+  normalizedText       String
+  translation          String?
+  audioFile            String?
+  source               String
+  sourceUrl            String
+  sourceType           SourceType?
+  sourceId             String?
+  pronunciationData    Json?                    @map("pronunciation_data")
+  pronunciationVersion Int?                     @map("pronunciation_version")
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @default(now()) @updatedAt
+  links                VocabularySentenceLink[]
+  grammarExamples      GrammarExample[]
 
   @@unique([normalizedText, sourceUrl])
+  @@unique([provider, externalId])
   @@index([sourceType, sourceId])
   @@index([audioFile])
   @@index([text(ops: raw("gin_trgm_ops"))], type: Gin, map: "vocabulary_sentences_text_trgm_idx")
@@ -399,14 +509,104 @@ model VocabularySentenceLink {
   id           String             @id @default(cuid())
   vocabularyId String
   sentenceId   String
+  senseId      String?
   meaningIndex Int?
   posTags      String?
+  sortOrder    Int                @default(0) @map("sort_order")
   createdAt    DateTime           @default(now())
   vocabulary   Vocabulary         @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
   sentence     VocabularySentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+  sense        VocabularySense?   @relation(fields: [senseId], references: [id], onDelete: Cascade)
 
   @@unique([vocabularyId, sentenceId])
   @@index([sentenceId])
+  @@index([senseId, sortOrder])
+}
+
+model VocabularySense {
+  id           String                   @id @default(cuid())
+  vocabularyId String                   @map("vocabulary_id")
+  order        Int
+  createdAt    DateTime                 @default(now()) @map("created_at")
+  updatedAt    DateTime                 @updatedAt @map("updated_at")
+  vocabulary   Vocabulary               @relation(fields: [vocabularyId], references: [id], onDelete: Cascade)
+  definitions  VocabularyDefinition[]
+  examples     VocabularySentenceLink[]
+  patterns     VocabularyPattern[]
+  expressions  VocabularyExpression[]
+  relations    VocabularyRelation[]
+  notes        VocabularyUsageNote[]
+
+  @@unique([vocabularyId, order])
+  @@index([vocabularyId, order])
+  @@map("vocabulary_senses")
+}
+
+model VocabularyPattern {
+  id        String          @id @default(cuid())
+  senseId   String          @map("sense_id")
+  text      String
+  meaning   String?
+  sortOrder Int             @default(0) @map("sort_order")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  sense     VocabularySense @relation(fields: [senseId], references: [id], onDelete: Cascade)
+
+  @@index([senseId, sortOrder])
+  @@map("vocabulary_patterns")
+}
+
+model VocabularyExpression {
+  id        String                   @id @default(cuid())
+  senseId   String                   @map("sense_id")
+  type      VocabularyExpressionType
+  text      String
+  reading   String?
+  meaning   String?
+  sortOrder Int                      @default(0) @map("sort_order")
+  createdAt DateTime                 @default(now()) @map("created_at")
+  updatedAt DateTime                 @updatedAt @map("updated_at")
+  sense     VocabularySense          @relation(fields: [senseId], references: [id], onDelete: Cascade)
+
+  @@index([senseId, sortOrder])
+  @@map("vocabulary_expressions")
+}
+
+model VocabularyRelation {
+  id                 String                 @id @default(cuid())
+  vocabularyId       String                 @map("vocabulary_id")
+  senseId            String?                @map("sense_id")
+  type               VocabularyRelationType
+  targetVocabularyId String?                @map("target_vocabulary_id")
+  targetText         String?                @map("target_text")
+  targetReading      String?                @map("target_reading")
+  marker             String?
+  pattern            String?
+  sortOrder          Int                    @default(0) @map("sort_order")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+  vocabulary         Vocabulary             @relation("VocabularyRelationSource", fields: [vocabularyId], references: [id], onDelete: Cascade)
+  sense              VocabularySense?       @relation(fields: [senseId], references: [id], onDelete: Cascade)
+  targetVocabulary   Vocabulary?            @relation("VocabularyRelationTarget", fields: [targetVocabularyId], references: [id], onDelete: SetNull)
+
+  @@index([vocabularyId, sortOrder])
+  @@index([senseId, sortOrder])
+  @@index([targetVocabularyId])
+  @@map("vocabulary_relations")
+}
+
+model VocabularyUsageNote {
+  id        String                  @id @default(cuid())
+  senseId   String                  @map("sense_id")
+  type      VocabularyUsageNoteType
+  text      String                  @db.Text
+  sortOrder Int                     @default(0) @map("sort_order")
+  createdAt DateTime                @default(now()) @map("created_at")
+  updatedAt DateTime                @updatedAt @map("updated_at")
+  sense     VocabularySense         @relation(fields: [senseId], references: [id], onDelete: Cascade)
+
+  @@index([senseId, sortOrder])
+  @@map("vocabulary_usage_notes")
 }
 
 model SentenceReview {
@@ -569,6 +769,7 @@ model User {
   playtimeStats                 MaterialPlaytimeStat[]
   vocabularies                  Vocabulary[]
   vocabularyTags                VocabularyTag[]
+  vocabularyPartsOfSpeech       VocabularyPartOfSpeech[]
   wordbookSeries                WordbookSeries[]
   wordbooks                     Wordbook[]
   sentenceReviews               SentenceReview[]
@@ -580,6 +781,7 @@ model User {
   studyTimes                    StudyTimeDaily[]
   learningRecords               LearningRecord[]
   examScoreRecords              ExamScoreRecord[]
+  pronunciationChoices          MaterialPronunciationChoice[]
 
   @@map("GameProfile")
 }
@@ -747,4 +949,20 @@ model StudyTimeDaily {
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dateKey, kind])
+}
+
+model MaterialPronunciationChoice {
+  id String @id @default(cuid())
+  userId String
+  materialId String
+  location String
+  sourceText String
+  start Int
+  surface String
+  reading String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  material Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, materialId, location, start])
+  @@map("material_pronunciation_choices")
 }

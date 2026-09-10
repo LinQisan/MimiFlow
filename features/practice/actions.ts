@@ -7,6 +7,10 @@ import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { normalizePaperAttributes } from '@/features/practice/domain/paper-attributes'
+import {
+  invalidatePracticeVocabularyAnalytics,
+  precomputePracticeVocabularyMaterialAnalyses,
+} from '@/features/practice/server/vocabulary-analytics'
 
 export async function updatePaperAttributes(formData: FormData) {
   try {
@@ -57,6 +61,14 @@ export async function updatePaperAttributes(formData: FormData) {
         collectionType,
       },
     })
+    const affectedMaterials = await prisma.collectionMaterial.findMany({
+      where: { collectionId: paperId },
+      select: { materialId: true },
+    })
+    await precomputePracticeVocabularyMaterialAnalyses(
+      affectedMaterials.map(item => item.materialId),
+    )
+    invalidatePracticeVocabularyAnalytics()
 
     revalidatePath('/practice')
     revalidatePath(`/practice/${paperId}`)

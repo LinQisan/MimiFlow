@@ -1,7 +1,9 @@
+import { isJapaneseSurfaceOccurrenceAllowed } from '../vocabulary/japaneseInflection.ts'
+
 const KANJI_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]/
 
-export const escapeHtml = (text: string) =>
-  text
+export const escapeHtml = (text?: string | null) =>
+  (text || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -13,11 +15,94 @@ const hasKanji = (text: string) => KANJI_REGEX.test(text)
 const hasNumber = (text: string) => /\p{Number}/u.test(text)
 const INLINE_KANA_READING_PATTERN =
   /([\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]+)([（(])([\u3040-\u30ffー]+)([）)])/gu
-const hasInlineKanaReading = (text: string) => {
-  INLINE_KANA_READING_PATTERN.lastIndex = 0
-  return INLINE_KANA_READING_PATTERN.test(text)
+
+/**
+ * Single source of truth for what parenthesized kana in a surface means
+ * relative to the authoritative reading.
+ *
+ * The surface describes *how it is written*; the reading (DB / Sudachi)
+ * describes *how it is read* and always wins. `漢字(かな)` shapes resolve to:
+ *
+ * - `none`: no parenthesized kana — normal ruby alignment.
+ * - `inline`: genuine authored inline notation — every paren group is covered
+ *   by the reading (e.g. 今日(きょう) + きょう, 辿（たど）っ + たどっ).
+ * - `suffix`: the reading ends with the trailing paren kana, so the parens
+ *   are a spelling suffix/okurigana marker, not the kanji reading
+ *   (e.g. 後(に) + のちに → stem のち + literal (に)).
+ * - `literal`: incompatible — parens are plain surface text and the full
+ *   reading still belongs to the kanji (e.g. 後(に) + あと).
+ */
+export type InlineKanaClassification =
+  | { kind: 'none' }
+  | { kind: 'inline'; groups: string[] }
+  | { kind: 'suffix'; stemReading: string; suffixKana: string }
+  | { kind: 'literal' }
+
+export const classifyInlineKanaReading = (
+  surface: string,
+  pronunciation: string,
+): InlineKanaClassification => {
+  const groups = extractInlineKanaReadings(surface)
+  if (groups.length === 0) return { kind: 'none' }
+  const rawChars = Array.from(pronunciation.replace(/[\s\u3000]+/g, ''))
+  if (rawChars.length === 0) return { kind: 'literal' }
+  // Suffix first: a trailing okurigana-style marker must not swallow the
+  // kanji reading. Match pairwise from the end so the stem keeps its
+  // authored display form; require a non-empty stem.
+  const tailGroup = groups[groups.length - 1]
+  const normTail = Array.from(normalizeKanaComparable(tailGroup))
+  if (normTail.length > 0 && rawChars.length > normTail.length) {
+    let matched = true
+    for (let i = 0; i < normTail.length; i++) {
+      if (
+        normalizeKanaComparable(rawChars[rawChars.length - 1 - i]) !==
+        normTail[normTail.length - 1 - i]
+      ) {
+        matched = false
+        break
+      }
+    }
+    if (matched) {
+      return {
+        kind: 'suffix',
+        stemReading: rawChars.slice(0, rawChars.length - normTail.length).join(''),
+        suffixKana: tailGroup,
+      }
+    }
+  }
+  // Genuine inline notation only when the reading actually covers it.
+  const comparable = normalizeKanaComparable(rawChars.join(''))
+  const compatible = groups.every(
+    group =>
+      group.length > 0 &&
+      comparable.includes(normalizeKanaComparable(group)),
+  )
+  if (compatible) return { kind: 'inline', groups }
+  return { kind: 'literal' }
 }
+
+export const isInlineKanaReadingCompatible = (
+  surface: string,
+  reading: string,
+): boolean => classifyInlineKanaReading(surface, reading).kind === 'inline'
+
+/**
+ * Every kana group annotated inline as `漢字(かな)` in a surface.
+ * Parser used by {@link classifyInlineKanaReading}; plain matching without
+ * any reading judgment.
+ */
+export const extractInlineKanaReadings = (word: string): string[] => {
+  INLINE_KANA_READING_PATTERN.lastIndex = 0
+  const groups: string[] = []
+  for (const match of word.matchAll(INLINE_KANA_READING_PATTERN)) {
+    groups.push(match[3] || '')
+  }
+  INLINE_KANA_READING_PATTERN.lastIndex = 0
+  return groups.filter(Boolean)
+}
+
 const hasJapanese = (text: string) => /[\u3040-\u30ffー\u4e00-\u9fff]/.test(text)
+const hasKana = (text: string) => /[\u3040-\u30ffー]/.test(text)
 const normalizeKanaComparable = (value: string) =>
   Array.from(value.normalize('NFKC'))
     .map(character => {
@@ -58,6 +143,22 @@ const splitPronunciationForKanji = (kanjiRun: string, pronRun: string) => {
     cursor = nextCursor
   }
   return result
+}
+
+const stripMatchingTrailingOkurigana = (reading: string, suffix: string) => {
+  const readingChars = Array.from(reading)
+  const suffixChars = Array.from(suffix)
+  if (suffixChars.length === 0 || readingChars.length <= suffixChars.length) {
+    return reading
+  }
+
+  const offset = readingChars.length - suffixChars.length
+  const matches = suffixChars.every(
+    (character, index) =>
+      normalizeKanaComparable(readingChars[offset + index]) ===
+      normalizeKanaComparable(character),
+  )
+  return matches ? readingChars.slice(0, offset).join('') : reading
 }
 
 const NUMERIC_UNIT_READINGS: Record<string, string> = {
@@ -137,7 +238,13 @@ export const buildJapaneseRubyHtml = (
 ) => {
   const cleanWord = word.trim()
   const cleanPron = pronunciation.trim()
-  const compactPron = cleanPron.replace(/[\s\u3000]+/g, '')
+  // The authoritative reading, minus a trailing okurigana-style suffix marker
+  // (後(に) + のちに → align 後 against のち; `(に)` stays literal).
+  // Surfaces without such a suffix align against the full reading.
+  const inlineClass = classifyInlineKanaReading(cleanWord, cleanPron)
+  const compactPron = (
+    inlineClass.kind === 'suffix' ? inlineClass.stemReading : cleanPron
+  ).replace(/[\s\u3000]+/g, '')
   if (!cleanWord) return ''
   if (!cleanPron) return escapeHtml(cleanWord)
   const rubyClass = options?.rubyClassName
@@ -146,11 +253,16 @@ export const buildJapaneseRubyHtml = (
   const rtClass = options?.rtClassName ? ` class="${options.rtClassName}"` : ''
   const buildRuby = (base: string, pron: string) =>
     `<ruby${rubyClass}>${escapeHtml(base)}<rt${rtClass} aria-hidden="true" data-context-ignore="true">${escapeHtml(pron)}</rt></ruby>`
+  // A mixed-script word has a reliable boundary at its kana. Keep each
+  // contiguous kanji run together so a reading such as 手探り / てさぐり
+  // becomes 手探 / てさぐ + り, instead of guessing a per-kanji split.
+  const groupKanjiRun =
+    Boolean(options?.groupKanji) || (hasKanji(cleanWord) && hasKana(cleanWord))
 
-  // Sudachi keeps an authored reading such as 辿（たど）っ inside one token and
-  // may report たどっ for the whole token. Use the authored kana for the kanji
-  // ruby so the following small っ is not pulled into the annotation.
-  if (hasInlineKanaReading(cleanWord)) {
+  // Genuine authored inline notation only (e.g. 辿（たど）っ): the reading
+  // itself decides, never the mere presence of parens. Suffix and literal
+  // cases fall through to normal alignment below.
+  if (inlineClass.kind === 'inline') {
     INLINE_KANA_READING_PATTERN.lastIndex = 0
     let inlineCursor = 0
     let inlineOutput = ''
@@ -278,19 +390,66 @@ export const buildJapaneseRubyHtml = (
   if (cleanPron.includes('|') || /[\s\u3000]/.test(cleanPron)) {
     const tokens = splitPronunciationTokens(cleanPron)
     const wordChars = Array.from(cleanWord)
-    const kanjiChars = wordChars.filter(isKanjiChar)
-    if (tokens.length === kanjiChars.length) {
-      let tokenIndex = 0
-      const manual = wordChars
-        .map(ch => {
-          if (!isKanjiChar(ch)) return escapeHtml(ch)
-          const reading = tokens[tokenIndex] || ''
-          tokenIndex += 1
-          return reading ? buildRuby(ch, reading) : escapeHtml(ch)
-        })
-        .join('')
-      if (manual) return manual
+    const manualMemo = new Map<string, string | null>()
+    const buildManual = (wordIndex: number, tokenIndex: number): string | null => {
+      const memoKey = `${wordIndex}:${tokenIndex}`
+      const memoized = manualMemo.get(memoKey)
+      if (memoized !== undefined) return memoized
+      if (wordIndex >= wordChars.length) {
+        const result = tokenIndex === tokens.length ? '' : null
+        manualMemo.set(memoKey, result)
+        return result
+      }
+
+      const ch = wordChars[wordIndex]
+      if (!isKanjiChar(ch)) {
+        // Most manual formats only list readings for kanji, so leave authored
+        // kana in place. If a kana token is explicitly present, consume it
+        // only when doing so allows the rest of the surface to align.
+        const withoutToken = buildManual(wordIndex + 1, tokenIndex)
+        if (withoutToken !== null) {
+          const result = `${escapeHtml(ch)}${withoutToken}`
+          manualMemo.set(memoKey, result)
+          return result
+        }
+        const token = tokens[tokenIndex]
+        if (
+          token &&
+          normalizeComparable(token) === normalizeComparable(ch)
+        ) {
+          const withToken = buildManual(wordIndex + 1, tokenIndex + 1)
+          if (withToken !== null) {
+            const result = `${escapeHtml(ch)}${withToken}`
+            manualMemo.set(memoKey, result)
+            return result
+          }
+        }
+        manualMemo.set(memoKey, null)
+        return null
+      }
+
+      const token = tokens[tokenIndex]
+      if (!token) {
+        manualMemo.set(memoKey, null)
+        return null
+      }
+      const nextKana: string[] = []
+      for (
+        let nextIndex = wordIndex + 1;
+        nextIndex < wordChars.length && !isKanjiChar(wordChars[nextIndex]);
+        nextIndex += 1
+      ) {
+        if (!hasKana(wordChars[nextIndex])) break
+        nextKana.push(wordChars[nextIndex])
+      }
+      const reading = stripMatchingTrailingOkurigana(token, nextKana.join(''))
+      const rest = buildManual(wordIndex + 1, tokenIndex + 1)
+      const result = rest === null ? null : `${buildRuby(ch, reading)}${rest}`
+      manualMemo.set(memoKey, result)
+      return result
     }
+    const manual = buildManual(0, 0)
+    if (manual !== null) return manual
   }
 
   const wordChars = Array.from(cleanWord)
@@ -328,7 +487,7 @@ export const buildJapaneseRubyHtml = (
       pronCursor,
     )
     const pronRun = pronChars.slice(pronCursor, pronBoundary).join('')
-    if (options?.groupKanji && pronRun) {
+    if (groupKanjiRun && pronRun) {
       output += buildRuby(kanjiRun, pronRun)
     } else {
       const readings = splitPronunciationForKanji(kanjiRun, pronRun)
@@ -348,6 +507,84 @@ export const buildJapaneseRubyHtml = (
   return output
 }
 
+const buildVocabularyTokenHtml = (
+  surface: string,
+  tokenHtml: string,
+  className: string,
+  additionalAttributes?: Record<string, string>,
+) =>
+  `<span class="${escapeHtml(className)}" data-vocab-token="true" data-vocab-surface="${escapeHtml(surface)}"${Object.entries(additionalAttributes || {})
+    .map(([name, value]) => ` ${name}="${escapeHtml(value)}"`)
+    .join('')}>${tokenHtml}</span>`
+
+export type JapaneseLexicalRange = {
+  surface: string
+  start: number
+  end: number
+}
+
+/**
+ * Find non-overlapping lexical ranges in the original source string.
+ *
+ * These offsets are JavaScript string offsets (the same UTF-16 coordinate
+ * system used by DOM Range), and are deliberately calculated before any ruby
+ * markup is generated. `rt` content is never part of this source coordinate
+ * space.
+ */
+export const buildJapaneseLexicalRanges = (
+  text: string,
+  surfaces: string[],
+  respectCompoundBoundary = true,
+): JapaneseLexicalRange[] => {
+  const candidatesByStart = new Map<number, JapaneseLexicalRange[]>()
+  const uniqueSurfaces = Array.from(
+    new Set(surfaces.map(surface => surface.trim()).filter(Boolean)),
+  )
+
+  uniqueSurfaces.forEach(surface => {
+    let from = 0
+    while (from <= text.length - surface.length) {
+      const start = text.indexOf(surface, from)
+      if (start < 0) break
+      if (
+        respectCompoundBoundary &&
+        !isJapaneseSurfaceOccurrenceAllowed(text, start, surface)
+      ) {
+        from = start + Math.max(1, surface.length)
+        continue
+      }
+      const candidates = candidatesByStart.get(start) || []
+      candidates.push({
+        surface,
+        start,
+        end: start + surface.length,
+      })
+      candidatesByStart.set(start, candidates)
+      from = start + Math.max(1, surface.length)
+    }
+  })
+
+  const ranges: JapaneseLexicalRange[] = []
+  let cursor = 0
+  while (cursor < text.length) {
+    const candidates = candidatesByStart.get(cursor)
+    const range = candidates?.reduce<JapaneseLexicalRange | undefined>(
+      (longest, candidate) =>
+        !longest || candidate.end - candidate.start > longest.end - longest.start
+          ? candidate
+          : longest,
+      undefined,
+    )
+    if (!range) {
+      cursor += 1
+      continue
+    }
+    ranges.push(range)
+    cursor = range.end
+  }
+  return ranges
+}
+
 export const annotateJapaneseText = (
   text: string,
   pronMap: Record<string, string>,
@@ -355,26 +592,52 @@ export const annotateJapaneseText = (
     rubyClassName?: string
     rtClassName?: string
     groupKanji?: boolean
+    rubyEnabled?: boolean
+    tokenClassName?: string
+    lexicalBoundaries?: number[]
+    occurrenceReadings?: Record<number, string>
+    editableReadingSurfaces?: string[]
+    tokenWords?: string[]
   },
 ) => {
-  const entries = Object.entries(pronMap)
+  const entryByWord = new Map<string, { word: string; pron: string }>()
+  Object.entries(pronMap)
     .filter(([word, pron]) => hasJapanese(word) && !!pron.trim())
-    .sort((a, b) => b[0].length - a[0].length)
+    .forEach(([word, pron]) => entryByWord.set(word, { word, pron }))
+  options?.tokenWords
+    ?.map(word => word.trim())
+    .filter(word => hasJapanese(word) && text.includes(word))
+    .forEach(word => {
+      if (!entryByWord.has(word)) {
+        entryByWord.set(word, { word, pron: pronMap[word] || '' })
+      }
+    })
+  const entries = [...entryByWord.values()].sort(
+    (a, b) => b.word.length - a.word.length,
+  )
   if (entries.length === 0) return escapeHtml(text)
 
-  const bestByStart = new Map<number, { word: string; pron: string; length: number }>()
-  for (const [word, pron] of entries) {
-    let from = 0
-    while (from < text.length) {
-      const start = text.indexOf(word, from)
-      if (start === -1) break
-      const prev = bestByStart.get(start)
-      if (!prev || word.length > prev.length) {
-        bestByStart.set(start, { word, pron, length: word.length })
-      }
-      from = start + 1
-    }
-  }
+  const entryBySurface = new Map(
+    entries.map(entry => [entry.word, entry] as const),
+  )
+  const bestByStart = new Map<
+    number,
+    JapaneseLexicalRange & { word: string; pron: string }
+  >()
+  const boundaries = options?.lexicalBoundaries ? new Set(options.lexicalBoundaries) : null
+  buildJapaneseLexicalRanges(
+    text,
+    entries.map(entry => entry.word),
+  ).forEach(range => {
+    if (boundaries && (!boundaries.has(range.start) || !boundaries.has(range.end))) return
+    const entry = entryBySurface.get(range.surface)
+    if (!entry) return
+    bestByStart.set(range.start, {
+      ...range,
+      word: entry.word,
+      pron: entry.pron,
+    })
+  })
 
   let cursor = 0
   let html = ''
@@ -385,8 +648,18 @@ export const annotateJapaneseText = (
       cursor += 1
       continue
     }
-    html += buildJapaneseRubyHtml(match.word, match.pron, options)
-    cursor += match.length
+    const tokenHtml =
+      options?.rubyEnabled === false
+        ? escapeHtml(match.word)
+        : buildJapaneseRubyHtml(match.word, options?.occurrenceReadings?.[match.start] || match.pron, options)
+    html += options?.tokenClassName
+      ? buildVocabularyTokenHtml(match.word, tokenHtml, options.tokenClassName, {
+          ...(options.editableReadingSurfaces?.includes(match.word) && match.pron ? { 'data-pronunciation-editable': 'true', role: 'button', tabindex: '0', 'aria-label': `修改「${match.word}」在此处的读音` } : {}),
+          'data-vocab-start': String(match.start),
+          'data-vocab-end': String(match.end),
+        })
+      : tokenHtml
+    cursor = match.end
   }
 
   return html
@@ -412,31 +685,43 @@ const buildBestLexemeMatches = (
   text: string,
   lexicon: Record<string, JapaneseRubyLexeme>,
 ) => {
-  const entries = Object.values(lexicon)
-    .filter(item => item.surface && text.includes(item.surface))
-    .sort((left, right) => right.surface.length - left.surface.length)
+  const entries = Object.values(lexicon).filter(item => item.surface)
+  const lexemeBySurface = new Map(
+    entries.map(lexeme => [lexeme.surface, lexeme] as const),
+  )
   const bestByStart = new Map<
     number,
-    { lexeme: JapaneseRubyLexeme; length: number }
+    JapaneseLexicalRange & { lexeme: JapaneseRubyLexeme; length: number }
   >()
-  entries.forEach(lexeme => {
-    let from = 0
-    while (from < text.length) {
-      const start = text.indexOf(lexeme.surface, from)
-      if (start === -1) break
-      const previous = bestByStart.get(start)
-      if (!previous || lexeme.surface.length > previous.length) {
-        bestByStart.set(start, { lexeme, length: lexeme.surface.length })
-      }
-      from = start + 1
-    }
+  buildJapaneseLexicalRanges(
+    text,
+    entries.map(entry => entry.surface),
+    false,
+  ).forEach(range => {
+    const lexeme = lexemeBySurface.get(range.surface)
+    if (!lexeme) return
+    bestByStart.set(range.start, {
+      ...range,
+      lexeme,
+      length: range.end - range.start,
+    })
   })
   return bestByStart
+}
+
+const buildBestSurfaceMatches = (text: string, surfaces: string[]) => {
+  return new Map(
+    buildJapaneseLexicalRanges(
+      text,
+      surfaces.filter(surface => hasJapanese(surface)),
+    ).map(range => [range.start, range] as const),
+  )
 }
 
 export const formatJapaneseTextWithRubyNotation = (
   text: string,
   pronunciationMap: Record<string, string>,
+  occurrenceReadings: Record<number, string> = {},
 ) => {
   const entries = Object.entries(pronunciationMap)
     .filter(([word, pronunciation]) =>
@@ -473,11 +758,12 @@ export const formatJapaneseTextWithRubyNotation = (
       cursor += 1
       continue
     }
+    const reading = occurrenceReadings[cursor] || match.pronunciation
     output +=
       normalizeComparable(match.word) ===
-      normalizeComparable(match.pronunciation)
+      normalizeComparable(reading)
         ? match.word
-        : `{${match.word}|${match.pronunciation}}`
+        : `{${match.word}|${reading}}`
     cursor += match.length
   }
   return output
@@ -507,7 +793,10 @@ export const formatJapaneseTextWithSudachiRubyNotation = (
 }
 
 const buildJapaneseRubyNotation = (word: string, pronunciation: string) => {
-  if (hasInlineKanaReading(word)) {
+  // Same single judgment as the display path: only a genuine inline notation
+  // takes the shortcut; suffix and literal cases align normally below.
+  const inlineClass = classifyInlineKanaReading(word, pronunciation)
+  if (inlineClass.kind === 'inline') {
     INLINE_KANA_READING_PATTERN.lastIndex = 0
     let cursor = 0
     let output = ''
@@ -526,7 +815,12 @@ const buildJapaneseRubyNotation = (word: string, pronunciation: string) => {
       : word
   }
   const wordChars = Array.from(word)
-  const pronunciationChars = Array.from(pronunciation.replace(/[\s\u3000]+/g, ''))
+  const pronunciationChars = Array.from(
+    (inlineClass.kind === 'suffix'
+      ? inlineClass.stemReading
+      : pronunciation
+    ).replace(/[\s\u3000]+/g, ''),
+  )
   let output = ''
   let wordCursor = 0
   let pronunciationCursor = 0
@@ -576,14 +870,84 @@ export const annotateJapaneseTextWithSudachi = (
     rubyEnabled?: boolean
     rubyClassName?: string
     rtClassName?: string
+    tokenClassName?: string
+    tokenWords?: string[]
   },
 ) => {
   const bestByStart = buildBestLexemeMatches(text, lexicon)
-  if (bestByStart.size === 0) return escapeHtml(text)
+  const lexicalTokenByStart = buildBestSurfaceMatches(
+    text,
+    options?.tokenWords || [],
+  )
+  if (bestByStart.size === 0 && lexicalTokenByStart.size === 0) {
+    return escapeHtml(text)
+  }
+
+  const tokenClassName = options?.tokenClassName || 'vocab-token'
+  const renderLexemeContent = (lexeme: JapaneseRubyLexeme) => {
+    const pronunciation = options?.useSudachiReading
+      ? lexeme.reading
+      : (
+          options?.pronunciationMap?.[lexeme.surface] ||
+          options?.pronunciationMap?.[lexeme.dictionaryForm] ||
+          ''
+        ).trim()
+    return options?.rubyEnabled &&
+      pronunciation &&
+      (!options.useSudachiReading || shouldShowSudachiRuby(lexeme, pronunciation))
+      ? buildJapaneseRubyHtml(lexeme.surface, pronunciation, {
+          rubyClassName: options.rubyClassName,
+          rtClassName: options.rtClassName,
+          groupKanji: Boolean(options.useSudachiReading),
+        })
+      : escapeHtml(lexeme.surface)
+  }
+  const renderRange = (start: number, end: number) => {
+    let rangeCursor = start
+    let rangeHtml = ''
+    const lexemes: JapaneseRubyLexeme[] = []
+    while (rangeCursor < end) {
+      const match = bestByStart.get(rangeCursor)
+      if (!match || rangeCursor + match.length > end) {
+        rangeHtml += escapeHtml(text[rangeCursor])
+        rangeCursor += 1
+        continue
+      }
+      rangeHtml += renderLexemeContent(match.lexeme)
+      lexemes.push(match.lexeme)
+      rangeCursor += match.length
+    }
+    return { html: rangeHtml, lexemes }
+  }
 
   let cursor = 0
   let html = ''
   while (cursor < text.length) {
+    const lexicalToken = lexicalTokenByStart.get(cursor)
+    if (lexicalToken) {
+      const tokenEnd = lexicalToken.end
+      const renderedRange = renderRange(cursor, tokenEnd)
+      html += buildVocabularyTokenHtml(
+        lexicalToken.surface,
+        renderedRange.html,
+        tokenClassName,
+        {
+          'data-vocab-start': String(lexicalToken.start),
+          'data-vocab-end': String(lexicalToken.end),
+          'data-sudachi-token': 'true',
+          'data-sudachi-surface': lexicalToken.surface,
+          'data-sudachi-lemma': lexicalToken.surface,
+          'data-sudachi-normalized': lexicalToken.surface,
+          'data-sudachi-reading': renderedRange.lexemes
+            .map(lexeme => lexeme.dictionaryReading || lexeme.reading)
+            .join(''),
+          'data-sudachi-pos': renderedRange.lexemes[0]?.partsOfSpeech?.[0] || '',
+        },
+      )
+      cursor = tokenEnd
+      continue
+    }
+
     const match = bestByStart.get(cursor)
     if (!match) {
       html += escapeHtml(text[cursor])
@@ -592,26 +956,9 @@ export const annotateJapaneseTextWithSudachi = (
     }
 
     const { lexeme } = match
-    const pronunciation = options?.useSudachiReading
-      ? lexeme.reading
-      : (
-          options?.pronunciationMap?.[lexeme.surface] ||
-          options?.pronunciationMap?.[lexeme.dictionaryForm] ||
-          ''
-        ).trim()
-    const tokenHtml =
-      options?.rubyEnabled &&
-      pronunciation &&
-      (!options.useSudachiReading ||
-        shouldShowSudachiRuby(lexeme, pronunciation))
-        ? buildJapaneseRubyHtml(lexeme.surface, pronunciation, {
-            rubyClassName: options.rubyClassName,
-            rtClassName: options.rtClassName,
-            groupKanji: Boolean(options.useSudachiReading),
-          })
-        : escapeHtml(lexeme.surface)
-    const partOfSpeech = lexeme.partsOfSpeech[0] || ''
-    html += `<span data-sudachi-token="true" data-sudachi-surface="${escapeHtml(lexeme.surface)}" data-sudachi-lemma="${escapeHtml(lexeme.dictionaryForm)}" data-sudachi-normalized="${escapeHtml(lexeme.normalizedForm)}" data-sudachi-reading="${escapeHtml(lexeme.dictionaryReading || lexeme.reading)}" data-sudachi-pos="${escapeHtml(partOfSpeech)}">${tokenHtml}</span>`
+    const tokenHtml = renderLexemeContent(lexeme)
+    const partOfSpeech = lexeme.partsOfSpeech?.[0] || ''
+    html += `<span class="${escapeHtml(tokenClassName)}" data-vocab-token="true" data-vocab-surface="${escapeHtml(lexeme.surface)}" data-vocab-start="${match.start}" data-vocab-end="${match.end}" data-sudachi-token="true" data-sudachi-surface="${escapeHtml(lexeme.surface)}" data-sudachi-lemma="${escapeHtml(lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-normalized="${escapeHtml(lexeme.normalizedForm || lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-reading="${escapeHtml(lexeme.dictionaryReading || lexeme.reading || '')}" data-sudachi-pos="${escapeHtml(partOfSpeech)}">${tokenHtml}</span>`
     cursor += match.length
   }
 

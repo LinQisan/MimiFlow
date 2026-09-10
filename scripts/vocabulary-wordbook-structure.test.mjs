@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import test from 'node:test'
+import { vocabularyPageWhere } from '../modules/knowledge/vocabulary/server/group-page-query.ts'
 
 import {
+  listWordbookFilterOptions,
   listWordbooks,
+  parseWordbookFilter,
 } from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
 
 const ROOT = process.cwd()
@@ -38,6 +41,69 @@ test('wordbook navigation keeps explicit series paths and leaf totals', () => {
   )
 })
 
+test('wordbook filters expose each series before its leaf word lists', () => {
+  const options = listWordbookFilterOptions([
+    {
+      id: 'n1',
+      name: 'N1',
+      seriesId: 'red-book',
+      seriesName: '红宝书',
+      count: 3053,
+    },
+    {
+      id: 'n2',
+      name: 'N2',
+      seriesId: 'red-book',
+      seriesName: '红宝书',
+      count: 2328,
+    },
+  ])
+
+  assert.deepEqual(options, [
+    {
+      value: 'series:red-book',
+      label: '红宝书',
+      selectedLabel: '红宝书',
+      depth: 0,
+      meta: '2 个词表',
+    },
+    {
+      value: 'n1',
+      label: 'N1',
+      selectedLabel: '红宝书 / N1',
+      depth: 1,
+      count: 3053,
+    },
+    {
+      value: 'n2',
+      label: 'N2',
+      selectedLabel: '红宝书 / N2',
+      depth: 1,
+      count: 2328,
+    },
+  ])
+})
+
+test('wordbook filter values distinguish all, uncollected, series and leaf scopes', () => {
+  assert.deepEqual(parseWordbookFilter('all'), { kind: 'all' })
+  assert.deepEqual(parseWordbookFilter('none'), { kind: 'none' })
+  assert.deepEqual(parseWordbookFilter('series:red-book'), {
+    kind: 'series',
+    id: 'red-book',
+  })
+  assert.deepEqual(parseWordbookFilter('n2'), { kind: 'wordbook', id: 'n2' })
+})
+
+test('selecting a wordbook series filters through every child word list', async () => {
+  const page = await readFile(
+    path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
+    'utf8',
+  )
+
+  assert.match(page, /wordbookFilter\.startsWith\('series:'\)/)
+  assert.deepEqual(vocabularyPageWhere({ wordbookFilter: 'series:series-id', seriesFilter: 'series-id', tagFilter: 'all', keyword: '' }).AND[0], { wordbooks: { some: { wordbook: { seriesId: 'series-id' } } } })
+})
+
 test('active wordbook navigation hides legacy archive and preserves series order', async () => {
   const [repository, dropdown, vocabularyTabs] = await Promise.all([
     readFile(
@@ -61,8 +127,7 @@ test('active wordbook navigation hides legacy archive and preserves series order
   assert.match(repository, /_count: \{ select: \{ entries: true \} \}/)
   assert.match(dropdown, /option\.depth/)
   assert.match(dropdown, /option\.count/)
-  assert.match(vocabularyTabs, /selectedLabel: folder\.pathLabel/)
-  assert.match(vocabularyTabs, /count: folder\.totalCount/)
+  assert.match(vocabularyTabs, /listWordbooks/)
 })
 
 test('duplicate headwords share one page with ordered wordbook content', async () => {
@@ -87,12 +152,17 @@ test('duplicate headwords share one page with ordered wordbook content', async (
 
   assert.match(page, /vocabularyWordKey/)
   assert.match(page, /listVocabularyDetailsByWords/)
-  assert.match(page, /N2語彙トレーニング/)
-  assert.match(page, /rootTitle === '红宝书'/)
+  assert.match(page, /getVocabularySeriesPriority/)
+  assert.match(page, /wordbookFilter === wordbookId/)
   assert.match(page, /wordbookSources/)
   assert.match(repository, /listVocabularyDetailsByWords/)
-  assert.match(tabs, /单词书内容/)
-  assert.match(tabs, /wordbook\.pathLabel/)
+  const membershipLinks = await readFile(
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/WordbookMembershipLinks.tsx'),
+    'utf8',
+  )
+  assert.match(tabs, /<WordbookMembershipLinks/)
+  assert.match(membershipLinks, /\/vocabulary\/wordbooks\/\$\{wordbook\.id\}/)
+  assert.match(membershipLinks, /formatPath\(wordbook\.pathLabel/)
   assert.match(types, /VocabularyWordbookSource/)
 })
 
@@ -123,7 +193,7 @@ test('more sentence search filters candidates in storage and shows paper sources
 })
 
 test('vocabulary uses the same automatic pronunciation flow as reading and practice', async () => {
-  const [tabs, pronunciationHook, word, sentence] = await Promise.all([
+  const [tabs, pronunciationHook, sharedHook, word, sentence] = await Promise.all([
     readFile(
       path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
       'utf8',
@@ -135,6 +205,7 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
       ),
       'utf8',
     ),
+    readFile(path.join(ROOT, 'hooks/usePronunciationSource.ts'), 'utf8'),
     readFile(
       path.join(ROOT, 'components/vocabulary/WordPronunciation.tsx'),
       'utf8',
@@ -150,7 +221,10 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
 
   assert.match(tabs, /PronunciationSourceSelector/)
   assert.match(tabs, /useVocabularyPronunciation/)
-  assert.match(pronunciationHook, /PRONUNCIATION_SOURCE_STORAGE_KEY/)
+  // The vocabulary hook delegates preference state to the shared hook, which
+  // owns the single storage key; the fetch flow itself stays local.
+  assert.match(pronunciationHook, /usePronunciationSource/)
+  assert.match(sharedHook, /PRONUNCIATION_SOURCE_STORAGE_KEY/)
   assert.match(pronunciationHook, /fetch\('\/api\/pronunciation'/)
   assert.match(
     pronunciationHook,
@@ -161,7 +235,7 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
   assert.match(sentence, /useSudachiReading: true/)
 })
 
-test('vocabulary pages use fifty rows and show the filtered total', async () => {
+test('vocabulary pages keep bounded rows and show the filtered total', async () => {
   const [page, tabs, wordbookPage] = await Promise.all([
     readFile(
       path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
@@ -177,8 +251,8 @@ test('vocabulary pages use fifty rows and show the filtered total', async () => 
     ),
   ])
 
-  assert.match(page, /const PAGE_SIZE = 50/)
-  assert.match(tabs, /pageSize = 50/)
+  assert.match(page, /const PAGE_SIZE = 30/)
+  assert.match(tabs, /pageSize = 30/)
   assert.match(tabs, /共 \{effectiveGroupTotal\} 条/)
   assert.doesNotMatch(tabs, /本页 \{visibleList\.length\} 条/)
   assert.match(wordbookPage, /const PAGE_SIZE = 50/)
@@ -194,11 +268,123 @@ test('word-only wordbooks do not render empty content cards', async () => {
   assert.match(tabs, /contentSources\.length > 0/)
   assert.match(tabs, /contentSources\.map/)
   assert.doesNotMatch(tabs, /该单词收录于此单词书，当前提供读音与词性信息/)
-  assert.match(tabs, />\s*其他读音\s*</)
+  assert.match(tabs, />\s*匹配词形\s*</)
 })
 
-test('vocabulary management can save meanings to the selected wordbook record', async () => {
-  const [page, tabs, meaningEditor, types, workspace, actions, mutations] = await Promise.all([
+test('flashcards center multi-headword vocabulary as one visual group', async () => {
+  const [tabs, pronunciation] = await Promise.all([
+    readFile(
+      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'components/vocabulary/WordPronunciation.tsx'),
+      'utf8',
+    ),
+  ])
+
+  assert.match(tabs, /variantGroupClassName='justify-center'/)
+  assert.match(pronunciation, /variantGroupClassName/)
+  assert.match(pronunciation, /flex flex-wrap items-end/)
+})
+
+test('wordbook removal deletes only membership data and keeps vocabulary records', async () => {
+  const [actions, detail] = await Promise.all([
+    readFile(
+      path.join(ROOT, 'modules/knowledge/wordbooks/actions.ts'),
+      'utf8',
+    ),
+    readFile(
+      path.join(
+        ROOT,
+        'app/(knowledge)/vocabulary/wordbooks/[id]/WordbookDetailClient.tsx',
+      ),
+      'utf8',
+    ),
+  ])
+
+  assert.match(actions, /tx\.wordbookVocabulary\.deleteMany/)
+  assert.match(actions, /prisma\.wordbookVocabulary\.deleteMany/)
+  assert.doesNotMatch(actions, /(?:tx|prisma)\.vocabulary\.delete/)
+  assert.match(detail, /单词本身及其在其他词表中的内容都会保留/)
+  assert.match(detail, /<CustomSelect/)
+  assert.doesNotMatch(detail, /输入序号选择目标/)
+})
+
+test('part-of-speech hierarchy and wordbook batch tags stay user scoped', async () => {
+  const [schema, adminActions, wordbookActions, detail] = await Promise.all([
+    readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8'),
+    readFile(path.join(ROOT, 'features/vocabulary/admin-actions.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/knowledge/wordbooks/actions.ts'), 'utf8'),
+    readFile(
+      path.join(
+        ROOT,
+        'app/(knowledge)/vocabulary/wordbooks/[id]/WordbookDetailClient.tsx',
+      ),
+      'utf8',
+    ),
+  ])
+
+  assert.match(schema, /model VocabularyPartOfSpeech/)
+  assert.match(schema, /languageCode\s+String/)
+  assert.match(schema, /parentId\s+String\?/)
+  assert.match(adminActions, /userId_languageCode_name:/)
+  assert.match(adminActions, /resolveVocabularyLanguageCode/)
+  assert.match(adminActions, /parseJsonStringList\(item\.partsOfSpeech\)/)
+  assert.match(wordbookActions, /addTagsToWordbookVocabularies/)
+  assert.match(wordbookActions, /some: \{ wordbookId: trimmedWordbookId, wordbook: \{ userId \} \}/)
+  assert.match(detail, /批量添加标签/)
+})
+
+test('vocabulary detail editing keeps one shared inline layout', async () => {
+  const [tabs, editor, actions] = await Promise.all([
+    readFile(
+      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      'utf8',
+    ),
+    readFile(
+      path.join(
+        ROOT,
+        'modules/knowledge/vocabulary/components/VocabularyEntryEditor.tsx',
+      ),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'modules/knowledge/vocabulary/entry-actions.ts'),
+      'utf8',
+    ),
+  ])
+
+  assert.match(tabs, /useVocabularyInlineEditor/)
+  assert.match(tabs, /<VocabularyDefinitions/)
+  assert.match(tabs, /<VocabularySenseDetails/)
+  assert.match(tabs, /<VocabularyRelationDetails/)
+  assert.match(editor, /VocabularyInlineEditToolbar/)
+  assert.match(editor, /function toVocabularyEntryDraft/)
+  assert.match(actions, /saveVocabularyEntryDraft/)
+  assert.doesNotMatch(tabs, /VocabularyMeaningEditor/)
+})
+
+test('vocabulary management shows wordbook provenance instead of import placeholder source', async () => {
+  const [page, adminActions] = await Promise.all([
+    readFile(
+      path.join(ROOT, 'app/(admin)/manage/vocabulary/VocabularyManageClient.tsx'),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'features/vocabulary/admin-actions.ts'),
+      'utf8',
+    ),
+  ])
+
+  assert.match(adminActions, /wordbookPaths:/)
+  assert.match(adminActions, /link\.wordbook\.series\.title/)
+  assert.match(page, /item\.wordbookPaths\.length > 0/)
+  assert.doesNotMatch(page, /ARTICLE_TEXT: '阅读'/)
+})
+
+test('vocabulary tag filters stay in the server-paginated URL flow', async () => {
+  const [page, tabs, repository] = await Promise.all([
     readFile(
       path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
       'utf8',
@@ -208,43 +394,52 @@ test('vocabulary management can save meanings to the selected wordbook record', 
       'utf8',
     ),
     readFile(
-      path.join(
-        ROOT,
-        'modules/knowledge/vocabulary/components/VocabularyMeaningEditor.tsx',
-      ),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/knowledge/vocabulary/types.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(
-        ROOT,
-        'modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState.ts',
-      ),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/knowledge/vocabulary/actions.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(
-        ROOT,
-        'modules/knowledge/vocabulary/hooks/useVocabularyMutations.ts',
-      ),
+      path.join(ROOT, 'modules/knowledge/vocabulary/server/repository.ts'),
       'utf8',
     ),
   ])
 
-  assert.match(page, /recordIds: \[\.\.\.source\.recordIds\]/)
-  assert.match(types, /recordIds: string\[\]/)
-  assert.match(workspace, /activeMeaningEditId/)
-  assert.match(actions, /updateVocabularyMeaningsById/)
-  assert.match(mutations, /updateVocabularyMeaningsById/)
-  assert.match(tabs, /source\.recordIds\.includes\(target\.recordId\)/)
-  assert.match(tabs, /<VocabularyMeaningEditor/)
-  assert.match(meaningEditor, />\s*释义\s*</)
-  assert.match(meaningEditor, /保存到 \{sourceLabel\}/)
+  assert.match(page, /resolvedSearchParams\.tag/)
+  assert.deepEqual(vocabularyPageWhere({ wordbookFilter: 'all', seriesFilter: '', tagFilter: 'selected-tag', keyword: '' }).AND[1], { tags: { some: { tag: { name: 'selected-tag' } } } })
+  assert.match(repository, /listVocabularyTagOptions/)
+  assert.match(tabs, /ariaLabel='按标签筛选'/)
+  assert.match(tabs, /params\.set\('tag', nextTag\)/)
+})
+
+test('vocabulary starts audio in the click path and handles browser playback policy', async () => {
+  const tabs = await readFile(
+    path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    'utf8',
+  )
+
+  assert.doesNotMatch(tabs, /audioPlaybackQueueRef/)
+  assert.doesNotMatch(tabs, /await audio\.play\(\)/)
+  assert.match(tabs, /const playback = audio\.play\(\)/)
+  assert.match(tabs, /NotAllowedError/)
+  assert.match(tabs, /NotSupportedError/)
+  assert.match(tabs, /loadedmetadata/)
+  assert.match(tabs, /audio\.setAttribute\('playsinline', ''\)/)
+  assert.match(tabs, /requestId !== audioRequestIdRef\.current/)
+  assert.match(tabs, /errorName === 'AbortError'/)
+})
+
+test('vocabulary toolbar keeps responsive layout SSR-deterministic', async () => {
+  const [tabs, toolbar, layout] = await Promise.all([
+    readFile(
+      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      'utf8',
+    ),
+    readFile(
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyPageToolbar.tsx'),
+      'utf8',
+    ),
+    readFile(path.join(ROOT, 'app/layout.tsx'), 'utf8'),
+  ])
+
+  assert.doesNotMatch(tabs, /window\.innerWidth|window\.matchMedia|typeof window/)
+  assert.match(tabs, /aria-label='显示设置'/)
+  assert.match(tabs, /aria-label='学习方式'/)
+  assert.match(toolbar, /aria-label='视图操作'/)
+  assert.doesNotMatch(toolbar, /window\.innerWidth|window\.matchMedia|typeof window/)
+  assert.doesNotMatch(layout, /suppressHydrationWarning/)
 })

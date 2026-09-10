@@ -1,5 +1,7 @@
+import { joinJapaneseLayoutGaps } from '@/modules/language/domain/text'
+
 export const cleanInlineSelectionText = (value: string) =>
-  value.replace(/\s+/g, ' ').trim()
+  joinJapaneseLayoutGaps(value.replace(/\s+/g, ' ').trim())
 
 export function getCleanSelectionText(selection: Selection | null) {
   if (!selection || selection.rangeCount === 0) return ''
@@ -10,7 +12,7 @@ export function getCleanRangeText(range: Range) {
   const fragment = range.cloneContents()
   fragment
     .querySelectorAll(
-      'rt, button, textarea, input, select, option, [data-context-ignore]',
+      'rt, button:not([data-selection-text="true"]), textarea, input, select, option, [data-context-ignore]',
     )
     .forEach(node => node.remove())
   return cleanInlineSelectionText(fragment.textContent || '')
@@ -21,7 +23,7 @@ export function getCleanElementText(element: HTMLElement | null) {
   const clone = element.cloneNode(true) as HTMLElement
   clone
     .querySelectorAll(
-      'rt, button, textarea, input, select, option, [data-context-ignore]',
+      'rt, button:not([data-selection-text="true"]), textarea, input, select, option, [data-context-ignore]',
     )
     .forEach(node => node.remove())
   return cleanInlineSelectionText(clone.textContent || '')

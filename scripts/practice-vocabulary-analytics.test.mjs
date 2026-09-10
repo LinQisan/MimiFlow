@@ -7,6 +7,7 @@ import {
   applyPracticeVocabularyKnowledge,
   buildPracticeVocabularyWordbookOptions,
   buildPracticeVocabularyAnalytics,
+  buildPracticeVocabularyAnalyticsSummary,
   rankPracticeVocabularyTrendWords,
 } from '../features/practice/domain/vocabulary-analytics.ts'
 import { isSudachiContentWord } from '../modules/language/domain/sudachi.ts'
@@ -130,6 +131,115 @@ test('practice analytics prioritizes direct targets without assuming a fixed use
   assert.equal(analytics.words[0].word, '取り組む')
 })
 
+const profileKeys = ['TEXT_VOCAB', 'GRAMMAR', 'READING', 'LISTENING']
+
+const legacyProfile = (analytics, key) => {
+  const matching = analytics.words.filter(row => row.categoryCounts[key] > 0)
+  return {
+    key,
+    label: analytics.profiles.find(profile => profile.key === key).label,
+    totalOccurrences: matching.reduce(
+      (sum, row) => sum + row.categoryCounts[key],
+      0,
+    ),
+    uniqueWords: matching.length,
+    topWords: [...matching]
+      .sort(
+        (left, right) =>
+          right.learningValue - left.learningValue ||
+          right.categoryCounts[key] - left.categoryCounts[key] ||
+          left.word.localeCompare(right.word, 'ja'),
+      )
+      .slice(0, 20)
+      .map(row => ({ word: row.word, count: row.categoryCounts[key] })),
+  }
+}
+
+test('practice profile aggregation preserves the previous results and tie order', () => {
+  const build = words => {
+    const document = {
+      paperId: 'paper-1',
+      year: '2026',
+      category: 'READING',
+      kind: 'body',
+      text: words.join(' '),
+    }
+    return buildPracticeVocabularyAnalytics({
+      documents: [document],
+      tokens: words.map(word => token(word, word, 0)),
+      totalPapers: 1,
+    })
+  }
+
+  const empty = buildPracticeVocabularyAnalytics({
+    documents: [],
+    tokens: [],
+    totalPapers: 0,
+  })
+  assert.deepEqual(
+    empty.profiles.map(profile => ({
+      totalOccurrences: profile.totalOccurrences,
+      uniqueWords: profile.uniqueWords,
+      topWords: profile.topWords,
+    })),
+    profileKeys.map(() => ({ totalOccurrences: 0, uniqueWords: 0, topWords: [] })),
+  )
+
+  const fewerThanTwenty = build(['環境', '取り組む', '学習'])
+  assert.deepEqual(
+    fewerThanTwenty.profiles,
+    profileKeys.map(key => legacyProfile(fewerThanTwenty, key)),
+  )
+
+  const tiedWords = Array.from({ length: 25 }, (_, index) =>
+    `語${String.fromCodePoint(0x4e00 + index)}`,
+  )
+  const moreThanTwenty = build(tiedWords)
+  assert.deepEqual(
+    moreThanTwenty.profiles,
+    profileKeys.map(key => legacyProfile(moreThanTwenty, key)),
+  )
+  assert.equal(moreThanTwenty.profiles[2].topWords.length, 20)
+
+  const collator = new Intl.Collator('ja')
+  const sortSamples = ['あ', 'ア', 'い', 'イ', '愛', '藍', '漢字', 'かんじ', 'カンジ']
+  for (const left of sortSamples) {
+    for (const right of sortSamples) {
+      assert.equal(
+        Math.sign(collator.compare(left, right)),
+        Math.sign(left.localeCompare(right, 'ja')),
+        `Japanese tie-breaker differs for ${left} and ${right}`,
+      )
+    }
+  }
+})
+
+test('practice analytics summary keeps charts and top items without detail fields', () => {
+  const analytics = buildPracticeVocabularyAnalytics({
+    documents: [{
+      paperId: 'paper-1',
+      year: '2026',
+      category: 'READING',
+      kind: 'body',
+      text: '環境 取り組む',
+    }],
+    tokens: [
+      token('環境', '環境', 0),
+      token('取り組む', '取り組む', 0, ['動詞']),
+    ],
+    totalPapers: 1,
+  })
+  const summary = buildPracticeVocabularyAnalyticsSummary(analytics)
+
+  assert.equal(summary.wordCount, analytics.words.length)
+  assert.equal(summary.kanji.length <= 20, true)
+  assert.deepEqual(
+    Object.keys(summary.topItems.words[0]).sort(),
+    ['count', 'isMastered', 'optionCount', 'targetCount', 'word', 'yearCounts'],
+  )
+  assert.deepEqual(summary.topItems.rankings.trends, [])
+})
+
 test('practice analytics matches personal wordbooks and mastered preferences', () => {
   const documents = [
     {
@@ -153,7 +263,6 @@ test('practice analytics matches personal wordbooks and mastered preferences', (
     [{
       word: '環境',
       wordbookIds: ['book-n1'],
-      wordbookNames: ['红宝书 / N1'],
     }],
     ['取り組む'],
     [{
@@ -167,9 +276,8 @@ test('practice analytics matches personal wordbooks and mastered preferences', (
   const environment = personalized.words.find(row => row.word === '環境')
   const candidate = personalized.words.find(row => row.word === '取り組む')
 
-  assert.equal(environment.inWordbook, true)
+  assert.equal(environment.wordbookIds.length > 0, true)
   assert.deepEqual(environment.wordbookIds, ['book-n1'])
-  assert.deepEqual(environment.wordbookNames, ['红宝书 / N1'])
   assert.equal(candidate.isMastered, true)
   assert.equal(personalized.wordbooks[0].id, 'book-n1')
 })
@@ -177,26 +285,33 @@ test('practice analytics matches personal wordbooks and mastered preferences', (
 test('practice analytics exposes only real wordbooks with explicit series paths', () => {
   assert.deepEqual(
     buildPracticeVocabularyWordbookOptions([
-      { id: 'n1', title: 'N1', seriesTitle: '红宝书', count: 3053 },
-      { id: 'n2', title: 'N2', seriesTitle: '红宝书', count: 2328 },
+      { id: 'n1', title: 'N1', seriesTitle: '红宝书', seriesId: 'red', count: 3053 },
+      { id: 'n2', title: 'N2', seriesTitle: '红宝书', seriesId: 'red', count: 2328 },
     ]),
     [
-      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', depth: 0, totalCount: 3053 },
-      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', depth: 0, totalCount: 2328 },
+      { id: 'n1', name: 'N1', pathLabel: '红宝书 / N1', seriesId: 'red', seriesTitle: '红宝书', depth: 0, totalCount: 3053 },
+      { id: 'n2', name: 'N2', pathLabel: '红宝书 / N2', seriesId: 'red', seriesTitle: '红宝书', depth: 0, totalCount: 2328 },
     ],
   )
 })
 
+test('wordbook scope options preserve authored order, empty lists and distinct series identities', () => {
+  const options = buildPracticeVocabularyWordbookOptions([
+    { id: 'list-z', title: '第二课', seriesId: 'book-a', seriesTitle: '同名单词书', count: 0 },
+    { id: 'list-a', title: '第一课', seriesId: 'book-b', seriesTitle: '同名单词书', count: 2 },
+    { id: 'list-b', title: '第三课', seriesId: 'book-a', seriesTitle: '同名单词书', count: 3 },
+  ])
+  assert.deepEqual(options.map(row => row.id), ['list-z', 'list-a', 'list-b'])
+  assert.deepEqual(options.filter(row => row.seriesId === 'book-a').map(row => row.id), ['list-z', 'list-b'])
+  assert.equal(options[0].totalCount, 0)
+})
+
 test('practice page exposes the vocabulary analysis dialog and source builder', async () => {
-  const [page, client, launcher, dialog, server, domain, route, wordbookRoute] = await Promise.all([
+  const [page, client, launcher, server, domain, route, wordbookRoute, wordsRoute] = await Promise.all([
     readFile(path.join(ROOT, 'app/(study)/practice/page.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'app/(study)/practice/PapersListClient.tsx'), 'utf8'),
     readFile(
       path.join(ROOT, 'features/practice/ui/PracticeInsightsLaunchers.tsx'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'features/practice/ui/PracticeVocabularyAnalyticsDialog.tsx'),
       'utf8',
     ),
     readFile(
@@ -215,6 +330,10 @@ test('practice page exposes the vocabulary analysis dialog and source builder', 
       path.join(ROOT, 'app/api/practice/vocabulary-wordbooks/route.ts'),
       'utf8',
     ),
+    readFile(
+      path.join(ROOT, 'app/api/practice/vocabulary-analytics/words/route.ts'),
+      'utf8',
+    ),
   ])
 
   assert.match(page, /PapersListClient/)
@@ -224,33 +343,26 @@ test('practice page exposes the vocabulary analysis dialog and source builder', 
     launcher,
     /disabled=\{disabled \|\| loadState === 'loading'\}/,
   )
-  assert.match(dialog, /学习价值/)
-  assert.match(dialog, /显示已熟练词/)
-  assert.match(dialog, /标记熟练/)
-  assert.match(dialog, /恢复推荐/)
-  assert.match(dialog, /优先学习词汇/)
-  assert.match(dialog, /选项词频/)
-  assert.match(dialog, /片假名词频/)
-  assert.match(dialog, /二字熟语/)
-  assert.match(dialog, /汉字考点/)
   assert.match(domain, /文字・語彙/)
   assert.match(domain, /applyPracticeVocabularyKnowledge/)
-  assert.match(dialog, /年份趋势/)
-  assert.doesNotMatch(dialog, /const examples = \['AI', 'SNS'/)
-  assert.match(dialog, /rankPracticeVocabularyTrendWords/)
   assert.match(server, /correctOptionTexts/)
   assert.match(server, /dialogueText/)
   assert.match(server, /cleanAnalyticsText/)
-  assert.match(server, /prisma\.vocabulary\.findMany/)
-  assert.match(dialog, /选择单词书（可多选）/)
-  assert.match(dialog, /未加入任何单词书/)
-  assert.match(server, /VOCABULARY_MATCH_BATCH_SIZE/)
-  assert.match(server, /word: \{ in: words \}/)
+  assert.match(server, /wordbookLinksPromise/)
+  assert.match(server, /vocabulary\.word = ANY\(\$\{candidateWords\}\)/)
   assert.match(server, /getPracticeVocabularyWordbookEntries/)
   assert.match(wordbookRoute, /searchParams/)
-  assert.match(dialog, /count: 0/)
-  assert.match(dialog, /正在读取单词书/)
-  assert.match(route, /practice-vocabulary-analytics-v7/)
+  assert.match(route, /practice-vocabulary-analytics-v10/)
+  assert.match(route, /Server-Timing/)
+  assert.match(route, /serializationMs/)
+  assert.match(route, /getPracticeVocabularyAnalyticsSummary/)
+  assert.doesNotMatch(route, /personalizePracticeVocabularyAnalytics/)
+  assert.match(launcher, /vocabulary-analytics\/words\?all=true/)
+  assert.match(wordsRoute, /personalizePracticeVocabularyAnalytics/)
+  assert.match(wordsRoute, /profile/)
+  assert.match(wordsRoute, /page/)
+  assert.match(wordsRoute, /limit/)
+  assert.match(wordsRoute, /hasNextPage/)
   assert.match(server, /SUDACHI_ANALYSIS_BATCH_CHARACTERS/)
   assert.match(server, /documentIndexes\[token\.textIndex\]/)
   assert.match(server, /if \(!analysis\.available\)/)

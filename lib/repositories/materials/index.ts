@@ -8,6 +8,8 @@ import {
 } from './material-title'
 import { toVocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
+import { selectLatestVocabularyWordAudio } from '@/utils/vocabulary/audioPriority'
+import { getVocabularyRecordPriority } from '@/utils/vocabulary/sourcePriority'
 import { prepareEbookChapters } from '@/lib/ebooks/chapter-display'
 import { isEbookSourceKind } from '@/lib/ebooks/source-kind'
 import {
@@ -110,6 +112,13 @@ const buildVocabularyMetaMapForText = async (
       wordAudio: true,
       sourceType: true,
       sourceId: true,
+      createdAt: true,
+      updatedAt: true,
+      wordbooks: {
+        select: {
+          wordbook: { select: { series: { select: { title: true } } } },
+        },
+      },
     },
   })
 
@@ -120,16 +129,40 @@ const buildVocabularyMetaMapForText = async (
   )
   const matchedBaseWords = new Set(Object.values(aliasMap))
 
-  return rows.reduce<Record<string, ReturnType<typeof toVocabularyMeta>>>(
-    (acc, row) => {
-      if (row.sourceType !== 'ARTICLE_TEXT' || !sourceIdSet.has(row.sourceId)) {
-        if (!matchedBaseWords.has(row.word)) return acc
-      }
-      acc[row.word] = toVocabularyMeta(row)
-      return acc
-    },
-    {},
-  )
+  const audioCandidatesByWord = new Map<string, typeof rows>()
+  rows.forEach(row => {
+    audioCandidatesByWord.set(row.word, [
+      ...(audioCandidatesByWord.get(row.word) || []),
+      row,
+    ])
+  })
+
+  return [...rows]
+    .sort(
+      (left, right) =>
+        getVocabularyRecordPriority(
+          right.wordbooks.map(link => link.wordbook.series.title),
+        ) -
+          getVocabularyRecordPriority(
+            left.wordbooks.map(link => link.wordbook.series.title),
+          ) ||
+        left.updatedAt.getTime() - right.updatedAt.getTime(),
+    )
+    .reduce<Record<string, ReturnType<typeof toVocabularyMeta>>>(
+      (acc, row) => {
+        if (row.sourceType !== 'ARTICLE_TEXT' || !sourceIdSet.has(row.sourceId)) {
+          if (!matchedBaseWords.has(row.word)) return acc
+        }
+        acc[row.word] = {
+          ...toVocabularyMeta(row),
+          wordAudio: selectLatestVocabularyWordAudio(
+            audioCandidatesByWord.get(row.word) || [],
+          ),
+        }
+        return acc
+      },
+      {},
+    )
 }
 
 export async function getArticleById(id: string) {

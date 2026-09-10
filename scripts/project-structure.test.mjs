@@ -103,9 +103,7 @@ test('review routes and feature modules exist', async () => {
     'modules/import/components/BulkQuizPanel.tsx',
     'modules/knowledge/vocabulary/components/MemoryCardControls.tsx',
     'modules/knowledge/vocabulary/components/SentenceSearchPanel.tsx',
-    'modules/knowledge/vocabulary/components/SentenceEditControls.tsx',
     'modules/knowledge/vocabulary/components/VocabularySentenceText.tsx',
-    'modules/knowledge/vocabulary/components/VocabularyMeaningEditor.tsx',
     'modules/questions/domain/editor.ts',
     'modules/questions/domain/paper-editor.ts',
     'modules/questions/domain/toeic.ts',
@@ -292,7 +290,6 @@ test('large feature entry points delegate distinct responsibilities', async () =
   assert.match(vocabularyTabs, /vocabulary\/components\/MemoryCardControls/)
   assert.match(vocabularyTabs, /vocabulary\/components\/SentenceSearchPanel/)
   assert.match(vocabularyTabs, /vocabulary\/components\/VocabularySentenceText/)
-  assert.match(vocabularyTabs, /vocabulary\/components\/VocabularyMeaningEditor/)
 })
 
 test('content import keeps one task visible at a time', async () => {

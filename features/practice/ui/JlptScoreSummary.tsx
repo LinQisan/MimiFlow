@@ -45,7 +45,7 @@ export default function JlptScoreSummary({
         })}
         <div className='px-3 py-3 text-center'>
           <p className='text-[11px] font-bold text-slate-700'>总分</p>
-          <p className='mt-1 text-2xl font-black tabular-nums text-slate-950'>
+          <p className='mt-1 text-2xl font-bold tabular-nums text-slate-950'>
             {summary.totalScore}
             <span className='ml-0.5 text-xs font-medium text-slate-400'>
               /180

@@ -1,8 +1,13 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useRef, useState, useTransition } from 'react'
 
-import { updateListeningDialogueText } from '@/features/listening/manage-actions'
+import {
+  replaceListeningSubtitles,
+  updateListeningDialogueText,
+} from '@/features/listening/manage-actions'
+import { useDialog } from '@/context/DialogContext'
+import { serializeTimelineToAss } from '@/modules/import/audio/ass'
 
 type Dialogue = {
   id: number
@@ -13,17 +18,22 @@ type Dialogue = {
 
 type Props = {
   materialId: string
+  materialTitle: string
   initialDialogues: Dialogue[]
 }
 
 export default function ListeningTranscriptEditor({
   materialId,
+  materialTitle,
   initialDialogues,
 }: Props) {
+  const dialog = useDialog()
+  const subtitleInputRef = useRef<HTMLInputElement>(null)
   const [dialogues, setDialogues] = useState(initialDialogues)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error'>('success')
   const [isPending, startTransition] = useTransition()
 
   const beginEditing = (index: number) => {
@@ -53,6 +63,7 @@ export default function ListeningTranscriptEditor({
     startTransition(async () => {
       const result = await updateListeningDialogueText(formData)
       if (!result.success) {
+        setMessageTone('error')
         setMessage(result.message || '保存失败。')
         return
       }
@@ -63,20 +74,107 @@ export default function ListeningTranscriptEditor({
       )
       setEditingIndex(null)
       setDraft('')
+      setMessageTone('success')
       setMessage('文本已更新。')
     })
+  }
+
+  const replaceSubtitles = async (file: File) => {
+    const confirmed = await dialog.confirm(
+      `将使用“${file.name}”覆盖当前 ${dialogues.length} 句时间轴。音频和题目不会改变，是否继续？`,
+      {
+        title: '覆盖当前字幕',
+        confirmText: '确认覆盖',
+        danger: true,
+      },
+    )
+    if (!confirmed) return
+
+    const formData = new FormData()
+    formData.set('id', materialId)
+    formData.set('subtitleFile', file)
+    setMessage('')
+    startTransition(async () => {
+      const result = await replaceListeningSubtitles(formData)
+      if (!result.success) {
+        setMessageTone('error')
+        setMessage(result.message || '覆盖字幕失败。')
+        return
+      }
+      setDialogues(result.dialogues)
+      setEditingIndex(null)
+      setDraft('')
+      setMessageTone('success')
+      setMessage(result.message || '字幕已覆盖。')
+    })
+  }
+
+  const downloadAss = () => {
+    const content = serializeTimelineToAss(dialogues, materialTitle)
+    const blob = new Blob([`\uFEFF${content}`], {
+      type: 'text/plain;charset=utf-8',
+    })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const safeTitle =
+      materialTitle
+        .normalize('NFKC')
+        .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^[-.]+|[-.]+$/g, '')
+        .slice(0, 100) || 'timeline'
+    link.href = url
+    link.download = `${safeTitle}.ass`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
   }
 
   return (
     <details
       open
-      className='group overflow-hidden rounded-[18px] border border-slate-200/80 bg-white shadow-[0_1px_5px_-4px_rgba(15,23,42,0.45),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)]'>
+      className='group border-y border-slate-200 py-4'>
       <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4 font-semibold text-slate-800 marker:content-none md:px-6'>
         <span>逐句文本</span>
         <span className='text-xs font-medium text-slate-400 group-open:hidden'>展开编辑</span>
         <span className='hidden text-xs font-medium text-slate-400 group-open:inline'>可逐句修改</span>
       </summary>
       <div className='border-t border-slate-100'>
+        <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 md:px-6'>
+          <p className='text-xs leading-5 text-slate-500'>
+            重新上传会覆盖全部时间与文本；下载会使用当前时间轴。
+          </p>
+          <div className='flex flex-wrap gap-2'>
+            <input
+              ref={subtitleInputRef}
+              type='file'
+              accept='.ass,text/x-ssa,text/plain'
+              className='sr-only'
+              onChange={event => {
+                const file = event.currentTarget.files?.[0]
+                event.currentTarget.value = ''
+                if (file) void replaceSubtitles(file)
+              }}
+            />
+            <button
+              type='button'
+              disabled={isPending || editingIndex !== null}
+              onClick={() => subtitleInputRef.current?.click()}
+              className='ui-btn ui-btn-sm disabled:opacity-50'>
+              {isPending ? '处理中…' : '重新上传字幕'}
+            </button>
+            <button
+              type='button'
+              disabled={
+                isPending || editingIndex !== null || dialogues.length === 0
+              }
+              onClick={downloadAss}
+              className='ui-btn ui-btn-sm disabled:opacity-50'>
+              下载 ASS
+            </button>
+          </div>
+        </div>
         <div className='hidden border-b border-slate-100 bg-slate-50 px-5 py-3 text-xs font-semibold text-slate-500 md:grid md:grid-cols-[9rem_minmax(0,1fr)_4rem] md:px-6'>
           <span className='text-right'>时间轴（秒）</span>
           <span className='pl-4'>文本内容</span>
@@ -151,7 +249,10 @@ export default function ListeningTranscriptEditor({
           )}
         </div>
         {message && editingIndex === null ? (
-          <p className='border-t border-slate-100 px-5 py-3 text-xs font-semibold text-emerald-700 md:px-6'>
+          <p
+            className={`border-t border-slate-100 px-5 py-3 text-xs font-semibold md:px-6 ${
+              messageTone === 'error' ? 'text-rose-600' : 'text-emerald-700'
+            }`}>
             {message}
           </p>
         ) : null}

@@ -103,7 +103,7 @@ export default function ArticleQuestionsPanel({
   return (
     <section className='pt-8'>
       <div className='pb-4'>
-        <h2 className='text-lg font-black text-slate-900'>理解练习</h2>
+        <h2 className='text-lg font-bold text-slate-900'>理解练习</h2>
       </div>
 
       <div className='mt-3 divide-y divide-slate-200 border-y border-slate-200'>

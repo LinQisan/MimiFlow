@@ -1,3 +1,5 @@
+import 'server-only'
+
 import type { QuestionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
@@ -431,30 +433,35 @@ export async function submitRetryAnswerWithSchedule({
     })
 
     if (!isCorrect) {
-      await tx.questionRetry.update({
-        where: { id: retryId },
+      const updated = await tx.questionRetry.updateMany({
+        where: { id: retryId, userId },
         data: {
           stage: 0,
           dueAt: addHours(now, retryHours[0]),
           wrongCount: { increment: 1 },
         },
       })
+      if (updated.count === 0) throw new Error('回流题目不存在或已完成')
       return
     }
 
     const nextStage = row.stage + 1
     if (nextStage >= retryHours.length) {
-      await tx.questionRetry.delete({ where: { id: retryId } })
+      const removed = await tx.questionRetry.deleteMany({
+        where: { id: retryId, userId },
+      })
+      if (removed.count === 0) throw new Error('回流题目不存在或已完成')
       return
     }
 
-    await tx.questionRetry.update({
-      where: { id: retryId },
+    const advanced = await tx.questionRetry.updateMany({
+      where: { id: retryId, userId },
       data: {
         stage: nextStage,
         dueAt: addHours(now, retryHours[nextStage]),
       },
     })
+    if (advanced.count === 0) throw new Error('回流题目不存在或已完成')
   })
 
   if (!isCorrect) {

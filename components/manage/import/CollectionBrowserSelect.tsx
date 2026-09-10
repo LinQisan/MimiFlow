@@ -298,11 +298,11 @@ export default function CollectionBrowserSelect({
         </span>
         <span className='flex shrink-0 items-center gap-2'>
           {hasChildren ? (
-            <span className='rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-gray-500'>
+            <span className='rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gray-500'>
               {node.children.length}
             </span>
           ) : null}
-          <span className='text-[11px] font-black uppercase tracking-wide text-gray-300 group-hover:text-blue-500'>
+          <span className='text-[11px] font-bold uppercase tracking-wide text-gray-300 group-hover:text-blue-500'>
             {hasChildren ? '进入' : '选择'}
           </span>
         </span>
@@ -380,7 +380,7 @@ export default function CollectionBrowserSelect({
             <aside className='border-b border-gray-100 bg-gray-50/70 md:border-b-0 md:border-r'>
               <div className='p-3'>
                 <div className='mb-2 flex items-center justify-between'>
-                  <p className='text-[11px] font-black uppercase tracking-[0.2em] text-gray-400'>
+                  <p className='text-[11px] font-bold uppercase tracking-[0.2em] text-gray-400'>
                     最近使用
                   </p>
                 </div>
@@ -412,7 +412,7 @@ export default function CollectionBrowserSelect({
               </div>
 
               <div className='border-t border-gray-200/70 px-3 pb-3 pt-2'>
-                <p className='mb-2 text-[11px] font-black uppercase tracking-[0.2em] text-gray-400'>
+                <p className='mb-2 text-[11px] font-bold uppercase tracking-[0.2em] text-gray-400'>
                   一级分类
                 </p>
                 <div className='max-h-[18rem] overflow-y-auto pr-1'>
@@ -434,7 +434,7 @@ export default function CollectionBrowserSelect({
                             : 'hover:bg-white hover:text-blue-700'
                         }`}>
                         <span className='min-w-0 flex-1'>
-                          <span className='block truncate text-sm font-black'>{node.label}</span>
+                          <span className='block truncate text-sm font-bold'>{node.label}</span>
                           {node.searchText && node.searchText !== node.label ? (
                             <span className='mt-0.5 block truncate text-[11px] font-medium text-gray-400'>
                               {node.searchText}
@@ -442,7 +442,7 @@ export default function CollectionBrowserSelect({
                           ) : null}
                         </span>
                         {node.children.length ? (
-                          <span className='ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-gray-500'>
+                          <span className='ml-2 rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-gray-500'>
                             {node.children.length}
                           </span>
                         ) : null}
@@ -459,7 +459,7 @@ export default function CollectionBrowserSelect({
                   {searchResults.length ? (
                     searchResults.map(group => (
                       <div key={group.root.value} className='border-b border-gray-100 last:border-b-0'>
-                        <div className='sticky top-0 z-[2] border-b border-gray-100 bg-gray-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.2em] text-gray-400'>
+                        <div className='sticky top-0 z-[2] border-b border-gray-100 bg-gray-50 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-gray-400'>
                           {group.root.label}
                         </div>
                         {group.items.map(node => {
@@ -484,7 +484,7 @@ export default function CollectionBrowserSelect({
                                   {node.searchText || node.label}
                                 </span>
                               </span>
-                              <span className='shrink-0 text-[11px] font-black tracking-wide text-gray-300'>
+                              <span className='shrink-0 text-[11px] font-bold tracking-wide text-gray-300'>
                                 {hasChildren ? '进入' : '选择'}
                               </span>
                             </button>

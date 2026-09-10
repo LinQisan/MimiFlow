@@ -121,10 +121,7 @@ export default function CustomPaperBuilderClient({
     <main className='min-h-screen bg-stone-50 px-4 pb-24 text-slate-900 md:px-6 md:pb-10'>
       <div className='mx-auto max-w-5xl'>
         <header className='flex items-end justify-between border-b border-slate-200 py-6'>
-          <div>
-            <h1 className='text-2xl font-black tracking-tight'>自定义练习</h1>
-            <p className='mt-1 text-sm text-slate-500'>选择范围后随机抽题</p>
-          </div>
+          <h1 className='text-2xl font-bold tracking-tight'>自定义练习</h1>
           <Link
             href='/practice'
             className='text-sm font-semibold text-slate-500 transition hover:text-slate-950'>
@@ -233,7 +230,7 @@ export default function CustomPaperBuilderClient({
                     className='flex items-center gap-3 self-start text-left'>
                     <span
                       aria-hidden='true'
-                      className={`grid h-5 w-5 place-items-center rounded border text-xs font-black ${
+                      className={`grid h-5 w-5 place-items-center rounded border text-xs font-bold ${
                         selectedCount > 0
                           ? 'border-slate-900 bg-slate-900 text-white'
                           : 'border-slate-300 bg-white text-transparent'

@@ -81,7 +81,7 @@ export default function QuestionNoteEditor({
   }
 
   return (
-    <section className='mx-auto mt-4 w-full max-w-5xl rounded-[18px] border border-slate-200/80 bg-white p-4 shadow-[0_8px_24px_-22px_rgba(15,23,42,0.45)] md:p-5'>
+    <section className='mx-auto mt-4 w-full max-w-5xl border-y border-slate-200 py-4'>
       <div className='mb-3 flex min-h-8 items-center justify-between gap-3'>
         <div className='flex min-w-0 items-center gap-2'>
           <h4 className='shrink-0 text-sm font-semibold tracking-tight text-slate-900'>

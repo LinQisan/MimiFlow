@@ -34,7 +34,7 @@ export default async function ManageShadowingEditPage({
           hrefBase='/manage/shadowing'
         />
 
-        <section className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-6'>
+        <section className='border-b border-slate-200 py-4'>
           <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
             <div className='min-w-0'>
               <div className='flex flex-wrap items-center gap-2'>
@@ -45,7 +45,7 @@ export default async function ManageShadowingEditPage({
                   {material.dialogues.length} 句文本
                 </span>
               </div>
-              <h1 className='mt-3 text-2xl font-black text-slate-950 md:text-3xl'>{material.title}</h1>
+              <h1 className='mt-3 text-2xl font-bold text-slate-950 md:text-3xl'>{material.title}</h1>
               <p className='mt-1 text-sm text-slate-500'>所属：{material.collectionTitle}</p>
             </div>
             <div className='flex shrink-0 flex-wrap gap-2'>
@@ -82,7 +82,7 @@ export default async function ManageShadowingEditPage({
           跟读材料不配置听力题目，主要维护音频、标题、字幕时间轴以及教材章节归类。
         </section>
 
-        <details className='group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm' open>
+        <details className='group overflow-hidden border-y border-slate-200 py-4' open>
           <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-bold text-slate-800 marker:content-none md:px-5'>
             <span>字幕与时间轴</span>
             <span className='text-xs font-semibold text-slate-400'>{material.dialogues.length} 句</span>

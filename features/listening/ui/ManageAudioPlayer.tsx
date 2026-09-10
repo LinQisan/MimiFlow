@@ -56,12 +56,12 @@ export default function ManageAudioPlayer({ src }: { src: string }) {
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0
 
   return (
-    <div className='flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_8px_28px_-24px_rgba(15,23,42,0.45)] md:gap-4 md:p-4'>
+    <div className='flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 md:gap-4 md:p-4'>
       <button
         type='button'
         onClick={togglePlayback}
         aria-label={isPlaying ? '暂停音频' : '播放音频'}
-        className='inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-black text-white transition hover:bg-slate-800 active:scale-95'>
+        className='inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-950 text-sm font-bold text-white transition hover:bg-slate-800 active:scale-95'>
         <span aria-hidden='true' className={isPlaying ? 'tracking-[-0.18em]' : 'ml-0.5'}>
           {isPlaying ? 'Ⅱ' : '▶'}
         </span>

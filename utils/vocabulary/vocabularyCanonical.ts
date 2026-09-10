@@ -1,4 +1,4 @@
-import { guessLanguageCode } from '../language/langDetector'
+import { guessLanguageCode } from '../language/langDetector.ts'
 
 const unique = (list: string[]) => Array.from(new Set(list.filter(Boolean)))
 
@@ -8,6 +8,42 @@ const normalizeRawWord = (raw: string) =>
     .trim()
     .replace(/^[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+/, '')
     .replace(/[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+$/, '')
+
+export const splitVocabularyHeadwordVariants = (rawWord: string) => {
+  const normalized = normalizeRawWord(rawWord)
+  if (!normalized) return []
+  return unique(
+    normalized
+      .split(/\s*[\/／]\s*/)
+      .map(normalizeRawWord)
+      .filter(Boolean),
+  )
+}
+
+const OPTIONAL_KANA_SEGMENT_REGEX = /\(([\p{Script=Hiragana}\p{Script=Katakana}ー]+)\)/u
+
+const expandOptionalKanaSegments = (headword: string): string[] => {
+  const match = OPTIONAL_KANA_SEGMENT_REGEX.exec(headword)
+  if (!match || match.index === undefined) return [headword]
+
+  const before = headword.slice(0, match.index)
+  const optional = match[1] || ''
+  const after = headword.slice(match.index + match[0].length)
+  return unique([
+    ...expandOptionalKanaSegments(`${before}${after}`),
+    ...expandOptionalKanaSegments(`${before}${optional}${after}`),
+  ])
+}
+
+/**
+ * Expands authored optional-kana notation into the surfaces that can occur in
+ * real text. The authored spelling remains untouched for display purposes.
+ * For example, `仕方(が)ない` becomes `仕方ない` and `仕方がない`.
+ */
+export const expandVocabularyHeadwordMatchVariants = (rawWord: string) =>
+  unique(
+    splitVocabularyHeadwordVariants(rawWord).flatMap(expandOptionalKanaSegments),
+  )
 
 const buildEnglishKeys = (word: string) => {
   const base = word.toLowerCase()
@@ -153,12 +189,14 @@ export const normalizeVocabularyHeadword = (
 }
 
 export const buildVocabularyCanonicalKeys = (rawWord: string) => {
-  const normalized = normalizeRawWord(rawWord)
-  if (!normalized) return []
-  const lang = guessLanguageCode(normalized)
-  if (lang === 'en') return buildEnglishKeys(normalized)
-  if (lang === 'ja' || /[\u3040-\u30ff\u4e00-\u9fff]/.test(normalized)) {
-    return buildJapaneseKeys(normalized)
-  }
-  return [normalized.toLowerCase()]
+  return unique(
+    expandVocabularyHeadwordMatchVariants(rawWord).flatMap(normalized => {
+      const lang = guessLanguageCode(normalized)
+      if (lang === 'en') return buildEnglishKeys(normalized)
+      if (lang === 'ja' || /[\u3040-\u30ff\u4e00-\u9fff]/.test(normalized)) {
+        return buildJapaneseKeys(normalized)
+      }
+      return [normalized.toLowerCase()]
+    }),
+  )
 }

@@ -4,6 +4,7 @@ import { PracticePlayer } from '@/components/exam/PracticePlayer'
 import type { ExamQuestion } from '@/components/exam/question-renderer/types'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
+import type { PaperWordbookDistribution } from '@/features/practice/domain/paper-word-frequency'
 
 type SubmissionItem = {
   question: ExamQuestion
@@ -40,6 +41,7 @@ export default function PracticeSubmissionReviewClient({
   sudachiLexicon,
   sudachiAvailable,
   vocabularyMetaMap,
+  wordbookDistribution = null,
 }: {
   paperId: string
   paperTitle: string
@@ -52,6 +54,7 @@ export default function PracticeSubmissionReviewClient({
   sudachiLexicon: Record<string, SudachiLexeme>
   sudachiAvailable: boolean
   vocabularyMetaMap: Record<string, VocabularyMeta>
+  wordbookDistribution?: PaperWordbookDistribution | null
 }) {
   const initialAnswers = submissionItems.reduce<Record<string, string>>(
     (answers, item) => {
@@ -102,6 +105,7 @@ export default function PracticeSubmissionReviewClient({
       initialSubmitted
       historyCorrectQuestionIds={correctQuestionIds}
       historyWrongQuestionIds={wrongQuestionIds}
+      initialWordbookDistribution={wordbookDistribution}
     />
   )
 }

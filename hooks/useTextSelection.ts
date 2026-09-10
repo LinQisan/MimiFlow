@@ -157,7 +157,7 @@ export function useTextSelection(enabled = true) {
       const windowSelection = window.getSelection()
       const text = windowSelection ? extractSelectedText(windowSelection) : ''
 
-      if (text && text.length > 0 && text.length <= 60) {
+      if (text && text.length > 0 && text.length <= 2000) {
         const range = windowSelection!.getRangeAt(0)
         const container = range.commonAncestorContainer
         const element =
@@ -271,7 +271,10 @@ export function useTextSelection(enabled = true) {
     const isInsidePopover = (target: EventTarget | null) =>
       target instanceof Element && Boolean(target.closest('.ui-pop'))
 
+    const hasActiveEditor = () => Boolean(document.querySelector('.ui-pop [data-selection-editor="true"], .ui-pop[data-selection-editor="true"]'))
+
     const handlePointerDown = (event: PointerEvent) => {
+      if (hasActiveEditor()) return
       if (isInsidePopover(event.target)) return
       pointerActiveRef.current = true
       pointerStartSelectionRef.current = getSelectionFingerprint()
@@ -279,6 +282,7 @@ export function useTextSelection(enabled = true) {
     }
 
     const handlePointerUp = (event: PointerEvent) => {
+      if (hasActiveEditor()) return
       if (isInsidePopover(event.target)) return
       pointerActiveRef.current = false
       lastPointerUpAtRef.current = Date.now()
@@ -304,6 +308,7 @@ export function useTextSelection(enabled = true) {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        if (document.querySelector('.ui-pop[role="dialog"]')) return
         hideSelection()
         return
       }
@@ -318,6 +323,7 @@ export function useTextSelection(enabled = true) {
     }
 
     const handleWindowScroll = () => {
+      if (hasActiveEditor()) return
       if (pointerActiveRef.current) {
         updateSelectionPosition()
         return

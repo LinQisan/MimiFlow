@@ -1,7 +1,6 @@
 import Link from 'next/link'
 
 import { getReviewOverview } from '@/modules/review/server/queries'
-import PageHeader from '@/components/layout/PageHeader'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,7 +10,6 @@ export default async function ReviewPage() {
   const sections = [
     {
       title: '记忆复习',
-      description: '使用 FSRS 复习到期的单词和句子。',
       count: overview.dueMemory,
       detail: `单词 ${overview.dueVocabularies} · 句子 ${overview.dueSentences}`,
       href: '/review/memory',
@@ -19,7 +17,6 @@ export default async function ReviewPage() {
     },
     {
       title: '错题巩固',
-      description: '按照 24h / 72h / 7d 节奏重新作答。',
       count: overview.dueMistakes,
       detail: `错题本共 ${overview.allMistakes} 题`,
       href: '/review/mistakes',
@@ -28,21 +25,18 @@ export default async function ReviewPage() {
   ]
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
-      <div className='mx-auto max-w-7xl space-y-5'>
-        <PageHeader title='复习中心' description='处理到期记忆和需要巩固的错题。' />
-
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-5xl space-y-2'>
         <section className='grid gap-4 md:grid-cols-2'>
           {sections.map(section => (
             <article
               key={section.title}
-              className='rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)] md:p-6'>
+              className='border-b border-slate-200 py-5 first:border-t md:py-6'>
               <div className='flex items-start justify-between gap-4'>
                 <div>
-                  <h2 className='text-xl font-black text-slate-900'>
+                  <h2 className='text-base font-bold text-slate-900'>
                     {section.title}
                   </h2>
-                  <p className='mt-2 text-sm leading-6 text-slate-600'>{section.description}</p>
                 </div>
                 <span className='min-w-16 border-l border-slate-300 pl-4 text-right font-sans text-2xl font-semibold text-slate-800'>
                   {section.count}

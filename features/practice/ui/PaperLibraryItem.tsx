@@ -31,7 +31,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
   }, [currentUser.id, paper.id])
 
   return (
-    <article className='group rounded-2xl border border-slate-200/80 bg-white px-5 py-5 shadow-[0_10px_35px_-30px_rgba(15,23,42,0.55)] transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_45px_-28px_rgba(15,23,42,0.35)] md:px-6 md:py-6'>
+    <article className='group border-b border-slate-200 py-5 transition-colors first:border-t hover:bg-white md:py-6'>
       <div className='grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)_auto] md:items-center'>
         <div className='min-w-0'>
           <h3 className='text-xl font-semibold tracking-tight text-slate-950 md:text-2xl'>
@@ -102,6 +102,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
         <div className='flex gap-2 md:flex-col'>
           <Link
             href={`/practice/${encodeURIComponent(paper.id)}/do`}
+            prefetch={false}
             className='inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-semibold text-white transition hover:bg-slate-800 md:flex-none'>
             {hasDraftProgress ? '继续练习' : '开始练习'}
           </Link>

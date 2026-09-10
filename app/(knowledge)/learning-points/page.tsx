@@ -1,7 +1,6 @@
 import Link from 'next/link'
 import { LearningRecordKind } from '@prisma/client'
 
-import PageHeader from '@/components/layout/PageHeader'
 import {
   normalizeLearningFragments,
 } from '@/modules/knowledge/learning-records/domain'
@@ -26,45 +25,41 @@ export default async function LearningPointsPage({
   const records = await listLearningRecords(kind)
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 dark:bg-slate-950 md:px-8 md:py-8'>
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 dark:bg-slate-950 md:px-8 md:py-8'>
       <div className='mx-auto max-w-5xl space-y-6'>
-        <PageHeader
-          showTitle
-          title='学习点'
-          description='保存句内语法、句型、言い換え与辨析；记录锚定原文文本和上下文，不依赖页面 DOM。'
-          meta={<span>共 {records.length} 条记录</span>}
-        />
-
-        <nav className='flex gap-2' aria-label='学习记录筛选'>
-          {[
-            { href: '/learning-points', label: '全部', active: !kind },
-            {
-              href: '/learning-points?kind=point',
-              label: '学习点',
-              active: kind === LearningRecordKind.LEARNING_POINT,
-            },
-            {
-              href: '/learning-points?kind=sentence',
-              label: '句子',
-              active: kind === LearningRecordKind.SENTENCE,
-            },
-          ].map(item => (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={item.active ? 'page' : undefined}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                item.active
-                  ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500'
-              }`}>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <div className='flex flex-wrap items-center justify-between gap-3'>
+          <nav className='flex gap-2' aria-label='学习记录筛选'>
+            {[
+              { href: '/learning-points', label: '全部', active: !kind },
+              {
+                href: '/learning-points?kind=point',
+                label: '学习点',
+                active: kind === LearningRecordKind.LEARNING_POINT,
+              },
+              {
+                href: '/learning-points?kind=sentence',
+                label: '句子',
+                active: kind === LearningRecordKind.SENTENCE,
+              },
+            ].map(item => (
+              <Link
+                key={item.href}
+                href={item.href}
+                aria-current={item.active ? 'page' : undefined}
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                  item.active
+                    ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-950'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-slate-500'
+                }`}>
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <p className='ui-meta'>共 {records.length} 条</p>
+        </div>
 
         {records.length === 0 ? (
-          <p className='rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400'>
+          <p className='ui-empty'>
             暂无记录。在正文、字幕或题目中选中文字，再点“划词”即可记录。
           </p>
         ) : (

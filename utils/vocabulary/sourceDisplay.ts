@@ -10,6 +10,13 @@ const stripLeadingIcons = (text: string) =>
 const getSourceTypeLabel = (sentence: SentenceSourceLike) => {
   const sourceText = stripLeadingIcons(sentence.source || '')
   const sourceUrl = sentence.sourceUrl || ''
+  if (sourceUrl.startsWith('/vocabulary/wordbooks/')) return ''
+  if (
+    sourceUrl.startsWith('/manage/import') &&
+    /(?:\?|&)type=anki(?:&|$)/.test(sourceUrl)
+  ) {
+    return ''
+  }
   if (sentence.sourceType === 'QUIZ_QUESTION') return '题目'
   if (sentence.sourceType === 'ARTICLE_TEXT') return '阅读'
   if (sentence.sourceType === 'MEDIA_SUBTITLE_LINE') return '影视'
@@ -28,6 +35,9 @@ const getSourceTypeLabel = (sentence: SentenceSourceLike) => {
 export const formatVocabularySentenceSource = (
   sentence: SentenceSourceLike,
 ) => {
+  if (sentence.sourceUrl?.startsWith('https://nadeshiko.co/sentence/')) {
+    return sentence.source || 'Nadeshiko'
+  }
   const sourceType = getSourceTypeLabel(sentence)
   const sourceText = stripLeadingIcons(sentence.source || '')
   if (!sourceType) {

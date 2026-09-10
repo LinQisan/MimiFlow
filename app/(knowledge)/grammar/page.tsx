@@ -1,4 +1,3 @@
-import PageHeader from '@/components/layout/PageHeader'
 import { listGrammarLibrary } from '@/features/grammar/server/repository'
 
 export const revalidate = 0
@@ -7,35 +6,33 @@ export default async function GrammarPage() {
   const grammars = await listGrammarLibrary()
 
   return (
-    <main className='min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8'>
-      <div className='mx-auto max-w-7xl space-y-4'>
-        <PageHeader
-          title='语法库'
-          description='按接续、意思和例句浏览语法。'
-          meta={<span>共 {grammars.length} 条</span>}
-        />
+    <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
+      <div className='mx-auto max-w-5xl space-y-4'>
+        <div className='flex items-baseline justify-between gap-3 border-b border-slate-200 pb-3'>
+          <p className='ui-meta'>共 {grammars.length} 条</p>
+        </div>
 
         <section>
           {grammars.length === 0 ? (
-            <p className='rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500'>
+            <p className='ui-empty'>
               暂无语法内容。
             </p>
           ) : (
-            <div className='grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
+            <ul className='divide-y divide-slate-200 border-y border-slate-200'>
               {grammars.map(item => (
-                <article
+                <li
                   key={item.id}
-                  className='rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_12px_36px_-32px_rgba(15,23,42,0.5)]'>
-                  <div className='flex flex-wrap items-start justify-between gap-2'>
-                    <h3 className='line-clamp-1 text-[15px] font-black leading-snug text-slate-900'>
+                  className='py-4'>
+                  <div className='flex flex-wrap items-baseline justify-between gap-2'>
+                    <h3 className='text-[15px] font-bold leading-snug text-slate-900'>
                       {item.name}
                     </h3>
-                    <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600'>
+                    <span className='ui-meta'>
                       接续 {item.constructions.length}
                     </span>
                   </div>
 
-                  <div className='mt-2 flex flex-wrap gap-1.5'>
+                  <div className='mt-1.5 flex flex-wrap gap-1.5'>
                     {item.tags.length > 0 ? (
                       item.tags.slice(0, 4).map(tag => (
                         <span
@@ -44,27 +41,22 @@ export default async function GrammarPage() {
                           #{tag.tag.name}
                         </span>
                       ))
-                    ) : (
-                      <span className='text-[11px] text-slate-400'>无标签</span>
-                    )}
+                    ) : null}
                     {item.tags.length > 4 ? (
-                      <span className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500'>
+                      <span className='text-[10px] font-semibold text-slate-500'>
                         +{item.tags.length - 4}
                       </span>
                     ) : null}
-                  </div>
-
-                  {item.clusters.length > 0 ? (
-                    <div className='mt-2 flex flex-wrap gap-1.5'>
-                      {item.clusters.map(cluster => (
+                    {item.clusters.length > 0 ? (
+                      item.clusters.map(cluster => (
                         <span
                           key={`${item.id}-${cluster.clusterId}`}
                           className='rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600'>
                           组: {cluster.cluster.title}
                         </span>
-                      ))}
-                    </div>
-                  ) : null}
+                      ))
+                    ) : null}
+                  </div>
 
                   {item.constructions.length > 0 ? (
                     <div className='mt-3 border-l-2 border-slate-200 pl-3 text-sm'>
@@ -117,9 +109,9 @@ export default async function GrammarPage() {
                       </div>
                     </div>
                   ) : null}
-                </article>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
       </div>

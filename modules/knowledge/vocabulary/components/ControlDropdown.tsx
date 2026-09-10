@@ -8,6 +8,7 @@ type DropdownOption = {
   selectedLabel?: string
   depth?: number
   count?: number
+  meta?: string
 }
 
 export default function ControlDropdown({
@@ -50,7 +51,7 @@ export default function ControlDropdown({
           {selected?.selectedLabel || selected?.label || ''}
         </span>
         <span
-          className={`ml-2 text-[11px] font-black text-gray-400 transition-transform ${
+          className={`ml-2 text-[11px] font-bold text-gray-400 transition-transform ${
             open ? 'rotate-180' : ''
           }`}>
           ▾
@@ -82,7 +83,11 @@ export default function ControlDropdown({
                   ) : null}
                   <span className='truncate'>{option.label}</span>
                 </span>
-                {typeof option.count === 'number' ? (
+                {option.meta ? (
+                  <span className='shrink-0 text-[10px] font-semibold text-slate-400'>
+                    {option.meta}
+                  </span>
+                ) : typeof option.count === 'number' ? (
                   <span className='shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold tabular-nums text-slate-500'>
                     {option.count}
                   </span>

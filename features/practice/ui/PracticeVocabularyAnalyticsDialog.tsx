@@ -1,36 +1,47 @@
 'use client'
 
 import {
-  memo,
   startTransition,
   useCallback,
   useDeferredValue,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
+
+import { mergeVocabularyScope, resolveVocabularyScopeIds } from '@/modules/practice/domain/vocabulary-scope'
 
 import CustomSelect from '@/components/ui/CustomSelect'
 import type {
   PracticeVocabularyAnalytics,
+  PracticeVocabularyAnalyticsSummary,
+  PracticeVocabularyAnalyticsWordsResponse,
+  PracticeVocabularyCategory,
   PracticeVocabularyWordInsight,
   PracticeVocabularyWordbookEntry,
+  PracticeVocabularyWordbookOption,
 } from '@/features/practice/domain/vocabulary-analytics'
 import {
   normalizePracticeVocabularyWord,
-  rankPracticeVocabularyTrendWords,
+  PRACTICE_VOCABULARY_CATEGORY_OPTIONS,
 } from '@/features/practice/domain/vocabulary-analytics'
 
-type View = 'overview' | 'coverage' | 'profiles' | 'trends'
-type CoverageSortMode = 'learning' | 'coverage' | 'frequency'
+type ScopeMode = 'all' | 'series' | 'wordbook'
+type SortMode = 'coverage' | 'frequency' | 'tested' | 'alphabetical'
+type MasteryFilter = 'all' | 'unmastered' | 'mastered'
 
 const PAGE_SIZE = 50
-const KATAKANA_PATTERN = /^[\p{Script=Katakana}ー]+$/u
-const TWO_KANJI_PATTERN = /^\p{Script=Han}{2}$/u
-const KANJI_WORD_PATTERN = /\p{Script=Han}/u
+
+const EMPTY_CATEGORY_COUNTS: Record<PracticeVocabularyCategory, number> = {
+  TEXT_VOCAB: 0,
+  GRAMMAR: 0,
+  READING: 0,
+  LISTENING: 0,
+}
 
 const emptyWordInsight = (
-  entry: PracticeVocabularyWordbookEntry,
+  entry: Pick<PracticeVocabularyWordbookEntry, 'word' | 'reading' | 'partOfSpeech' | 'wordbookIds' | 'isMastered'>,
 ): PracticeVocabularyWordInsight => ({
   word: entry.word,
   reading: entry.reading,
@@ -41,183 +52,124 @@ const emptyWordInsight = (
   optionCount: 0,
   targetCount: 0,
   learningValue: 0,
-  inWordbook: true,
   wordbookIds: entry.wordbookIds,
-  wordbookNames: entry.wordbookNames,
-  isMastered: false,
-  categoryCounts: { TEXT_VOCAB: 0, GRAMMAR: 0, READING: 0, LISTENING: 0 },
+  isMastered: Boolean(entry.isMastered),
+  categoryCounts: EMPTY_CATEGORY_COUNTS,
   yearCounts: {},
 })
 
-const Ranking = memo(function Ranking({
-  title,
-  description,
-  rows,
-  value,
+const focusableSelector = [
+  'a[href]',
+  'area[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',')
+
+function ScopeControls({
+  mode,
+  scopeId,
+  wordbooks,
+  seriesOptions,
+  onModeChange,
+  onScopeChange,
+  loading,
+  error,
 }: {
-  title: string
-  description: string
-  rows: PracticeVocabularyWordInsight[]
-  value: (row: PracticeVocabularyWordInsight) => number
+  mode: ScopeMode
+  scopeId: string
+  wordbooks: PracticeVocabularyWordbookOption[]
+  seriesOptions: Array<{ id: string; title: string; count: number }>
+  onModeChange: (mode: ScopeMode) => void
+  onScopeChange: (id: string) => void
+  loading: boolean
+  error: string
 }) {
   return (
-    <section className='overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm shadow-slate-200/30'>
-      <div className='border-b border-slate-100 px-4 py-3'>
-        <h3 className='text-sm font-bold text-slate-950'>{title}</h3>
-        <p className='mt-0.5 text-[11px] text-slate-400'>{description}</p>
-      </div>
-      <ol className='grid grid-cols-2 gap-x-4 px-4 py-1 sm:grid-cols-1 lg:grid-cols-2'>
-        {rows.slice(0, 10).map((row, index) => (
-          <li
-            key={row.word}
-            className='grid min-w-0 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 py-2.5 text-sm last:border-b-0'>
-            <span className='text-[10px] font-semibold tabular-nums text-slate-300'>
-              {String(index + 1).padStart(2, '0')}
-            </span>
-            <span className='truncate font-semibold text-slate-800'>{row.word}</span>
-            <span className='text-[11px] font-semibold tabular-nums text-slate-400'>{value(row)}</span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  )
-})
-
-function OverviewView({ analytics }: { analytics: PracticeVocabularyAnalytics }) {
-  const rankings = useMemo(() => {
-    const learningWords: PracticeVocabularyWordInsight[] = []
-    const optionWords: PracticeVocabularyWordInsight[] = []
-    const katakanaWords: PracticeVocabularyWordInsight[] = []
-    const compounds: PracticeVocabularyWordInsight[] = []
-    const testedWords: PracticeVocabularyWordInsight[] = []
-
-    for (const row of analytics.words) {
-      const usefulCandidate = !row.isMastered
-      if (usefulCandidate) learningWords.push(row)
-      if (row.optionCount > 0 && usefulCandidate) optionWords.push(row)
-      if (KATAKANA_PATTERN.test(row.word)) katakanaWords.push(row)
-      if (TWO_KANJI_PATTERN.test(row.word) && usefulCandidate) compounds.push(row)
-      if (row.targetCount > 0 && KANJI_WORD_PATTERN.test(row.word)) testedWords.push(row)
-    }
-
-    optionWords.sort((left, right) => right.optionCount - left.optionCount)
-    testedWords.sort(
-      (left, right) => right.targetCount - left.targetCount || right.count - left.count,
-    )
-    return { learningWords, optionWords, katakanaWords, compounds, testedWords }
-  }, [analytics.words])
-
-  return (
-    <div className='space-y-6'>
-      <section>
-        <div className='flex items-end justify-between gap-3'>
-          <div>
-            <p className='text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400'>Kanji frequency</p>
-            <h3 className='mt-1 text-base font-bold text-slate-950'>最常出现的汉字</h3>
-          </div>
-          <span className='hidden text-[11px] text-slate-400 sm:inline'>次数 · 覆盖试卷</span>
-        </div>
-        <div className='mt-3 grid grid-cols-5 gap-2 sm:grid-cols-8 lg:grid-cols-10'>
-          {analytics.kanji.slice(0, 20).map(item => (
-            <div
-              key={item.character}
-              className='group rounded-xl border border-slate-200/90 bg-white px-1.5 py-2.5 text-center shadow-sm shadow-slate-200/20 transition hover:-translate-y-0.5 hover:border-slate-300'>
-              <p className='text-2xl font-bold leading-none text-slate-950'>{item.character}</p>
-              <p className='mt-2 whitespace-nowrap text-[10px] font-medium tabular-nums text-slate-400'>
-                {item.count} 次 · {item.paperCount} 套
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <div className='grid gap-3 md:grid-cols-2'>
-        <Ranking title='优先学习词汇' description='综合考点、跨卷覆盖、选项频率和词形复杂度' rows={rankings.learningWords} value={row => row.count} />
-        <Ranking title='选项词频' description='最常作为干扰项或答案出现' rows={rankings.optionWords} value={row => row.optionCount} />
-        <Ranking title='片假名词频' description='外来语与专有表达' rows={rankings.katakanaWords} value={row => row.count} />
-        <Ranking title='二字熟语' description='高频汉字组合' rows={rankings.compounds} value={row => row.count} />
-        <Ranking title='汉字考点' description='最常被直接设问' rows={rankings.testedWords} value={row => row.targetCount} />
+    <div className='border-b border-slate-200 bg-white/70 px-4 py-3 sm:px-5 md:px-7'>
+      <div className='flex flex-wrap items-end gap-3'>
+        <label className='text-xs font-semibold text-slate-500'>
+          分析范围
+          <CustomSelect
+            aria-label='选择分析范围'
+            value={mode}
+            onChange={event => onModeChange(event.currentTarget.value as ScopeMode)}
+            className='mt-1.5 h-10 min-w-44 rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400'>
+            <option value='all'>全部试卷词汇</option>
+            <option value='series'>整本书</option>
+            <option value='wordbook'>单个词表</option>
+          </CustomSelect>
+        </label>
+        {mode === 'series' ? (
+          <label className='w-full sm:w-auto sm:min-w-56 text-xs font-semibold text-slate-500'>
+            选择书本
+            <CustomSelect
+              aria-label='选择书本'
+              value={scopeId}
+              onChange={event => onScopeChange(event.currentTarget.value)}
+              className='mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              {seriesOptions.map(option => (
+                <option key={option.id} value={option.id}>{option.title} · {option.count} 个词表</option>
+              ))}
+            </CustomSelect>
+          </label>
+        ) : null}
+        {mode === 'wordbook' ? (
+          <label className='w-full sm:w-auto sm:min-w-64 text-xs font-semibold text-slate-500'>
+            选择词表
+            <CustomSelect
+              aria-label='选择词表'
+              value={scopeId}
+              onChange={event => onScopeChange(event.currentTarget.value)}
+              className='mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              {wordbooks.map(option => (
+                <option key={option.id} value={option.id}>{option.pathLabel}</option>
+              ))}
+            </CustomSelect>
+          </label>
+        ) : null}
+        <p className={`pb-2 text-xs tabular-nums ${error ? 'font-semibold text-rose-600' : 'text-slate-500'}`} role={error ? 'alert' : undefined}>
+          {error || (loading ? '正在读取词表内容…' : mode === 'all' ? '试卷中出现过的词汇' : '包含词表中未出现在试卷的词')}
+        </p>
       </div>
     </div>
   )
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return <div><p className='text-[10px] font-semibold text-slate-400'>{label}</p><p className='mt-1 text-sm font-bold tabular-nums'>{value}</p></div>
+function Stat({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'success' | 'warn' }) {
+  const valueClass = tone === 'success' ? 'text-emerald-700' : tone === 'warn' ? 'text-amber-700' : 'text-slate-950'
+  return (
+    <div className='border-t border-slate-200 pt-2.5'>
+      <p className='text-[11px] font-semibold text-slate-400'>{label}</p>
+      <p className={`mt-1 text-lg font-bold tabular-nums ${valueClass}`}>{value}</p>
+    </div>
+  )
 }
 
-function WordbookScopeFilter({
-  analytics,
-  selectedIds,
-  includeOutside,
-  visibleCount,
-  isLoading,
-  error,
-  onToggleWordbook,
-  onToggleOutside,
-  onShowAll,
-}: {
-  analytics: PracticeVocabularyAnalytics
-  selectedIds: Set<string>
-  includeOutside: boolean
-  visibleCount: number
-  isLoading: boolean
-  error: string
-  onToggleWordbook: (id: string) => void
-  onToggleOutside: () => void
-  onShowAll: () => void
-}) {
-  const hasScope = selectedIds.size > 0 || includeOutside
-  const label = !hasScope
-    ? '全部词汇'
-    : selectedIds.size === 0
-      ? '未加入单词书'
-      : `${selectedIds.size} 本${includeOutside ? ' + 未收录' : ''}`
-
+function ScopeStats({ analytics, loading }: { analytics: PracticeVocabularyAnalytics | null; loading: boolean }) {
+  if (!analytics) {
+    return <p className='text-xs text-slate-500'>{loading ? '正在计算当前范围…' : '打开词汇列表后显示当前范围统计。'}</p>
+  }
+  const matched = analytics.words.filter(row => row.count > 0).length
+  const absent = analytics.words.length - matched
+  const mastered = analytics.words.filter(row => row.isMastered).length
   return (
-    <div className='border-b border-slate-200 bg-white/70 px-4 py-3 sm:px-5 md:px-7'>
-      <div className='flex flex-wrap items-center justify-between gap-2'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <span className='text-xs font-semibold text-slate-500'>分析范围</span>
-          <details className='group relative'>
-            <summary className='flex h-9 cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-400 [&::-webkit-details-marker]:hidden'>
-              <span>{label}</span>
-              <span aria-hidden='true' className='text-[10px] text-slate-400 transition group-open:rotate-180'>▼</span>
-            </summary>
-            <div className='absolute left-0 z-20 mt-2 w-[min(24rem,calc(100vw-3rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl'>
-              <div className='flex items-center justify-between border-b border-slate-100 px-3 py-2.5'>
-                <p className='text-xs font-bold text-slate-800'>选择单词书（可多选）</p>
-                <button type='button' onClick={onShowAll} className='text-xs font-semibold text-slate-500 hover:text-slate-950'>全部词汇</button>
-              </div>
-              <div className='max-h-72 overflow-y-auto p-2'>
-                <label className='flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm hover:bg-slate-50'>
-                  <input type='checkbox' checked={includeOutside} onChange={onToggleOutside} className='size-4 rounded border-slate-300' />
-                  <span className='font-semibold text-slate-800'>未加入任何单词书</span>
-                </label>
-                {analytics.wordbooks.map(wordbook => (
-                  <label
-                    key={wordbook.id}
-                    title={wordbook.pathLabel}
-                    className='flex cursor-pointer items-center gap-2 rounded-lg py-2 pr-2.5 text-sm hover:bg-slate-50'
-                    style={{ paddingLeft: `${0.625 + wordbook.depth * 1.1}rem` }}>
-                    <input
-                      type='checkbox'
-                      checked={selectedIds.has(wordbook.id)}
-                      onChange={() => onToggleWordbook(wordbook.id)}
-                      className='size-4 shrink-0 rounded border-slate-300'
-                    />
-                    <span className='min-w-0 flex-1 truncate font-medium text-slate-700'>{wordbook.name}</span>
-                    <span className='text-[11px] tabular-nums text-slate-400'>{wordbook.totalCount}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </details>
-        </div>
-        <p className={`text-xs tabular-nums ${error ? 'font-semibold text-rose-600' : 'text-slate-500'}`}>
-          {error || (isLoading ? '正在读取单词书…' : `${visibleCount} 个词`)}
-        </p>
-      </div>
+    <div className='grid grid-cols-2 gap-x-5 gap-y-4 sm:grid-cols-4'>
+      <Stat label='范围词汇' value={`${analytics.words.length} 个`} />
+      <Stat label='试卷中有匹配' value={`${matched} 个`} />
+      <Stat label='试卷中未出现' value={`${absent} 个`} tone={absent > 0 ? 'warn' : 'default'} />
+      <Stat label='已标记熟练' value={`${mastered} 个`} tone={mastered > 0 ? 'success' : 'default'} />
+    </div>
+  )
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className='text-[10px] font-semibold text-slate-400'>{label}</p>
+      <p className='mt-1 text-sm font-bold tabular-nums text-slate-800'>{value}</p>
     </div>
   )
 }
@@ -230,46 +182,45 @@ function CoverageView({
   onMasteryChange: (word: string, mastered: boolean) => void
 }) {
   const [query, setQuery] = useState('')
-  const [sortMode, setSortMode] = useState<CoverageSortMode>('learning')
-  const [showLearned, setShowLearned] = useState(false)
+  const [sortMode, setSortMode] = useState<SortMode>('coverage')
+  const [posFilter, setPosFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | PracticeVocabularyCategory>('all')
+  const [occurrenceFilter, setOccurrenceFilter] = useState('all')
+  const [masteryFilter, setMasteryFilter] = useState<MasteryFilter>('unmastered')
   const [pendingWords, setPendingWords] = useState<Set<string>>(() => new Set())
   const [preferenceError, setPreferenceError] = useState('')
   const [page, setPage] = useState(1)
   const deferredQuery = useDeferredValue(query)
-  const sortedWords = useMemo(
-    () => [...analytics.words].sort((left, right) => {
-      if (sortMode === 'frequency') {
-        return right.count - left.count || right.paperCount - left.paperCount || left.word.localeCompare(right.word, 'ja')
-      }
-      if (sortMode === 'coverage') {
-        return right.coverageRate - left.coverageRate || right.count - left.count || left.word.localeCompare(right.word, 'ja')
-      }
-      return right.learningValue - left.learningValue || right.targetCount - left.targetCount || right.count - left.count || left.word.localeCompare(right.word, 'ja')
-    }),
-    [analytics.words, sortMode],
+
+  const posOptions = useMemo(
+    () => Array.from(new Set(analytics.words.map(row => row.partOfSpeech.trim()).filter(Boolean))).sort((left, right) => left.localeCompare(right, 'ja')),
+    [analytics.words],
   )
-  const coverageRows = useMemo(() => {
-    const keyword = deferredQuery.normalize('NFKC').trim().toLowerCase()
+  const sortedWords = useMemo(() => [...analytics.words].sort((left, right) => {
+    if (sortMode === 'frequency') return right.count - left.count || right.paperCount - left.paperCount || left.word.localeCompare(right.word, 'ja')
+    if (sortMode === 'tested') return right.targetCount - left.targetCount || right.count - left.count || left.word.localeCompare(right.word, 'ja')
+    if (sortMode === 'alphabetical') return left.word.localeCompare(right.word, 'ja')
+    return right.coverageRate - left.coverageRate || right.paperCount - left.paperCount || right.count - left.count || left.word.localeCompare(right.word, 'ja')
+  }), [analytics.words, sortMode])
+  const filteredRows = useMemo(() => {
+    const keyword = deferredQuery.normalize('NFKC').trim().toLocaleLowerCase('ja')
     return sortedWords.filter(row => {
-      const matchesQuery = !keyword ||
-        `${row.word} ${row.reading} ${row.partOfSpeech}`.toLowerCase().includes(keyword)
-      const visibleByLearningState = keyword || showLearned || !row.isMastered
-      return matchesQuery && visibleByLearningState
+      const haystack = normalizePracticeVocabularyWord(`${row.word} ${row.reading} ${row.partOfSpeech}`)
+      const matchesQuery = !keyword || haystack.includes(keyword)
+      const matchesPos = posFilter === 'all' || row.partOfSpeech.trim() === posFilter
+      const matchesCategory = categoryFilter === 'all' || row.categoryCounts[categoryFilter] > 0
+      const matchesMastery = masteryFilter === 'all' || (masteryFilter === 'mastered' ? row.isMastered : !row.isMastered)
+      const matchesOccurrence = occurrenceFilter === 'all' || (occurrenceFilter === 'matched' ? row.count > 0 : row.count === 0)
+      return matchesQuery && matchesPos && matchesCategory && matchesMastery && matchesOccurrence
     })
-  }, [deferredQuery, showLearned, sortedWords])
-  const totalPages = Math.max(1, Math.ceil(coverageRows.length / PAGE_SIZE))
+  }, [categoryFilter, deferredQuery, masteryFilter, posFilter, sortedWords, occurrenceFilter])
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE))
   const normalizedPage = Math.min(page, totalPages)
-  const visibleRows = coverageRows.slice(
-    (normalizedPage - 1) * PAGE_SIZE,
-    normalizedPage * PAGE_SIZE,
-  )
+  const visibleRows = filteredRows.slice((normalizedPage - 1) * PAGE_SIZE, normalizedPage * PAGE_SIZE)
 
-  useEffect(() => setPage(1), [analytics.words, deferredQuery, showLearned, sortMode])
+  useEffect(() => setPage(1), [categoryFilter, deferredQuery, masteryFilter, posFilter, sortMode, occurrenceFilter])
 
-  const updateMastery = async (
-    row: PracticeVocabularyWordInsight,
-    mastered: boolean,
-  ) => {
+  const updateMastery = async (row: PracticeVocabularyWordInsight, mastered: boolean) => {
     setPreferenceError('')
     setPendingWords(current => new Set(current).add(row.word))
     try {
@@ -293,338 +244,356 @@ function CoverageView({
 
   return (
     <div>
-      <div className='flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between'>
-        <label className='text-xs font-semibold text-slate-500 sm:w-80'>
-          查找词语
+      <div className='flex flex-col gap-3 border-b border-slate-200 pb-4 xl:flex-row xl:items-end xl:justify-between'>
+        <label className='text-xs font-semibold text-slate-500 lg:w-72'>
+          搜索词汇
           <input
             type='search'
             value={query}
             onChange={event => setQuery(event.currentTarget.value)}
             placeholder='例如：取り組む'
-            className='mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200'
+            aria-label='搜索词汇、读音或词性'
+            className='mt-1.5 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-base outline-none placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-200 sm:text-sm'
           />
         </label>
-        <div className='flex flex-wrap items-center gap-2'>
+        <div className='flex flex-wrap items-end gap-2'>
           <label className='text-xs font-semibold text-slate-500'>
-            排序
-            <CustomSelect value={sortMode} onChange={event => setSortMode(event.currentTarget.value as CoverageSortMode)} className='ml-2 h-9 min-w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
-              <option value='learning'>学习价值</option>
-              <option value='coverage'>试卷覆盖率</option>
-              <option value='frequency'>题型命中次数</option>
+            词性
+            <CustomSelect aria-label='按词性筛选' value={posFilter} onChange={event => setPosFilter(event.currentTarget.value)} className='mt-1.5 h-10 min-w-24 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              <option value='all'>全部词性</option>
+              {posOptions.map(option => <option key={option} value={option}>{option}</option>)}
             </CustomSelect>
           </label>
-          <button type='button' aria-pressed={showLearned} onClick={() => setShowLearned(current => !current)} className={`h-9 rounded-lg border px-3 text-xs font-semibold transition ${showLearned ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400'}`}>
-            {showLearned ? '已显示熟练词' : '显示已熟练词'}
-          </button>
-          <p className='text-xs tabular-nums text-slate-500'>{coverageRows.length} 个词</p>
+          <label className='text-xs font-semibold text-slate-500'>
+            题型
+            <CustomSelect aria-label='按题型筛选' value={categoryFilter} onChange={event => setCategoryFilter(event.currentTarget.value as 'all' | PracticeVocabularyCategory)} className='mt-1.5 h-10 min-w-24 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              <option value='all'>全部题型</option>
+              {PRACTICE_VOCABULARY_CATEGORY_OPTIONS.map(option => <option key={option.key} value={option.key}>{option.label}</option>)}
+            </CustomSelect>
+          </label>
+          <label className='text-xs font-semibold text-slate-500'>
+            排序
+            <CustomSelect aria-label='选择词汇排序' value={sortMode} onChange={event => setSortMode(event.currentTarget.value as SortMode)} className='mt-1.5 h-10 min-w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              <option value='coverage'>试卷覆盖</option>
+              <option value='frequency'>出现单元数</option>
+              <option value='tested'>考点单元数</option>
+              <option value='alphabetical'>词语顺序</option>
+            </CustomSelect>
+          </label>
+          <label className='text-xs font-semibold text-slate-500'>
+            熟练状态
+            <CustomSelect aria-label='按熟练状态筛选' value={masteryFilter} onChange={event => setMasteryFilter(event.currentTarget.value as MasteryFilter)} className='mt-1.5 h-10 min-w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400'>
+              <option value='unmastered'>待复习</option>
+              <option value='mastered'>已熟练</option>
+              <option value='all'>全部状态</option>
+            </CustomSelect>
+          </label>
+          <label className='text-xs font-semibold text-slate-500'>
+            试卷匹配
+            <CustomSelect aria-label='按试卷匹配筛选' value={occurrenceFilter} onChange={event => setOccurrenceFilter(event.currentTarget.value)} className='mt-1.5 h-10 min-w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700'>
+              <option value='all'>全部词汇</option>
+              <option value='matched'>试卷中出现</option>
+              <option value='absent'>尚未出现</option>
+            </CustomSelect>
+          </label>
+          <p className='pb-2 text-xs tabular-nums text-slate-500'>{filteredRows.length} 个词</p>
         </div>
       </div>
-      {preferenceError ? (
-        <p role='alert' className='mt-3 text-xs font-semibold text-rose-600'>
-          {preferenceError}
-        </p>
-      ) : null}
+      {preferenceError ? <p role='alert' className='mt-3 text-xs font-semibold text-rose-600'>{preferenceError}</p> : null}
       <div className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
         {visibleRows.map(row => (
-          <div key={row.word} className='grid gap-3 py-3.5 sm:grid-cols-[minmax(9rem,1fr)_repeat(4,minmax(5rem,auto))_auto] sm:items-center'>
-            <div>
+          <div key={normalizePracticeVocabularyWord(row.word)} className='grid grid-cols-2 gap-3 py-3.5 sm:grid-cols-[minmax(10rem,1fr)_repeat(4,minmax(5rem,auto))_auto] sm:items-center'>
+            <div className='col-span-2 sm:col-span-1'>
               <div className='flex flex-wrap items-center gap-1.5'>
-                <p className='font-bold text-slate-950'>{row.word}</p>
-                {row.targetCount > 0 ? <span className='rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800'>考点</span> : null}
-                {row.inWordbook ? <span title={row.wordbookNames.join('、')} className='rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-semibold text-sky-700'>单词书</span> : null}
-                {row.isMastered ? <span className='rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700'>已熟练</span> : null}
+                <p className='font-word-ja font-bold text-slate-950' lang='ja'>{row.word}</p>
+                {row.targetCount > 0 ? <span className='ui-tag ui-tag-warn'>考点</span> : null}
+                {row.isMastered ? <span className='ui-tag ui-tag-success'>已熟练</span> : row.count === 0 ? <span className='ui-tag ui-tag-muted'>未出现在试卷</span> : null}
               </div>
-              <p className='mt-0.5 text-xs text-slate-400'>{row.reading || row.partOfSpeech || '—'}</p>
+              <p className='font-word-ja mt-0.5 text-xs text-slate-500' lang='ja'>{[row.reading, row.partOfSpeech].filter(Boolean).join(' · ') || '—'}</p>
             </div>
-            <Metric label='题型命中' value={`${row.count} 次`} />
-            <Metric label='出现试卷' value={`${row.paperCount} / ${analytics.totalPapers} 套`} />
-            <Metric label='覆盖率' value={`${row.coverageRate}%`} />
-            <Metric label='作为考点' value={`${row.targetCount} 次`} />
-            <button
-              type='button'
-              disabled={pendingWords.has(row.word)}
-              onClick={() => void updateMastery(row, !row.isMastered)}
-              className='ui-btn ui-btn-sm whitespace-nowrap disabled:opacity-40'>
-              {pendingWords.has(row.word)
-                ? '保存中…'
-                : row.isMastered
-                  ? '恢复推荐'
-                  : '标记熟练'}
+            <Metric label='出现单元数' value={`${row.count}`} />
+            <Metric label='涉及试卷' value={`${row.paperCount} / ${analytics.totalPapers}`} />
+            <Metric label='试卷覆盖率' value={`${row.coverageRate}%`} />
+            <Metric label='考点单元数' value={`${row.targetCount}`} />
+            <button type='button' disabled={pendingWords.has(row.word)} onClick={() => void updateMastery(row, !row.isMastered)} className='ui-btn ui-btn-sm whitespace-nowrap disabled:opacity-40'>
+              {pendingWords.has(row.word) ? '保存中…' : row.isMastered ? '恢复待复习' : '标记熟练'}
             </button>
           </div>
         ))}
-        {visibleRows.length === 0 ? <p className='py-12 text-center text-sm text-slate-500'>没有找到这个词。</p> : null}
+        {visibleRows.length === 0 ? <p className='py-12 text-center text-sm text-slate-500'>没有符合当前筛选条件的词汇。</p> : null}
       </div>
       <div className='mt-4 flex items-center justify-end gap-2'>
         <span className='text-xs text-slate-500'>第 {normalizedPage}/{totalPages} 页</span>
         <button type='button' disabled={normalizedPage <= 1} onClick={() => setPage(current => Math.max(1, current - 1))} className='ui-btn ui-btn-sm disabled:opacity-40'>上一页</button>
         <button type='button' disabled={normalizedPage >= totalPages} onClick={() => setPage(current => Math.min(totalPages, current + 1))} className='ui-btn ui-btn-sm disabled:opacity-40'>下一页</button>
       </div>
+      <p className='mt-3 text-[11px] text-slate-400'>“出现单元数”按试卷与题型组合计数；“考点单元数”统计被标注为考查词或从正确答案提取的词，同一单元内不重复计数。</p>
     </div>
   )
 }
 
-function ProfilesView({ analytics }: { analytics: PracticeVocabularyAnalytics }) {
+function DetailLoadingView({ state, onRetry }: { state: 'idle' | 'loading' | 'error'; onRetry: () => void }) {
   return (
-    <div>
-      <p className='mb-4 text-xs text-slate-500'>各题型中最常出现的词，包含原文、题干和选项。</p>
-      <div className='grid gap-4 md:grid-cols-2'>
-        {analytics.profiles.map(profile => (
-          <section key={profile.key} className='rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/30'>
-            <h3 className='font-bold text-slate-950'>{profile.label}</h3>
-            <p className='mt-1 text-xs text-slate-400'>{profile.uniqueWords} 个词 · {profile.totalOccurrences} 次命中</p>
-            <div className='mt-3 grid grid-cols-2 gap-x-5'>
-              {analytics.words
-                .filter(row =>
-                  !row.isMastered &&
-                  row.categoryCounts[profile.key] > 0,
-                )
-                .slice(0, 16)
-                .map((row, index) => (
-                <div key={row.word} className='flex items-center justify-between gap-2 border-t border-slate-100 py-2 text-sm'>
-                  <span className='min-w-0 truncate'><span className='mr-2 text-xs text-slate-300'>{index + 1}</span>{row.word}</span>
-                  <span className='text-xs tabular-nums text-slate-400'>{row.categoryCounts[profile.key]}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function TrendsView({ analytics }: { analytics: PracticeVocabularyAnalytics }) {
-  const trendRows = useMemo(
-    () => rankPracticeVocabularyTrendWords(
-      analytics.words.filter(row => !row.isMastered),
-      analytics.years,
-    ),
-    [analytics.words, analytics.years],
-  )
-
-  return (
-    <div>
-      <p className='mb-4 text-xs text-slate-500'>按每年词频占比的变化排序，减少各年份试卷数量不同造成的偏差；只显示至少出现 2 次的词。</p>
-      <div className='overflow-x-auto rounded-xl border border-slate-200 bg-white'>
-        <table className='w-full min-w-[38rem] border-collapse text-left'>
-          <thead><tr className='border-b border-slate-200 text-xs text-slate-500'><th className='px-3 py-3 font-medium'>词语</th>{analytics.years.map(year => <th key={year} className='px-3 py-3 text-right font-medium'>{year}</th>)}<th className='px-3 py-3 text-right font-medium'>合计</th></tr></thead>
-          <tbody className='divide-y divide-slate-100'>
-            {trendRows.map(row => {
-              const total = analytics.years.reduce((sum, year) => sum + (row.yearCounts[year] || 0), 0)
-              return <tr key={row.word} className='text-sm'><td className='px-3 py-3 font-semibold text-slate-900'>{row.word}</td>{analytics.years.map(year => <td key={year} className='px-3 py-3 text-right tabular-nums text-slate-600'>{row.yearCounts[year] || 0}</td>)}<td className='px-3 py-3 text-right font-bold tabular-nums text-slate-900'>{total}</td></tr>
-            })}
-            {trendRows.length === 0 ? (
-              <tr><td colSpan={analytics.years.length + 2} className='px-4 py-12 text-center text-sm text-slate-400'>当前范围内没有足够的跨年词频数据。</td></tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+    <div className='ui-empty'>
+      <p className='text-sm font-semibold text-slate-700'>{state === 'error' ? '词汇分析加载失败' : '正在准备词汇列表'}</p>
+      <p className='mt-2 text-xs text-slate-400'>{state === 'loading' ? '正在读取详细词汇和词表关联…' : '打开此页后才会读取详细词汇。'}</p>
+      {state === 'error' ? <button type='button' onClick={onRetry} className='ui-btn ui-btn-sm mt-4'>重试</button> : null}
     </div>
   )
 }
 
 export default function PracticeVocabularyAnalyticsDialog({
-  analytics,
+  summary,
+  initialWords,
+  initialWordbooks = [],
   initialOpen = false,
   hideTrigger = false,
   onDismiss,
+  onLoadWords,
   onWordMasteryChange,
 }: {
-  analytics: PracticeVocabularyAnalytics
+  summary: PracticeVocabularyAnalyticsSummary
+  initialWords?: PracticeVocabularyWordInsight[]
+  initialWordbooks?: PracticeVocabularyAnalyticsWordsResponse['wordbooks']
   initialOpen?: boolean
   hideTrigger?: boolean
   onDismiss?: () => void
+  onLoadWords?: () => Promise<PracticeVocabularyAnalyticsWordsResponse>
   onWordMasteryChange?: (word: string, mastered: boolean) => void
 }) {
   const [isOpen, setIsOpen] = useState(initialOpen)
-  const [view, setView] = useState<View>('overview')
-  const [words, setWords] = useState(analytics.words)
-  const [selectedWordbookIds, setSelectedWordbookIds] = useState<Set<string>>(
-    () => new Set(),
+  const [words, setWords] = useState<PracticeVocabularyWordInsight[] | null>(() => initialWords || null)
+  const [wordbooks, setWordbooks] = useState(initialWordbooks)
+  const [detailLoadState, setDetailLoadState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [scopeMode, setScopeMode] = useState<ScopeMode>('all')
+  const [scopeId, setScopeId] = useState('')
+  const [scopeEntries, setScopeEntries] = useState<PracticeVocabularyWordbookEntry[] | null>(null)
+  const [scopeLoadState, setScopeLoadState] = useState<'idle' | 'loading' | 'error'>('idle')
+  const [masteryOverrides, setMasteryOverrides] = useState<Record<string, boolean>>({})
+  const detailRequestRef = useRef(0)
+  const scopeRequestRef = useRef(0)
+  const dialogRef = useRef<HTMLElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  const detailedAnalytics = useMemo<PracticeVocabularyAnalytics | null>(
+    () => words ? { ...summary, words, wordbooks } : null,
+    [summary, wordbooks, words],
   )
-  const [includeOutside, setIncludeOutside] = useState(true)
-  const [selectedWordbookEntries, setSelectedWordbookEntries] = useState<
-    PracticeVocabularyWordbookEntry[]
-  >([])
-  const [wordbookLoadState, setWordbookLoadState] = useState<
-    'idle' | 'loading' | 'error'
-  >('idle')
-  const personalizedAnalytics = useMemo(
-    () => ({ ...analytics, words }),
-    [analytics, words],
+  const seriesOptions = useMemo(() => {
+    const groups = new Map<string, { id: string; title: string; count: number }>()
+    wordbooks.forEach(wordbook => {
+      const current = groups.get(wordbook.seriesId)
+      if (current) current.count += 1
+      else groups.set(wordbook.seriesId, { id: wordbook.seriesId, title: wordbook.seriesTitle, count: 1 })
+    })
+    return [...groups.values()]
+  }, [wordbooks])
+  const selectedWordbookIds = useMemo(
+    () => resolveVocabularyScopeIds(wordbooks, scopeMode, scopeId),
+    [scopeId, scopeMode, wordbooks],
   )
+  const selectedIdsKey = JSON.stringify(selectedWordbookIds)
+  const hasWords = words !== null
+  const [loadedScopeKey, setLoadedScopeKey] = useState('')
+  const [scopeRetry, setScopeRetry] = useState(0)
+
+  const loadDetails = useCallback(async () => {
+    if (detailedAnalytics) return detailedAnalytics
+    if (!onLoadWords) {
+      setDetailLoadState('error')
+      throw new Error('词汇分析加载器不可用')
+    }
+    const requestId = ++detailRequestRef.current
+    setDetailLoadState('loading')
+    try {
+      const result = await onLoadWords()
+      if (requestId !== detailRequestRef.current) return null
+      setWords(result.words)
+      setWordbooks(result.wordbooks)
+      setDetailLoadState('idle')
+      return { ...summary, words: result.words, wordbooks: result.wordbooks }
+    } catch (error) {
+      if (requestId === detailRequestRef.current) setDetailLoadState('error')
+      throw error
+    }
+  }, [detailedAnalytics, onLoadWords, summary])
+
   useEffect(() => {
-    if (selectedWordbookIds.size === 0) {
-      setSelectedWordbookEntries([])
-      setWordbookLoadState('idle')
+    if (!isOpen || detailedAnalytics || detailLoadState !== 'idle') return
+    void loadDetails().catch(() => undefined)
+  }, [detailLoadState, detailedAnalytics, isOpen, loadDetails])
+
+  useEffect(() => {
+    if (scopeMode === 'series') {
+      if (!scopeId || !seriesOptions.some(option => option.id === scopeId)) setScopeId(seriesOptions[0]?.id || '')
+    } else if (scopeMode === 'wordbook') {
+      if (!scopeId || !wordbooks.some(option => option.id === scopeId)) setScopeId(wordbooks[0]?.id || '')
+    } else if (scopeId) {
+      setScopeId('')
+    }
+  }, [scopeId, scopeMode, seriesOptions, wordbooks])
+
+  useEffect(() => {
+    const requestId = ++scopeRequestRef.current
+    if (!isOpen || !hasWords || scopeMode === 'all' || selectedWordbookIds.length === 0) {
+      setScopeEntries(null)
+      setScopeLoadState('idle')
       return
     }
     const controller = new AbortController()
     const params = new URLSearchParams()
     selectedWordbookIds.forEach(id => params.append('id', id))
-    setSelectedWordbookEntries([])
-    setWordbookLoadState('loading')
-    void fetch(`/api/practice/vocabulary-wordbooks?${params}`, {
+    setScopeEntries(null)
+    setScopeLoadState('loading')
+    void fetch(`/api/practice/vocabulary-wordbooks?${params.toString()}`, {
       signal: controller.signal,
+      cache: 'no-store',
     })
       .then(async response => {
         if (!response.ok) throw new Error('request failed')
-        return (await response.json()) as {
-          words: PracticeVocabularyWordbookEntry[]
-        }
+        return (await response.json()) as { words: PracticeVocabularyWordbookEntry[] }
       })
       .then(result => {
-        setSelectedWordbookEntries(result.words)
-        setWordbookLoadState('idle')
+        if (controller.signal.aborted || requestId !== scopeRequestRef.current) return
+        setLoadedScopeKey(selectedIdsKey)
+        setScopeEntries(result.words)
+        setScopeLoadState('idle')
       })
       .catch(error => {
         if (error instanceof DOMException && error.name === 'AbortError') return
-        setWordbookLoadState('error')
+        if (requestId === scopeRequestRef.current) setScopeLoadState('error')
       })
     return () => controller.abort()
-  }, [selectedWordbookIds])
-  const analyticsWithSelectedWordbooks = useMemo(() => {
-    if (selectedWordbookEntries.length === 0) return personalizedAnalytics
-    const byWord = new Map(
-      personalizedAnalytics.words.map(row => [
-        normalizePracticeVocabularyWord(row.word),
-        row,
-      ]),
-    )
-    selectedWordbookEntries.forEach(entry => {
-      const key = normalizePracticeVocabularyWord(entry.word)
-      const current = byWord.get(key)
-      if (!current) {
-        byWord.set(key, emptyWordInsight(entry))
-        return
-      }
-      byWord.set(key, {
-        ...current,
-        inWordbook: true,
-        wordbookIds: Array.from(new Set([
-          ...current.wordbookIds,
-          ...entry.wordbookIds,
-        ])),
-        wordbookNames: Array.from(new Set([
-          ...current.wordbookNames,
-          ...entry.wordbookNames,
-        ])),
-      })
-    })
-    return { ...personalizedAnalytics, words: [...byWord.values()] }
-  }, [personalizedAnalytics, selectedWordbookEntries])
+  }, [isOpen, hasWords, scopeMode, selectedIdsKey, selectedWordbookIds, scopeRetry])
+
   const scopedAnalytics = useMemo(() => {
-    const hasScope = selectedWordbookIds.size > 0 || includeOutside
-    if (!hasScope) return analyticsWithSelectedWordbooks
-    return {
-      ...analyticsWithSelectedWordbooks,
-      words: analyticsWithSelectedWordbooks.words.filter(row =>
-        (includeOutside && row.wordbookIds.length === 0) ||
-        row.wordbookIds.some(id => selectedWordbookIds.has(id)),
-      ),
+    if (!detailedAnalytics) return null
+    const withMastery = (row: PracticeVocabularyWordInsight) => {
+      const key = normalizePracticeVocabularyWord(row.word)
+      return masteryOverrides[key] === undefined ? row : { ...row, isMastered: masteryOverrides[key] }
     }
-  }, [analyticsWithSelectedWordbooks, includeOutside, selectedWordbookIds])
-  const scopedOccurrences = useMemo(
-    () => scopedAnalytics.words.reduce((sum, row) => sum + row.count, 0),
-    [scopedAnalytics.words],
-  )
+    if (scopeMode === 'all') return { ...detailedAnalytics, words: detailedAnalytics.words.map(withMastery) }
+    if (selectedWordbookIds.length === 0) return { ...detailedAnalytics, words: [] }
+    if (!scopeEntries || loadedScopeKey !== selectedIdsKey) return null
+    return {
+      ...detailedAnalytics,
+      words: mergeVocabularyScope(detailedAnalytics.words, scopeEntries, emptyWordInsight, masteryOverrides),
+    }
+  }, [detailedAnalytics, masteryOverrides, scopeEntries, scopeMode, selectedWordbookIds, loadedScopeKey, selectedIdsKey])
+
   const closeDialog = useCallback(() => {
     setIsOpen(false)
     onDismiss?.()
   }, [onDismiss])
 
   useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDialog()
+    if (!isOpen) {
+      if (previousFocusRef.current) {
+        const element = previousFocusRef.current
+        previousFocusRef.current = null
+        window.requestAnimationFrame(() => element.focus())
+      }
+      return
     }
+    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : triggerRef.current
+    const focusInitial = window.requestAnimationFrame(() => closeButtonRef.current?.focus())
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeDialog()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const dialog = dialogRef.current
+      if (!dialog) return
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector))
+      if (focusable.length === 0) {
+        event.preventDefault()
+        dialog.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
     window.addEventListener('keydown', handleKeyDown)
     return () => {
+      window.cancelAnimationFrame(focusInitial)
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', handleKeyDown)
+      const previous = previousFocusRef.current
+      previousFocusRef.current = null
+      if (previous?.isConnected) previous.focus()
     }
   }, [closeDialog, isOpen])
 
-  const switchView = (nextView: View) => {
-    startTransition(() => setView(nextView))
-  }
-
-  const toggleWordbook = useCallback((id: string) => {
-    setSelectedWordbookIds(current => {
-      const next = new Set(current)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-        if (current.size === 0) setIncludeOutside(false)
-      }
-      return next
-    })
-  }, [])
-
-  const showAllWords = useCallback(() => {
-    setSelectedWordbookIds(new Set())
-    setIncludeOutside(false)
-  }, [])
-
   const updateMastery = useCallback((word: string, mastered: boolean) => {
-    setWords(current =>
-      current.map(row =>
-        row.word === word ? { ...row, isMastered: mastered } : row,
-      ),
-    )
+    const key = normalizePracticeVocabularyWord(word)
+    setMasteryOverrides(current => ({ ...current, [key]: mastered }))
+    setWords(current => current ? current.map(row => normalizePracticeVocabularyWord(row.word) === key ? { ...row, isMastered: mastered } : row) : current)
     onWordMasteryChange?.(word, mastered)
   }, [onWordMasteryChange])
+
+  const selectMode = (mode: ScopeMode) => {
+    startTransition(() => {
+      setScopeMode(mode)
+      if (mode === 'all') setScopeId('')
+      else if (mode === 'series') setScopeId(seriesOptions[0]?.id || '')
+      else setScopeId(wordbooks[0]?.id || '')
+    })
+  }
 
   return (
     <>
       {!hideTrigger ? (
-        <button type='button' aria-haspopup='dialog' aria-expanded={isOpen} onClick={() => setIsOpen(true)} disabled={analytics.totalPapers === 0} className='inline-flex h-11 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 disabled:opacity-40 lg:w-auto'>词汇分析</button>
+        <button ref={triggerRef} type='button' aria-haspopup='dialog' aria-expanded={isOpen} onClick={() => setIsOpen(true)} disabled={summary.totalPapers === 0} className='inline-flex h-11 w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 disabled:opacity-40'>词汇分析</button>
       ) : null}
-
       {isOpen ? (
         <div className='fixed inset-0 z-[100]'>
-          <button type='button' aria-label='关闭词汇分析窗口' onClick={closeDialog} className='absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]' />
-          <section role='dialog' aria-modal='true' aria-labelledby='practice-vocabulary-analytics-title' className='absolute inset-x-2 top-1/2 mx-auto flex max-h-[min(94vh,58rem)] max-w-5xl -translate-y-1/2 flex-col overflow-hidden rounded-3xl border border-white/70 bg-[#f8f7f3] shadow-2xl sm:inset-x-5'>
-            <header className='flex items-start justify-between gap-4 px-5 pb-4 pt-5 md:px-7'>
+          <button type='button' aria-label='关闭词汇分析窗口' onClick={closeDialog} tabIndex={-1} className='absolute inset-0 bg-slate-950/40 backdrop-blur-[2px]' />
+          <section ref={dialogRef} tabIndex={-1} role='dialog' aria-modal='true' aria-labelledby='practice-vocabulary-analytics-title' aria-describedby='practice-vocabulary-analytics-description' className='absolute inset-x-2 top-1/2 mx-auto flex max-h-[min(94vh,58rem)] max-w-6xl -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-white/70 bg-[#f8f7f3] shadow-2xl outline-none sm:inset-x-5'>
+            <header className='flex items-start justify-between gap-4 border-b border-slate-200 px-5 pb-4 pt-5 md:px-7'>
               <div>
                 <p className='text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400'>Practice vocabulary</p>
                 <h2 id='practice-vocabulary-analytics-title' className='mt-1 text-xl font-bold tracking-tight text-slate-950'>试卷词汇分析</h2>
-                <div className='mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-medium tabular-nums text-slate-500'>
-                  <span className='rounded-full bg-white px-2.5 py-1'>{analytics.totalPapers} 套试卷</span>
-                  <span className='rounded-full bg-white px-2.5 py-1'>{scopedAnalytics.words.length} 个词</span>
-                  <span className='rounded-full bg-white px-2.5 py-1'>{scopedOccurrences} 次题型命中</span>
-                </div>
+                <p id='practice-vocabulary-analytics-description' className='mt-1.5 max-w-2xl text-xs text-slate-500'>按当前范围查看试卷词汇覆盖，并标记需要继续复习的词。出现单元数按试卷与题型组合计数。</p>
               </div>
-              <button type='button' aria-label='关闭' onClick={closeDialog} className='grid size-9 shrink-0 place-items-center rounded-full bg-white text-lg leading-none text-slate-400 transition hover:bg-slate-950 hover:text-white'>×</button>
+              <button ref={closeButtonRef} type='button' aria-label='关闭词汇分析' onClick={closeDialog} className='grid size-9 shrink-0 place-items-center rounded-full bg-white text-lg leading-none text-slate-400 transition hover:bg-slate-950 hover:text-white'>×</button>
             </header>
-
-            <nav aria-label='词汇分析分类' className='grid grid-cols-4 border-y border-slate-200 bg-white/60 px-2 sm:px-5'>
-              {([['overview', '学习优先'], ['coverage', '词汇明细'], ['profiles', '题型画像'], ['trends', '年份趋势']] as const).map(([key, label]) => (
-                <button key={key} type='button' aria-pressed={view === key} onClick={() => switchView(key)} className={`relative min-w-0 px-1 py-3 text-xs font-bold transition sm:px-3 ${view === key ? 'text-slate-950 after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-slate-950' : 'text-slate-400 hover:text-slate-700'}`}>{label}</button>
-              ))}
-            </nav>
-
-            <WordbookScopeFilter
-              analytics={personalizedAnalytics}
-              selectedIds={selectedWordbookIds}
-              includeOutside={includeOutside}
-              visibleCount={scopedAnalytics.words.length}
-              isLoading={wordbookLoadState === 'loading'}
-              error={wordbookLoadState === 'error' ? '单词书读取失败' : ''}
-              onToggleWordbook={toggleWordbook}
-              onToggleOutside={() => setIncludeOutside(current => !current)}
-              onShowAll={showAllWords}
-            />
-
+            {detailedAnalytics ? (
+              <ScopeControls
+                mode={scopeMode}
+                scopeId={scopeId}
+                wordbooks={wordbooks}
+                seriesOptions={seriesOptions}
+                onModeChange={selectMode}
+                onScopeChange={setScopeId}
+                loading={scopeLoadState === 'loading'}
+                error={scopeLoadState === 'error' ? '词表读取失败，请重试或重新选择范围。' : ''}
+              />
+            ) : null}
             <div className='min-h-0 overflow-y-auto px-4 py-5 sm:px-5 md:px-7 md:py-6'>
-              {view === 'overview' ? <OverviewView analytics={scopedAnalytics} /> : null}
-              {view === 'coverage' ? <CoverageView analytics={scopedAnalytics} onMasteryChange={updateMastery} /> : null}
-              {view === 'profiles' ? <ProfilesView analytics={scopedAnalytics} /> : null}
-              {view === 'trends' ? <TrendsView analytics={scopedAnalytics} /> : null}
+              <section className='border-b border-slate-200 pb-5'>
+                <div className='flex flex-wrap items-baseline justify-between gap-2'>
+                  <h3 className='ui-section-head'>{scopeMode === 'all' ? '全部试卷词汇' : scopeMode === 'series' ? seriesOptions.find(option => option.id === scopeId)?.title || '整本书' : wordbooks.find(option => option.id === scopeId)?.pathLabel || '单个词表'}</h3>
+                  <p className='ui-meta'>{summary.totalPapers} 套试卷 · 当前范围</p>
+                </div>
+                <div className='mt-4'><ScopeStats analytics={scopedAnalytics} loading={detailLoadState === 'loading' || scopeLoadState === 'loading'} /></div>
+              </section>
+              <section className='pt-5'>
+                {scopedAnalytics ? <CoverageView key={`${scopeMode}:${scopeId}`} analytics={scopedAnalytics} onMasteryChange={updateMastery} /> : <DetailLoadingView state={detailLoadState === 'error' || scopeLoadState === 'error' ? 'error' : (detailLoadState === 'loading' || scopeLoadState === 'loading' ? 'loading' : 'idle')} onRetry={() => scopeMode !== 'all' && detailedAnalytics ? setScopeRetry(current => current + 1) : void loadDetails().catch(() => undefined)} />}
+              </section>
             </div>
           </section>
         </div>

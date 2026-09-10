@@ -76,28 +76,22 @@ export default function ListeningListClient({
   return (
     <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-7xl'>
-        <header
-          className={
-            isManageMode
-              ? 'mb-6 pt-6 md:pt-8'
-              : 'mb-5 rounded-[20px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] md:p-5'
-          }>
+        <header className={isManageMode ? 'mb-6' : 'mb-5 border-b border-slate-200 py-4'}>
           {!isManageMode ? (
-            <div className='mb-4 flex flex-wrap items-end justify-between gap-3'>
-              <div>
-                <h1 className='text-2xl font-semibold tracking-tight text-slate-950'>
-                  跟读材料
-                </h1>
-                <p className='mt-1 text-sm text-slate-500'>
-                  选择材料开始学习。
-                </p>
-              </div>
-              <div className='flex flex-wrap items-center gap-2'>
-                <Link
-                  href='/manage/import?type=speaking'
-                  className='ui-btn ui-btn-primary h-10 px-4 text-sm font-semibold'>
-                  导入跟读
-                </Link>
+            <div className='mb-5 border-b border-slate-200 py-4'>
+              <div className='flex flex-wrap items-end justify-between gap-3'>
+                <div>
+                  <h1 className='text-2xl font-semibold tracking-tight text-slate-950'>
+                    跟读材料
+                  </h1>
+                </div>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Link
+                    href='/manage/import?type=speaking'
+                    className='ui-btn ui-btn-primary h-10 px-4 text-sm font-semibold'>
+                    导入跟读
+                  </Link>
+                </div>
               </div>
             </div>
           ) : null}
@@ -291,24 +285,26 @@ export default function ListeningListClient({
                 )}
                 {manageTotalPages > 1 ? (
                   <div className='ml-auto flex items-center gap-2'>
-                    <span className='text-xs text-slate-500'>
+                    <span className='ui-meta tabular-nums'>
                       第 {normalizedManagePage}/{manageTotalPages} 页
                     </span>
                     <button
                       type='button'
+                      aria-label='上一页'
                       disabled={normalizedManagePage <= 1}
                       onClick={() => setManagePage(page => Math.max(1, page - 1))}
-                      className='ui-btn ui-btn-sm disabled:opacity-40'>
-                      上一页
+                      className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>
+                      ‹
                     </button>
                     <button
                       type='button'
+                      aria-label='下一页'
                       disabled={normalizedManagePage >= manageTotalPages}
                       onClick={() =>
                         setManagePage(page => Math.min(manageTotalPages, page + 1))
                       }
-                      className='ui-btn ui-btn-sm disabled:opacity-40'>
-                      下一页
+                      className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>
+                      ›
                     </button>
                   </div>
                 ) : null}
@@ -409,6 +405,7 @@ export default function ListeningListClient({
                           {item.materialType === 'LISTENING' ? (
                             <Link
                               href={`/manage/listening/${item.id}?returnPage=${normalizedManagePage}#questions`}
+                              prefetch={false}
                               className={`ui-btn ui-btn-sm ${
                                 item.needsQuestion ? 'ui-btn-primary' : ''
                               }`}>
@@ -430,6 +427,7 @@ export default function ListeningListClient({
                               </button>
                               <Link
                                 href={`/manage/shadowing/${item.id}`}
+                                prefetch={false}
                                 className='ui-btn ui-btn-sm ui-btn-primary'>
                                 编辑材料
                               </Link>
@@ -437,6 +435,7 @@ export default function ListeningListClient({
                           )}
                           <Link
                             href={`/listening/${item.id}`}
+                            prefetch={false}
                             className='ui-btn ui-btn-sm'>
                             试听
                           </Link>
@@ -536,7 +535,7 @@ export default function ListeningListClient({
                 </div>
               ) : null}
 
-              <div className='grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3'>
+              <div className='divide-y divide-slate-200 border-y border-slate-200'>
                 {filteredRows.map(item => {
                   const statusText = item.isClassified ? '已归类' : '未归类'
                   const statusStyle = item.isClassified
@@ -546,7 +545,7 @@ export default function ListeningListClient({
                   return (
                     <article
                       key={item.id}
-                      className='rounded-[18px] bg-white p-4 shadow-[0_1px_5px_-4px_rgba(15,23,42,0.35),0_0_0_1px_rgba(15,23,42,0.08),0_4px_10px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_24px_-18px_rgba(15,23,42,0.35)]'>
+                      className='py-4 transition-colors hover:bg-white'>
                       <div className='mb-2 flex items-start justify-between gap-2'>
                         <div className='min-w-0'>
                           <div className='flex items-center gap-2'>
@@ -563,7 +562,7 @@ export default function ListeningListClient({
                                 ? '听力'
                                 : '跟读'}
                             </span>
-                            <h3 className='line-clamp-2 text-base font-black text-slate-900'>
+                            <h3 className='line-clamp-2 text-base font-bold text-slate-900'>
                               {item.title}
                             </h3>
                           </div>
@@ -614,6 +613,7 @@ export default function ListeningListClient({
                                 ? `/manage/shadowing/${item.id}`
                                 : `/listening/${item.id}`
                             }
+                            prefetch={false}
                             className='ui-btn ui-btn-primary h-10 w-full px-4 text-sm font-bold'>
                             {isManageMode && item.materialType === 'SPEAKING'
                               ? '编辑跟读材料'

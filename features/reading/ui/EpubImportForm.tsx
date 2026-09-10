@@ -151,7 +151,7 @@ export default function EpubImportForm({
           <section className='overflow-hidden border-y border-slate-200 bg-white'>
             <div className='border-b border-slate-200 bg-slate-50/80 px-5 py-4 md:flex md:items-start md:justify-between md:gap-6'>
               <div>
-                <h3 className='text-sm font-black text-slate-900'>书籍正文</h3>
+                <h3 className='text-sm font-bold text-slate-900'>书籍正文</h3>
                 <p className='mt-1 text-xs leading-5 text-slate-500'>
                   使用 # 标记章节；行内公式写作 \(E=mc^2\)，独立公式使用 $$…$$。
                 </p>
@@ -180,7 +180,7 @@ export default function EpubImportForm({
         ) : (
           <section className='border-y border-dashed border-slate-300 bg-white p-6'>
             <label className='block cursor-pointer text-center'>
-              <span className='block text-sm font-black text-slate-900'>选择 EPUB 文件</span>
+              <span className='block text-sm font-bold text-slate-900'>选择 EPUB 文件</span>
               <span className='mt-1 block text-xs text-slate-500'>最大 80MB，自动读取书名、作者和章节</span>
               <input
                 name='epubFile'
@@ -211,7 +211,7 @@ export default function EpubImportForm({
           <button
             type='submit'
             disabled={pending}
-            className='inline-flex h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-6 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-300'>
+            className='inline-flex h-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-6 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:bg-slate-300'>
             {pending
               ? '导入中…'
               : sourceMode === 'paste'

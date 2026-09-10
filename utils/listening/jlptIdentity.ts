@@ -63,8 +63,3 @@ export function parseJlptListeningIdentity(
 export function formatJlptListeningTitle(identity: JlptListeningIdentity) {
   return `問題${identity.sectionNumber}-${String(identity.questionNumber).padStart(2, '0')}｜${identity.sectionLabel}`
 }
-
-export function formatJlptListeningFilename(identity: JlptListeningIdentity) {
-  if (!identity.session || !identity.level) return null
-  return `${identity.session}-${identity.level}-P${String(identity.sectionNumber).padStart(2, '0')}-Q${String(identity.questionNumber).padStart(2, '0')}.mp3`
-}

@@ -1,3 +1,5 @@
+import { expandVocabularyHeadwordMatchVariants } from './vocabularyCanonical.ts'
+
 const JAPANESE_REGEX = /[\u3040-\u30ff\u4e00-\u9fff]/
 
 const unique = (list: string[]) =>
@@ -13,6 +15,56 @@ const normalizeWord = (raw: string) =>
     .replace(/[\s"'“”‘’「」『』（）()【】\[\]{}.,!?]+$/, '')
 
 const isJapaneseWord = (value: string) => JAPANESE_REGEX.test(value)
+const JAPANESE_COMPOUND_PREFIX_REGEX = /[\p{Script=Han}\p{Script=Katakana}ー々]$/u
+const JAPANESE_COMPOUND_START_REGEX = /^[\p{Script=Han}\p{Script=Katakana}ー々]/u
+
+/**
+ * Keep surface matching and rendered lexical ranges on the same side of the
+ * Japanese compound boundary. A short kanji/kana-leading entry such as 国
+ * must not match the tail of 外国, even when it has a valid standalone hit
+ * elsewhere in the same source text.
+ */
+export const isJapaneseSurfaceOccurrenceAllowed = (
+  text: string,
+  index: number,
+  surface: string,
+) => {
+  if (index < 0 || index > text.length - surface.length) return false
+  if (!JAPANESE_COMPOUND_START_REGEX.test(surface)) return true
+  return index === 0 || !JAPANESE_COMPOUND_PREFIX_REGEX.test(text[index - 1])
+}
+
+const containsJapaneseSurface = (text: string, surface: string) => {
+  let from = 0
+  while (from < text.length) {
+    const index = text.indexOf(surface, from)
+    if (index < 0) return false
+    if (isJapaneseSurfaceOccurrenceAllowed(text, index, surface)) return true
+    from = index + Math.max(1, surface.length)
+  }
+  return false
+}
+
+const KANA_CHARACTER_REGEX = /^[\p{Script=Hiragana}\p{Script=Katakana}ー]$/u
+
+export const containsJapaneseVocabularyMatch = (
+  text: string,
+  surface: string,
+  requireKanaStartBoundary = false,
+) => {
+  if (!requireKanaStartBoundary) return text.includes(surface)
+  let from = 0
+  while (from <= text.length - surface.length) {
+    const index = text.indexOf(surface, from)
+    if (index < 0) return false
+    const previousCharacter = index > 0 ? text[index - 1] : ''
+    if (!previousCharacter || !KANA_CHARACTER_REGEX.test(previousCharacter)) {
+      return true
+    }
+    from = index + Math.max(1, surface.length)
+  }
+  return false
+}
 
 const GODAN_ROWS: Record<
   string,
@@ -87,6 +139,32 @@ const buildGodanForms = (word: string) => {
   ]
 }
 
+const buildNaAdjectiveForms = (word: string) => {
+  if (!word.endsWith('な') || word.length < 2) return []
+  const stem = word.slice(0, -1)
+  return [
+    word,
+    stem,
+    `${stem}だ`,
+    `${stem}です`,
+    `${stem}だった`,
+    `${stem}でした`,
+    `${stem}ではない`,
+    `${stem}じゃない`,
+    `${stem}ではなかった`,
+    `${stem}じゃなかった`,
+    `${stem}ではありません`,
+    `${stem}ではありませんでした`,
+    `${stem}じゃありません`,
+    `${stem}で`,
+    `${stem}に`,
+    `${stem}なら`,
+    `${stem}ならば`,
+    `${stem}だったら`,
+    `${stem}さ`,
+  ]
+}
+
 const buildJapaneseSurfaceForms = (rawHeadword: string) => {
   const word = normalizeWord(rawHeadword)
   if (!word || !isJapaneseWord(word)) return [word].filter(Boolean)
@@ -157,6 +235,11 @@ const buildJapaneseSurfaceForms = (rawHeadword: string) => {
     return unique(Array.from(forms))
   }
 
+  if (word.endsWith('な')) {
+    buildNaAdjectiveForms(word).forEach(item => forms.add(item))
+    return unique(Array.from(forms))
+  }
+
   if (word.endsWith('い')) {
     const stem = word.slice(0, -1)
     ;[
@@ -178,43 +261,74 @@ const buildJapaneseSurfaceForms = (rawHeadword: string) => {
 export const buildJapaneseVocabularySearchTerms = (
   rawHeadword: string,
   partsOfSpeech: string[] = [],
+  matchVariants: string[] = [],
 ) => {
-  const headword = normalizeWord(rawHeadword).slice(0, 80)
-  if (!headword) return []
   const tags = partsOfSpeech.map(item => item.trim()).filter(Boolean)
   const isVerb = tags.some(tag => /動詞|动词|verb/i.test(tag))
   const isIAdjective = tags.some(
     tag => /形容詞|形容词|i-adjective|adjective|adj\./i.test(tag),
   )
-  const mayBeDictionaryVerb =
-    tags.length === 0 && /(?:する|くる|来る|[うくぐすつぬぶむる])$/.test(headword)
+  const headwordTerms = unique(
+    expandVocabularyHeadwordMatchVariants(rawHeadword).flatMap(rawVariant => {
+      const headword = normalizeWord(rawVariant).slice(0, 80)
+      if (!headword) return []
+      const mayBeDictionaryVerb =
+        tags.length === 0 &&
+        /(?:する|くる|来る|[うくぐすつぬぶむる])$/.test(headword)
 
-  if (!isVerb && !isIAdjective && !mayBeDictionaryVerb) return [headword]
-  return buildJapaneseSurfaceForms(headword)
+      if (!isVerb && !isIAdjective && !mayBeDictionaryVerb) return [headword]
+      return buildJapaneseSurfaceForms(headword)
+    }),
+  )
+  const surfaceVariants = matchVariants
+    .map(normalizeWord)
+    .filter(
+      variant =>
+        Array.from(variant).length >= 2 &&
+        /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー々〆ヶ]+$/u.test(
+          variant,
+        ),
+    )
+    .map(variant => variant.slice(0, 80))
+
+  return unique([...headwordTerms, ...surfaceVariants])
 }
 
-export const buildSurfaceAliasMapForText = (text: string, words: string[]) => {
+const buildSurfaceMapForText = (
+  text: string,
+  words: string[],
+  valueFor: (storedHeadword: string, variant: string) => string,
+) => {
   const normalizedText = text || ''
   if (!normalizedText) return {}
   const sortedWords = unique(words).sort((a, b) => b.length - a.length)
   const alias = new Map<string, string>()
 
-  for (const baseWord of sortedWords) {
-    const normalizedBase = normalizeWord(baseWord)
-    if (!normalizedBase) continue
-    if (normalizedText.includes(normalizedBase) && !alias.has(normalizedBase)) {
-      alias.set(normalizedBase, normalizedBase)
-    }
-    if (!isJapaneseWord(normalizedBase)) continue
-    const forms = buildJapaneseSurfaceForms(normalizedBase)
-    for (const form of forms) {
-      if (!form || !normalizedText.includes(form) || alias.has(form)) continue
-      alias.set(form, normalizedBase)
+  for (const storedHeadword of sortedWords) {
+    for (const rawVariant of expandVocabularyHeadwordMatchVariants(storedHeadword)) {
+      const variant = normalizeWord(rawVariant)
+      if (!variant) continue
+      const value = valueFor(storedHeadword, variant)
+      if (containsJapaneseSurface(normalizedText, variant) && !alias.has(variant)) {
+        alias.set(variant, value)
+      }
+      if (!isJapaneseWord(variant)) continue
+      const forms = buildJapaneseSurfaceForms(variant)
+      for (const form of forms) {
+        if (!form || !containsJapaneseSurface(normalizedText, form) || alias.has(form)) continue
+        alias.set(form, value)
+      }
     }
   }
 
   return Object.fromEntries(alias)
 }
+
+export const buildSurfaceAliasMapForText = (text: string, words: string[]) =>
+  buildSurfaceMapForText(text, words, storedHeadword => storedHeadword)
+
+export const buildSurfaceVariantMapForText = (text: string, words: string[]) =>
+  buildSurfaceMapForText(text, words, (_storedHeadword, variant) => variant)
 
 export const resolveJapaneseTargetSurface = (
   text: string,
@@ -336,15 +450,20 @@ export const buildPronunciationMapForText = (
 ) => {
   const words = Object.keys(pronunciationMap)
   if (words.length === 0) return {}
-  const aliasMap = buildSurfaceAliasMapForText(text, words)
   const out: Record<string, string> = {}
-  Object.entries(aliasMap).forEach(([surface, base]) => {
-    const basePronunciation =
-      (pronunciationMap[surface] || pronunciationMap[base] || '').trim()
-    if (!basePronunciation) return
-    out[surface] = pronunciationMap[surface]
-      ? basePronunciation
-      : resolveInflectedPronunciation(surface, base, basePronunciation)
+  words.forEach(storedHeadword => {
+    const basePronunciation = (pronunciationMap[storedHeadword] || '').trim()
+    expandVocabularyHeadwordMatchVariants(storedHeadword).forEach(variant => {
+      const aliasMap = buildSurfaceAliasMapForText(text, [variant])
+      Object.keys(aliasMap).forEach(surface => {
+        const directPronunciation = (pronunciationMap[surface] || '').trim()
+        const pronunciation = directPronunciation || basePronunciation
+        if (!pronunciation || out[surface]) return
+        out[surface] = directPronunciation
+          ? pronunciation
+          : resolveInflectedPronunciation(surface, variant, pronunciation)
+      })
+    })
   })
   return out
 }

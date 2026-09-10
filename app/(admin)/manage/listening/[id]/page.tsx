@@ -65,7 +65,7 @@ export default async function ManageAudioMaterialEditPage({
         <header className='mt-4 mb-5'>
           <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
             <div className='min-w-0'>
-              <h1 className='text-2xl font-black tracking-tight text-slate-950 md:text-3xl'>
+              <h1 className='text-2xl font-bold tracking-tight text-slate-950 md:text-3xl'>
                 {material.title}
               </h1>
               <p className='mt-1 text-sm text-slate-500'>
@@ -77,6 +77,14 @@ export default async function ManageAudioMaterialEditPage({
               <Link href={`/listening/${material.id}`} className='ui-btn ui-btn-sm'>
                 试听
               </Link>
+              {material.audioFile ? (
+                <a
+                  href={material.audioFile}
+                  download
+                  className='ui-btn ui-btn-sm'>
+                  下载音频
+                </a>
+              ) : null}
               {material.collectionId ? (
                 <Link
                   href={`/manage/practice/${material.collectionId}`}
@@ -98,14 +106,9 @@ export default async function ManageAudioMaterialEditPage({
           </div>
         </header>
 
-        <section className='mb-5 rounded-2xl border border-sky-100 bg-gradient-to-br from-white to-sky-50/70 p-4 shadow-sm md:p-5'>
+        <section className='mb-5 border-y border-slate-200 py-4'>
           <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
-            <div>
-              <h2 className='text-sm font-black text-slate-950'>材料信息</h2>
-              <p className='mt-0.5 text-xs text-slate-500'>
-                可修改“問題5-01｜統合理解”这类材料标题。
-              </p>
-            </div>
+            <h2 className='ui-section-head'>材料信息</h2>
             <span className='rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700'>
               标题会同步显示在试卷中
             </span>
@@ -139,11 +142,12 @@ export default async function ManageAudioMaterialEditPage({
           </div>
           <ListeningTranscriptEditor
             materialId={material.id}
+            materialTitle={material.title}
             initialDialogues={material.dialogues}
           />
         </section>
 
-        <details className='group mt-8 rounded-2xl border border-slate-200 bg-white'>
+        <details className='group mt-8 border-y border-slate-200 py-4'>
           <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-600 marker:content-none'>
             <span>危险操作</span>
             <span className='text-xs text-slate-400 group-open:hidden'>展开</span>

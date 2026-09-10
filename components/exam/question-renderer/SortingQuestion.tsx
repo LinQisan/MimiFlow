@@ -257,6 +257,7 @@ export function SortingQuestion({
         data-source-id={question.id}
         data-context-block='true'
         data-context-role='sorting-sentence'
+        data-context-sentence='true'
         className={`mb-6 border-b border-orange-200 pb-4 text-base font-medium leading-10 text-gray-800 md:text-lg ${
           isJapanesePaper ? 'exam-japanese-text' : ''
         }`}>
@@ -288,7 +289,12 @@ export function SortingQuestion({
             <button
               key={`sorting-slot-${slotIndex}-${index}`}
               type='button'
-              onClick={() => filled && moveBackToPool(filled, slotIndex)}
+              onClick={event => {
+                const selection = window.getSelection()
+                if (event.detail !== 0 && selection?.toString().trim() && selection.containsNode(event.currentTarget, true)) return
+                if (filled) moveBackToPool(filled, slotIndex)
+              }}
+              data-selection-text='true'
               disabled={isInteractionLocked}
               data-source-type='QUIZ_QUESTION'
               data-source-id={question.id}
@@ -300,7 +306,7 @@ export function SortingQuestion({
                   ? 'border-orange-300 bg-orange-50 text-gray-800'
                   : 'border-dashed border-slate-300 bg-slate-50 text-slate-400'
               }`}>
-              <span className='absolute -top-2.5 left-2 rounded-full bg-white px-1.5 text-[10px] font-black leading-5 text-orange-500 shadow-sm'>
+              <span data-context-ignore='true' aria-hidden='true' className='select-none absolute -top-2.5 left-2 rounded-full bg-white px-1.5 text-[10px] font-bold leading-5 text-orange-500 shadow-sm'>
                 {isStar ? '★' : slotIndex + 1}
               </span>
               {filled ? (
@@ -329,7 +335,12 @@ export function SortingQuestion({
           </div>
         )}
         {isSubmitted && (
-          <div className='mb-5 text-center text-xs font-semibold tracking-wide text-gray-600'>
+          <div
+            data-source-type='QUIZ_QUESTION'
+            data-source-id={question.id}
+            data-context-block='true'
+            data-context-role='sorting-correct-answer'
+            className='mb-5 text-center text-xs font-semibold tracking-wide text-gray-600'>
             <span>正确答案：</span>
             <span
               dangerouslySetInnerHTML={{
@@ -383,6 +394,10 @@ export function SortingQuestion({
               return (
                 <div
                   key={option.id}
+                  data-source-type='QUIZ_QUESTION'
+                  data-source-id={question.id}
+                  data-context-block='true'
+                  data-context-role='sorting-option'
                   className={`select-none border px-6 py-3 font-semibold ${
                     used
                       ? 'border-orange-300 bg-orange-50 text-orange-700'

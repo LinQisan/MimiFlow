@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState, useTransition } from 'react'
+import LearningRecordFields from './LearningRecordFields'
+import { useDialog } from '@/context/DialogContext'
+import { useCallback, useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   LearningPointCategory,
@@ -9,7 +11,7 @@ import {
   SourceType,
 } from '@prisma/client'
 
-import { updateLearningRecord } from '@/modules/knowledge/learning-records/actions'
+import { deleteLearningRecord, updateLearningRecord } from '@/modules/knowledge/learning-records/actions'
 import {
   LEARNING_POINT_CATEGORY_LABELS,
   LEARNING_RECORD_KIND_LABELS,
@@ -29,16 +31,17 @@ type LearningRecordItemData = {
   updatedAtLabel: string
 }
 
-const INPUT_CLASS =
-  'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-slate-700 focus:ring-2 focus:ring-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-slate-400 dark:focus:ring-slate-800'
-const LABEL_CLASS = 'text-xs font-bold text-slate-700 dark:text-slate-300'
-
 export default function LearningRecordItem({
   record,
+  onChanged,
+  compact = false,
 }: {
   record: LearningRecordItemData
+  compact?: boolean
+  onChanged?: () => void
 }) {
   const router = useRouter()
+  const { confirm } = useDialog()
   const [isEditing, setIsEditing] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [title, setTitle] = useState(record.title)
@@ -56,9 +59,9 @@ export default function LearningRecordItem({
     setFragments(record.fragments.join('\n'))
     setSentenceText(record.sentenceText)
     setNote(record.note || '')
-  }, [record])
+  }, [record.title, record.category, record.fragments, record.sentenceText, record.note])
 
-  const resetEditor = () => {
+  const resetEditor = useCallback(() => {
     setTitle(record.title)
     setCategory(record.category || LearningPointCategory.GRAMMAR)
     setFragments(record.fragments.join('\n'))
@@ -66,13 +69,26 @@ export default function LearningRecordItem({
     setNote(record.note || '')
     setStatusMessage('')
     setIsEditing(false)
-  }
+  }, [record])
+
+  useEffect(() => {
+    if (!isEditing) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || isPending) return
+      event.preventDefault()
+      event.stopImmediatePropagation()
+      resetEditor()
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [isEditing, isPending, resetEditor])
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (isPending) return
 
     startTransition(async () => {
+      try {
       const result = await updateLearningRecord({
         id: record.id,
         kind: record.kind,
@@ -90,89 +106,26 @@ export default function LearningRecordItem({
       }
 
       setIsEditing(false)
+      window.dispatchEvent(new Event('learning-records-changed'))
+      onChanged?.()
       router.refresh()
+      } catch { setStatusMessage('保存失败，请重试。') }
     })
   }
 
   if (isEditing) {
     return (
-      <article className='bg-white px-4 py-5 dark:bg-slate-950 md:px-5'>
+      <article data-selection-editor='true' onKeyDown={event => { if (event.key === 'Escape' && !isPending) { event.stopPropagation(); resetEditor() } }} className='bg-white px-4 py-5 dark:bg-slate-950 md:px-5'>
         <form onSubmit={handleSubmit} className='space-y-5'>
-          <div className='flex flex-col gap-4 md:flex-row md:items-start'>
-            <label className='block min-w-0 flex-1 space-y-1.5'>
-              <span className={LABEL_CLASS}>
-                {record.kind === LearningRecordKind.SENTENCE
-                  ? '句子标题'
-                  : '学习点名称'}
-              </span>
-              <input
-                value={title}
-                onChange={event => setTitle(event.target.value)}
-                className={INPUT_CLASS}
-                autoFocus
-              />
-            </label>
+          <LearningRecordFields kind={record.kind} value={{ title, category, fragments, sentenceText, note }} onChange={next => {
+            setTitle(next.title)
+            setCategory(next.category)
+            setFragments(next.fragments)
+            setSentenceText(next.sentenceText)
+            setNote(next.note)
+          }} />
 
-            {record.kind === LearningRecordKind.LEARNING_POINT ? (
-              <fieldset className='space-y-1.5 md:w-72'>
-                <legend className={LABEL_CLASS}>类型</legend>
-                <div className='flex flex-wrap gap-1.5'>
-                  {Object.values(LearningPointCategory).map(option => (
-                    <button
-                      key={option}
-                      type='button'
-                      aria-pressed={category === option}
-                      onClick={() => setCategory(option)}
-                      className={`min-h-9 rounded-md border px-2.5 py-1.5 text-xs font-semibold transition ${
-                        category === option
-                          ? 'border-slate-900 bg-slate-900 text-white'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
-                      }`}>
-                      {LEARNING_POINT_CATEGORY_LABELS[option]}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-            ) : null}
-          </div>
-
-          {record.kind === LearningRecordKind.LEARNING_POINT ? (
-            <label className='block space-y-1.5'>
-              <span className={LABEL_CLASS}>句内片段</span>
-              <textarea
-                value={fragments}
-                onChange={event => setFragments(event.target.value)}
-                rows={2}
-                className={`${INPUT_CLASS} resize-y`}
-                placeholder='每行一个片段'
-              />
-            </label>
-          ) : null}
-
-          <div className='grid gap-4 lg:grid-cols-2'>
-            <label className='block space-y-1.5'>
-              <span className={LABEL_CLASS}>原句</span>
-              <textarea
-                value={sentenceText}
-                onChange={event => setSentenceText(event.target.value)}
-                rows={5}
-                className={`${INPUT_CLASS} resize-y`}
-              />
-            </label>
-
-            <label className='block space-y-1.5'>
-              <span className={LABEL_CLASS}>笔记 / 释义</span>
-              <textarea
-                value={note}
-                onChange={event => setNote(event.target.value)}
-                rows={5}
-                className={`${INPUT_CLASS} resize-y`}
-                placeholder='含义、语感、近义表达或易错点'
-              />
-            </label>
-          </div>
-
-          <div className='flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4 dark:border-slate-800'>
+          <div className='sticky bottom-0 flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-950 border-t border-slate-200 pt-4 dark:border-slate-800'>
             <p className='text-xs text-slate-500'>
               正在原位置编辑，保存后会立即更新此条记录。
             </p>
@@ -204,8 +157,8 @@ export default function LearningRecordItem({
   }
 
   return (
-    <article className='px-1 py-6 md:px-2'>
-      <div className='flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between'>
+    <article data-selection-editor={isPending ? 'true' : undefined} className='px-1 py-6 md:px-2'>
+      <div className={`flex flex-col gap-4 ${compact ? '' : 'sm:flex-row sm:items-start sm:justify-between'}`}>
         <div className='min-w-0 flex-1'>
           <div className='flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500'>
             <span className='ui-tag ui-tag-muted'>
@@ -225,13 +178,23 @@ export default function LearningRecordItem({
         </div>
 
         <div className='flex shrink-0 items-center gap-2'>
+          <button type='button' className='ui-btn ui-btn-danger ui-btn-sm' disabled={isPending} onClick={() => {
+            startTransition(async () => {
+              if (!await confirm('删除这条记录？此操作无法撤销。', { title: '删除记录', danger: true })) return
+              try {
+                const result = await deleteLearningRecord(record.id)
+                if (!result.success) { setStatusMessage(result.message); return }
+                window.dispatchEvent(new Event('learning-records-changed'))
+                onChanged?.()
+                router.refresh()
+              } catch { setStatusMessage('删除失败，请重试。') }
+            })
+          }}>删除</button>
           {record.sourceHref ? (
             <Link href={record.sourceHref} className='ui-btn ui-btn-sm'>
               查看出处 ↗
             </Link>
-          ) : (
-            <span className='text-xs text-slate-400'>出处不可用</span>
-          )}
+          ) : null}
           <button
             type='button'
             onClick={() => {
@@ -244,6 +207,7 @@ export default function LearningRecordItem({
         </div>
       </div>
 
+      {statusMessage ? <p role='alert' className='text-sm text-rose-700'>{statusMessage}</p> : null}
       {record.fragments.length > 0 ? (
         <div className='mt-4 flex flex-wrap gap-1.5'>
           {record.fragments.map(fragment => (
@@ -256,7 +220,7 @@ export default function LearningRecordItem({
         </div>
       ) : null}
 
-      <div className='mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'>
+      <div className={`mt-4 grid gap-4 ${compact ? '' : 'lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'}`}>
         <blockquote className='border-l-2 border-slate-300 pl-4 text-sm leading-7 text-slate-700 dark:border-slate-700 dark:text-slate-300'>
           {record.sentenceText}
         </blockquote>

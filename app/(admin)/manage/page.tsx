@@ -90,7 +90,7 @@ export default async function ManageHomePage() {
 
         <section>
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-base font-black text-slate-900">优先处理</h2>
+            <h2 className="text-base font-bold text-slate-900">优先处理</h2>
             <Link
               href="/manage/system"
               className="text-sm font-semibold text-slate-500 hover:text-slate-900"
@@ -115,7 +115,7 @@ export default async function ManageHomePage() {
                     </p>
                   </div>
                   <span
-                    className={`text-3xl font-black ${item.count ? 'text-rose-600' : 'text-emerald-600'}`}
+                    className={`text-3xl font-bold ${item.count ? 'text-rose-600' : 'text-emerald-600'}`}
                   >
                     {item.count}
                   </span>

@@ -36,6 +36,7 @@ type SelectOption = {
   value: string
   label: ReactNode
   textLabel: string
+  selectedLabel?: string
   disabled: boolean
   group?: string
 }
@@ -84,10 +85,12 @@ const readOptions = (children: ReactNode): SelectOption[] => {
           children?: ReactNode
           value?: string | number
           disabled?: boolean
+          label?: string
         }
         options.push({
           value: String(nestedProps.value ?? ''),
           label: nestedProps.children,
+          selectedLabel: nestedProps.label,
           textLabel: textFromNode(nestedProps.children).trim(),
           disabled: Boolean(props.disabled || nestedProps.disabled),
           group: props.label,
@@ -100,6 +103,7 @@ const readOptions = (children: ReactNode): SelectOption[] => {
     options.push({
       value: String(props.value ?? ''),
       label: props.children,
+      selectedLabel: props.label,
       textLabel: textFromNode(props.children).trim(),
       disabled: Boolean(props.disabled),
     })
@@ -301,7 +305,7 @@ export default function CustomSelect({
         onKeyDown={handleKeyDown}
         className={`relative flex items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-55 ${className}`}>
         <span className='min-w-0 flex-1 truncate'>
-          {selectedOption?.label || selectedValue}
+          {selectedOption?.selectedLabel || selectedOption?.label || selectedValue}
         </span>
         <svg
           aria-hidden='true'

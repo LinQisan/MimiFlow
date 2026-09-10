@@ -2,13 +2,27 @@
 
 import Link from 'next/link'
 
-import ToggleSwitch from '@/components/ToggleSwitch'
+import { Play, Pause, Repeat2, Copy, Check } from 'lucide-react'
 import { formatDurationCompact, formatMediaTime } from '@/utils/time/format'
 import PronunciationSourceSelector, {
   type PronunciationSource,
 } from '@/components/ui/PronunciationSourceSelector'
 
 type CopyStatus = 'idle' | 'success' | 'error'
+
+function DisplayToggle({ label, checked, onChange }: {
+  label: string
+  checked: boolean
+  onChange: (value: boolean) => void
+}) {
+  return (
+    <button type='button' aria-pressed={checked} onClick={() => onChange(!checked)}
+      className={`inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors hover:bg-[var(--editorial-paper-muted)] ${checked ? 'text-[var(--editorial-ink)]' : 'text-slate-500'}`}>
+      <span className={`h-1 w-1 rounded-full ${checked ? 'bg-current' : 'bg-transparent'}`} aria-hidden='true' />
+      {label}
+    </button>
+  )
+}
 
 export default function ListeningPlayerHeader({
   title,
@@ -20,6 +34,7 @@ export default function ListeningPlayerHeader({
   isTrackLoop,
   playbackRate,
   showPronunciation,
+  showAnnotations,
   showLearningPoints,
   pronunciationSource,
   sudachiAvailable,
@@ -34,6 +49,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop,
   onTogglePlaybackRate,
   onShowPronunciationChange,
+  onAnnotationsChange,
   onLearningPointsChange,
   onPronunciationSourceChange,
   onBlindModeChange,
@@ -47,6 +63,7 @@ export default function ListeningPlayerHeader({
   isTrackLoop: boolean
   playbackRate: number
   showPronunciation: boolean
+  showAnnotations: boolean
   showLearningPoints: boolean
   pronunciationSource: PronunciationSource
   sudachiAvailable: boolean
@@ -61,6 +78,7 @@ export default function ListeningPlayerHeader({
   onToggleTrackLoop: () => void
   onTogglePlaybackRate: () => void
   onShowPronunciationChange: (value: boolean) => void
+  onAnnotationsChange: (value: boolean) => void
   onLearningPointsChange: (value: boolean) => void
   onPronunciationSourceChange: (value: PronunciationSource) => void
   onBlindModeChange: (value: boolean) => void
@@ -68,7 +86,7 @@ export default function ListeningPlayerHeader({
   const displayedDays = Math.max(playedDays, totalPlaySeconds > 0 ? 1 : 0)
 
   return (
-    <header className='sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95'>
+    <header className='z-30 border-b border-slate-200 bg-[var(--editorial-paper)] md:sticky md:top-0 dark:border-slate-800'>
       <div className='mx-auto w-full max-w-5xl px-3 py-2.5 md:px-5'>
         <div className='flex items-center gap-2'>
           <button
@@ -76,7 +94,7 @@ export default function ListeningPlayerHeader({
             onClick={onBack}
             aria-label='返回听力列表'
             title='返回听力列表'
-            className='inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'>
+            className='inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'>
             <svg className='h-4 w-4' fill='none' stroke='currentColor' viewBox='0 0 24 24' aria-hidden='true'>
               <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M15 19l-7-7 7-7' />
             </svg>
@@ -91,12 +109,16 @@ export default function ListeningPlayerHeader({
             </p>
           </div>
 
-          <nav className='flex shrink-0 rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900' aria-label='切换听力材料'>
+          <p className='hidden shrink-0 text-[11px] tabular-nums text-slate-500 lg:block'>
+            本次 {formatMediaTime(sessionPlaySeconds)} · 累计 {formatDurationCompact(totalPlaySeconds)} · {displayedDays} 天
+          </p>
+
+          <nav className='flex shrink-0 items-center gap-1' aria-label='切换听力材料'>
             {prevId ? (
               <Link
                 href={`/listening/${prevId}`}
                 aria-label='上一篇'
-                className='inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
+                className='inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
                 <span aria-hidden='true'>←</span>
               </Link>
             ) : null}
@@ -104,70 +126,42 @@ export default function ListeningPlayerHeader({
               <Link
                 href={`/listening/${nextId}`}
                 aria-label='下一篇'
-                className='inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
+                className='inline-flex h-10 w-10 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800'>
                 <span aria-hidden='true'>→</span>
               </Link>
             ) : null}
           </nav>
         </div>
 
-        <div className='mt-2 flex flex-wrap items-center gap-1.5'>
-          <button
-            type='button'
-            onClick={onTogglePlayback}
-            aria-pressed={isPlaying}
-            className='h-8 min-w-[4.5rem] rounded-lg bg-slate-900 px-3 text-xs font-bold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900'>
-            {isPlaying ? '暂停' : '播放'}
-          </button>
-          <button
-            type='button'
-            onClick={onToggleTrackLoop}
-            aria-pressed={isTrackLoop}
-            className={`h-8 rounded-lg border px-2.5 text-xs font-semibold ${
-              isTrackLoop
-                ? 'border-slate-900 bg-slate-100 text-slate-900 dark:border-slate-100 dark:bg-slate-800 dark:text-slate-100'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
-            }`}>
-            循环
-          </button>
-          <button
-            type='button'
-            onClick={onTogglePlaybackRate}
-            aria-label='切换播放速度'
-            className='h-8 min-w-[3.4rem] rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100'>
-            {playbackRate}x
-          </button>
-
-          <div className='ml-1 flex items-center gap-3 border-l border-slate-200 pl-2 dark:border-slate-700'>
-            <ToggleSwitch label='注音' checked={showPronunciation} onChange={onShowPronunciationChange} />
-            <ToggleSwitch label='学习点' checked={showLearningPoints} onChange={onLearningPointsChange} />
-            {showPronunciation ? (
-              <PronunciationSourceSelector
-                value={pronunciationSource}
-                onChange={onPronunciationSourceChange}
-                sudachiAvailable={sudachiAvailable}
-              />
-            ) : null}
-            <ToggleSwitch label='盲听' checked={isBlindMode} onChange={onBlindModeChange} />
+        <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200/70 pt-2 dark:border-slate-800'>
+          <div role='group' aria-label='播放控制' className='flex items-center gap-1'>
+            <button type='button' onClick={onTogglePlayback} aria-label={isPlaying ? '暂停' : '播放'} aria-pressed={isPlaying}
+              className='inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--editorial-ink)] text-[var(--editorial-paper)] transition-opacity hover:opacity-80'>
+              {isPlaying ? <Pause size={16} fill='currentColor' /> : <Play size={16} fill='currentColor' />}
+            </button>
+            <button type='button' onClick={onToggleTrackLoop} aria-label='循环' aria-pressed={isTrackLoop}
+              className={`inline-flex h-10 items-center gap-1.5 rounded-md px-2.5 text-xs ${isTrackLoop ? 'bg-[var(--editorial-paper-muted)] text-[var(--editorial-ink)]' : 'text-slate-500 hover:bg-[var(--editorial-paper-muted)]'}`}>
+              <Repeat2 size={15} />循环
+            </button>
+            <button type='button' onClick={onTogglePlaybackRate} aria-label='切换播放速度' className='h-10 min-w-12 rounded-md px-2 text-xs font-medium tabular-nums hover:bg-[var(--editorial-paper-muted)]'>
+              {playbackRate}x
+            </button>
+            <DisplayToggle label='盲听' checked={isBlindMode} onChange={onBlindModeChange} />
           </div>
-
-          <button
-            type='button'
-            onClick={onCopy}
-            aria-label='复制原文'
-            className={`ml-1 h-8 rounded-lg px-2.5 text-xs font-semibold ${
-              copyStatus === 'success'
-                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900'
-                : copyStatus === 'error'
-                  ? 'bg-rose-50 text-rose-700'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}>
-            {copyStatus === 'success' ? '已复制' : copyStatus === 'error' ? '复制失败' : '复制原文'}
+          <div role='group' aria-label='原文工具' className='flex flex-wrap items-center gap-0.5 sm:border-l sm:border-slate-300 sm:pl-3 dark:sm:border-slate-700'>
+            <div className='flex items-center'>
+              <DisplayToggle label='注音' checked={showPronunciation} onChange={onShowPronunciationChange} />
+              {showPronunciation ? (
+                <PronunciationSourceSelector value={pronunciationSource} onChange={onPronunciationSourceChange} sudachiAvailable={sudachiAvailable} />
+              ) : null}
+            </div>
+            <DisplayToggle label='注释' checked={showAnnotations} onChange={onAnnotationsChange} />
+            <DisplayToggle label='学习点' checked={showLearningPoints} onChange={onLearningPointsChange} />
+          </div>
+          <button type='button' onClick={onCopy} aria-label='复制原文' className={`ml-auto inline-flex h-10 items-center gap-1.5 rounded-md px-2 text-xs hover:bg-[var(--editorial-paper-muted)] ${copyStatus === 'error' ? 'text-rose-700' : 'text-slate-500'}`}>
+            {copyStatus === 'success' ? <Check size={14} /> : <Copy size={14} />}
+            <span aria-live='polite'>{copyStatus === 'success' ? '已复制' : copyStatus === 'error' ? '复制失败' : '复制原文'}</span>
           </button>
-
-          <p className='ml-auto hidden text-[11px] tabular-nums text-slate-500 sm:block'>
-            本次 {formatMediaTime(sessionPlaySeconds)} · 累计 {formatDurationCompact(totalPlaySeconds)} · {displayedDays} 天
-          </p>
         </div>
       </div>
     </header>

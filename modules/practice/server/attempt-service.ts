@@ -1,3 +1,5 @@
+import 'server-only'
+
 import prisma from '@/lib/prisma'
 import { CollectionType, MaterialType } from '@prisma/client'
 import { normalizeQuestionOptions } from '@/lib/repositories/materials'
@@ -275,9 +277,15 @@ export async function resetQuizAttemptHistory(
       const submissions = await tx.practicePaperSubmission.deleteMany({
         where: { userId },
       })
+      // Retry entries are derived from the deleted attempts: keeping them
+      // would leave ghost mistakes in /review/mistakes after a reset.
+      // Personal notes (UserQuestionNote) and FSRS memory cards are untouched
+      // deliberately — they are not attempt history.
+      const retries = await tx.questionRetry.deleteMany({ where: { userId } })
       return {
         deletedAttemptCount: attempts.count,
         deletedSubmissionCount: submissions.count,
+        deletedRetryCount: retries.count,
       }
     }
 
@@ -315,9 +323,15 @@ export async function resetQuizAttemptHistory(
     const submissions = await tx.practicePaperSubmission.deleteMany({
       where: { userId, collectionId: { in: papers.map(paper => paper.id) } },
     })
+    const retries = questionIds.length
+      ? await tx.questionRetry.deleteMany({
+          where: { userId, questionId: { in: questionIds } },
+        })
+      : { count: 0 }
     return {
       deletedAttemptCount: attempts.count,
       deletedSubmissionCount: submissions.count,
+      deletedRetryCount: retries.count,
     }
   })
 }
