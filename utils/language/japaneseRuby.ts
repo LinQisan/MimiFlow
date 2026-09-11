@@ -1,6 +1,11 @@
 import { isJapaneseSurfaceOccurrenceAllowed } from '../vocabulary/japaneseInflection.ts'
 
-const KANJI_REGEX = /[\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]/
+import {
+  isKanjiChar,
+  normalizeKanaComparable,
+  stripMatchingTrailingOkurigana,
+  findPronunciationBoundary,
+} from '../../modules/language/domain/ruby-alignment.ts'
 
 export const escapeHtml = (text?: string | null) =>
   (text || '')
@@ -10,8 +15,7 @@ export const escapeHtml = (text?: string | null) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;')
 
-const isKanjiChar = (ch: string) => KANJI_REGEX.test(ch)
-const hasKanji = (text: string) => KANJI_REGEX.test(text)
+const hasKanji = isKanjiChar
 const hasNumber = (text: string) => /\p{Number}/u.test(text)
 const INLINE_KANA_READING_PATTERN =
   /([\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]+)([（(])([\u3040-\u30ffー]+)([）)])/gu
@@ -103,15 +107,6 @@ export const extractInlineKanaReadings = (word: string): string[] => {
 
 const hasJapanese = (text: string) => /[\u3040-\u30ffー\u4e00-\u9fff]/.test(text)
 const hasKana = (text: string) => /[\u3040-\u30ffー]/.test(text)
-const normalizeKanaComparable = (value: string) =>
-  Array.from(value.normalize('NFKC'))
-    .map(character => {
-      const codepoint = character.codePointAt(0) || 0
-      return codepoint >= 0x30a1 && codepoint <= 0x30f6
-        ? String.fromCodePoint(codepoint - 0x60)
-        : character
-    })
-    .join('')
 const normalizeComparable = (value: string) =>
   normalizeKanaComparable(value)
     .toLowerCase()
@@ -145,22 +140,6 @@ const splitPronunciationForKanji = (kanjiRun: string, pronRun: string) => {
   return result
 }
 
-const stripMatchingTrailingOkurigana = (reading: string, suffix: string) => {
-  const readingChars = Array.from(reading)
-  const suffixChars = Array.from(suffix)
-  if (suffixChars.length === 0 || readingChars.length <= suffixChars.length) {
-    return reading
-  }
-
-  const offset = readingChars.length - suffixChars.length
-  const matches = suffixChars.every(
-    (character, index) =>
-      normalizeKanaComparable(readingChars[offset + index]) ===
-      normalizeKanaComparable(character),
-  )
-  return matches ? readingChars.slice(0, offset).join('') : reading
-}
-
 const NUMERIC_UNIT_READINGS: Record<string, string> = {
   十: 'じゅう',
   百: 'ひゃく',
@@ -179,52 +158,6 @@ const resolveMixedNumericReading = (word: string, pronunciation: string) => {
   const comparablePronunciation = normalizeKanaComparable(pronunciation)
   if (!unitReading || !comparablePronunciation.endsWith(unitReading)) return null
   return { number: match[1], units: match[2], reading: unitReading }
-}
-
-const findPronunciationBoundary = (
-  wordChars: string[],
-  runEnd: number,
-  pronChars: string[],
-  pronCursor: number,
-) => {
-  const literalRun: string[] = []
-  for (let index = runEnd; index < wordChars.length; index += 1) {
-    const character = wordChars[index]
-    if (isKanjiChar(character)) break
-    if (character.trim()) literalRun.push(character)
-  }
-  if (literalRun.length === 0) return pronChars.length
-
-  // The first matching kana can still belong to the kanji reading itself.
-  // Keep at least one pronunciation character for the kanji run before
-  // looking for the following okurigana. For example:
-  // 聞き分け / ききわけ -> 聞(き) + き + 分(わ) + け
-  // 示し / しめし       -> 示(しめ) + し
-  const searchStart = Math.min(pronChars.length, pronCursor + 1)
-  for (
-    let index = searchStart;
-    index <= pronChars.length - literalRun.length;
-    index += 1
-  ) {
-    const matches = literalRun.every(
-      (character, offset) =>
-        normalizeKanaComparable(pronChars[index + offset]) ===
-        normalizeKanaComparable(character),
-    )
-    if (matches) return index
-  }
-
-  // Sudachi may return only the current inflected stem. Matching the first
-  // okurigana still keeps a trailing small っ outside the ruby in that case.
-  for (let index = searchStart; index < pronChars.length; index += 1) {
-    if (
-      normalizeKanaComparable(pronChars[index]) ===
-      normalizeKanaComparable(literalRun[0])
-    ) {
-      return index
-    }
-  }
-  return pronChars.length
 }
 
 export const buildJapaneseRubyHtml = (

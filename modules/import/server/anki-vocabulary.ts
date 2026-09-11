@@ -3,14 +3,14 @@ import type { Prisma } from '@prisma/client'
 import { planAnkiMeanings } from '../domain/anki-vocabulary'
 
 /** Append imported definitions without replacing authored senses or their examples. */
-export async function ensureAnkiVocabularySenses(userId: string, vocabularyId: string, meanings: string[], incoming: string[] = meanings, usage = '', sourceName: string, tx: Prisma.TransactionClient) {
+export async function ensureAnkiVocabularySenses(userId: string, vocabularyId: string, incoming: string[], usage: string, sourceName: string, tx: Prisma.TransactionClient) {
     const vocabulary = await tx.vocabulary.findFirst({
       where: { id: vocabularyId, userId },
       select: { senses: { orderBy: { order: 'asc' }, select: { id: true, order: true, definitions: { select: { definition: true } } } } },
     })
     if (!vocabulary) throw new Error('单词不存在或无权导入。')
     const senses = vocabulary.senses
-    const additions = planAnkiMeanings(senses.flatMap(s => s.definitions.map(d => d.definition)), meanings)
+    const additions = planAnkiMeanings(senses.flatMap(s => s.definitions.map(d => d.definition)), incoming)
     let nextOrder = (senses.at(-1)?.order ?? -1) + 1
     for (const meaning of additions) {
       const empty = senses.find(s => s.definitions.length === 0)
@@ -27,5 +27,5 @@ export async function ensureAnkiVocabularySenses(userId: string, vocabularyId: s
     if (usage.trim() && !await tx.vocabularyUsageNote.findFirst({ where: { senseId: match.id, type: 'usage', text: usage.trim() }, select: { id: true } })) {
       await tx.vocabularyUsageNote.create({ data: { senseId: match.id, type: 'usage', text: usage.trim(), sortOrder: 0 } })
     }
-    return { id: match.id, order: match.order }
+    return { id: match.id }
 }

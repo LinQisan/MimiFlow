@@ -10,8 +10,8 @@ import { buildPronunciationMapForText } from '../utils/vocabulary/japaneseInflec
 import {
   groupWordbookDistributionBySource,
   resolveJlptHighlightSlot,
-  resolvePrimaryJlpt,
-} from '../features/reading/domain/wordbook-highlight-groups.ts'
+} from '../modules/reading/domain/wordbook-highlight-groups.ts'
+import { resolvePrimaryVocabularyJlpt } from '../modules/knowledge/vocabulary/domain/jlpt.ts'
 
 test('adjacent tokens keep exact original-text offsets', () => {
   const text = '進むフェリー'
@@ -125,9 +125,9 @@ test('one token in two wordbooks merges metadata instead of overlapping', () => 
   assert.deepEqual(sources[0].jlptByWord['進む'], ['N2', 'N3'])
   assert.deepEqual(sources[0].wordbookIdsByWord['進む'].sort(), ['red-n2', 'red-n3'])
   // The single primary level decides one deterministic highlight slot.
-  assert.equal(resolvePrimaryJlpt(sources[0].jlptByWord['進む']), 'N2')
+  assert.equal(resolvePrimaryVocabularyJlpt(sources[0].jlptByWord['進む']), 'N2')
   assert.equal(
-    resolveJlptHighlightSlot(resolvePrimaryJlpt(sources[0].jlptByWord['進む'])),
+    resolveJlptHighlightSlot(resolvePrimaryVocabularyJlpt(sources[0].jlptByWord['進む'])),
     3,
   )
 })

@@ -22,6 +22,12 @@ import {
   filterVocabularyTags,
   normalizeVocabularyJlpt,
 } from '@/modules/knowledge/vocabulary/domain/jlpt'
+import {
+  isWordbookEntryMoveDirection,
+  moveWordbookEntry,
+  WORDBOOK_ENTRY_ORDER,
+} from './entry-order'
+import { persistWordbookEntryOrder } from './entry-order-writer'
 
 const revalidateWordbooks = (wordbookId?: string) => {
   revalidatePath('/vocabulary')
@@ -82,7 +88,7 @@ const deleteUnreferencedAudioFiles = async (audioPaths: string[]) => {
   ])
   materials.forEach(material => {
     const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
-    const audioPath = readString(payload.audioFile) || readString(payload.audioUrl)
+    const audioPath = readString(payload.audioFile)
     if (audioPath && candidates.includes(audioPath)) referencedPaths.add(audioPath)
   })
 
@@ -281,8 +287,6 @@ export async function deleteWordbook(wordbookId: string) {
       where: { id: trimmedWordbookId, userId },
       select: {
         id: true,
-        title: true,
-        series: { select: { title: true } },
         entries: {
           select: {
             vocabulary: {
@@ -313,18 +317,8 @@ export async function deleteWordbook(wordbookId: string) {
     }
 
     const sentenceSourceUrl = `/vocabulary/wordbooks/${existing.id}`
-    const duplicateTitleCount = await prisma.wordbook.count({
-      where: { userId, title: existing.title },
-    })
-    const legacySentenceSources = [
-      `${existing.series.title} › ${existing.title}`,
-      `${existing.series.title}/${existing.title}`,
-      ...(duplicateTitleCount === 1 ? [existing.title] : []),
-    ]
     const wordbookSentences = await prisma.vocabularySentence.findMany({
-      where: {
-        OR: [{ sourceUrl: sentenceSourceUrl }, { source: { in: legacySentenceSources } }],
-      },
+      where: { sourceUrl: sentenceSourceUrl },
       select: { id: true, audioFile: true },
     })
     const wordbookSentenceIds = wordbookSentences.map(sentence => sentence.id)
@@ -399,6 +393,54 @@ export async function removeVocabularyFromWordbook(
   } catch (error) {
     console.error(error)
     return { success: false, message: '移出单词书失败' }
+  }
+}
+
+export async function moveVocabularyWithinWordbook(
+  vocabularyId: string,
+  wordbookId: string,
+  direction: string,
+) {
+  try {
+    const userId = await getCurrentUserId()
+    const trimmedVocabularyId = vocabularyId.trim()
+    const trimmedWordbookId = wordbookId.trim()
+    if (
+      !trimmedVocabularyId ||
+      !trimmedWordbookId ||
+      !isWordbookEntryMoveDirection(direction)
+    ) {
+      return { success: false, message: '排序请求无效' }
+    }
+    const moved = await prisma.$transaction(async tx => {
+      const wordbook = await tx.wordbook.findFirst({
+        where: { id: trimmedWordbookId, userId },
+        select: { id: true },
+      })
+      if (!wordbook) return false
+      const entries = await tx.wordbookVocabulary.findMany({
+        where: {
+          wordbookId: trimmedWordbookId,
+          vocabulary: { userId },
+        },
+        orderBy: WORDBOOK_ENTRY_ORDER,
+        select: { vocabularyId: true },
+      })
+      const next = moveWordbookEntry(
+        entries.map(entry => entry.vocabularyId),
+        trimmedVocabularyId,
+        direction,
+      )
+      if (!next) return false
+      await persistWordbookEntryOrder(tx, userId, trimmedWordbookId, next)
+      return true
+    })
+    if (!moved) return { success: false, message: '该词条已在当前方向的边界' }
+    revalidateWordbooks(trimmedWordbookId)
+    return { success: true }
+  } catch (error) {
+    console.error(error)
+    return { success: false, message: '调整排序失败' }
   }
 }
 
@@ -551,7 +593,7 @@ export async function setJlptForWordbookVocabularies(
 export async function listSelectableWordbooks() {
   const userId = await getCurrentUserId()
   const rows = await prisma.wordbook.findMany({
-    where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
+    where: { userId },
     orderBy: [
       { series: { sortOrder: 'asc' } },
       { series: { createdAt: 'asc' } },
@@ -584,68 +626,6 @@ export async function listSelectableWordbookSeries() {
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, title: true },
   })
-}
-
-export async function syncAnkiSentenceSourcesForWordbook(wordbookId: string) {
-  const userId = await getCurrentUserId()
-  const trimmedWordbookId = (wordbookId || '').trim()
-  if (!trimmedWordbookId) return { success: false, updatedCount: 0 }
-
-  const wordbook = await prisma.wordbook.findFirst({
-    where: { id: trimmedWordbookId, userId },
-    select: { id: true, title: true },
-  })
-  if (!wordbook) return { success: false, updatedCount: 0 }
-
-  const wordbookLinks = await prisma.wordbookVocabulary.findMany({
-    where: { wordbookId: trimmedWordbookId },
-    select: { vocabularyId: true },
-  })
-  const vocabularyIds = Array.from(
-    new Set(wordbookLinks.map(item => item.vocabularyId).filter(Boolean)),
-  )
-  if (vocabularyIds.length === 0) {
-    return { success: true, updatedCount: 0 }
-  }
-
-  const sentenceLinks = await prisma.vocabularySentenceLink.findMany({
-    where: {
-      vocabularyId: { in: vocabularyIds },
-      sentence: {
-        OR: [{ sourceId: 'anki-import' }, { sourceUrl: '/manage/import?type=anki' }],
-      },
-    },
-    select: { sentenceId: true },
-  })
-  const sentenceIds = Array.from(
-    new Set(sentenceLinks.map(item => item.sentenceId).filter(Boolean)),
-  )
-  if (sentenceIds.length === 0) {
-    return { success: true, updatedCount: 0 }
-  }
-
-  const updated = await prisma.vocabularySentence.updateMany({
-    where: {
-      id: { in: sentenceIds },
-      AND: [
-        {
-          OR: [{ sourceId: 'anki-import' }, { sourceUrl: '/manage/import?type=anki' }],
-        },
-        {
-          OR: [
-            { source: { not: wordbook.title } },
-            { sourceUrl: { not: '/manage/import?type=anki' } },
-          ],
-        },
-      ],
-    },
-    data: {
-      source: wordbook.title,
-      sourceUrl: '/manage/import?type=anki',
-    },
-  })
-
-  return { success: true, updatedCount: updated.count }
 }
 
 export async function addVocabulariesToWordbook(vocabularyIds: string[], wordbookId: string) {

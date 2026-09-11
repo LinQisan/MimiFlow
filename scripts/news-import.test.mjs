@@ -7,24 +7,22 @@ import { fileURLToPath } from 'node:url'
 import {
   findNewsCollectionId,
   formatNewsDate,
-  getNewsSeriesSource,
   isAutomaticMorningEdition,
   isAutomaticFrontPageSection,
   supportsBreakingEdition,
   normalizeNewsMetadata,
-  toLegacyNewsSeries,
-} from '../features/reading/domain/news-metadata.ts'
+} from '../modules/reading/domain/news-metadata.ts'
 import {
   buildFacetedNewsOptions,
   changeReadingFilter,
   DEFAULT_READING_FILTERS,
   parseReadingFilters,
   serializeReadingFilters,
-} from '../features/reading/domain/reading-filters.ts'
+} from '../modules/reading/domain/reading-filters.ts'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-test('structured news metadata maps to source collections and keeps legacy compatibility', () => {
+test('structured news metadata maps to source collections', () => {
   const collections = [
     { id: 'asahi', name: '天声人语' },
     { id: 'nikkei', name: '日経' },
@@ -32,10 +30,6 @@ test('structured news metadata maps to source collections and keeps legacy compa
 
   assert.equal(findNewsCollectionId(collections, { source: '朝日', column: '天声人語' }), 'asahi')
   assert.equal(findNewsCollectionId(collections, { source: '日経' }), 'nikkei')
-  assert.equal(getNewsSeriesSource('天声人語'), '朝日')
-  assert.equal(toLegacyNewsSeries('news', ''), '')
-  assert.equal(toLegacyNewsSeries('editorial', ''), '社説')
-  assert.equal(toLegacyNewsSeries('column', '春秋'), '春秋')
   assert.equal(isAutomaticMorningEdition({ source: '朝日', type: 'column', column: '天声人語' }), true)
   assert.equal(isAutomaticMorningEdition({ source: '日経', type: 'column', column: '春秋' }), true)
   assert.equal(isAutomaticMorningEdition({ source: '日経', type: 'editorial', column: '' }), true)
@@ -46,7 +40,7 @@ test('structured news metadata maps to source collections and keeps legacy compa
   assert.equal(isAutomaticFrontPageSection({ type: 'news', column: '' }), false)
   assert.equal(supportsBreakingEdition({ source: '日経', type: 'news' }), true)
   assert.equal(supportsBreakingEdition({ source: '朝日', type: 'news' }), false)
-  assert.deepEqual(normalizeNewsMetadata({ newsSeries: '社説', pageNumber: '総合' }), {
+  assert.deepEqual(normalizeNewsMetadata({ newsSource: '日経', newsType: 'editorial', newsSection: '総合' }), {
     source: '日経', type: 'editorial', section: '総合', column: '', topic: '',
   })
   assert.equal(formatNewsDate('2026-08-17'), '2026年8月17日')
@@ -54,16 +48,16 @@ test('structured news metadata maps to source collections and keeps legacy compa
 
 test('news import requires structured choices and reading offers matching filters', async () => {
   const [center, panel, datePicker, editor, actions, readingPage, readingClient] = await Promise.all([
-    readFile(path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/import/components/UploadCenterUI.tsx'), 'utf8'),
     readFile(
       path.join(ROOT, 'modules/import/components/ArticleImportPanel.tsx'),
       'utf8',
     ),
     readFile(path.join(ROOT, 'components/ui/DatePicker.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'features/content/ui/EditArticleUI.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/content/components/EditArticleUI.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'modules/content/actions/materials.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'app/(library)/reading/page.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'app/(library)/reading/ReadingCenterClient.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'app/reading/page.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/reading/components/ReadingCenterClient.tsx'), 'utf8'),
   ])
 
   assert.doesNotMatch(center, /inferNewsSeries/)
@@ -91,7 +85,7 @@ test('news import requires structured choices and reading offers matching filter
   assert.match(panel, /NEWS_EDITION_OPTIONS/)
   assert.match(panel, /已自动对应朝刊/)
   assert.match(panel, /已自动对应一面/)
-  assert.match(actions, /newsSeries/)
+  assert.doesNotMatch(actions, /newsSeries|pageNumber/)
   assert.match(actions, /newsSource/)
   assert.match(actions, /newsType/)
   assert.match(actions, /automaticMorningEdition/)

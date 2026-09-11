@@ -102,7 +102,7 @@ export async function batchComputeSentencePronunciations(
 }
 
 /**
- * Single-word convenience wrapper for write-time creation/update.
+ * Single-item write helper with best-effort error handling.
  */
 export async function computeSingleVocabularyPronunciation(
   word: string,
@@ -127,7 +127,7 @@ export async function computeSingleVocabularyPronunciation(
 }
 
 /**
- * Single-sentence convenience wrapper for write-time sentence link creation.
+ * Single-sentence write helper with best-effort error handling.
  */
 export async function computeSingleSentencePronunciation(
   text: string,

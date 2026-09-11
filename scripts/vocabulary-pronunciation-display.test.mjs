@@ -51,8 +51,8 @@ test('compact readings split safely while preserving manual ruby and IPA', () =>
 
 test('headword display ignores stale materialized segments and match tags omit readings', async () => {
   const [wordComponent, tabs] = await Promise.all([
-    readFile(path.join(process.cwd(), 'components/vocabulary/WordPronunciation.tsx'), 'utf8'),
-    readFile(path.join(process.cwd(), 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'), 'utf8'),
+    readFile(path.join(process.cwd(), 'modules/knowledge/vocabulary/components/WordPronunciation.tsx'), 'utf8'),
+    readFile(path.join(process.cwd(), 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'), 'utf8'),
   ])
   assert.match(wordComponent, /segments\.map\(segment => segment\.text\)\.join\(''\) === word/)
   assert.match(wordComponent, /aria-label='已保存读音'/)

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { getSudachiPronunciationMap } from '@/modules/language/server/sudachi-pronunciation'
-import { getPaperWordbookDistribution } from '@/features/practice/server/paper-wordbook-distribution'
+import { getPaperWordbookDistribution } from '@/modules/practice/server/paper-wordbook-distribution'
 import { buildWordFrequency } from '@/modules/language/domain/sudachi'
 
 const MAX_TEXTS = 600

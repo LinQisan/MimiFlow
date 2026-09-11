@@ -5,7 +5,7 @@ import { performance } from 'node:perf_hooks'
 import {
   getPracticeVocabularyAnalytics,
   getPracticeVocabularyAnalyticsSummary,
-} from '@/features/practice/server/vocabulary-analytics'
+} from '@/modules/practice/server/vocabulary-analytics'
 
 const getCachedPracticeVocabularyAnalytics = unstable_cache(
   getPracticeVocabularyAnalytics,

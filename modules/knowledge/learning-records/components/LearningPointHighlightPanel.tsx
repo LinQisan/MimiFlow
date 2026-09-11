@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import type { LearningPointCategory } from '@prisma/client'
 
 import { LEARNING_POINT_CATEGORY_LABELS } from '@/modules/knowledge/learning-records/domain'
-import type { LearningPointHighlight, LearningPointSelection } from '@/hooks/useStudyTextHighlights'
+import type { LearningPointHighlight, LearningPointSelection } from '@/modules/knowledge/learning-records/useStudyTextHighlights'
 
 const CATEGORY_CLASS: Record<LearningPointCategory, string> = {
   GRAMMAR: 'bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-200',

@@ -13,10 +13,10 @@
 | 清理项 | 调用证据与处理 |
 | --- | --- |
 | VocabularyPageV2 | 由 /vocabulary?ui=v2 真实调用。文件和组件改为 VocabularyPage，路由入口函数改为 VocabularyRoute；保留查询参数、默认页与实验行为。 |
-| components/vocabulary/Header.tsx | 全库无引用，且重复全局 StudyNavigation；删除。 |
+| modules/knowledge/vocabulary/components/Header.tsx | 全库无引用，且重复全局 StudyNavigation；删除。 |
 | annotateJapaneseHtml | 全库仅定义，无调用；删除连同专用的 HTML 切分、释义匹配、注音辅助函数与相关类型/import。保留用户偏好 hook 及 hasJapanese 兼容导出。 |
 | findVocabularyDetail / searchVocabularyRelationTargets | 无源码或脚本调用；删除这两个仓储查询函数。保留现有批量查询。 |
-| features/reading/server/sudachi-pronunciation.ts | 仅转发 canonical 模块；5 个调用点直接引用 modules/language/server/sudachi-pronunciation，删除转发文件。 |
+| modules/reading/server/sudachi-pronunciation.ts | 仅转发 canonical 模块；5 个调用点直接引用 modules/language/server/sudachi-pronunciation，删除转发文件。 |
 | 词汇编辑器未使用声明 | 删除无用 draft props、import、局部函数和参数；将集合更新类型绑定到具体字段，增加空草稿保护。 |
 | 词条输入解析 | 明确解析结果类型，保留直接/包装输入及未知扩展字段；删除不再使用的 union schema。补充行为测试。 |
 | 例句保存 | 将未定义的 sourceUrl 修正为已计算的 storageSourceUrl，保留存储来源标识；补充模拟事务的公开保存入口测试，覆盖来源不变和来源更新；不修改数据库 schema。 |
@@ -76,7 +76,7 @@ VOCABULARY_QUERY_DATABASE_TEST=1 node --test scripts/vocabulary-page-query.test.
 - Anki 旧格式、legacy 词表、旧义项及 source metadata 属于数据兼容逻辑；保留。未运行或删除本地迁移、修复、导入脚本及现有迁移目录。
 - updateVocabularyFromInspector 与 syncAnkiSentenceSourcesForWordbook 当前无静态调用，但属于历史写入入口；本次保留并标记为后续候选，未确认运行时兼容边界前不删除。
 - utils/language/partOfSpeech 与 utils/vocabulary/partOfSpeech 分别承担语言规范化与词汇过滤，不能机械合并。
-- modules 到 features 的 5 个既有边界例外已由 scripts/module-boundaries.test.mjs 限定；lib/repositories/materials 还有既有 feature 耦合。涉及缓存失效、导入和题目行为，留待独立领域迁移；本轮未扩大这些依赖。
-- components/vocabulary/data.ts 仍是实验页专用的数据适配，类型与显示筛选耦合；未仅为目录整齐搬进 modules 并制造反向 UI 依赖。
+- 业务代码现统一归入 modules；scripts/module-boundaries.test.mjs 会阻止恢复 features 导入。跨领域依赖仍须通过明确的模块边界处理，不能以新目录层级规避。
+- modules/knowledge/vocabulary/components/data.ts 仍是实验页专用的数据适配，类型与显示筛选耦合；未仅为目录整齐搬进 modules 并制造反向 UI 依赖。
 - 保留本地 .agents、outputs、.venv、performance/latest.* 及用户音频；这些不是可凭文件名判定的垃圾。
 - 对应用源码扫描未发现 console.log、console.debug、debugger、TODO、FIXME 的直接命中；正常告警、错误处理与兼容代码未因此删除。

@@ -170,10 +170,7 @@ const collectDataset = async () => {
         prisma.questionAttempt.count(),
         prisma.material.count({
           where: {
-            OR: [
-              { contentPayload: { path: ['audioFile'], not: '' } },
-              { contentPayload: { path: ['audioUrl'], not: '' } },
-            ],
+            contentPayload: { path: ['audioFile'], not: '' },
           },
         }),
         prisma.mediaSubtitleLine.groupBy({

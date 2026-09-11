@@ -162,7 +162,7 @@ export async function getUploadPageSeedData({
           ),
           chapterName: row.material.chapterName || '',
           materialType: row.material.type,
-          audioFile: String(payload.audioFile || payload.audioUrl || ''),
+          audioFile: String(payload.audioFile || ''),
         }
       })
 
@@ -230,20 +230,12 @@ export async function getDefaultListeningQuestionsPerMaterial({
   const sectionFilter = listeningSectionNumber
     ? Prisma.sql`AND COALESCE(
         CASE
-          WHEN m.content_payload->>'listeningSectionNumber' ~ '^[1-9][0-9]*$'
+      WHEN m.content_payload->>'listeningSectionNumber' ~ '^[1-9][0-9]*$'
             THEN (m.content_payload->>'listeningSectionNumber')::int
-        END,
-        CASE
-          WHEN m.content_payload->>'sectionNumber' ~ '^[1-9][0-9]*$'
-            THEN (m.content_payload->>'sectionNumber')::int
         END,
         CASE
           WHEN q.content->>'listeningSectionNumber' ~ '^[1-9][0-9]*$'
             THEN (q.content->>'listeningSectionNumber')::int
-        END,
-        CASE
-          WHEN q.content->>'sectionNumber' ~ '^[1-9][0-9]*$'
-            THEN (q.content->>'sectionNumber')::int
         END
       ) = ${listeningSectionNumber}`
     : Prisma.empty

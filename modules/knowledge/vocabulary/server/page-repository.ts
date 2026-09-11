@@ -38,7 +38,7 @@ async function queryVocabularyPageGroups(userId: string, input: VocabularyGroupP
 // only aggregates and page words, never the full user vocabulary summary list.
 const getCachedVocabularyPageGroups = unstable_cache(
   queryVocabularyPageGroups,
-  ['vocabulary-group-page-v1'],
+  ['vocabulary-group-page-v3-book-order'],
   { tags: [VOCABULARY_GROUPS_CACHE_TAG], revalidate: 300 },
 )
 

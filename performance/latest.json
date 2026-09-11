@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01T14:33:57.133Z",
+  "generatedAt": "2026-09-11T02:41:24.720Z",
   "system": {
     "node": "v26.7.0",
     "platform": "darwin",
@@ -8,7 +8,7 @@
     "cpu": "Intel(R) Core(TM) i7-9750H CPU @ 2.60GHz",
     "cpuCount": 12,
     "totalMemoryMiB": 16384,
-    "freeMemoryMiB": 650.3
+    "freeMemoryMiB": 1724.4
   },
   "configuration": {
     "runs": 3,
@@ -30,9 +30,9 @@
   "dataset": {
     "materials": 279,
     "questions": 430,
-    "vocabularies": 9833,
+    "vocabularies": 1738,
     "subtitleLines": 1726,
-    "attempts": 191,
+    "attempts": 285,
     "audioMaterials": 198,
     "largestSubtitle": {
       "materialId": "1e2d815d-24f8-459a-91e2-1af9f72aa57f",
@@ -40,397 +40,397 @@
     }
   },
   "build": {
-    "durationMs": 19284.6,
-    "output": "\n> my-app@0.1.0 build\n> next build\n\n▲ Next.js 16.3.3 (Turbopack)\n- Environments: .env.local, .env\n✓ Running next.config.ts took 42ms\n- Experiments (use with caution):\n  · serverActions\n\n  Creating an optimized production build ...\n✓ Compiled successfully in 3.0s\n  Running TypeScript ...\n  Finished TypeScript in 8.1s ...\n  Collecting page data using 11 workers ...\n  Generating static pages using 11 workers (0/28) ...\n  Generating static pages using 11 workers (7/28) \r\n  Generating static pages using 11 workers (14/28) \r\n  Generating static pages using 11 workers (21/28) \r\n✓ Generating static pages using 11 workers (28/28) in 1249ms\n  Finalizing page optimization ...\n\nRoute (app)\n┌ ƒ /\n├ ƒ /_not-found\n├ ƒ /api/learning-points/highlights\n├ ƒ /api/manage/practice/[id]/export\n├ ƒ /api/practice/[id]/word-frequency\n├ ƒ /api/practice/performance\n├ ƒ /api/practice/vocabulary-analytics\n├ ƒ /api/practice/vocabulary-preferences\n├ ƒ /api/practice/vocabulary-wordbooks\n├ ƒ /api/pronunciation\n├ ƒ /api/quiz-attempts\n├ ƒ /api/reading/word-frequency\n├ ƒ /api/reading/wordbook-distribution\n├ ƒ /grammar\n├ ○ /icon.svg\n├ ƒ /learning-points\n├ ƒ /listening\n├ ƒ /listening/[id]\n├ ƒ /manage\n├ ƒ /manage/grammar\n├ ƒ /manage/import\n├ ƒ /manage/listening\n├ ƒ /manage/listening/[id]\n├ ƒ /manage/practice\n├ ƒ /manage/practice/[id]\n├ ƒ /manage/questions/[id]\n├ ƒ /manage/reading\n├ ƒ /manage/reading/[id]\n├ ƒ /manage/shadowing\n├ ƒ /manage/shadowing/[id]\n├ ƒ /manage/system\n├ ƒ /manage/system/audio\n├ ƒ /manage/system/review\n├ ƒ /manage/vocabulary\n├ ƒ /practice\n├ ƒ /practice/[id]\n├ ƒ /practice/[id]/do\n├ ƒ /practice/[id]/submissions/[submissionId]\n├ ƒ /practice/custom\n├ ƒ /practice/custom/do\n├ ƒ /reading\n├ ƒ /reading/articles/[id]\n├ ƒ /reading/ebooks/[id]\n├ ƒ /review\n├ ƒ /review/[id]\n├ ƒ /review/memory\n├ ƒ /review/mistakes\n├ ƒ /scores\n├ ƒ /search\n├ ƒ /subtitles\n├ ƒ /subtitles/[id]\n├ ƒ /vocabulary\n└ ƒ /vocabulary/wordbooks/[id]\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n"
+    "durationMs": 16428.3,
+    "output": "\n> my-app@0.1.0 build\n> next build\n\n▲ Next.js 16.3.3 (Turbopack)\n- Environments: .env.local, .env\n✓ Running next.config.ts took 42ms\n- Experiments (use with caution):\n  · serverActions\n\n  Creating an optimized production build ...\n✓ Compiled successfully in 3.8s\n  Running TypeScript ...\n  Finished TypeScript in 5.7s ...\n  Collecting page data using 11 workers ...\n  Generating static pages using 11 workers (0/31) ...\n  Generating static pages using 11 workers (7/31) \r\n  Generating static pages using 11 workers (15/31) \r\n  Generating static pages using 11 workers (23/31) \r\n✓ Generating static pages using 11 workers (31/31) in 1073ms\n  Finalizing page optimization ...\n\nRoute (app)\n┌ ƒ /\n├ ƒ /_not-found\n├ ƒ /api/learning-points/highlights\n├ ƒ /api/manage/practice/[id]/export\n├ ƒ /api/manage/vocabulary/csv\n├ ƒ /api/practice/[id]/word-frequency\n├ ƒ /api/practice/performance\n├ ƒ /api/practice/vocabulary-analytics\n├ ƒ /api/practice/vocabulary-analytics/words\n├ ƒ /api/practice/vocabulary-preferences\n├ ƒ /api/practice/vocabulary-wordbooks\n├ ƒ /api/pronunciation\n├ ƒ /api/pronunciation/batch\n├ ƒ /api/quiz-attempts\n├ ƒ /api/reading/word-frequency\n├ ƒ /api/reading/wordbook-distribution\n├ ƒ /grammar\n├ ○ /icon.svg\n├ ƒ /learning-points\n├ ƒ /listening\n├ ƒ /listening/[id]\n├ ƒ /manage\n├ ƒ /manage/grammar\n├ ƒ /manage/import\n├ ƒ /manage/listening\n├ ƒ /manage/listening/[id]\n├ ƒ /manage/practice\n├ ƒ /manage/practice/[id]\n├ ƒ /manage/questions/[id]\n├ ƒ /manage/reading\n├ ƒ /manage/reading/[id]\n├ ƒ /manage/shadowing\n├ ƒ /manage/shadowing/[id]\n├ ƒ /manage/system\n├ ƒ /manage/system/audio\n├ ƒ /manage/system/review\n├ ƒ /manage/vocabulary\n├ ƒ /practice\n├ ƒ /practice/[id]\n├ ƒ /practice/[id]/do\n├ ƒ /practice/[id]/submissions/[submissionId]\n├ ƒ /practice/custom\n├ ƒ /practice/custom/do\n├ ƒ /reading\n├ ƒ /reading/articles/[id]\n├ ƒ /reading/ebooks/[id]\n├ ƒ /review\n├ ƒ /review/[id]\n├ ƒ /review/memory\n├ ƒ /review/mistakes\n├ ƒ /scores\n├ ƒ /search\n├ ƒ /subtitles\n├ ƒ /subtitles/[id]\n├ ƒ /vocabulary\n└ ƒ /vocabulary/wordbooks/[id]\n\n\n○  (Static)   prerendered as static content\nƒ  (Dynamic)  server-rendered on demand\n\n"
   },
   "startup": {
-    "readyLogMs": 923.7,
-    "httpReadyMs": 2105,
-    "pid": 17554,
-    "serverRssMiB": 53.7
+    "readyLogMs": 907.4,
+    "httpReadyMs": 2086.1,
+    "pid": 11666,
+    "serverRssMiB": 53.9
   },
   "hardLoads": {
     "/": {
       "runs": [
         {
-          "ttfbMs": 40.100000001490116,
-          "domContentLoadedMs": 400.3999999985099,
-          "loadMs": 450.3999999985099,
-          "firstPaintMs": 412,
-          "firstContentfulPaintMs": 412,
-          "transferBytes": 186475,
+          "ttfbMs": 25.600000000558794,
+          "domContentLoadedMs": 298.6000000005588,
+          "loadMs": 394,
+          "firstPaintMs": 312,
+          "firstContentfulPaintMs": 312,
+          "transferBytes": 189519,
           "domNodes": 152
         },
         {
-          "ttfbMs": 33.900000005960464,
-          "domContentLoadedMs": 350.1000000014901,
-          "loadMs": 376.5,
-          "firstPaintMs": 292,
-          "firstContentfulPaintMs": 292,
-          "transferBytes": 188367,
-          "domNodes": 152
+          "ttfbMs": 42.60000000055879,
+          "domContentLoadedMs": 318.29999999981374,
+          "loadMs": 341.79999999981374,
+          "firstPaintMs": 268,
+          "firstContentfulPaintMs": 268,
+          "transferBytes": 191891,
+          "domNodes": 156
         },
         {
-          "ttfbMs": 31.19999999552965,
-          "domContentLoadedMs": 316.79999999701977,
-          "loadMs": 359.29999999701977,
-          "firstPaintMs": null,
-          "firstContentfulPaintMs": null,
-          "transferBytes": 188367,
-          "domNodes": 152
+          "ttfbMs": 23.90000000037253,
+          "domContentLoadedMs": 242,
+          "loadMs": 318.1000000005588,
+          "firstPaintMs": 252,
+          "firstContentfulPaintMs": 252,
+          "transferBytes": 191411,
+          "domNodes": 156
         }
       ],
       "ttfb": {
-        "minMs": 31.2,
-        "medianMs": 33.9,
-        "p95Ms": 40.1,
-        "maxMs": 40.1
+        "minMs": 23.9,
+        "medianMs": 25.6,
+        "p95Ms": 42.6,
+        "maxMs": 42.6
       },
       "contentLoaded": {
-        "minMs": 316.8,
-        "medianMs": 350.1,
-        "p95Ms": 400.4,
-        "maxMs": 400.4
+        "minMs": 242,
+        "medianMs": 298.6,
+        "p95Ms": 318.3,
+        "maxMs": 318.3
       },
       "load": {
-        "minMs": 359.3,
-        "medianMs": 376.5,
-        "p95Ms": 450.4,
-        "maxMs": 450.4
+        "minMs": 318.1,
+        "medianMs": 341.8,
+        "p95Ms": 394,
+        "maxMs": 394
       },
       "fcp": {
-        "minMs": 292,
-        "medianMs": 412,
-        "p95Ms": 412,
-        "maxMs": 412
+        "minMs": 252,
+        "medianMs": 268,
+        "p95Ms": 312,
+        "maxMs": 312
       },
-      "medianTransferKiB": 184,
-      "medianDomNodes": 152
+      "medianTransferKiB": 186.9,
+      "medianDomNodes": 156
     },
     "/listening": {
       "runs": [
         {
-          "ttfbMs": 49.899999998509884,
-          "domContentLoadedMs": 471.80000000447035,
-          "loadMs": 483.80000000447035,
-          "firstPaintMs": 368,
-          "firstContentfulPaintMs": 368,
-          "transferBytes": 231411,
-          "domNodes": 272
+          "ttfbMs": 30.700000000186265,
+          "domContentLoadedMs": 286.30000000074506,
+          "loadMs": 320.90000000037253,
+          "firstPaintMs": 228,
+          "firstContentfulPaintMs": 228,
+          "transferBytes": 211619,
+          "domNodes": 235
         },
         {
-          "ttfbMs": 28.19999999552965,
-          "domContentLoadedMs": 388.19999999552965,
-          "loadMs": 417.5,
-          "firstPaintMs": 300,
-          "firstContentfulPaintMs": 300,
-          "transferBytes": 231411,
-          "domNodes": 268
+          "ttfbMs": 17.199999999254942,
+          "domContentLoadedMs": 243.19999999925494,
+          "loadMs": 321.3999999994412,
+          "firstPaintMs": 244,
+          "firstContentfulPaintMs": 244,
+          "transferBytes": 208674,
+          "domNodes": 235
         },
         {
-          "ttfbMs": 31.600000001490116,
-          "domContentLoadedMs": 291.3999999985099,
-          "loadMs": 378.19999999552965,
-          "firstPaintMs": 284,
-          "firstContentfulPaintMs": 284,
-          "transferBytes": 231411,
-          "domNodes": 272
+          "ttfbMs": 25.299999999813735,
+          "domContentLoadedMs": 327.09999999962747,
+          "loadMs": 351,
+          "firstPaintMs": 268,
+          "firstContentfulPaintMs": 268,
+          "transferBytes": 211618,
+          "domNodes": 235
         }
       ],
       "ttfb": {
-        "minMs": 28.2,
-        "medianMs": 31.6,
-        "p95Ms": 49.9,
-        "maxMs": 49.9
+        "minMs": 17.2,
+        "medianMs": 25.3,
+        "p95Ms": 30.7,
+        "maxMs": 30.7
       },
       "contentLoaded": {
-        "minMs": 291.4,
-        "medianMs": 388.2,
-        "p95Ms": 471.8,
-        "maxMs": 471.8
+        "minMs": 243.2,
+        "medianMs": 286.3,
+        "p95Ms": 327.1,
+        "maxMs": 327.1
       },
       "load": {
-        "minMs": 378.2,
-        "medianMs": 417.5,
-        "p95Ms": 483.8,
-        "maxMs": 483.8
+        "minMs": 320.9,
+        "medianMs": 321.4,
+        "p95Ms": 351,
+        "maxMs": 351
       },
       "fcp": {
-        "minMs": 284,
-        "medianMs": 300,
-        "p95Ms": 368,
-        "maxMs": 368
+        "minMs": 228,
+        "medianMs": 244,
+        "p95Ms": 268,
+        "maxMs": 268
       },
-      "medianTransferKiB": 226,
-      "medianDomNodes": 272
+      "medianTransferKiB": 206.7,
+      "medianDomNodes": 235
     },
     "/reading": {
       "runs": [
         {
-          "ttfbMs": 25.399999998509884,
-          "domContentLoadedMs": 302.5,
-          "loadMs": 409.59999999403954,
-          "firstPaintMs": 308,
-          "firstContentfulPaintMs": 308,
-          "transferBytes": 205394,
+          "ttfbMs": 15.799999999813735,
+          "domContentLoadedMs": 106.09999999962747,
+          "loadMs": 332.79999999981374,
+          "firstPaintMs": 300,
+          "firstContentfulPaintMs": 300,
+          "transferBytes": 208750,
           "domNodes": 253
         },
         {
-          "ttfbMs": 17.700000002980232,
-          "domContentLoadedMs": 84.89999999850988,
-          "loadMs": 338.20000000298023,
-          "firstPaintMs": 292,
-          "firstContentfulPaintMs": 292,
-          "transferBytes": 205394,
-          "domNodes": 253
+          "ttfbMs": 24.200000000186265,
+          "domContentLoadedMs": 242,
+          "loadMs": 321,
+          "firstPaintMs": 248,
+          "firstContentfulPaintMs": 248,
+          "transferBytes": 210654,
+          "domNodes": 257
         },
         {
-          "ttfbMs": 15.300000004470348,
-          "domContentLoadedMs": 245.5,
-          "loadMs": 325.3999999985099,
-          "firstPaintMs": 260,
-          "firstContentfulPaintMs": 260,
-          "transferBytes": 205394,
+          "ttfbMs": 12.800000000745058,
+          "domContentLoadedMs": 231.5,
+          "loadMs": 332.20000000018626,
+          "firstPaintMs": 236,
+          "firstContentfulPaintMs": 236,
+          "transferBytes": 208750,
           "domNodes": 253
         }
       ],
       "ttfb": {
-        "minMs": 15.3,
-        "medianMs": 17.7,
-        "p95Ms": 25.4,
-        "maxMs": 25.4
+        "minMs": 12.8,
+        "medianMs": 15.8,
+        "p95Ms": 24.2,
+        "maxMs": 24.2
       },
       "contentLoaded": {
-        "minMs": 84.9,
-        "medianMs": 245.5,
-        "p95Ms": 302.5,
-        "maxMs": 302.5
+        "minMs": 106.1,
+        "medianMs": 231.5,
+        "p95Ms": 242,
+        "maxMs": 242
       },
       "load": {
-        "minMs": 325.4,
-        "medianMs": 338.2,
-        "p95Ms": 409.6,
-        "maxMs": 409.6
+        "minMs": 321,
+        "medianMs": 332.2,
+        "p95Ms": 332.8,
+        "maxMs": 332.8
       },
       "fcp": {
-        "minMs": 260,
-        "medianMs": 292,
-        "p95Ms": 308,
-        "maxMs": 308
+        "minMs": 236,
+        "medianMs": 248,
+        "p95Ms": 300,
+        "maxMs": 300
       },
-      "medianTransferKiB": 200.6,
+      "medianTransferKiB": 203.9,
       "medianDomNodes": 253
     },
     "/practice": {
       "runs": [
         {
-          "ttfbMs": 40.30000000447035,
-          "domContentLoadedMs": 322.90000000596046,
-          "loadMs": 346.90000000596046,
-          "firstPaintMs": 280,
-          "firstContentfulPaintMs": 280,
-          "transferBytes": 197837,
-          "domNodes": 306
+          "ttfbMs": 23,
+          "domContentLoadedMs": 329.79999999981374,
+          "loadMs": 353.8999999994412,
+          "firstPaintMs": 256,
+          "firstContentfulPaintMs": 256,
+          "transferBytes": 201143,
+          "domNodes": 300
         },
         {
-          "ttfbMs": 28.100000001490116,
-          "domContentLoadedMs": 423.70000000298023,
-          "loadMs": 452.8999999985099,
-          "firstPaintMs": 340,
-          "firstContentfulPaintMs": 340,
-          "transferBytes": 197837,
-          "domNodes": 302
+          "ttfbMs": 14.799999999813735,
+          "domContentLoadedMs": 247.69999999925494,
+          "loadMs": 326.79999999981374,
+          "firstPaintMs": 252,
+          "firstContentfulPaintMs": 252,
+          "transferBytes": 204019,
+          "domNodes": 304
         },
         {
-          "ttfbMs": 19.299999997019768,
-          "domContentLoadedMs": 340.79999999701977,
-          "loadMs": 358.29999999701977,
-          "firstPaintMs": 248,
-          "firstContentfulPaintMs": 248,
-          "transferBytes": 197837,
-          "domNodes": 306
+          "ttfbMs": 17.59999999962747,
+          "domContentLoadedMs": 305.29999999981374,
+          "loadMs": 329,
+          "firstPaintMs": 264,
+          "firstContentfulPaintMs": 264,
+          "transferBytes": 200675,
+          "domNodes": 304
         }
       ],
       "ttfb": {
-        "minMs": 19.3,
-        "medianMs": 28.1,
-        "p95Ms": 40.3,
-        "maxMs": 40.3
+        "minMs": 14.8,
+        "medianMs": 17.6,
+        "p95Ms": 23,
+        "maxMs": 23
       },
       "contentLoaded": {
-        "minMs": 322.9,
-        "medianMs": 340.8,
-        "p95Ms": 423.7,
-        "maxMs": 423.7
+        "minMs": 247.7,
+        "medianMs": 305.3,
+        "p95Ms": 329.8,
+        "maxMs": 329.8
       },
       "load": {
-        "minMs": 346.9,
-        "medianMs": 358.3,
-        "p95Ms": 452.9,
-        "maxMs": 452.9
+        "minMs": 326.8,
+        "medianMs": 329,
+        "p95Ms": 353.9,
+        "maxMs": 353.9
       },
       "fcp": {
-        "minMs": 248,
-        "medianMs": 280,
-        "p95Ms": 340,
-        "maxMs": 340
+        "minMs": 252,
+        "medianMs": 256,
+        "p95Ms": 264,
+        "maxMs": 264
       },
-      "medianTransferKiB": 193.2,
-      "medianDomNodes": 306
+      "medianTransferKiB": 196.4,
+      "medianDomNodes": 304
     },
     "/vocabulary": {
       "runs": [
         {
-          "ttfbMs": 30.399999998509884,
-          "domContentLoadedMs": 321.79999999701977,
-          "loadMs": 339,
-          "firstPaintMs": 264,
-          "firstContentfulPaintMs": 264,
-          "transferBytes": 232685,
-          "domNodes": 714
+          "ttfbMs": 48.09999999962747,
+          "domContentLoadedMs": 334.3999999994412,
+          "loadMs": 359.70000000018626,
+          "firstPaintMs": 284,
+          "firstContentfulPaintMs": 284,
+          "transferBytes": 340863,
+          "domNodes": 612
         },
         {
-          "ttfbMs": 28.399999998509884,
-          "domContentLoadedMs": 400.3999999985099,
-          "loadMs": 422.69999999552965,
-          "firstPaintMs": 328,
-          "firstContentfulPaintMs": 328,
-          "transferBytes": 232685,
-          "domNodes": 710
+          "ttfbMs": 17.40000000037253,
+          "domContentLoadedMs": 251,
+          "loadMs": 364.90000000037253,
+          "firstPaintMs": 252,
+          "firstContentfulPaintMs": 252,
+          "transferBytes": 340863,
+          "domNodes": 608
         },
         {
-          "ttfbMs": 23.599999994039536,
-          "domContentLoadedMs": 320.69999999552965,
-          "loadMs": 344.29999999701977,
-          "firstPaintMs": 280,
-          "firstContentfulPaintMs": 280,
-          "transferBytes": 232685,
-          "domNodes": 714
+          "ttfbMs": 13.900000000372529,
+          "domContentLoadedMs": 231.5,
+          "loadMs": 347.90000000037253,
+          "firstPaintMs": 236,
+          "firstContentfulPaintMs": 236,
+          "transferBytes": 340863,
+          "domNodes": 608
         }
       ],
       "ttfb": {
-        "minMs": 23.6,
-        "medianMs": 28.4,
-        "p95Ms": 30.4,
-        "maxMs": 30.4
+        "minMs": 13.9,
+        "medianMs": 17.4,
+        "p95Ms": 48.1,
+        "maxMs": 48.1
       },
       "contentLoaded": {
-        "minMs": 320.7,
-        "medianMs": 321.8,
-        "p95Ms": 400.4,
-        "maxMs": 400.4
+        "minMs": 231.5,
+        "medianMs": 251,
+        "p95Ms": 334.4,
+        "maxMs": 334.4
       },
       "load": {
-        "minMs": 339,
-        "medianMs": 344.3,
-        "p95Ms": 422.7,
-        "maxMs": 422.7
+        "minMs": 347.9,
+        "medianMs": 359.7,
+        "p95Ms": 364.9,
+        "maxMs": 364.9
       },
       "fcp": {
-        "minMs": 264,
-        "medianMs": 280,
-        "p95Ms": 328,
-        "maxMs": 328
+        "minMs": 236,
+        "medianMs": 252,
+        "p95Ms": 284,
+        "maxMs": 284
       },
-      "medianTransferKiB": 227.2,
-      "medianDomNodes": 714
+      "medianTransferKiB": 332.9,
+      "medianDomNodes": 608
     }
   },
   "clientNavigation": {
     "/listening": {
       "runsMs": [
-        -261.6,
-        42.6,
-        59.5
+        231.4,
+        99.9,
+        116.5
       ],
-      "minMs": -261.6,
-      "medianMs": 42.6,
-      "p95Ms": 59.5,
-      "maxMs": 59.5
+      "minMs": 99.9,
+      "medianMs": 116.5,
+      "p95Ms": 231.4,
+      "maxMs": 231.4
     },
     "/reading": {
       "runsMs": [
-        66.7,
-        -26.2,
-        13.1
+        100.7,
+        100.8,
+        100.8
       ],
-      "minMs": -26.2,
-      "medianMs": 13.1,
-      "p95Ms": 66.7,
-      "maxMs": 66.7
+      "minMs": 100.7,
+      "medianMs": 100.8,
+      "p95Ms": 100.8,
+      "maxMs": 100.8
     },
     "/practice": {
       "runsMs": [
-        48.1,
-        25.3,
-        28.1
+        100,
+        98.4,
+        97.8
       ],
-      "minMs": 25.3,
-      "medianMs": 28.1,
-      "p95Ms": 48.1,
-      "maxMs": 48.1
+      "minMs": 97.8,
+      "medianMs": 98.4,
+      "p95Ms": 100,
+      "maxMs": 100
     },
     "/vocabulary": {
       "runsMs": [
-        78.7,
-        79,
-        83.3
+        100.5,
+        123.1,
+        116.5
       ],
-      "minMs": 78.7,
-      "medianMs": 79,
-      "p95Ms": 83.3,
-      "maxMs": 83.3
+      "minMs": 100.5,
+      "medianMs": 116.5,
+      "p95Ms": 123.1,
+      "maxMs": 123.1
     }
   },
   "longLists": {
     "/listening": {
-      "domNodes": 268,
+      "domNodes": 231,
       "rowLikeNodes": 0,
-      "scrollHeight": 1251,
-      "maxScroll": 531,
-      "averageFrameMs": 16.7,
-      "p95FrameMs": 17.3,
+      "scrollHeight": 1386,
+      "maxScroll": 666,
+      "averageFrameMs": 16.6,
+      "p95FrameMs": 18.1,
       "framesOver20Ms": 0,
       "framesOver50Ms": 0
     },
     "/practice": {
-      "domNodes": 302,
+      "domNodes": 300,
       "rowLikeNodes": 6,
-      "scrollHeight": 1278,
+      "scrollHeight": 1273,
       "maxScroll": 0,
       "averageFrameMs": 16.7,
-      "p95FrameMs": 17.3,
+      "p95FrameMs": 18.1,
       "framesOver20Ms": 0,
       "framesOver50Ms": 0
     },
     "/vocabulary": {
-      "domNodes": 710,
+      "domNodes": 608,
       "rowLikeNodes": 0,
-      "scrollHeight": 2268,
-      "maxScroll": 0,
-      "averageFrameMs": 16.8,
-      "p95FrameMs": 17.5,
-      "framesOver20Ms": 1,
-      "framesOver50Ms": 0
-    },
-    "/manage/vocabulary": {
-      "domNodes": 625,
-      "rowLikeNodes": 30,
-      "scrollHeight": 2441,
-      "maxScroll": 336,
-      "averageFrameMs": 16.8,
-      "p95FrameMs": 17.6,
-      "framesOver20Ms": 2,
-      "framesOver50Ms": 0
-    },
-    "/subtitles/1e2d815d-24f8-459a-91e2-1af9f72aa57f": {
-      "domNodes": 619,
-      "rowLikeNodes": 40,
-      "scrollHeight": 5120,
+      "scrollHeight": 1957,
       "maxScroll": 0,
       "averageFrameMs": 17,
-      "p95FrameMs": 17.6,
-      "framesOver20Ms": 2,
+      "p95FrameMs": 18.3,
+      "framesOver20Ms": 1,
+      "framesOver50Ms": 1
+    },
+    "/manage/vocabulary": {
+      "domNodes": 643,
+      "rowLikeNodes": 30,
+      "scrollHeight": 2461,
+      "maxScroll": 0,
+      "averageFrameMs": 16.8,
+      "p95FrameMs": 17.9,
+      "framesOver20Ms": 1,
+      "framesOver50Ms": 1
+    },
+    "/subtitles/1e2d815d-24f8-459a-91e2-1af9f72aa57f": {
+      "domNodes": 595,
+      "rowLikeNodes": 40,
+      "scrollHeight": 5085,
+      "maxScroll": 0,
+      "averageFrameMs": 16.9,
+      "p95FrameMs": 18.2,
+      "framesOver20Ms": 1,
       "framesOver50Ms": 1
     }
   },
@@ -438,46 +438,46 @@
     "textCharacters": 8699,
     "document": {
       "runsMs": [
-        16.4,
-        14.8,
-        19.5,
-        16.5,
-        14.3,
-        14.4,
-        16,
-        14.2,
-        14.6,
-        17.4,
-        14.4,
-        15.1,
-        14,
-        15.1,
-        14.7,
-        14.6,
-        16.5,
-        14.7,
-        15.2,
-        19.3,
-        16.6,
-        15,
-        14.6,
+        28.8,
+        19.2,
+        23.1,
+        20.1,
         18.8,
-        14.9,
-        13.8,
-        16.3,
-        13.9,
-        13.7,
-        15.4
+        21.5,
+        18.4,
+        18.2,
+        19,
+        18.7,
+        21.1,
+        17.8,
+        17.7,
+        19,
+        17.9,
+        21.9,
+        18,
+        17.9,
+        19.2,
+        17.7,
+        21.7,
+        17.9,
+        17.7,
+        19.3,
+        18.1,
+        21.7,
+        17.7,
+        17.6,
+        19.8,
+        17.7
       ],
-      "minMs": 13.7,
-      "medianMs": 15,
-      "p95Ms": 19.3,
-      "maxMs": 19.5
+      "minMs": 17.6,
+      "medianMs": 18.8,
+      "p95Ms": 23.1,
+      "maxMs": 28.8
     },
     "singleToken": {
       "iterations": 25000,
-      "medianUs": 3.5,
-      "p95Us": 4.2
+      "medianUs": 6.1,
+      "p95Us": 6.8
     }
   },
   "audio": {
@@ -488,17 +488,17 @@
     "acceptRanges": "bytes",
     "contentRange": "bytes 0-262143/663141",
     "bytesRead": 262144,
-    "rangeMs": 16.4,
-    "metadataMs": 30.2,
+    "rangeMs": 19.2,
+    "metadataMs": 62.6,
     "metadata": {
       "durationSeconds": 24.629067
     },
     "resource": {
-      "name": "http://127.0.0.1:49837/audios/listening/collections/TOEIC-L%26R-%E5%95%8F%E9%A1%8C%E9%9B%86-11-T1/LR11-T1-Pt1-Q1.mp3",
+      "name": "http://127.0.0.1:52716/audios/listening/collections/TOEIC-L%26R-%E5%95%8F%E9%A1%8C%E9%9B%86-11-T1/LR11-T1-Pt1-Q1.mp3",
       "entryType": "resource",
-      "startTime": 403.29999999701977,
-      "duration": 6.399999998509884,
-      "navigationId": 7592,
+      "startTime": 363.09999999962747,
+      "duration": 23.40000000037253,
+      "navigationId": 2522,
       "initiatorType": "audio",
       "deliveryType": "",
       "nextHopProtocol": "",
@@ -512,17 +512,17 @@
       "workerFinalSourceType": "",
       "redirectStart": 0,
       "redirectEnd": 0,
-      "fetchStart": 403.29999999701977,
-      "domainLookupStart": 403.29999999701977,
-      "domainLookupEnd": 403.29999999701977,
-      "connectStart": 403.29999999701977,
+      "fetchStart": 363.09999999962747,
+      "domainLookupStart": 363.09999999962747,
+      "domainLookupEnd": 363.09999999962747,
+      "connectStart": 363.09999999962747,
       "secureConnectionStart": 0,
-      "connectEnd": 403.29999999701977,
-      "requestStart": 404,
-      "responseStart": 405.69999999552965,
+      "connectEnd": 363.09999999962747,
+      "requestStart": 364.40000000037253,
+      "responseStart": 368.29999999981374,
       "firstInterimResponseStart": 0,
-      "finalResponseHeadersStart": 405.69999999552965,
-      "responseEnd": 409.69999999552965,
+      "finalResponseHeadersStart": 368.29999999981374,
+      "responseEnd": 386.5,
       "transferSize": 401297,
       "encodedBodySize": 400997,
       "decodedBodySize": 663141,

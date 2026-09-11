@@ -15,6 +15,7 @@ import { invalidateVocabularyGroupsCache, resolveVocabularySourceMeta } from './
 import { batchComputeVocabularyPronunciations, batchComputeSentencePronunciations } from './server/pronunciation-service'
 import { PRONUNCIATION_VERSION } from './domain/pronunciation'
 import { selectionAttributeSchema } from './domain/selection-attribute'
+import { listVocabularyMeanings } from './domain/meanings'
 
 export async function findSelectionAttributeTargets(terms: string[], query = '') {
   return executeAction(async () => {
@@ -24,9 +25,9 @@ export async function findSelectionAttributeTargets(terms: string[], query = '')
     const targets = await prisma.vocabulary.findMany({
       where: { userId, ...(parsed.query ? { word: { contains: parsed.query, mode: 'insensitive' as const } } : { OR: [{ word: { in: parsed.terms } }, { normalizedWord: { in: parsed.terms } }] }) },
       orderBy: [{ word: 'asc' }, { createdAt: 'asc' }], take: 30,
-      select: { id: true, word: true, meanings: true, pronunciations: true, senses: { orderBy: { order: 'asc' }, select: { id: true, order: true, definitions: { orderBy: { sortOrder: 'asc' }, select: { definition: true } } } } },
+      select: { id: true, word: true, pronunciations: true, senses: { orderBy: { order: 'asc' }, select: { id: true, order: true, definitions: { orderBy: { sortOrder: 'asc' }, select: { definition: true } } } } },
     })
-    return { targets: targets.map(target => ({ ...target, meanings: parseJsonStringList(target.meanings), pronunciations: parseJsonStringList(target.pronunciations) })) }
+    return { targets: targets.map(target => ({ ...target, meanings: listVocabularyMeanings(target.senses), pronunciations: parseJsonStringList(target.pronunciations) })) }
   }, { fallbackMessage: '关联单词查询失败，请重试。' })
 }
 
@@ -47,14 +48,15 @@ export async function saveSelectionAttribute(input: unknown) {
       const words = await tx.vocabulary.findMany({ where: { id: { in: existingTargets.map(t => t.vocabularyId) }, userId }, include: { senses: true, definitions: true } })
       if (words.length !== existingTargets.length) throw new DomainError('FORBIDDEN', '关联单词不存在或无权编辑')
       for (const target of value.targets) {
-        let createdHere = false
         let word = words.find(w => w.id === target.vocabularyId)
         if (target.newWord) {
           const draft = target.newWord
           word = await tx.vocabulary.findFirst({ where: { userId, normalizedWord: normalizeVocabularyWord(draft.word) }, include: { senses: true, definitions: true } }) || undefined
           if (!word) {
-            createdHere = true
-            word = await tx.vocabulary.create({ data: { userId, word: draft.word, normalizedWord: normalizeVocabularyWord(draft.word), meanings: toJsonStringList([draft.meaning]), pronunciations: toJsonStringList([draft.reading].filter(Boolean)), partsOfSpeech: toJsonStringList([draft.partOfSpeech].filter(Boolean)), grammarPartOfSpeech: inferStructuredPartOfSpeech([draft.partOfSpeech]), pronunciationData: wordPronunciations.get(draft.word) as Prisma.InputJsonValue, pronunciationVersion: PRONUNCIATION_VERSION, sourceType: value.sourceType, sourceId: value.sourceId }, include: { senses: true, definitions: true } })
+            const created = await tx.vocabulary.create({ data: { userId, word: draft.word, normalizedWord: normalizeVocabularyWord(draft.word), pronunciations: toJsonStringList([draft.reading].filter(Boolean)), partsOfSpeech: toJsonStringList([draft.partOfSpeech].filter(Boolean)), grammarPartOfSpeech: inferStructuredPartOfSpeech([draft.partOfSpeech]), pronunciationData: wordPronunciations.get(draft.word) as Prisma.InputJsonValue, pronunciationVersion: PRONUNCIATION_VERSION, sourceType: value.sourceType, sourceId: value.sourceId } })
+            const sense = await tx.vocabularySense.create({ data: { vocabularyId: created.id, order: 0 } })
+            await tx.vocabularyDefinition.create({ data: { vocabularyId: created.id, senseId: sense.id, definition: draft.meaning, language: 'zh', dictionaryName: source.source, sortOrder: 0 } })
+            word = await tx.vocabulary.findUniqueOrThrow({ where: { id: created.id }, include: { senses: true, definitions: true } })
           }
         }
         if (!word) throw new DomainError('FORBIDDEN', '关联单词不存在或无权编辑')
@@ -62,17 +64,9 @@ export async function saveSelectionAttribute(input: unknown) {
           await tx.vocabulary.update({ where: { id: word.id }, data: { pronunciationData: wordPronunciations.get(word.word) as Prisma.InputJsonValue, pronunciationVersion: PRONUNCIATION_VERSION } })
         }
         if (target.senseId && !word.senses.some(s => s.id === target.senseId)) throw new DomainError('VALIDATION_ERROR', '义项已变化，请重新选择')
-        if (!target.senseId && word.senses.length && (!target.newWord || word.senses.length > 1)) throw new DomainError('VALIDATION_ERROR', '请选择要关联的义项')
-        let senseId = target.senseId || (target.newWord ? word.senses[0]?.id : null)
-        if (!senseId) {
-          const sense = await tx.vocabularySense.create({ data: { vocabularyId: word.id, order: 0 } })
-          senseId = sense.id
-          if (word.definitions.length) {
-            await tx.vocabularyDefinition.updateMany({ where: { vocabularyId: word.id, senseId: null }, data: { senseId } })
-          } else {
-            await tx.vocabularyDefinition.createMany({ data: parseJsonStringList(word.meanings).map((definition, sortOrder) => ({ vocabularyId: word.id, senseId, definition, language: 'zh', dictionaryName: createdHere ? source.source : '旧数据迁移', sortOrder })) })
-          }
-        }
+        if (!target.senseId && word.senses.length > 1) throw new DomainError('VALIDATION_ERROR', '请选择要关联的义项')
+        const senseId = target.senseId || word.senses[0]?.id
+        if (!senseId) throw new DomainError('VALIDATION_ERROR', '单词没有可关联的义项')
         if (value.type === 'collocation' || value.type === 'idiom') {
           const existing = await tx.vocabularyExpression.findFirst({ where: { senseId, type: value.type, text: value.text } })
           if (!existing) {

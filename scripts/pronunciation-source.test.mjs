@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { resolvePronunciationSource } from '../hooks/pronunciationSource.ts'
+import { resolvePronunciationSource } from '../modules/language/hooks/pronunciationSource.ts'
 
 test('explicit personal opt-out always wins', () => {
   assert.equal(resolvePronunciationSource('personal', true), 'personal')

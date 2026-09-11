@@ -10,8 +10,11 @@ export function planAnkiReadingAudio(vocabularyId: string, readings: string[], a
     : null
 }
 
-export function changedAnkiFields<T extends Record<string, unknown>>(existing: T, incoming: Partial<T>): Partial<T> {
+export function changedAnkiFields<
+  T extends Record<string, unknown>,
+  K extends keyof T,
+>(existing: T, incoming: Pick<T, K>): Pick<T, K> {
   return Object.fromEntries(Object.entries(incoming).filter(([key, value]) =>
     JSON.stringify(existing[key]) !== JSON.stringify(value),
-  )) as Partial<T>
+  )) as Pick<T, K>
 }

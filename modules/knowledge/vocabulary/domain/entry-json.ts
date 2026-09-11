@@ -1,10 +1,10 @@
-import type { VocabularyEntryDraft } from './entry.ts'
+import { normalizeEntryPronunciations, type VocabularyEntryDraft } from './entry.ts'
 import { vocabularyEntryDraftSchema } from './entry-validation.ts'
 
 export function serializeVocabularyEntry(draft: VocabularyEntryDraft) {
-  const { vocabularyId: _id, ...content } = draft
+  const { vocabularyId: _id, pronunciations, word, ...content } = draft
   void _id
-  return JSON.stringify(content, null, 2)
+  return JSON.stringify({ word, pronunciations: normalizeEntryPronunciations(pronunciations), ...content }, null, 2)
 }
 
 /** New rows may omit IDs; the current vocabulary identity is never editable. */
@@ -27,5 +27,8 @@ export function parseVocabularyEntryJson(text: string, vocabularyId: string): Vo
   if (!result.success) {
     throw new Error(result.error.issues.map(issue => `${issue.path.join('.')}：${issue.message}`).join('\n'))
   }
-  return result.data
+  return {
+    ...result.data,
+    pronunciations: normalizeEntryPronunciations(result.data.pronunciations),
+  }
 }

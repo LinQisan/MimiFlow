@@ -78,8 +78,6 @@ export function useUploadCenterState(
       sourceKind: defaultArticleSourceKind,
       publishedDate: '',
       edition: '',
-      newsSeries: '',
-      pageNumber: '',
       newsSource: '',
       newsType: '',
       newsSection: '',

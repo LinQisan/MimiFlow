@@ -49,13 +49,13 @@ test('vocabulary CSV rejects missing identity columns', () => {
   )
 })
 
-test('vocabulary CSV keeps old exports importable without sentence columns', () => {
-  const document = parseVocabularyCsvDocument(
-    '词条ID,单词,语言,注音,词性,标签,释义\nword-1,語彙,ja,ごい,名詞,,词汇\n',
+test('vocabulary CSV rejects documents that do not use the complete canonical columns', () => {
+  assert.throws(
+    () => parseVocabularyCsvDocument(
+      '词条ID,单词,语言,注音,词性,标签,释义\nword-1,語彙,ja,ごい,名詞,,词汇\n',
+    ),
+    /词源.*JLPT.*例句.*例句词性/,
   )
-  assert.equal(document.headers.includes('例句'), false)
-  assert.equal(document.rows[0].例句, '')
-  assert.equal(document.rows[0].例句词性, '')
 })
 
 test('vocabulary CSV aligns multiple sentences and comma-separated parts of speech', () => {

@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useTransition, type Dispatch, type SetStateAction } from 'react'
 
 import { useDialog } from '@/context/DialogContext'
-import WordAudioButton from '@/components/vocabulary/WordAudioButton'
+import WordAudioButton from '@/modules/knowledge/vocabulary/components/WordAudioButton'
 import { deleteVocabulary } from '../actions'
 import {
   getVocabularyInspectorData,
@@ -11,7 +11,6 @@ import {
   type VocabularyInspectorData,
 } from '../inspector-actions'
 import type { VocabularyInspectorEntryDraft } from '../domain/inspector-entry'
-import { isMigratedChineseDefinition, resolveInspectorMeaningDisplay } from '../domain/inspector-definitions'
 import { RELATION_TYPE_OPTIONS } from '../domain/relations'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import VocabularyInspectorEditor, { cloneVocabularyInspectorEntry } from './VocabularyInspectorEditor'
@@ -164,8 +163,7 @@ export default function VocabularyWordbookInspector({
 
 function WordSummary({ data }: { data: InspectorData }) {
   const entry = data.entry
-  const display = resolveInspectorMeaningDisplay(entry.meanings, data.definitions)
-  const definitions = entry.definitions.filter(item => item.definition.trim() && !(isMigratedChineseDefinition(item) && display.meanings.includes(item.definition.trim())))
+  const definitions = entry.definitions
   const references = [
     ...entry.patterns.map(item => ({ key: item.id || item.text, label: '模式', text: item.text, detail: item.meaning })),
     ...entry.expressions.map(item => ({ key: item.id || item.text, label: item.type, text: item.text, detail: item.meaning })),
@@ -173,9 +171,9 @@ function WordSummary({ data }: { data: InspectorData }) {
     ...entry.notes.map(item => ({ key: item.id || item.text, label: item.type, text: item.text, detail: null })),
   ]
   return <div className='vocab-inspector-summary'>
-    <section><h3>释义</h3>{display.meanings.length ? <ul className='vocab-inspector-meaning-list'>{display.meanings.map(meaning => <li key={meaning}>{meaning}</li>)}</ul> : <p className='vocab-inspector-empty'>尚未填写释义</p>}{definitions.length ? <div className='vocab-inspector-definitions'>{definitions.map(definition => <article key={definition.id}><p className='vocab-inspector-source'>{definition.dictionaryName || '辞典'} · {definition.language.toLowerCase().startsWith('ja') ? '日本語' : definition.language.toLowerCase().startsWith('zh') ? '中文' : definition.language}</p><p>{definition.definition}</p></article>)}</div> : null}</section>
-    <section><h3>例句</h3>{entry.sentences.length ? <ol className='vocab-inspector-examples'>{entry.sentences.map((sentence, index) => <li key={sentence.id || `${sentence.text}-${index}`}><div className='flex items-start gap-1'><p>{sentence.text}</p><WordAudioButton audioFile={sentence.audioFile} word={sentence.text} className='-mr-1 -mt-1 size-7' /></div>{sentence.translation ? <p className='vocab-inspector-translation'>{sentence.translation}</p> : null}{sentence.source ? <p className='vocab-inspector-source'>{sentence.source}</p> : null}</li>)}</ol> : <p className='vocab-inspector-empty'>暂无例句</p>}</section>
+    <section><h3>释义</h3>{definitions.length ? <div className='vocab-inspector-definitions'>{definitions.map((definition, index) => <article key={definition.id || `${definition.senseId}-${index}`}><p className='vocab-inspector-source'>{definition.dictionaryName || '辞典'} · {definition.language.toLowerCase().startsWith('ja') ? '日本語' : definition.language.toLowerCase().startsWith('zh') ? '中文' : definition.language}</p><p>{definition.definition}</p></article>)}</div> : <p className='vocab-inspector-empty'>尚未填写释义</p>}</section>
+    <section><h3>例句</h3>{data.sentences.length ? <ol className='vocab-inspector-examples'>{data.sentences.map((sentence, index) => <li key={`${sentence.text}-${index}`}><div className='flex items-start gap-1'><p lang='ja' className='font-word-ja min-w-0 flex-1'>{sentence.text}</p><WordAudioButton audioFile={sentence.audioFile || sentence.audioData?.audioFile} start={sentence.audioFile ? 0 : sentence.audioData?.start} end={sentence.audioFile ? undefined : sentence.audioData?.end} word={sentence.text} className='-mr-1 -mt-1 size-7' /></div>{sentence.translation ? <p className='vocab-inspector-translation'>{sentence.translation}</p> : null}{sentence.source ? <p className='vocab-inspector-source'>{sentence.sourceUrl?.startsWith('/') && !sentence.sourceUrl.startsWith('//') ? <a href={sentence.sourceUrl}>{sentence.source}</a> : sentence.source}</p> : null}</li>)}</ol> : <p className='vocab-inspector-empty'>暂无例句</p>}</section>
     {references.length ? <section><h3>参考信息</h3><div className='vocab-inspector-references'>{references.map(reference => <div key={reference.key}><span>{reference.label}</span><p lang='ja' className='font-word-ja'>{reference.text}{reference.detail ? <small>{reference.detail}</small> : null}</p></div>)}</div></section> : null}
-    <section><h3>所属单词本</h3>{data.memberships.length ? <p className='vocab-inspector-membership-text'>{data.memberships.map(item => item.label).join(' · ')}</p> : <p className='vocab-inspector-empty'>未归入单词本</p>}</section>
+    <section><h3>所属单词本</h3>{data.memberships.length ? <p className='vocab-inspector-membership-text'>{data.memberships.map((item, index) => <span key={item.id}>{index > 0 ? ' · ' : ''}<a href={`/vocabulary/wordbooks/${encodeURIComponent(item.id)}`}>{item.label}</a></span>)}</p> : <p className='vocab-inspector-empty'>未归入单词本</p>}</section>
   </div>
 }

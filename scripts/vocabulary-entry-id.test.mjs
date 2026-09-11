@@ -20,16 +20,16 @@ test('vocabulary draft normalization does not create random IDs during render', 
   const normalization = editor.slice(normalizationStart, normalizationEnd)
 
   assert.doesNotMatch(normalization, /makeVocabularyClientId|randomUUID|Math\.random/)
-  assert.match(normalization, /makeLegacyDraftId\('example', sense\.id, exampleIndex\)/)
-  assert.match(normalization, /makeLegacyDraftId\('example', vocabulary\.id, sentenceIndex\)/)
+  assert.doesNotMatch(normalization, /makeLegacyDraftId/)
+  assert.match(normalization, /id: example.id!/)
   assert.match(editor, /typeof cryptoApi\?\.randomUUID === 'function'/)
   assert.match(editor, /typeof cryptoApi\?\.getRandomValues === 'function'/)
   assert.doesNotMatch(editor, /const makeId\s*=/)
 })
 
-test('inline example creation uses the compatible event-time ID helper', async () => {
+test('inline example creation uses the event-time ID helper', async () => {
   const tabs = await readFile(
-    path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
     'utf8',
   )
 

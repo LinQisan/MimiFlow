@@ -5,8 +5,11 @@ import {
   SourceType,
 } from '@prisma/client'
 import { revalidateTag, unstable_cache } from 'next/cache'
+import { wordbookVocabularyOrderSql } from '@/modules/knowledge/wordbooks/vocabulary-order-query'
+import { WORDBOOK_ENTRY_ORDER } from '@/modules/knowledge/wordbooks/entry-order'
 
 import prisma from '@/lib/prisma'
+import { resolveListeningSentenceReferences } from './listening-source'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
 import {
@@ -25,6 +28,7 @@ import { computeSingleSentencePronunciation } from './pronunciation-service'
 import { PRONUNCIATION_VERSION } from '../domain/pronunciation'
 import { hasJapanese } from '@/modules/language/domain/text'
 import { normalizeVocabularyWord } from '../domain/normalized-word'
+import { normalizeVocabularySentencePosTags } from '../domain/sentence-pos-tags'
 
 const VOCABULARY_RELATION_SELECT = {
   id: true, type: true, targetVocabularyId: true, targetText: true,
@@ -39,11 +43,10 @@ const VOCABULARY_DETAIL_SELECT = {
     select: { reading: true, audioFile: true },
   },
   etymologies: true,
-  pronunciations: true, partsOfSpeech: true, meanings: true,
+  pronunciations: true, partsOfSpeech: true,
   grammarPartOfSpeech: true, transitivity: true, conjugationType: true,
   pronunciationData: true, pronunciationVersion: true, createdAt: true, updatedAt: true,
   wordbooks: {
-    where: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } },
     orderBy: { createdAt: 'asc' },
     select: { jlpt: true, wordbook: { select: { id: true, title: true } } },
   },
@@ -77,39 +80,85 @@ const VOCABULARY_DETAIL_SELECT = {
       notes: { orderBy: { sortOrder: 'asc' }, select: { id: true, type: true, text: true } },
     },
   },
-  relations: {
-    where: { senseId: null },
-    orderBy: { sortOrder: 'asc' },
-    select: VOCABULARY_RELATION_SELECT,
-  },
 } satisfies Prisma.VocabularySelect
 
 export type VocabularyDetailRow = Prisma.VocabularyGetPayload<{
   select: typeof VOCABULARY_DETAIL_SELECT
 }>
 
+// The ordinary vocabulary list only renders a headword summary. Keep its
+// query separate from the card select so a list navigation does not send every
+// example, sense, relation, and dialogue clip for the current page to the
+// browser before the learner asks to open a card.
+const VOCABULARY_LIST_DETAIL_SELECT = {
+  id: true, word: true, sourceType: true, wordAudio: true,
+  readingAudios: {
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+    select: { reading: true, audioFile: true },
+  },
+  etymologies: true,
+  pronunciations: true, partsOfSpeech: true,
+  grammarPartOfSpeech: true, transitivity: true, conjugationType: true,
+  pronunciationData: true, pronunciationVersion: true, createdAt: true, updatedAt: true,
+  wordbooks: {
+    orderBy: { createdAt: 'asc' },
+    select: { jlpt: true, wordbook: { select: { id: true, title: true } } },
+  },
+  tags: { select: { tag: { select: { name: true } } } },
+  review: {
+    select: {
+      id: true,
+      due: true,
+      state: true,
+      stability: true,
+      difficulty: true,
+      elapsed_days: true,
+      scheduled_days: true,
+      reps: true,
+      lapses: true,
+      learning_steps: true,
+      last_review: true,
+    },
+  },
+  senses: {
+    orderBy: { order: 'asc' },
+    select: {
+      definitions: {
+        orderBy: { sortOrder: 'asc' },
+        select: { definition: true },
+      },
+    },
+  },
+} satisfies Prisma.VocabularySelect
+
+export type VocabularyListDetailRow = Prisma.VocabularyGetPayload<{
+  select: typeof VOCABULARY_LIST_DETAIL_SELECT
+}>
+
 export const VOCABULARY_GROUPS_CACHE_TAG = 'vocabulary-groups'
 
 const getCachedVocabularyGroups = unstable_cache(
-  async (userId: string, whereKey: string) =>
-    prisma.vocabulary.findMany({
-      where: {
-        AND: [
-          { userId },
-          JSON.parse(whereKey) as Prisma.VocabularyWhereInput,
-        ],
-      },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        word: true,
-        etymologies: true,
-        pronunciations: true,
-        partsOfSpeech: true,
-        sourceType: true,
-      },
-    }),
-  ['vocabulary-groups-v1'],
+  async (userId: string, whereKey: string, wordbookId: string, seriesId: string) => {
+    const where = { AND: [{ userId }, JSON.parse(whereKey) as Prisma.VocabularyWhereInput] }
+    const select = {
+      id: true, word: true, etymologies: true, pronunciations: true,
+      partsOfSpeech: true, sourceType: true,
+    } as const
+    if (wordbookId) {
+      const entries = await prisma.wordbookVocabulary.findMany({
+        where: { wordbookId, wordbook: { userId }, vocabulary: where },
+        orderBy: WORDBOOK_ENTRY_ORDER,
+        select: { vocabulary: { select } },
+      })
+      return entries.map(entry => entry.vocabulary)
+    }
+    const [rows, ranks] = await Promise.all([prisma.vocabulary.findMany({
+      where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select,
+    }), prisma.$queryRaw<Array<{ vocabulary_id: string; position: bigint }>>(wordbookVocabularyOrderSql(userId, seriesId))])
+    const rankById = new Map(ranks.map(row => [row.vocabulary_id, Number(row.position)]))
+    return rows.sort((a, b) => (rankById.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(b.id) ?? Number.MAX_SAFE_INTEGER))
+  },
+  ['vocabulary-groups-v3-book-order'],
   { tags: [VOCABULARY_GROUPS_CACHE_TAG], revalidate: 300 },
 )
 
@@ -117,9 +166,9 @@ export function invalidateVocabularyGroupsCache() {
   revalidateTag(VOCABULARY_GROUPS_CACHE_TAG, 'max')
 }
 
-export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput) {
+export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput, wordbookId = '', seriesId = '') {
   const userId = await getCurrentUserId()
-  return getCachedVocabularyGroups(userId, JSON.stringify(where))
+  return getCachedVocabularyGroups(userId, JSON.stringify(where), wordbookId, seriesId)
 }
 
 export async function listVocabularyTagOptions() {
@@ -148,19 +197,38 @@ export async function listVocabularyDetailsByWords(words: string[]) {
   })
 }
 
+export async function listVocabularyListDetailsByWords(words: string[]) {
+  if (words.length === 0) return Promise.resolve([] as VocabularyListDetailRow[])
+  const userId = await getCurrentUserId()
+  const normalizedWords = Array.from(new Set(words.map(normalizeVocabularyWord)))
+  return prisma.vocabulary.findMany({
+    where: { userId, normalizedWord: { in: normalizedWords } },
+    select: VOCABULARY_LIST_DETAIL_SELECT,
+  })
+}
+
 export async function listVocabularySentenceLinks(vocabularyIds: string[]) {
   if (vocabularyIds.length === 0) return Promise.resolve([])
   const userId = await getCurrentUserId()
-  return prisma.vocabularySentenceLink.findMany({
+  const links = await prisma.vocabularySentenceLink.findMany({
     where: { vocabularyId: { in: vocabularyIds }, vocabulary: { userId } },
     select: {
-      id: true, vocabularyId: true, meaningIndex: true, senseId: true, posTags: true,
+      id: true, vocabularyId: true, senseId: true, posTags: true,
       sentence: { select: {
         text: true, source: true, sourceUrl: true, translation: true, audioFile: true,
         sourceType: true, sourceId: true, pronunciationData: true, pronunciationVersion: true,
       } },
     },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+  })
+  const recovered = await resolveListeningSentenceReferences(links
+    .filter(link => !link.sentence.sourceId && !link.sentence.audioFile)
+    .map(link => link.sentence))
+  return links.map(link => {
+    const sourceId = recovered.get(JSON.stringify([link.sentence.sourceUrl, link.sentence.text]))
+    return sourceId && !link.sentence.sourceId
+      ? { ...link, sentence: { ...link.sentence, sourceType: SourceType.AUDIO_DIALOGUE, sourceId } }
+      : link
   })
 }
 
@@ -203,7 +271,7 @@ export async function resolveAudioDialogueClips(sourceIds: string[]) {
       return
     }
     const payload = decodeMaterialPayload(material.type, material.contentPayload)
-    const audioFile = (payload.audioFile || payload.audioUrl || '').trim()
+    const audioFile = (payload.audioFile || '').trim()
     if (!audioFile) return
     const timing = findAudioDialogueTiming(payload.dialogues, parsed.stableId)
     if (!timing) return
@@ -391,11 +459,6 @@ export async function resolveVocabularySentenceSources(
   return result
 }
 
-export const normalizeSentencePosTags = (list?: string[] | null) =>
-  Array.from(
-    new Set((list || []).map(item => item.trim()).filter(Boolean)),
-  ).slice(0, 20)
-
 export type VocabularySentenceRecord = {
   text: string
   source: string
@@ -403,7 +466,7 @@ export type VocabularySentenceRecord = {
   translation?: string | null
   audioFile?: string | null
   sourceType?: SourceType | null
-  meaningIndex?: number | null
+  senseId: string
   posTags?: string[] | null
 }
 
@@ -499,7 +562,7 @@ export const upsertVocabularySentenceLink = async (
     audioFile?: string | null
     sourceType?: SourceType
     sourceId?: string
-    meaningIndex?: number | null
+    senseId: string
     posTags?: string[]
   },
 ) => {
@@ -567,20 +630,14 @@ export const upsertVocabularySentenceLink = async (
       },
     },
     update: {
-      meaningIndex:
-        typeof sentence.meaningIndex === 'number'
-          ? sentence.meaningIndex
-          : null,
-      posTags: toJsonStringList(normalizeSentencePosTags(sentence.posTags)),
+      senseId: sentence.senseId,
+      posTags: toJsonStringList(normalizeVocabularySentencePosTags(sentence.posTags)),
     },
     create: {
       vocabularyId,
       sentenceId: sentenceRow.id,
-      meaningIndex:
-        typeof sentence.meaningIndex === 'number'
-          ? sentence.meaningIndex
-          : null,
-      posTags: toJsonStringList(normalizeSentencePosTags(sentence.posTags)),
+      senseId: sentence.senseId,
+      posTags: toJsonStringList(normalizeVocabularySentencePosTags(sentence.posTags)),
     },
   })
 }
@@ -726,8 +783,8 @@ export const listVocabularySentenceRecords = async (
       translation: link.sentence.translation || null,
       audioFile: link.sentence.audioFile || null,
       sourceType: link.sentence.sourceType,
-      meaningIndex: link.meaningIndex ?? null,
-      posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
+      senseId: link.senseId,
+      posTags: normalizeVocabularySentencePosTags(parseJsonStringList(link.posTags)),
     })),
     16,
   )

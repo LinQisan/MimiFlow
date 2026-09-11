@@ -160,7 +160,7 @@ export async function getDueRetryQuestionRows(
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: readString(payload.text) || readString(payload.transcript) || '',
+              content: readString(payload.text),
             }
           : null,
       lessonId:
@@ -169,7 +169,7 @@ export async function getDueRetryQuestionRows(
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              audioFile: readString(payload.audioFile),
               dialogues: materialDialogueItems(
                 row.question.material.type,
                 row.question.material.contentPayload,
@@ -285,7 +285,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'READING'
           ? {
               id: row.question.material.id,
-              content: readString(payload.text) || readString(payload.transcript) || '',
+              content: readString(payload.text),
             }
           : null,
       lessonId:
@@ -294,7 +294,7 @@ export async function getRetryQuestionRowById(retryId: string) {
         row.question.material.type === 'LISTENING'
           ? {
               id: row.question.material.id,
-              audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+              audioFile: readString(payload.audioFile),
               dialogues: materialDialogueItems(
                 row.question.material.type,
                 row.question.material.contentPayload,

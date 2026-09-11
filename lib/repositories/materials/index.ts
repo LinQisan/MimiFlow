@@ -19,7 +19,7 @@ import {
 } from '@/lib/validation/schema'
 import { decodeMaterialPayload } from '@/lib/codecs/material-payload'
 import { decodeQuestionContent } from '@/lib/codecs/question-content'
-import { normalizeNewsMetadata } from '@/features/reading/domain/news-metadata'
+import { normalizeNewsMetadata } from '@/modules/reading/domain/news-metadata'
 
 type JsonRecord = Record<string, unknown>
 
@@ -101,14 +101,22 @@ const buildVocabularyMetaMapForText = async (
         { sourceType: 'ARTICLE_TEXT', sourceId: { in: sourceIds } },
         { wordAudio: { not: null } },
         { pronunciations: { not: null } },
-        { meanings: { not: null } },
+        { senses: { some: { definitions: { some: {} } } } },
       ],
     },
     select: {
       word: true,
       pronunciations: true,
       partsOfSpeech: true,
-      meanings: true,
+      senses: {
+        orderBy: { order: 'asc' },
+        select: {
+          definitions: {
+            orderBy: { sortOrder: 'asc' },
+            select: { definition: true },
+          },
+        },
+      },
       wordAudio: true,
       sourceType: true,
       sourceId: true,
@@ -207,8 +215,7 @@ export async function getArticleById(id: string) {
     material.contentPayload,
   )
   const category = material.collectionMaterials[0]?.collection
-  const materialText =
-    readString(payload.text) || readString(payload.transcript) || ''
+  const materialText = readString(payload.text)
   const displayTitle = getMaterialDisplayTitle(
     material.type,
     material.title,
@@ -233,8 +240,6 @@ export async function getArticleById(id: string) {
     sourceKind: readString(payload.sourceKind),
     publishedDate: readString(payload.publishedDate),
     edition: readString(payload.edition),
-    newsSeries: readString(payload.newsSeries),
-    pageNumber: readString(payload.pageNumber),
     newsSource: readString(payload.newsSource),
     newsType: readString(payload.newsType),
     newsSection: readString(payload.newsSection),
@@ -322,7 +327,7 @@ export async function listRelatedReadingArticles(input: {
     )
     const relation = material.collectionMaterials[0]
     const category = relation?.collection
-    const content = readString(payload.text) || readString(payload.transcript)
+    const content = readString(payload.text)
     const title = getMaterialDisplayTitle(
       MaterialType.READING,
       material.title,
@@ -335,8 +340,6 @@ export async function listRelatedReadingArticles(input: {
       newsSection: readString(payload.newsSection),
       newsColumn: readString(payload.newsColumn),
       newsTopic: readString(payload.newsTopic),
-      newsSeries: readString(payload.newsSeries),
-      pageNumber: readString(payload.pageNumber),
       collectionName: category?.title,
     })
     return {
@@ -448,8 +451,6 @@ export async function listReadingMaterials() {
       sourceKind: readString(payload.sourceKind),
       publishedDate: readString(payload.publishedDate),
       edition: readString(payload.edition),
-      newsSeries: readString(payload.newsSeries),
-      pageNumber: readString(payload.pageNumber),
       newsSource: readString(payload.newsSource),
       newsType: readString(payload.newsType),
       newsSection: readString(payload.newsSection),
@@ -537,7 +538,7 @@ export async function getLessonById(id: string) {
       material.id,
     ),
     audioFile:
-      readString(payload.audioFile) || readString(payload.audioUrl) || '',
+      readString(payload.audioFile) || '',
     dialogues: materialDialogueItems(
       MaterialType.LISTENING,
       material.contentPayload,
@@ -642,7 +643,7 @@ export async function getSpeakingById(id: string) {
       material.id,
     ),
     audioFile:
-      readString(payload.audioFile) || readString(payload.audioUrl) || '',
+      readString(payload.audioFile) || '',
     dialogues: materialDialogueItems(
       MaterialType.SPEAKING,
       material.contentPayload,
@@ -835,19 +836,13 @@ async function listMaterialsForShadowingByType(
       .map((question) => {
         const content = decodeQuestionContent(question.content)
         const raw =
-          content.listeningSectionNumber ??
-          content.sectionNumber ??
-          content.partNumber ??
-          content.jlptPartNumber
+          content.listeningSectionNumber
         const parsed = Number(raw)
         return Number.isInteger(parsed) && parsed > 0 ? parsed : null
       })
       .filter((value): value is number => value !== null)
     const rawMaterialSectionNumber =
-      payload.listeningSectionNumber ??
-      payload.sectionNumber ??
-      payload.partNumber ??
-      payload.jlptPartNumber
+      payload.listeningSectionNumber
     const parsedMaterialSectionNumber = Number(rawMaterialSectionNumber)
     const materialSectionNumber =
       Number.isInteger(parsedMaterialSectionNumber) &&
@@ -877,7 +872,7 @@ async function listMaterialsForShadowingByType(
         material.id,
       ),
       audioFile:
-        readString(payload.audioFile) || readString(payload.audioUrl) || '',
+        readString(payload.audioFile) || '',
       description: readString(payload.description) || '',
       transcript: readString(payload.transcript) || '',
       source: readString(payload.source) || '',

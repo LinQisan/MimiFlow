@@ -34,7 +34,7 @@ import {
   findAudioDialogueTiming,
   parseAudioDialogueSourceId,
 } from "../utils/audioDialogue/sourceId.ts";
-import { createTrustedMarkupSlots } from "../components/exam/question-renderer/trustedMarkup.ts";
+import { createTrustedMarkupSlots } from "../modules/questions/components/question-renderer/trustedMarkup.ts";
 import {
   formatJlptListeningTitle,
   parseJlptListeningIdentity,
@@ -55,13 +55,13 @@ import { isReadingTitleDerivedFromContent } from "../lib/repositories/materials/
 import {
   parseArticleContentBlocks,
   renderSafeArticleContentBlocksHtml,
-} from "../features/reading/domain/article-blocks.ts";
+} from "../modules/reading/domain/article-blocks.ts";
 import {
   ARTICLE_TABLE_TEMPLATE,
   insertArticleFootnote,
   insertArticleText,
-} from "../features/reading/domain/article-editing.ts";
-import { parseArticleFootnotes } from "../features/reading/domain/article-footnotes.ts";
+} from "../modules/reading/domain/article-editing.ts";
+import { parseArticleFootnotes } from "../modules/reading/domain/article-footnotes.ts";
 import {
   prepareEbookChapters,
   removeRepeatedEbookHeadings,
@@ -69,7 +69,7 @@ import {
 import { parsePastedBookText } from "../lib/ebooks/pasted-book.ts";
 import { parseMultiQuizText } from "../modules/import/domain/quiz-text-parser.ts";
 import { buildArticleQuestionsFromQuickInput } from "../modules/import/domain/article-question-builder.ts";
-import { normalizePaperAttributes } from "../features/practice/domain/paper-attributes.ts";
+import { normalizePaperAttributes } from "../modules/practice/domain/paper-attributes.ts";
 import { parseListeningOptionText } from "../modules/import/domain/listening-option-parser.ts";
 import { selectListeningQuestionEntriesForFile } from "../modules/import/domain/listening-batch-assignments.ts";
 import {
@@ -103,7 +103,7 @@ import {
   removeQuestionOptionAt,
 } from "../utils/questions/editorOptions.ts";
 import { reorderExamOptionsForSession } from "../lib/repositories/exam/exam-option-order.ts";
-import { updateDialogueTextAtIndex } from "../features/listening/domain/dialogue-editor.ts";
+import { updateDialogueTextAtIndex } from "../modules/listening/domain/dialogue-editor.ts";
 import { buildCollectionAudioFolder } from "../modules/import/audio/domain.ts";
 import {
   buildPronunciationMapForText,
@@ -140,7 +140,7 @@ import {
   renderAnswerPaperHtml,
   renderQuestionPaperHtml,
   renderTranscriptPaperHtml,
-} from "../features/practice/export/paper-export-html.ts";
+} from "../modules/practice/export/paper-export-html.ts";
 
 const ROOT = process.cwd();
 
@@ -817,7 +817,7 @@ test("vocabulary sentence search removes placeholders and expands Japanese infle
   );
 });
 
-test("listening vocabulary resolves sentence timing from stable and legacy ids", () => {
+test("listening vocabulary resolves sentence timing from stable ids only", () => {
   const dialogues = [
     { id: 13, sequenceId: 13, stableId: "line-13", start: 48.22, end: 54.28 },
   ];
@@ -825,10 +825,7 @@ test("listening vocabulary resolves sentence timing from stable and legacy ids",
     start: 48.22,
     end: 54.28,
   });
-  assert.deepEqual(findAudioDialogueTiming(dialogues, "13"), {
-    start: 48.22,
-    end: 54.28,
-  });
+  assert.equal(findAudioDialogueTiming(dialogues, "13"), null);
 });
 
 test("vocabulary sentence sources show parent materials instead of internal items", () => {
@@ -951,7 +948,7 @@ test("submitted practice restores authored option order for review", async () =>
     "utf8",
   );
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
 
@@ -963,7 +960,7 @@ test("submitted practice restores authored option order for review", async () =>
 
 test("practice copy follows configured option labels and omits question numbers", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
 
@@ -975,15 +972,15 @@ test("practice copy follows configured option labels and omits question numbers"
 
 test("practice review marks wrong questions in every question layout", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
   const renderer = await readFile(
-    path.join(ROOT, "components/exam/QuestionRenderer.tsx"),
+    path.join(ROOT, "modules/questions/components/QuestionRenderer.tsx"),
     "utf8",
   );
   const standardQuestion = await readFile(
-    path.join(ROOT, "components/exam/question-renderer/StandardQuestion.tsx"),
+    path.join(ROOT, "modules/questions/components/question-renderer/StandardQuestion.tsx"),
     "utf8",
   );
 
@@ -1009,16 +1006,16 @@ test("submission review preserves its current question across refreshes", async 
   const page = await readFile(
     path.join(
       ROOT,
-      "app/(study)/practice/[id]/submissions/[submissionId]/page.tsx",
+      "app/practice/[id]/submissions/[submissionId]/page.tsx",
     ),
     "utf8",
   );
   const reviewClient = await readFile(
-    path.join(ROOT, "features/practice/ui/PracticeSubmissionReviewClient.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticeSubmissionReviewClient.tsx"),
     "utf8",
   );
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
 
@@ -1030,7 +1027,7 @@ test("submission review preserves its current question across refreshes", async 
 
 test("practice player separates mobile navigation and utility controls", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
 
@@ -1041,11 +1038,11 @@ test("practice player separates mobile navigation and utility controls", async (
 
 test("saved question notes survive switching away and back without a refresh", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
   const noteEditor = await readFile(
-    path.join(ROOT, "components/exam/QuestionNoteEditor.tsx"),
+    path.join(ROOT, "modules/questions/components/QuestionNoteEditor.tsx"),
     "utf8",
   );
 
@@ -1063,7 +1060,7 @@ test("database fields keep audit timestamps and query indexes", async () => {
 
   assert.match(schema, /model Vocabulary[\s\S]*updatedAt[\s\S]*@@index\(\[wordAudio\]\)/);
   assert.match(schema, /vocabulary_word_trgm_idx/);
-  assert.match(schema, /vocabulary_meanings_trgm_idx/);
+  assert.match(schema, /vocabulary_definitions_sense_sort_idx/);
   assert.match(schema, /model VocabularySentence[\s\S]*@@index\(\[sourceType, sourceId\]\)[\s\S]*@@index\(\[audioFile\]\)/);
   assert.match(schema, /vocabulary_sentences_text_trgm_idx/);
   assert.match(schema, /questions_prompt_trgm_idx/);
@@ -1471,7 +1468,7 @@ test("reading upload and editing share table insertion behavior", async () => {
   assert.equal(inserted.cursor, inserted.text.length);
 
   const editor = await readFile(
-    path.join(ROOT, "features/content/ui/EditArticleUI.tsx"),
+    path.join(ROOT, "modules/content/components/EditArticleUI.tsx"),
     "utf8",
   );
   const importer = await readFile(
@@ -1503,7 +1500,7 @@ test("reading upload and editing share footnote insertion and recognition", asyn
   });
 
   const editor = await readFile(
-    path.join(ROOT, "features/content/ui/EditArticleUI.tsx"),
+    path.join(ROOT, "modules/content/components/EditArticleUI.tsx"),
     "utf8",
   );
   const importer = await readFile(
@@ -1536,7 +1533,7 @@ test("reading wordbook highlights do not render numbered vocabulary annotations"
 
   const [reader, route, chart] = await Promise.all([
     readFile(
-      path.join(ROOT, "features/reading/ui/ArticleReaderClient.tsx"),
+      path.join(ROOT, "modules/reading/components/ArticleReaderClient.tsx"),
       "utf8",
     ),
     readFile(
@@ -1544,7 +1541,7 @@ test("reading wordbook highlights do not render numbered vocabulary annotations"
       "utf8",
     ),
     readFile(
-      path.join(ROOT, "components/vocabulary/WordbookDistributionChart.tsx"),
+      path.join(ROOT, "modules/knowledge/vocabulary/components/WordbookDistributionChart.tsx"),
       "utf8",
     ),
   ]);
@@ -1696,7 +1693,7 @@ test("material payloads are discriminated by material type", () => {
 
   const listening = materialPayloadEnvelopeSchema.parse({
     type: "LISTENING",
-    payload: { dialogues: [{ text: "会話", start: 1, end: 2 }] },
+    payload: { dialogues: [{ stableId: "line-1", text: "会話", start: 1, end: 2 }] },
   });
   assert.equal(listening.payload.dialogues[0].text, "会話");
   assert.equal(listening.payload.tags, undefined);
@@ -1758,15 +1755,15 @@ test("filesystem paths cannot escape the configured audio root", () => {
 
 test("audio library keeps uploads organized and folders hierarchical", async () => {
   const action = await readFile(
-    path.join(ROOT, "features/audio/manage-actions.ts"),
+    path.join(ROOT, "modules/media/audio/manage-actions.ts"),
     "utf8",
   );
   const ankiAction = await readFile(
-    path.join(ROOT, "features/import/anki-actions.ts"),
+    path.join(ROOT, "modules/import/anki-actions.ts"),
     "utf8",
   );
   const page = await readFile(
-    path.join(ROOT, "app/(admin)/manage/system/audio/page.tsx"),
+    path.join(ROOT, "app/manage/system/audio/page.tsx"),
     "utf8",
   );
   assert.match(action, /return `staging\/\$\{year\}-\$\{month\}`/);
@@ -2200,11 +2197,11 @@ test("content writes use null instead of internal question placeholders", async 
     "utf8",
   );
   const paperActions = await readFile(
-    path.join(ROOT, "features/practice/admin-actions.ts"),
+    path.join(ROOT, "modules/practice/actions/admin.ts"),
     "utf8",
   );
   const paperEditor = await readFile(
-    path.join(ROOT, "features/practice/ui/PaperQuestionEditor.tsx"),
+    path.join(ROOT, "modules/practice/components/PaperQuestionEditor.tsx"),
     "utf8",
   );
 
@@ -2291,33 +2288,33 @@ test("audio dialogue source ids are scoped by material", () => {
 
 test("management routes use one prefix and obsolete page routes are gone", async () => {
   const required = [
-    "app/(admin)/manage/page.tsx",
-    "app/(admin)/manage/import/page.tsx",
-    "app/(admin)/manage/shadowing/page.tsx",
-    "app/(admin)/manage/practice/page.tsx",
-    "app/(admin)/manage/listening/page.tsx",
-    "app/(admin)/manage/vocabulary/page.tsx",
-    "app/(admin)/manage/grammar/page.tsx",
-    "app/(admin)/manage/system/page.tsx",
-    "app/(admin)/manage/system/audio/page.tsx",
-    "app/(admin)/manage/system/review/page.tsx",
+    "app/manage/page.tsx",
+    "app/manage/import/page.tsx",
+    "app/manage/shadowing/page.tsx",
+    "app/manage/practice/page.tsx",
+    "app/manage/listening/page.tsx",
+    "app/manage/vocabulary/page.tsx",
+    "app/manage/grammar/page.tsx",
+    "app/manage/system/page.tsx",
+    "app/manage/system/audio/page.tsx",
+    "app/manage/system/review/page.tsx",
   ];
   const removed = [
-    "app/(admin)/upload/page.tsx",
-    "app/(admin)/manage/collections/page.tsx",
-    "app/(admin)/manage/collections/[id]/page.tsx",
-    "app/(admin)/manage/collections/article/[id]/page.tsx",
-    "app/(admin)/manage/collections/quiz/[id]/page.tsx",
-    "app/(admin)/papers/manage/page.tsx",
-    "app/(study)/listening/manage/page.tsx",
-    "app/(library)/collections/page.tsx",
-    "app/(study)/exam/page.tsx",
-    "app/(study)/shadowing/page.tsx",
-    "app/(library)/media-subtitles/page.tsx",
-    "app/(knowledge)/wordbooks/page.tsx",
-    "app/(tools)/anki/page.tsx",
-    "app/(tools)/settings/page.tsx",
-    "app/(tools)/search/result/page.tsx",
+    "app/upload/page.tsx",
+    "app/manage/collections/page.tsx",
+    "app/manage/collections/[id]/page.tsx",
+    "app/manage/collections/article/[id]/page.tsx",
+    "app/manage/collections/quiz/[id]/page.tsx",
+    "app/papers/manage/page.tsx",
+    "app/listening/manage/page.tsx",
+    "app/collections/page.tsx",
+    "app/exam/page.tsx",
+    "app/shadowing/page.tsx",
+    "app/media-subtitles/page.tsx",
+    "app/wordbooks/page.tsx",
+    "app/anki/page.tsx",
+    "app/settings/page.tsx",
+    "app/search/result/page.tsx",
   ];
 
   for (const file of required) {
@@ -2330,19 +2327,19 @@ test("management routes use one prefix and obsolete page routes are gone", async
 
 test("listening management restores pagination and practice overview stays flat", async () => {
   const listeningList = await readFile(
-    path.join(ROOT, "features/listening/ui/ListeningListClient.tsx"),
+    path.join(ROOT, "modules/listening/components/ListeningListClient.tsx"),
     "utf8",
   );
   const listeningPage = await readFile(
-    path.join(ROOT, "app/(admin)/manage/listening/page.tsx"),
+    path.join(ROOT, "app/manage/listening/page.tsx"),
     "utf8",
   );
   const listeningDetail = await readFile(
-    path.join(ROOT, "app/(admin)/manage/listening/[id]/page.tsx"),
+    path.join(ROOT, "app/manage/listening/[id]/page.tsx"),
     "utf8",
   );
   const practiceOverview = await readFile(
-    path.join(ROOT, "app/(study)/practice/[id]/page.tsx"),
+    path.join(ROOT, "app/practice/[id]/page.tsx"),
     "utf8",
   );
 
@@ -2374,11 +2371,11 @@ test("listening management restores pagination and practice overview stays flat"
 
 test("reading management keeps live filters and return state", async () => {
   const readingList = await readFile(
-    path.join(ROOT, "features/reading/ui/ReadingListClient.tsx"),
+    path.join(ROOT, "modules/reading/components/ReadingListClient.tsx"),
     "utf8",
   );
   const readingDetail = await readFile(
-    path.join(ROOT, "app/(admin)/manage/reading/[id]/page.tsx"),
+    path.join(ROOT, "app/manage/reading/[id]/page.tsx"),
     "utf8",
   );
 
@@ -2393,7 +2390,7 @@ test("reading management keeps live filters and return state", async () => {
 
 test("review scheduling explains status before exposing diagnostics", async () => {
   const page = await readFile(
-    path.join(ROOT, "app/(admin)/manage/system/review/page.tsx"),
+    path.join(ROOT, "app/manage/system/review/page.tsx"),
     "utf8",
   );
 
@@ -2419,7 +2416,7 @@ test("route surfaces use the shared editorial visual language", async () => {
     "utf8",
   );
   const manageShell = await readFile(
-    path.join(ROOT, "components/layout/ManageShell.tsx"),
+    path.join(ROOT, "modules/manage/ManageShell.tsx"),
     "utf8",
   );
   const pageHeader = await readFile(
@@ -2457,7 +2454,7 @@ test("route surfaces use the shared editorial visual language", async () => {
 test("reading sibling navigation uses the shared editorial listbox", async () => {
   const [siblingNav, customSelect] = await Promise.all([
     readFile(
-      path.join(ROOT, "features/reading/ui/ArticleSiblingNav.tsx"),
+      path.join(ROOT, "modules/reading/components/ArticleSiblingNav.tsx"),
       "utf8",
     ),
     readFile(path.join(ROOT, "components/ui/CustomSelect.tsx"), "utf8"),
@@ -2483,15 +2480,15 @@ test("body copy uses language-aware sans-serif font stacks", async () => {
     "utf8",
   );
   const managePage = await readFile(
-    path.join(ROOT, "app/(admin)/manage/page.tsx"),
+    path.join(ROOT, "app/manage/page.tsx"),
     "utf8",
   );
   const reviewPage = await readFile(
-    path.join(ROOT, "app/(study)/review/page.tsx"),
+    path.join(ROOT, "app/review/page.tsx"),
     "utf8",
   );
   const articleReader = await readFile(
-    path.join(ROOT, "features/reading/ui/ArticleReaderClient.tsx"),
+    path.join(ROOT, "modules/reading/components/ArticleReaderClient.tsx"),
     "utf8",
   );
 
@@ -2507,19 +2504,19 @@ test("body copy uses language-aware sans-serif font stacks", async () => {
 
 test("listening import accepts MP3 uploads and presets database-informed questions", async () => {
   const uploadForm = await readFile(
-    path.join(ROOT, "features/import/ui/UploadForm.tsx"),
+    path.join(ROOT, "modules/import/components/UploadForm.tsx"),
     "utf8",
   );
   const uploadAction = await readFile(
-    path.join(ROOT, "features/import/actions.ts"),
+    path.join(ROOT, "modules/import/actions.ts"),
     "utf8",
   );
   const questionEditor = await readFile(
-    path.join(ROOT, "features/collections/ui/LessonQuestionsPanel.tsx"),
+    path.join(ROOT, "modules/content/collections/components/LessonQuestionsPanel.tsx"),
     "utf8",
   );
   const importPage = await readFile(
-    path.join(ROOT, "app/(admin)/manage/import/page.tsx"),
+    path.join(ROOT, "app/manage/import/page.tsx"),
     "utf8",
   );
   const paperEditorDomain = await readFile(
@@ -2615,7 +2612,7 @@ test("reading upload distinguishes article-local numbering from JLPT sections", 
   assert.doesNotMatch(panel, /padStart\(2, '0'\)/);
 
   const uploadCenter = await readFile(
-    path.join(ROOT, "features/import/ui/UploadCenterUI.tsx"),
+    path.join(ROOT, "modules/import/components/UploadCenterUI.tsx"),
     "utf8",
   );
   assert.match(
@@ -2640,7 +2637,7 @@ test("paper reading materials keep their authored import order", async () => {
     "utf8",
   );
   const exportRepository = await readFile(
-    path.join(ROOT, "features/practice/export/paper-export-data.ts"),
+    path.join(ROOT, "modules/practice/export/paper-export-data.ts"),
     "utf8",
   );
 
@@ -2666,11 +2663,11 @@ test("paper reading materials keep their authored import order", async () => {
 
 test("reading editor can move a whole cloze article to another paper", async () => {
   const page = await readFile(
-    path.join(ROOT, "app/(admin)/manage/reading/[id]/page.tsx"),
+    path.join(ROOT, "app/manage/reading/[id]/page.tsx"),
     "utf8",
   );
   const editor = await readFile(
-    path.join(ROOT, "features/content/ui/EditArticleUI.tsx"),
+    path.join(ROOT, "modules/content/components/EditArticleUI.tsx"),
     "utf8",
   );
   const actions = await readFile(
@@ -2707,15 +2704,15 @@ test("paper attributes are normalized across every creation and edit path", asyn
     "utf8",
   );
   const importActions = await readFile(
-    path.join(ROOT, "features/import/actions.ts"),
+    path.join(ROOT, "modules/import/actions.ts"),
     "utf8",
   );
   const paperActions = await readFile(
-    path.join(ROOT, "features/practice/actions.ts"),
+    path.join(ROOT, "modules/practice/actions/papers.ts"),
     "utf8",
   );
   const collectionActions = await readFile(
-    path.join(ROOT, "features/collections/actions.ts"),
+    path.join(ROOT, "modules/content/collections/actions.ts"),
     "utf8",
   );
   for (const source of [
@@ -2734,19 +2731,19 @@ test("paper attributes are normalized across every creation and edit path", asyn
 
 test("search results use domain editors instead of the hidden JSON tool", async () => {
   const searchHrefBuilder = await readFile(
-    path.join(ROOT, "features/search/domain.ts"),
+    path.join(ROOT, "modules/search/domain.ts"),
     "utf8",
   );
   const searchActions = await readFile(
-    path.join(ROOT, "features/search/actions.ts"),
+    path.join(ROOT, "modules/search/actions.ts"),
     "utf8",
   );
   const searchPage = await readFile(
-    path.join(ROOT, "app/(tools)/search/page.tsx"),
+    path.join(ROOT, "app/search/page.tsx"),
     "utf8",
   );
   const vocabularyTabs = await readFile(
-    path.join(ROOT, "app/(knowledge)/vocabulary/VocabularyTabs.tsx"),
+    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyTabs.tsx"),
     "utf8",
   );
   const vocabularyNavigation = await readFile(
@@ -2801,7 +2798,7 @@ test("search results use domain editors instead of the hidden JSON tool", async 
 
 test("vocabulary cards continue across paginated server results", async () => {
   const vocabularyTabs = await readFile(
-    path.join(ROOT, "app/(knowledge)/vocabulary/VocabularyTabs.tsx"),
+    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyTabs.tsx"),
     "utf8",
   );
   const cardControls = await readFile(
@@ -2821,7 +2818,7 @@ test("vocabulary cards continue across paginated server results", async () => {
 
 test("responsive and component-boundary regressions remain guarded", async () => {
   const subtitlePage = await readFile(
-    path.join(ROOT, "app/(library)/subtitles/page.tsx"),
+    path.join(ROOT, "app/subtitles/page.tsx"),
     "utf8",
   );
   assert.match(subtitlePage, /min-w-0 divide-y divide-slate-200/);
@@ -2830,11 +2827,11 @@ test("responsive and component-boundary regressions remain guarded", async () =>
     "modules/knowledge/vocabulary/components/VocabularySentenceText.tsx",
     "modules/import/audio/hooks/useAudioFileCatalog.ts",
     "modules/media-subtitles/components/SubtitleReaderControls.tsx",
-    "features/content/ui/EditArticleUI.tsx",
-    "features/practice/ui/PracticeVocabularyAnalyticsDialog.tsx",
+    "modules/content/components/EditArticleUI.tsx",
+    "modules/practice/components/PracticeVocabularyAnalyticsDialog.tsx",
     "modules/progress/exam-scores/components/ExamScoreManager.tsx",
-    "components/AudioPlayer/ListeningPlayerHeader.tsx",
-    "components/AudioPlayer/ListeningSentenceRow.tsx",
+    "modules/media/audio/components/ListeningPlayerHeader.tsx",
+    "modules/media/audio/components/ListeningSentenceRow.tsx",
   ];
   for (const file of boundaries) {
     assert.equal((await stat(path.join(ROOT, file))).isFile(), true);
@@ -2843,7 +2840,7 @@ test("responsive and component-boundary regressions remain guarded", async () =>
 
 test("practice player keeps one compact action bar", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
   const copyActions = player.match(
@@ -2876,21 +2873,21 @@ test("practice player keeps one compact action bar", async () => {
 
 test("paper practice restores an unfinished local draft", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
   const session = await readFile(
-    path.join(ROOT, "hooks/usePracticeSession.ts"),
+    path.join(ROOT, "modules/practice/hooks/usePracticeSession.ts"),
     "utf8",
   );
   const paperSession = await readFile(
-    path.join(ROOT, "app/(study)/practice/[id]/do/page.tsx"),
+    path.join(ROOT, "app/practice/[id]/do/page.tsx"),
     "utf8",
   );
   const sortingQuestion = await readFile(
     path.join(
       ROOT,
-      "components/exam/question-renderer/SortingQuestion.tsx",
+      "modules/questions/components/question-renderer/SortingQuestion.tsx",
     ),
     "utf8",
   );
@@ -2919,21 +2916,21 @@ test("practice counts only complete paper submissions and can reset statistics",
     "utf8",
   );
   const paperItem = await readFile(
-    path.join(ROOT, "features/practice/ui/PaperLibraryItem.tsx"),
+    path.join(ROOT, "modules/practice/components/PaperLibraryItem.tsx"),
     "utf8",
   );
   const dialog = await readFile(
-    path.join(ROOT, "features/practice/ui/PerformanceStatsDialog.tsx"),
+    path.join(ROOT, "modules/practice/components/PerformanceStatsDialog.tsx"),
     "utf8",
   );
   const paperDetail = await readFile(
-    path.join(ROOT, "app/(study)/practice/[id]/page.tsx"),
+    path.join(ROOT, "app/practice/[id]/page.tsx"),
     "utf8",
   );
   const submissionReview = await readFile(
     path.join(
       ROOT,
-      "features/practice/ui/PracticeSubmissionReviewClient.tsx",
+      "modules/practice/components/PracticeSubmissionReviewClient.tsx",
     ),
     "utf8",
   );
@@ -2964,15 +2961,15 @@ test("practice counts only complete paper submissions and can reset statistics",
 
 test("practice papers default to newest and expose sort controls", async () => {
   const client = await readFile(
-    path.join(ROOT, "app/(study)/practice/PapersListClient.tsx"),
+    path.join(ROOT, "modules/practice/components/PapersListClient.tsx"),
     "utf8",
   );
   const state = await readFile(
-    path.join(ROOT, "features/practice/hooks/usePaperLibraryState.ts"),
+    path.join(ROOT, "modules/practice/hooks/usePaperLibraryState.ts"),
     "utf8",
   );
   const library = await readFile(
-    path.join(ROOT, "features/practice/domain/paper-library.ts"),
+    path.join(ROOT, "modules/practice/domain/paper-library.ts"),
     "utf8",
   );
 
@@ -2997,11 +2994,11 @@ test("practice performance separates language and level before question type", a
     "utf8",
   );
   const launcher = await readFile(
-    path.join(ROOT, "features/practice/ui/PracticeInsightsLaunchers.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticeInsightsLaunchers.tsx"),
     "utf8",
   );
   const dialog = await readFile(
-    path.join(ROOT, "features/practice/ui/PerformanceStatsDialog.tsx"),
+    path.join(ROOT, "modules/practice/components/PerformanceStatsDialog.tsx"),
     "utf8",
   );
   const repository = await readFile(
@@ -3024,11 +3021,11 @@ test("practice performance separates language and level before question type", a
 
 test("custom practice selects JLPT groups or individual problem sections", async () => {
   const builder = await readFile(
-    path.join(ROOT, "app/(study)/practice/custom/CustomPaperBuilderClient.tsx"),
+    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.tsx"),
     "utf8",
   );
   const customSession = await readFile(
-    path.join(ROOT, "app/(study)/practice/custom/do/page.tsx"),
+    path.join(ROOT, "app/practice/custom/do/page.tsx"),
     "utf8",
   );
   const repository = await readFile(
@@ -3047,8 +3044,9 @@ test("custom practice selects JLPT groups or individual problem sections", async
     customSession,
     /rawScope === 'attempted' \|\| rawScope === 'all'/,
   );
-  assert.match(repository, /attempts: \{ none: \{ userId \} \}/);
-  assert.match(repository, /attempts: \{ some: \{ userId \} \}/);
+  assert.match(repository, /attempts: \{\s+where: \{ userId \}/);
+  assert.match(repository, /scope === "unattempted"/);
+  assert.match(repository, /scope === "attempted"/);
   assert.match(repository, /LANGUAGE:1/);
   assert.match(repository, /LISTENING:5/);
 });
@@ -3063,7 +3061,7 @@ test("form controls share styled selects and an explicit number stepper", async 
     "utf8",
   );
   const builder = await readFile(
-    path.join(ROOT, "app/(study)/practice/custom/CustomPaperBuilderClient.tsx"),
+    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.tsx"),
     "utf8",
   );
 
@@ -3084,16 +3082,16 @@ test("project dropdowns use the custom listbox instead of native select menus", 
     "utf8",
   );
   const migratedFiles = [
-    "features/listening/ui/ShadowingLibraryManager.tsx",
-    "app/(admin)/manage/import/AnkiImportPanel.tsx",
-    "app/(admin)/manage/vocabulary/VocabularyManageClient.tsx",
-    "features/import/ui/UploadCenterUI.tsx",
-    "features/import/ui/UploadForm.tsx",
-    "features/listening/ui/ListeningListClient.tsx",
-    "features/listening/ui/ListeningQuickClassifyForm.tsx",
-    "features/practice/ui/PaperAttributeForm.tsx",
-    "app/(study)/practice/PapersListClient.tsx",
-    "app/(study)/practice/custom/CustomPaperBuilderClient.tsx",
+    "modules/listening/components/ShadowingLibraryManager.tsx",
+    "modules/import/components/AnkiImportPanel.tsx",
+    "modules/knowledge/vocabulary/components/VocabularyManageClient.tsx",
+    "modules/import/components/UploadCenterUI.tsx",
+    "modules/import/components/UploadForm.tsx",
+    "modules/listening/components/ListeningListClient.tsx",
+    "modules/listening/components/ListeningQuickClassifyForm.tsx",
+    "modules/practice/components/PaperAttributeForm.tsx",
+    "modules/practice/components/PapersListClient.tsx",
+    "modules/practice/components/CustomPaperBuilderClient.tsx",
     "modules/import/components/BulkQuizPanel.tsx",
     "modules/media-subtitles/components/SubtitleReaderControls.tsx",
   ];
@@ -3111,15 +3109,15 @@ test("project dropdowns use the custom listbox instead of native select menus", 
 
 test("practice review reveals answers only for submitted questions", async () => {
   const player = await readFile(
-    path.join(ROOT, "components/exam/PracticePlayer.tsx"),
+    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
     "utf8",
   );
   const readingPassage = await readFile(
-    path.join(ROOT, "components/exam/question-renderer/readingPassage.ts"),
+    path.join(ROOT, "modules/questions/components/question-renderer/readingPassage.ts"),
     "utf8",
   );
   const optionsList = await readFile(
-    path.join(ROOT, "components/exam/question-renderer/OptionsList.tsx"),
+    path.join(ROOT, "modules/questions/components/question-renderer/OptionsList.tsx"),
     "utf8",
   );
 
@@ -3137,17 +3135,17 @@ test("practice review reveals answers only for submitted questions", async () =>
 
 test("listening practice keeps compact controls and readable transcript", async () => {
   const renderer = await readFile(
-    path.join(ROOT, "components/exam/QuestionRenderer.tsx"),
+    path.join(ROOT, "modules/questions/components/QuestionRenderer.tsx"),
     "utf8",
   );
   const optionsList = await readFile(
-    path.join(ROOT, "components/exam/question-renderer/OptionsList.tsx"),
+    path.join(ROOT, "modules/questions/components/question-renderer/OptionsList.tsx"),
     "utf8",
   );
   const transcript = await readFile(
     path.join(
       ROOT,
-      "components/exam/question-renderer/ListeningTranscript.tsx",
+      "modules/questions/components/question-renderer/ListeningTranscript.tsx",
     ),
     "utf8",
   );
@@ -3168,43 +3166,43 @@ test("listening practice keeps compact controls and readable transcript", async 
 
 test("listening detail avoids idle animation work and uses scoped vocabulary sources", async () => {
   const controller = await readFile(
-    path.join(ROOT, "components/AudioPlayer/useAudioController.ts"),
+    path.join(ROOT, "modules/media/audio/components/useAudioController.ts"),
     "utf8",
   );
   const detailPage = await readFile(
-    path.join(ROOT, "app/(study)/listening/[id]/page.tsx"),
+    path.join(ROOT, "app/listening/[id]/page.tsx"),
     "utf8",
   );
   const player = await readFile(
-    path.join(ROOT, "components/AudioPlayer/AudioPlayer.tsx"),
+    path.join(ROOT, "modules/media/audio/components/AudioPlayer.tsx"),
     "utf8",
   );
   const pronunciationHook = await readFile(
-    path.join(ROOT, "hooks/usePronunciationSource.ts"),
+    path.join(ROOT, "modules/language/hooks/usePronunciationSource.ts"),
     "utf8",
   );
   const sentenceRow = await readFile(
-    path.join(ROOT, "components/AudioPlayer/ListeningSentenceRow.tsx"),
+    path.join(ROOT, "modules/media/audio/components/ListeningSentenceRow.tsx"),
     "utf8",
   );
   const listeningLanding = await readFile(
-    path.join(ROOT, "app/(study)/listening/page.tsx"),
+    path.join(ROOT, "app/listening/page.tsx"),
     "utf8",
   );
   const listeningEntryCards = await readFile(
-    path.join(ROOT, "features/listening/ui/LibraryEntryCards.tsx"),
+    path.join(ROOT, "modules/listening/components/LibraryEntryCards.tsx"),
     "utf8",
   );
   const listeningRepository = await readFile(
-    path.join(ROOT, "features/listening/server/repository.ts"),
+    path.join(ROOT, "modules/listening/server/repository.ts"),
     "utf8",
   );
   const listeningFilter = await readFile(
-    path.join(ROOT, "features/listening/ui/ListeningViewSwitcher.tsx"),
+    path.join(ROOT, "modules/listening/components/ListeningViewSwitcher.tsx"),
     "utf8",
   );
   const playerHeader = await readFile(
-    path.join(ROOT, "components/AudioPlayer/ListeningPlayerHeader.tsx"),
+    path.join(ROOT, "modules/media/audio/components/ListeningPlayerHeader.tsx"),
     "utf8",
   );
 
@@ -3219,7 +3217,7 @@ test("listening detail avoids idle animation work and uses scoped vocabulary sou
     detailPage.includes("listListeningMaterialsForShadowing"),
     false,
   );
-  assert.match(player, /useTextSelection\(\)/);
+  assert.match(player, /useTextSelection\(!isBlindMode\)/);
   assert.equal(player.includes("onClick={closeSelection}"), false);
   assert.equal(player.includes("scrollIntoView"), false);
   assert.match(player, /targetCenter - visibleCenter/);
@@ -3268,7 +3266,7 @@ test("vocabulary language groups use pronunciation and source evidence", async (
     "utf8",
   );
   const vocabularyPage = await readFile(
-    path.join(ROOT, "app/(knowledge)/vocabulary/page.tsx"),
+    path.join(ROOT, "app/vocabulary/page.tsx"),
     "utf8",
   );
   const vocabularyRepository = await readFile(
@@ -3289,7 +3287,7 @@ test("selection popover supports pointer, keyboard and dialog semantics", async 
     "utf8",
   );
   const tooltip = await readFile(
-    path.join(ROOT, "components/exam/WordTooltip.tsx"),
+    path.join(ROOT, "modules/knowledge/vocabulary/components/WordTooltip.tsx"),
     "utf8",
   );
 

@@ -5,7 +5,7 @@ const materialDialogueSchema = z
   .object({
     id: z.coerce.number().finite().optional(),
     sequenceId: z.coerce.number().finite().optional(),
-    stableId: z.string().trim().optional(),
+    stableId: z.string().trim().min(1),
     text: z.string().catch(''),
     start: z.coerce.number().finite().catch(0),
     end: z.coerce.number().finite().catch(0),
@@ -16,7 +16,6 @@ const materialDialogueSchema = z
 
 const audioPayloadFields = {
   audioFile: z.string().catch(''),
-  audioUrl: z.string().catch(''),
   dialogues: z.array(materialDialogueSchema).catch([]),
   description: z.string().catch('').optional(),
   transcript: z.string().catch('').optional(),
@@ -39,8 +38,6 @@ const listeningPayloadSchema = z
       .catch(null),
     listeningSectionTitle: z.string().catch(''),
     questionNumber: z.coerce.number().int().positive().nullable().catch(null),
-    sectionNumber: z.coerce.number().int().positive().nullable().catch(null),
-    sectionTitle: z.string().catch(''),
     questionEntryRequired: z.boolean().catch(false),
   })
   .passthrough()
@@ -61,8 +58,6 @@ const readingPayloadSchema = z
     sourceKind: z.string().catch(''),
     publishedDate: z.string().catch(''),
     edition: z.string().catch(''),
-    newsSeries: z.string().catch(''),
-    pageNumber: z.string().catch(''),
     newsSource: z.string().catch(''),
     newsType: z.string().catch(''),
     newsSection: z.string().catch(''),
@@ -131,10 +126,22 @@ export type MaterialPayload<T extends MaterialType> = Extract<
   { type: T }
 >['payload']
 
+const retiredPayloadKeys: Partial<Record<MaterialType, readonly string[]>> = {
+  [MaterialType.LISTENING]: ['audioUrl', 'sectionNumber', 'sectionTitle'],
+  [MaterialType.SPEAKING]: ['audioUrl'],
+  [MaterialType.READING]: ['newsSeries', 'pageNumber'],
+}
+
 export function decodeMaterialPayload<T extends MaterialType>(
   type: T,
   value: unknown,
 ): MaterialPayload<T> {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const retiredKey = retiredPayloadKeys[type]?.find(key => key in value)
+    if (retiredKey) {
+      throw new Error(`Material ${type} payload contains retired key: ${retiredKey}`)
+    }
+  }
   return materialPayloadEnvelopeSchema.parse({ type, payload: value })
     .payload as MaterialPayload<T>
 }

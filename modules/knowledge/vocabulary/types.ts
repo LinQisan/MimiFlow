@@ -11,7 +11,6 @@ export type SentenceItem = {
   audioFile?: string | null
   audioData?: AudioData | null
   sourceType?: string | null
-  meaningIndex?: number | null
   posTags?: string[]
   pronunciationData?: VocabularyPronunciationData | null
   pronunciationVersion?: number | null
@@ -97,12 +96,10 @@ export type VocabItem = {
   languageCode?: string
   readingAudios?: VocabularyReadingAudio[]
   wordAudio?: string | null
-  pronunciation?: string | null
   etymologies?: string[]
   pronunciations?: string[]
   pronunciationData?: VocabularyPronunciationData | null
   pronunciationVersion?: number | null
-  partOfSpeech?: string | null
   partsOfSpeech?: string[]
   grammarPartOfSpeech?: VocabularyGrammarPartOfSpeech | null
   transitivity?: VocabularyTransitivity | null
@@ -110,15 +107,12 @@ export type VocabItem = {
   meanings?: string[]
   tags?: string[]
   createdAt: Date
-  folderId?: string | null
-  folderName?: string | null
   recordIds?: string[]
   wordbooks?: VocabularyWordbookMembership[]
   wordbookSources?: VocabularyWordbookSource[]
   sourceType?: string
   sentences: SentenceItem[]
   senses?: VocabularySenseItem[]
-  relations?: VocabularyRelationItem[]
   review?: {
     id: string
     due: Date | string

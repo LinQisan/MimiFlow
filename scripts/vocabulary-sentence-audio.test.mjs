@@ -4,7 +4,7 @@ import { dedupeAndRankSentences } from '../utils/vocabulary/sentenceQuality.ts'
 
 const silent = {
   id: 'old', text: 'ボールをキャッチする。', source: 'Unit09 カタカナB',
-  sourceUrl: '/vocabulary/wordbooks/old', meaningIndex: 0, audioFile: null,
+  sourceUrl: '/vocabulary/wordbooks/old', audioFile: null,
 }
 const recorded = {
   ...silent, id: 'new', sourceUrl: '/vocabulary/wordbooks/current',

@@ -96,7 +96,7 @@ test('wordbook filter values distinguish all, uncollected, series and leaf scope
 
 test('selecting a wordbook series filters through every child word list', async () => {
   const page = await readFile(
-    path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
+    path.join(ROOT, 'app/vocabulary/page.tsx'),
     'utf8',
   )
 
@@ -104,7 +104,7 @@ test('selecting a wordbook series filters through every child word list', async 
   assert.deepEqual(vocabularyPageWhere({ wordbookFilter: 'series:series-id', seriesFilter: 'series-id', tagFilter: 'all', keyword: '' }).AND[0], { wordbooks: { some: { wordbook: { seriesId: 'series-id' } } } })
 })
 
-test('active wordbook navigation hides legacy archive and preserves series order', async () => {
+test('wordbook navigation preserves series order', async () => {
   const [repository, dropdown, vocabularyTabs] = await Promise.all([
     readFile(
       path.join(ROOT, 'modules/knowledge/wordbooks/repository.ts'),
@@ -118,12 +118,12 @@ test('active wordbook navigation hides legacy archive and preserves series order
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
   ])
 
-  assert.match(repository, /startsWith: 'legacy-'/)
+  assert.doesNotMatch(repository, /startsWith: 'legacy-'/)
   assert.match(repository, /_count: \{ select: \{ entries: true \} \}/)
   assert.match(dropdown, /option\.depth/)
   assert.match(dropdown, /option\.count/)
@@ -133,7 +133,7 @@ test('active wordbook navigation hides legacy archive and preserves series order
 test('duplicate headwords share one page with ordered wordbook content', async () => {
   const [page, repository, tabs, types] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
+      path.join(ROOT, 'app/vocabulary/page.tsx'),
       'utf8',
     ),
     readFile(
@@ -141,7 +141,7 @@ test('duplicate headwords share one page with ordered wordbook content', async (
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
@@ -152,10 +152,16 @@ test('duplicate headwords share one page with ordered wordbook content', async (
 
   assert.match(page, /vocabularyWordKey/)
   assert.match(page, /listVocabularyDetailsByWords/)
+  assert.match(page, /listVocabularyListDetailsByWords/)
+  assert.match(page, /includeCardDetails/)
+  assert.match(page, /hasVocabularyCardDetails/)
+  assert.match(page, /sentenceLinks = includeCardDetails/)
   assert.match(page, /getVocabularySeriesPriority/)
   assert.match(page, /wordbookFilter === wordbookId/)
   assert.match(page, /wordbookSources/)
   assert.match(repository, /listVocabularyDetailsByWords/)
+  assert.match(repository, /listVocabularyListDetailsByWords/)
+  assert.match(repository, /VOCABULARY_LIST_DETAIL_SELECT/)
   const membershipLinks = await readFile(
     path.join(ROOT, 'modules/knowledge/vocabulary/components/WordbookMembershipLinks.tsx'),
     'utf8',
@@ -164,6 +170,23 @@ test('duplicate headwords share one page with ordered wordbook content', async (
   assert.match(membershipLinks, /\/vocabulary\/wordbooks\/\$\{wordbook\.id\}/)
   assert.match(membershipLinks, /formatPath\(wordbook\.pathLabel/)
   assert.match(types, /VocabularyWordbookSource/)
+})
+
+test('the list-to-card transition fetches the card payload through the router', async () => {
+  const tabs = await readFile(
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
+    'utf8',
+  )
+
+  assert.match(tabs, /const openVocabularyCard = \(vocabularyId: string\)/)
+  assert.match(tabs, /buildVocabularyViewHref\([\s\S]*?'card',[\s\S]*?vocabularyId/)
+  assert.match(tabs, /openVocabularyCard\(vocab\.id\)/)
+  const viewNavigation = tabs.slice(
+    tabs.indexOf("const setVocabularyViewMode"),
+    tabs.indexOf("useEffect(() => {\n    setViewMode(searchParams"),
+  )
+  assert.match(viewNavigation, /router\.push\(href\)/)
+  assert.doesNotMatch(viewNavigation, /window\.history\.replaceState/)
 })
 
 test('more sentence search filters candidates in storage and shows paper sources', async () => {
@@ -195,7 +218,7 @@ test('more sentence search filters candidates in storage and shows paper sources
 test('vocabulary uses the same automatic pronunciation flow as reading and practice', async () => {
   const [tabs, pronunciationHook, sharedHook, word, sentence] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
@@ -205,9 +228,9 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
       ),
       'utf8',
     ),
-    readFile(path.join(ROOT, 'hooks/usePronunciationSource.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/language/hooks/usePronunciationSource.ts'), 'utf8'),
     readFile(
-      path.join(ROOT, 'components/vocabulary/WordPronunciation.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/WordPronunciation.tsx'),
       'utf8',
     ),
     readFile(
@@ -225,10 +248,10 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
   // owns the single storage key; the fetch flow itself stays local.
   assert.match(pronunciationHook, /usePronunciationSource/)
   assert.match(sharedHook, /PRONUNCIATION_SOURCE_STORAGE_KEY/)
-  assert.match(pronunciationHook, /fetch\('\/api\/pronunciation'/)
+  assert.match(pronunciationHook, /fetch\('\/api\/pronunciation\/batch'/)
   assert.match(
     pronunciationHook,
-    /body: JSON\.stringify\(\{ texts: pronunciationTexts \}\)/,
+    /vocabularyIds: missingVocabIds/,
   )
   assert.match(word, /annotateJapaneseTextWithSudachi\(word/)
   assert.match(sentence, /annotateJapaneseTextWithSudachi\(value/)
@@ -238,15 +261,15 @@ test('vocabulary uses the same automatic pronunciation flow as reading and pract
 test('vocabulary pages keep bounded rows and show the filtered total', async () => {
   const [page, tabs, wordbookPage] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
+      path.join(ROOT, 'app/vocabulary/page.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/wordbooks/[id]/page.tsx'),
+      path.join(ROOT, 'app/vocabulary/wordbooks/[id]/page.tsx'),
       'utf8',
     ),
   ])
@@ -260,7 +283,7 @@ test('vocabulary pages keep bounded rows and show the filtered total', async () 
 
 test('word-only wordbooks do not render empty content cards', async () => {
   const tabs = await readFile(
-    path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
     'utf8',
   )
 
@@ -274,11 +297,11 @@ test('word-only wordbooks do not render empty content cards', async () => {
 test('flashcards center multi-headword vocabulary as one visual group', async () => {
   const [tabs, pronunciation] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'components/vocabulary/WordPronunciation.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/WordPronunciation.tsx'),
       'utf8',
     ),
   ])
@@ -297,7 +320,7 @@ test('wordbook removal deletes only membership data and keeps vocabulary records
     readFile(
       path.join(
         ROOT,
-        'app/(knowledge)/vocabulary/wordbooks/[id]/WordbookDetailClient.tsx',
+        'modules/knowledge/vocabulary/components/WordbookDetailClient.tsx',
       ),
       'utf8',
     ),
@@ -314,12 +337,12 @@ test('wordbook removal deletes only membership data and keeps vocabulary records
 test('part-of-speech hierarchy and wordbook batch tags stay user scoped', async () => {
   const [schema, adminActions, wordbookActions, detail] = await Promise.all([
     readFile(path.join(ROOT, 'prisma/schema.prisma'), 'utf8'),
-    readFile(path.join(ROOT, 'features/vocabulary/admin-actions.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/knowledge/vocabulary/admin-actions.ts'), 'utf8'),
     readFile(path.join(ROOT, 'modules/knowledge/wordbooks/actions.ts'), 'utf8'),
     readFile(
       path.join(
         ROOT,
-        'app/(knowledge)/vocabulary/wordbooks/[id]/WordbookDetailClient.tsx',
+        'modules/knowledge/vocabulary/components/WordbookDetailClient.tsx',
       ),
       'utf8',
     ),
@@ -339,7 +362,7 @@ test('part-of-speech hierarchy and wordbook batch tags stay user scoped', async 
 test('vocabulary detail editing keeps one shared inline layout', async () => {
   const [tabs, editor, actions] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
@@ -368,11 +391,11 @@ test('vocabulary detail editing keeps one shared inline layout', async () => {
 test('vocabulary management shows wordbook provenance instead of import placeholder source', async () => {
   const [page, adminActions] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(admin)/manage/vocabulary/VocabularyManageClient.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyManageClient.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'features/vocabulary/admin-actions.ts'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/admin-actions.ts'),
       'utf8',
     ),
   ])
@@ -386,11 +409,11 @@ test('vocabulary management shows wordbook provenance instead of import placehol
 test('vocabulary tag filters stay in the server-paginated URL flow', async () => {
   const [page, tabs, repository] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/page.tsx'),
+      path.join(ROOT, 'app/vocabulary/page.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(
@@ -408,7 +431,7 @@ test('vocabulary tag filters stay in the server-paginated URL flow', async () =>
 
 test('vocabulary starts audio in the click path and handles browser playback policy', async () => {
   const tabs = await readFile(
-    path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
     'utf8',
   )
 
@@ -426,7 +449,7 @@ test('vocabulary starts audio in the click path and handles browser playback pol
 test('vocabulary toolbar keeps responsive layout SSR-deterministic', async () => {
   const [tabs, toolbar, layout] = await Promise.all([
     readFile(
-      path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
       'utf8',
     ),
     readFile(

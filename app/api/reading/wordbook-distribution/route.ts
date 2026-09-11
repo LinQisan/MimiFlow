@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { getPaperWordbookDistribution } from '@/features/practice/server/paper-wordbook-distribution'
+import { getPaperWordbookDistribution } from '@/modules/practice/server/paper-wordbook-distribution'
 
 const MAX_WORD_COUNT = 5_000
 const MAX_WORD_LENGTH = 100

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { parseJsonStringList, toJsonStringList } from '../../../../utils/text/jsonList.ts'
 import { normalizeRelationMetadata } from './relations.ts'
+import { normalizeVocabularySentencePosTags } from './sentence-pos-tags.ts'
 
 const text = z.string().trim().max(4000)
 const optionalText = z.string().trim().max(4000).optional().nullable()
@@ -21,7 +22,7 @@ const exampleSchema = z.object({
 })
 
 export const normalizeVocabularyEntryPosTags = (values: string[]) =>
-  Array.from(new Set(values.map(value => value.trim()).filter(Boolean))).slice(0, 20)
+  normalizeVocabularySentencePosTags(values)
 
 export const serializeVocabularyEntryPosTags = (
   values: string[] | undefined,
@@ -96,7 +97,7 @@ const senseSchema = z.object({
 export const vocabularyEntryDraftSchema = z.object({
   vocabularyId: z.string().min(1),
   word: z.string().trim().min(1, '单词不能为空').max(300),
-  reading: z.string().trim().max(500),
+  pronunciations: z.array(z.string().trim().min(1).max(4000)).max(100),
   etymologies: z.array(z.string().trim().max(4000)).max(100).optional(),
   grammarPartOfSpeech: z.enum([
     'noun',
@@ -114,5 +115,4 @@ export const vocabularyEntryDraftSchema = z.object({
   conjugationType: z.string().trim().max(100).optional().nullable(),
   tags: z.array(z.string().trim().min(1).max(100)).max(100),
   senses: z.array(senseSchema).min(1, '词条至少需要一个义项'),
-  relations: z.array(relationSchema),
-})
+}).strict()

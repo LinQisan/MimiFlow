@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useState } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
-import { getSentenceSourceDisplay } from '../domain/workbench'
+import { formatVocabularySentenceSource } from '@/utils/vocabulary/sourceDisplay'
 import type { SentenceItem, VocabItem } from '../types'
 
 export default function SentenceSearchPanel({
@@ -19,9 +19,9 @@ export default function SentenceSearchPanel({
   loading: boolean
   results: SentenceItem[]
   onToggleSearch: () => void
-  onAdd: (sentence: SentenceItem, senseIndex: number) => void
+  onAdd: (sentence: SentenceItem, senseId: string) => void
 }) {
-  const [senseByResult, setSenseByResult] = useState<Record<number, number>>({})
+  const [senseByResult, setSenseByResult] = useState<Record<number, string>>({})
   return (
     <section className='vocab-flat-section mt-3 pt-0' aria-label='扩展例句'>
       <button
@@ -47,7 +47,7 @@ export default function SentenceSearchPanel({
             const isAdded = vocabulary.sentences.some(
               item => item.text === sentence.text,
             )
-            const sourceLabel = getSentenceSourceDisplay(sentence)
+            const sourceLabel = formatVocabularySentenceSource(sentence)
             return (
               <div
                 key={`${vocabulary.id}-search-sent-${sentence.sourceUrl || 'unknown'}-${sentence.text}-${index}`}
@@ -81,11 +81,11 @@ export default function SentenceSearchPanel({
                   <div className='flex items-center gap-2 self-start'>
                     {(vocabulary.senses?.length || 0) > 1 ? (
                       <CustomSelect
-                        value={senseByResult[index] ?? 0}
-                        onChange={event => setSenseByResult(previous => ({ ...previous, [index]: Number(event.target.value) }))}
+                        value={senseByResult[index] ?? vocabulary.senses?.[0]?.id ?? ''}
+                        onChange={event => setSenseByResult(previous => ({ ...previous, [index]: event.target.value }))}
                         aria-label='添加到义项'>
                         {vocabulary.senses?.map((sense, senseIndex) => (
-                          <option key={sense.id} value={senseIndex}>
+                          <option key={sense.id} value={sense.id}>
                             义项 {String(senseIndex + 1).padStart(2, '0')}
                           </option>
                         ))}
@@ -93,7 +93,11 @@ export default function SentenceSearchPanel({
                     ) : null}
                     <button
                       type='button'
-                      onClick={() => onAdd(sentence, senseByResult[index] ?? 0)}
+                      onClick={() => {
+                        const senseId =
+                          senseByResult[index] ?? vocabulary.senses?.[0]?.id
+                        if (senseId) onAdd(sentence, senseId)
+                      }}
                       className='ui-btn ui-btn-sm px-3 text-xs'>
                       添加
                     </button>

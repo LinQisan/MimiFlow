@@ -5,12 +5,12 @@ import { useState, type Dispatch, type SetStateAction } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
 import {
   EXPRESSION_TYPE_OPTIONS,
-  RELATION_TYPE_OPTIONS,
   TRANSITIVITY_OPTIONS,
   USAGE_NOTE_TYPE_OPTIONS,
   VOCABULARY_POS_OPTIONS,
   type VocabularyEntryDraft,
 } from '../domain/entry'
+import { RELATION_TYPE_OPTIONS } from '../domain/relations'
 import type { VocabularyInspectorEntryDraft } from '../domain/inspector-entry'
 
 type Draft = VocabularyInspectorEntryDraft
@@ -121,18 +121,15 @@ function SensePicker({
   senses,
   value,
   onChange,
-  allowNone = false,
 }: {
   senses: Draft['senses']
-  value: string | null
-  onChange: (value: string | null) => void
-  allowNone?: boolean
+  value: string
+  onChange: (value: string) => void
 }) {
   return (
     <label className='vocab-inspector-inline-field'>
       <span>义项</span>
-      <CustomSelect value={value || ''} className={inputClass} onChange={event => onChange(event.currentTarget.value || null)}>
-        {allowNone ? <option value=''>全部义项</option> : null}
+      <CustomSelect value={value} className={inputClass} onChange={event => onChange(event.currentTarget.value)}>
         {senses.map((sense, index) => <option key={sense.id} value={sense.id}>{senseLabel(sense, index)}</option>)}
       </CustomSelect>
     </label>
@@ -171,12 +168,12 @@ export default function VocabularyInspectorEditor({
     setActiveSenseId(id)
   }
 
-  const addDefinition = () => set('definitions', [...draft.definitions, { language: 'zh', dictionaryName: '用户编辑', definition: '', senseId: activeSense?.id || null }])
-  const addSentence = () => set('sentences', [...draft.sentences, { text: '', translation: '', source: '手动录入', sourceUrl: '#', posTags: [], audioFile: null, meaningIndex: activeSenseIndex, senseId: activeSense?.id || null }])
-  const addPattern = () => set('patterns', [...draft.patterns, { text: '', meaning: '', senseId: activeSense?.id || null }])
-  const addExpression = () => set('expressions', [...draft.expressions, { type: 'collocation', text: '', reading: '', meaning: '', senseId: activeSense?.id || null }])
-  const addRelation = (senseId: string | null = activeSense?.id || null) => set('relations', [...draft.relations, { type: 'related', targetText: '', targetReading: '', marker: '', pattern: '', senseId }])
-  const addNote = () => set('notes', [...draft.notes, { type: 'usage', text: '', senseId: activeSense?.id || null }])
+  const addDefinition = () => activeSense && set('definitions', [...draft.definitions, { language: 'zh', dictionaryName: '用户编辑', definition: '', senseId: activeSense.id }])
+  const addSentence = () => activeSense && set('sentences', [...draft.sentences, { text: '', translation: '', source: '手动录入', sourceUrl: '#', posTags: [], audioFile: null, senseId: activeSense.id }])
+  const addPattern = () => activeSense && set('patterns', [...draft.patterns, { text: '', meaning: '', senseId: activeSense.id }])
+  const addExpression = () => activeSense && set('expressions', [...draft.expressions, { type: 'collocation', text: '', reading: '', meaning: '', senseId: activeSense.id }])
+  const addRelation = () => activeSense && set('relations', [...draft.relations, { type: 'related', targetText: '', targetReading: '', marker: '', pattern: '', senseId: activeSense.id }])
+  const addNote = () => activeSense && set('notes', [...draft.notes, { type: 'usage', text: '', senseId: activeSense.id }])
 
   return (
     <div className='vocab-inspector-editor'>
@@ -187,13 +184,12 @@ export default function VocabularyInspectorEditor({
           <Field label='音频路径' value={draft.wordAudio || ''} onChange={value => set('wordAudio', value || null)} placeholder='/audios/...' />
           <Field label='词源（每行一个）' value={(draft.etymologies || []).join('\n')} onChange={value => set('etymologies', splitLines(value))} multiline rows={2} />
           <Field label='读音（每行一个）' value={draft.pronunciations.join('\n')} onChange={value => set('pronunciations', splitLines(value))} multiline rows={2} />
-          <Field label='词性（兼容显示，每行一个）' value={draft.partsOfSpeech.join('\n')} onChange={value => set('partsOfSpeech', splitLines(value))} multiline rows={2} />
+          <Field label='词性（每行一个）' value={draft.partsOfSpeech.join('\n')} onChange={value => set('partsOfSpeech', splitLines(value))} multiline rows={2} />
           <SelectField label='结构化词性' value={draft.grammarPartOfSpeech || 'other'} options={VOCABULARY_POS_OPTIONS} onChange={value => set('grammarPartOfSpeech', value as VocabularyEntryDraft['grammarPartOfSpeech'])} />
           <SelectField label='及物性' value={draft.transitivity || ''} options={([['', '未指定'], ...TRANSITIVITY_OPTIONS] as const)} onChange={value => set('transitivity', (value || null) as Draft['transitivity'])} />
           <Field label='活用类型' value={draft.conjugationType || ''} onChange={value => set('conjugationType', value || null)} placeholder='五段、上一段…' />
           <Field label='标签（逗号或换行）' value={draft.tags.join('\n')} onChange={value => set('tags', splitLines(value))} multiline rows={2} />
         </div>
-        <Field label='词书释义（每行一条）' value={draft.meanings.join('\n')} onChange={value => set('meanings', splitLines(value))} multiline rows={3} />
       </section>
 
       <section className={sectionClass}>
@@ -209,7 +205,7 @@ export default function VocabularyInspectorEditor({
           {draft.senses.map((sense, index) => <button type='button' key={sense.id} aria-pressed={sense.id === activeSense?.id} onClick={() => setActiveSenseId(sense.id)}>{senseLabel(sense, index)}</button>)}
         </div>
         {!activeSense ? <p className='vocab-inspector-empty'>请添加一个义项。</p> : (
-          <div className='vocab-inspector-sense-summary'><span>当前义项内容可在下方各组中按义项调整</span><button type='button' className='vocab-inspector-link-button' onClick={() => { if (draft.senses.length <= 1) return; const next = draft.senses.filter(sense => sense.id !== activeSense.id); setDraft(current => ({ ...current, senses: next, definitions: current.definitions.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item), sentences: current.sentences.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item), patterns: current.patterns.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item), expressions: current.expressions.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item), relations: current.relations.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item), notes: current.notes.map(item => item.senseId === activeSense.id ? { ...item, senseId: next[0]?.id || null } : item) })); setActiveSenseId(next[0]?.id || '') }} disabled={draft.senses.length <= 1}>删除当前义项</button></div>
+          <div className='vocab-inspector-sense-summary'><span>当前义项内容可在下方各组中按义项调整</span><button type='button' className='vocab-inspector-link-button' onClick={() => { if (draft.senses.length <= 1) return; const next = draft.senses.filter(sense => sense.id !== activeSense.id); const nextSenseId = next[0]!.id; setDraft(current => ({ ...current, senses: next, definitions: current.definitions.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item), sentences: current.sentences.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item), patterns: current.patterns.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item), expressions: current.expressions.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item), relations: current.relations.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item), notes: current.notes.map(item => item.senseId === activeSense.id ? { ...item, senseId: nextSenseId } : item) })); setActiveSenseId(nextSenseId) }} disabled={draft.senses.length <= 1}>删除当前义项</button></div>
         )}
       </section>
 
@@ -217,7 +213,7 @@ export default function VocabularyInspectorEditor({
       <FlatSentences senses={draft.senses} items={draft.sentences} onAdd={addSentence} onChange={(index, patch) => patchFlat('sentences', index, patch)} onRemove={index => set('sentences', draft.sentences.filter((_, itemIndex) => itemIndex !== index))} />
       <FlatPatterns senses={draft.senses} items={draft.patterns} onAdd={addPattern} onChange={(index, patch) => patchFlat('patterns', index, patch)} onRemove={index => set('patterns', draft.patterns.filter((_, itemIndex) => itemIndex !== index))} />
       <FlatExpressions senses={draft.senses} items={draft.expressions} onAdd={addExpression} onChange={(index, patch) => patchFlat('expressions', index, patch)} onRemove={index => set('expressions', draft.expressions.filter((_, itemIndex) => itemIndex !== index))} />
-      <FlatRelations senses={draft.senses} items={draft.relations} onAdd={() => addRelation(activeSense?.id || null)} onChange={(index, patch) => patchFlat('relations', index, patch)} onRemove={index => set('relations', draft.relations.filter((_, itemIndex) => itemIndex !== index))} />
+      <FlatRelations senses={draft.senses} items={draft.relations} onAdd={addRelation} onChange={(index, patch) => patchFlat('relations', index, patch)} onRemove={index => set('relations', draft.relations.filter((_, itemIndex) => itemIndex !== index))} />
       <FlatNotes senses={draft.senses} items={draft.notes} onAdd={addNote} onChange={(index, patch) => patchFlat('notes', index, patch)} onRemove={index => set('notes', draft.notes.filter((_, itemIndex) => itemIndex !== index))} />
     </div>
   )
@@ -244,7 +240,7 @@ function FlatExpressions({ senses, items, onAdd, onChange, onRemove }: { senses:
 }
 
 function RelationRow({ relation, senses, index, length, onChange, onRemove, onMove }: { relation: Relation; senses: Draft['senses']; index: number; length: number; onChange: (patch: Partial<Relation>) => void; onRemove: () => void; onMove: (delta: -1 | 1) => void }) {
-  return <div className='vocab-inspector-item'><div className='vocab-inspector-grid vocab-inspector-grid-2'><SelectField label='关系' value={relation.type} options={RELATION_TYPE_OPTIONS} onChange={value => onChange({ type: value as Relation['type'] })} /><Field label='目标词' value={relation.targetText} onChange={value => onChange({ targetText: value, targetVocabularyId: null })} /><Field label='目标读音' value={relation.targetReading || ''} onChange={value => onChange({ targetReading: value || null })} /><Field label='关联 ID（可选）' value={relation.targetVocabularyId || ''} onChange={value => onChange({ targetVocabularyId: value || null })} /></div>{relation.type === 'related' ? <Field label='助词' value={relation.marker || ''} onChange={value => onChange({ marker: value || null })} /> : null}{['compound', 'derived', 'collocation'].includes(relation.type) ? <Field label='构词 / 搭配模式' value={relation.pattern || ''} onChange={value => onChange({ pattern: value || null })} /> : null}<SensePicker senses={senses} value={relation.senseId} allowNone onChange={value => onChange({ senseId: value })} /><ItemActions index={index} length={length} onMove={onMove} onRemove={onRemove} /></div>
+  return <div className='vocab-inspector-item'><div className='vocab-inspector-grid vocab-inspector-grid-2'><SelectField label='关系' value={relation.type} options={RELATION_TYPE_OPTIONS} onChange={value => onChange({ type: value as Relation['type'] })} /><Field label='目标词' value={relation.targetText} onChange={value => onChange({ targetText: value, targetVocabularyId: null })} /><Field label='目标读音' value={relation.targetReading || ''} onChange={value => onChange({ targetReading: value || null })} /><Field label='关联 ID（可选）' value={relation.targetVocabularyId || ''} onChange={value => onChange({ targetVocabularyId: value || null })} /></div>{relation.type === 'related' ? <Field label='助词' value={relation.marker || ''} onChange={value => onChange({ marker: value || null })} /> : null}{['compound', 'derived', 'collocation'].includes(relation.type) ? <Field label='构词 / 搭配模式' value={relation.pattern || ''} onChange={value => onChange({ pattern: value || null })} /> : null}<SensePicker senses={senses} value={relation.senseId} onChange={value => onChange({ senseId: value })} /><ItemActions index={index} length={length} onMove={onMove} onRemove={onRemove} /></div>
 }
 
 function FlatRelations({ senses, items, onAdd, onChange, onRemove }: { senses: Draft['senses']; items: Relation[]; onAdd: () => void; onChange: (index: number, patch: Partial<Relation>) => void; onRemove: (index: number) => void }) {

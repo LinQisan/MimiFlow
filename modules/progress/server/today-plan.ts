@@ -72,7 +72,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
       : '暂无听力语料，请先录入。',
     href: topLesson
       ? `/listening/${topLesson.id}`
-      : '/manage/import?type=listening',
+      : '/manage/import?language=ja&scope=paper&type=listening',
     disabled: !topLesson,
   }
   const readingTask: TodayTaskItem = {
@@ -85,7 +85,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
       : '暂无阅读材料，请先录入。',
     href: topArticle
       ? `/reading/articles/${topArticle.id}`
-      : '/manage/import?type=reading',
+      : '/manage/import?language=ja&scope=paper&type=reading',
     disabled: !topArticle,
   }
   const retryTask: TodayTaskItem = {

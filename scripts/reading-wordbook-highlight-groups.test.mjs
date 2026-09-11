@@ -8,8 +8,8 @@ import {
   groupWordbookHighlightChoices,
   jlptLevelsIntersect,
   resolveJlptHighlightSlot,
-  resolvePrimaryJlpt,
-} from '../features/reading/domain/wordbook-highlight-groups.ts'
+} from '../modules/reading/domain/wordbook-highlight-groups.ts'
+import { resolvePrimaryVocabularyJlpt } from '../modules/knowledge/vocabulary/domain/jlpt.ts'
 
 const ROOT = process.cwd()
 
@@ -94,22 +94,22 @@ test('JLPT filtering uses intersection semantics and a stable primary color', ()
   assert.equal(jlptLevelsIntersect(['N1', 'N2'], ['N1']), true)
   assert.equal(jlptLevelsIntersect(['N1', 'N2'], ['N3']), false)
   assert.equal(jlptLevelsIntersect(['N1', 'N2'], []), true)
-  assert.equal(resolvePrimaryJlpt('["N2", "N1"]'), 'N1')
+  assert.equal(resolvePrimaryVocabularyJlpt('["N2", "N1"]'), 'N1')
 
-  assert.equal(resolvePrimaryJlpt(['N2', 'N1']), 'N1')
-  assert.equal(resolvePrimaryJlpt(['N2', 'N1', 'N5']), 'N1')
-  assert.equal(resolveJlptHighlightSlot(resolvePrimaryJlpt(['N2', 'N1'])), 4)
-  assert.equal(resolveJlptHighlightSlot(resolvePrimaryJlpt(['N4'])), 1)
+  assert.equal(resolvePrimaryVocabularyJlpt(['N2', 'N1']), 'N1')
+  assert.equal(resolvePrimaryVocabularyJlpt(['N2', 'N1', 'N5']), 'N1')
+  assert.equal(resolveJlptHighlightSlot(resolvePrimaryVocabularyJlpt(['N2', 'N1'])), 4)
+  assert.equal(resolveJlptHighlightSlot(resolvePrimaryVocabularyJlpt(['N4'])), 1)
 })
 
 test('reading controls expose sources and JLPT, but never Unit leaves', async () => {
   const [selector, reader] = await Promise.all([
     readFile(
-      path.join(ROOT, 'features/reading/ui/WordbookHighlightSelector.tsx'),
+      path.join(ROOT, 'modules/reading/components/WordbookHighlightSelector.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'features/reading/ui/ArticleReaderClient.tsx'),
+      path.join(ROOT, 'modules/reading/components/ArticleReaderClient.tsx'),
       'utf8',
     ),
   ])

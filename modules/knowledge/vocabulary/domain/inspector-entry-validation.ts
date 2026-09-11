@@ -4,42 +4,41 @@ const text = z.string().max(20_000)
 const shortText = z.string().max(4_000)
 const optionalText = text.optional().nullable()
 
-const identified = z.object({ id: z.string().min(1).optional() }).passthrough()
+const identified = z.object({ id: z.string().min(1).optional() })
 
 const definition = identified.extend({
   language: z.string().min(1).max(32),
   dictionaryName: shortText,
   definition: text,
-  senseId: z.string().min(1).nullable(),
-})
+  senseId: z.string().min(1),
+}).strict()
 
 const sentence = identified.extend({
-  senseId: z.string().min(1).nullable(),
+  senseId: z.string().min(1),
   text: text.min(1),
   translation: optionalText,
   source: shortText,
   sourceUrl: shortText,
   audioFile: optionalText,
-  meaningIndex: z.number().int().nullable(),
   posTags: z.array(z.string().min(1).max(200)).max(100),
-})
+}).strict()
 
 const pattern = identified.extend({
-  senseId: z.string().min(1).nullable(),
+  senseId: z.string().min(1),
   text: text.min(1),
   meaning: optionalText,
-})
+}).strict()
 
 const expression = identified.extend({
-  senseId: z.string().min(1).nullable(),
+  senseId: z.string().min(1),
   type: z.enum(['collocation', 'compound', 'idiom']),
   text: text.min(1),
   reading: optionalText,
   meaning: optionalText,
-})
+}).strict()
 
 const relation = identified.extend({
-  senseId: z.string().min(1).nullable(),
+  senseId: z.string().min(1),
   type: z.enum([
     'compound',
     'synonym',
@@ -54,13 +53,13 @@ const relation = identified.extend({
   targetReading: optionalText,
   marker: shortText.optional().nullable(),
   pattern: shortText.optional().nullable(),
-})
+}).strict()
 
 const note = identified.extend({
-  senseId: z.string().min(1).nullable(),
+  senseId: z.string().min(1),
   type: z.enum(['usage', 'register', 'restriction', 'grammar', 'nuance', 'warning']),
   text: text.min(1),
-})
+}).strict()
 
 export const vocabularyInspectorEntryDraftSchema = z.object({
   id: z.string().min(1),
@@ -68,7 +67,6 @@ export const vocabularyInspectorEntryDraftSchema = z.object({
   pronunciations: z.array(text).max(100),
   etymologies: z.array(text).max(100).optional(),
   partsOfSpeech: z.array(text).max(100),
-  meanings: z.array(text).max(100),
   grammarPartOfSpeech: z
     .enum(['noun', 'verb', 'i_adjective', 'na_adjective', 'adverb', 'adnominal', 'other'])
     .nullable(),
@@ -77,14 +75,14 @@ export const vocabularyInspectorEntryDraftSchema = z.object({
   wordAudio: optionalText,
   tags: z.array(shortText).max(200),
   wordbookIds: z.array(z.string().min(1)).max(200),
-  senses: z.array(z.object({ id: z.string().min(1) }).passthrough()),
+  senses: z.array(z.object({ id: z.string().min(1) }).strict()),
   definitions: z.array(definition).max(2_000),
   sentences: z.array(sentence).max(2_000),
   patterns: z.array(pattern).max(2_000),
   expressions: z.array(expression).max(2_000),
   relations: z.array(relation).max(2_000),
   notes: z.array(note).max(2_000),
-}).passthrough()
+}).strict()
 
 export type VocabularyInspectorEntryInput = z.infer<typeof vocabularyInspectorEntryDraftSchema>
 
@@ -93,10 +91,7 @@ export function parseVocabularyInspectorEntry(
 ):
   | { success: true; data: VocabularyInspectorEntryInput }
   | { success: false; error: z.ZodError } {
-  const candidate = typeof input === 'object' && input !== null && 'entry' in input
-    ? input.entry
-    : input
-  const parsed = vocabularyInspectorEntryDraftSchema.safeParse(candidate)
+  const parsed = vocabularyInspectorEntryDraftSchema.safeParse(input)
   if (!parsed.success) return parsed
   return {
     success: true as const,

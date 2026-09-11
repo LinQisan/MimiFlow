@@ -1,4 +1,5 @@
 import { Prisma, type SourceType } from '@prisma/client'
+import { wordbookVocabularyOrderSql } from '../../wordbooks/vocabulary-order-query.ts'
 
 export type VocabularyPageScope = {
   wordbookFilter: string
@@ -29,7 +30,7 @@ export function vocabularyPageWhere(input: VocabularyPageScope): Prisma.Vocabula
   const wordbooks: Prisma.VocabularyWhereInput = input.wordbookFilter === 'all'
     ? {}
     : input.wordbookFilter === 'none'
-      ? { wordbooks: { none: { wordbook: { NOT: { id: { startsWith: 'legacy-' } } } } } }
+      ? { wordbooks: { none: {} } }
       : input.seriesFilter
         ? { wordbooks: { some: { wordbook: { seriesId: input.seriesFilter } } } }
         : { wordbooks: { some: { wordbookId: input.wordbookFilter } } }
@@ -41,7 +42,15 @@ export function vocabularyPageWhere(input: VocabularyPageScope): Prisma.Vocabula
         { word: { contains: input.keyword } },
         { pronunciations: { contains: input.keyword } },
         { etymologies: { contains: input.keyword } },
-        { meanings: { contains: input.keyword } },
+        {
+          senses: {
+            some: {
+              definitions: {
+                some: { definition: { contains: input.keyword } },
+              },
+            },
+          },
+        },
       ] }] : []),
     ],
   }
@@ -50,16 +59,15 @@ export function vocabularyPageWhere(input: VocabularyPageScope): Prisma.Vocabula
 function scopeSql(userId: string, input: VocabularyPageScope) {
   const clauses = [Prisma.sql`v.user_id = ${userId}`]
   if (input.wordbookFilter !== 'all') {
-    const needsWordbook = input.wordbookFilter === 'none' || Boolean(input.seriesFilter)
     const membership = Prisma.sql`
       SELECT wv.vocabulary_id FROM wordbook_vocabularies wv
-      ${needsWordbook ? Prisma.sql`LEFT JOIN wordbooks w ON w.id = wv.wordbook_id` : Prisma.empty}
+      ${input.seriesFilter ? Prisma.sql`LEFT JOIN wordbooks w ON w.id = wv.wordbook_id` : Prisma.empty}
       WHERE ${input.wordbookFilter === 'none'
-        ? Prisma.sql`w.id NOT LIKE 'legacy-%'`
+        ? Prisma.sql`TRUE`
         : input.seriesFilter
           ? Prisma.sql`w.series_id = ${input.seriesFilter}`
           : Prisma.sql`wv.wordbook_id = ${input.wordbookFilter}`}
-        ${needsWordbook ? Prisma.sql`AND w.id IS NOT NULL` : Prisma.empty}
+        ${input.seriesFilter ? Prisma.sql`AND w.id IS NOT NULL` : Prisma.empty}
         AND wv.vocabulary_id = v.id AND wv.vocabulary_id IS NOT NULL`
     clauses.push(input.wordbookFilter === 'none'
       ? Prisma.sql`NOT EXISTS (${membership})`
@@ -75,7 +83,15 @@ function scopeSql(userId: string, input: VocabularyPageScope) {
   if (input.keyword) {
     // Match Prisma contains, including its existing LIKE wildcard semantics.
     const pattern = `%${input.keyword}%`
-    clauses.push(Prisma.sql`(v.word LIKE ${pattern} OR v.pronunciations LIKE ${pattern} OR v.etymologies LIKE ${pattern} OR v.meanings LIKE ${pattern})`)
+    clauses.push(Prisma.sql`(
+      v.word LIKE ${pattern}
+      OR v.pronunciations LIKE ${pattern}
+      OR v.etymologies LIKE ${pattern}
+      OR EXISTS (
+        SELECT 1 FROM vocabulary_definitions d
+        WHERE d.vocabulary_id = v.id AND d.definition LIKE ${pattern}
+      )
+    )`)
   }
   return Prisma.join(clauses, ' AND ')
 }
@@ -97,6 +113,10 @@ export function vocabularyGroupPageSql(
   posDictionary: Array<{ raw: string | null; options: string[] }>,
   languageGroups: { kana: string; hangul: string; han: string; cyrillic: string; other: string },
 ) {
+  const leafWordbook = input.wordbookFilter !== 'all' && input.wordbookFilter !== 'none' && !input.seriesFilter
+  const groupedBooks = input.wordbookFilter === 'all' || Boolean(input.seriesFilter)
+  const rowOrder = Prisma.sql`${leafWordbook ? Prisma.sql`entry.sort_order ASC,` : Prisma.empty}
+    ${groupedBooks ? Prisma.sql`book_order.position ASC NULLS LAST,` : Prisma.empty} v."createdAt" ASC, v.id ASC`
   const matchingRawValues = posDictionary
     .filter(row => row.options.includes(input.posFilter) && row.raw !== null)
     .map(row => row.raw as string)
@@ -112,12 +132,20 @@ export function vocabularyGroupPageSql(
       )`
     : Prisma.sql`SELECT DISTINCT unnest(d.options) AS value FROM dictionary d`
   return Prisma.sql`
-    WITH ordered AS MATERIALIZED (
-      SELECT v.id, v.word, v.normalized_word, v.pronunciations, v."partsOfSpeech", v."sourceType"::text
-      FROM "Vocabulary" v WHERE ${scopeSql(userId, input)}
-      ORDER BY v."createdAt" DESC
+    WITH book_order AS (
+      ${groupedBooks ? wordbookVocabularyOrderSql(userId, input.seriesFilter) : Prisma.sql`SELECT NULL::text AS vocabulary_id, NULL::bigint AS position WHERE false`}
+    ), ordered AS MATERIALIZED (
+      SELECT v.id, v.word, v.normalized_word, v."partsOfSpeech", row_number() OVER (ORDER BY ${rowOrder}) AS ordinal
+      FROM "Vocabulary" v
+      ${leafWordbook ? Prisma.sql`
+        JOIN wordbook_vocabularies entry ON entry.vocabulary_id = v.id AND entry.wordbook_id = ${input.wordbookFilter}
+        JOIN wordbooks book ON book.id = entry.wordbook_id AND book.user_id = ${userId}
+      ` : Prisma.empty}
+      ${groupedBooks ? Prisma.sql`LEFT JOIN book_order ON book_order.vocabulary_id = v.id` : Prisma.empty}
+      WHERE ${scopeSql(userId, input)}
+
     ), keyed AS MATERIALIZED (
-      SELECT o.*, row_number() OVER () AS ordinal,
+      SELECT o.*,
         o.normalized_word COLLATE "C" AS key,
         CASE
           WHEN o.word COLLATE "C" ~ ${'[\u3040-\u30ff]'} THEN ${languageGroups.kana}

@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, useTransition } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
-import WordAudioButton from '@/components/vocabulary/WordAudioButton'
+import WordAudioButton from '@/modules/knowledge/vocabulary/components/WordAudioButton'
 import type { VocabItem } from '../../types'
 import { addNadeshikoExample, searchNadeshikoExamples } from '../actions'
 import { nadeshikoSourceLabel, type NadeshikoSearchItem, type NadeshikoSearchState } from '../domain'
@@ -56,7 +56,7 @@ export default function NadeshikoSearchPanel({ vocabulary, editing = false }: {
       try {
         const result = await addNadeshikoExample({
           vocabularyId: vocabulary.id, query: completedQuery,
-          externalId: example.externalId, senseId: selectedSenseId || null,
+          externalId: example.externalId, senseId: selectedSenseId,
         })
         if (result.success) {
           setExamples(previous => previous.map(item => item.externalId === example.externalId ? { ...item, isAdded: true } : item))

@@ -31,11 +31,11 @@ import { getPaperReadingMaterialTitle } from '@/modules/questions/domain/paper-e
 import {
   normalizePaperAttributes,
   PAPER_ACCEPTED_MATERIAL_TYPES,
-} from '@/features/practice/domain/paper-attributes'
+} from '@/modules/practice/domain/paper-attributes'
 import {
   invalidatePracticeVocabularyAnalytics,
   precomputePracticeVocabularyMaterialAnalyses,
-} from '@/features/practice/server/vocabulary-analytics'
+} from '@/modules/practice/server/vocabulary-analytics'
 
 type QuestionOptionInput = {
   text?: string | null
@@ -60,8 +60,6 @@ type CreateArticlePayload = {
   sourceKind?: string | null
   publishedDate?: string | null
   edition?: string | null
-  newsSeries?: string | null
-  pageNumber?: string | null
   newsSource?: string | null
   newsType?: string | null
   newsSection?: string | null
@@ -251,12 +249,6 @@ export async function createArticle(data: CreateArticlePayload) {
                 : isNews && ['MORNING', 'EVENING', 'FLASH'].includes(data.edition || '')
                 ? data.edition
                 : '',
-            newsSeries: isNews && ['天声人語', '社説', '春秋'].includes(
-              (data.newsSeries || '').trim(),
-            )
-              ? (data.newsSeries || '').trim()
-              : '',
-            pageNumber: isNews ? newsSection : '',
             newsSource: isNews && ['日経', '朝日'].includes((data.newsSource || '').trim())
               ? (data.newsSource || '').trim()
               : '',
@@ -591,7 +583,7 @@ type UpdateArticlePayload = {
   sourceKind?: string
   publishedDate?: string
   edition?: string
-  pageNumber?: string
+  newsSection?: string
   audioFile?: string
   questions: EditableArticleQuestionInput[]
 }
@@ -648,7 +640,7 @@ export async function updateArticleWithQuestions(
               )
                 ? payload.edition
                 : '',
-              pageNumber: (payload.pageNumber || '').trim(),
+              newsSection: (payload.newsSection || '').trim(),
               audioFile,
             },
           ),
@@ -875,9 +867,7 @@ export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
               ? {
                   ...baseContent,
                   listeningSectionNumber,
-                  sectionNumber: listeningSectionNumber,
                   listeningSectionTitle: '听力',
-                  sectionTitle: '听力',
                 }
               : baseContent,
           ),
@@ -1058,9 +1048,7 @@ export async function updateLessonQuestions(
               ? {
                   ...baseContent,
                   listeningSectionNumber,
-                  sectionNumber: listeningSectionNumber,
                   listeningSectionTitle: '听力',
-                  sectionTitle: '听力',
                 }
               : baseContent,
           prompt: promptText || null,
@@ -1108,7 +1096,6 @@ export async function updateLessonQuestions(
             {
               questionEntryRequired: false,
               listeningSectionNumber,
-              sectionNumber: listeningSectionNumber,
             },
           ),
         },

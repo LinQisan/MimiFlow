@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import test from 'node:test'
-import { createTrustedMarkupSlots } from '../components/exam/question-renderer/trustedMarkup.ts'
+import { createTrustedMarkupSlots } from '../modules/questions/components/question-renderer/trustedMarkup.ts'
 
 const hook = registerHooks({
   resolve(specifier, context, next) {
@@ -10,7 +10,7 @@ const hook = registerHooks({
       : specifier, context)
   },
 })
-const { annotateExamText } = await import('../components/exam/question-renderer/annotate.ts')
+const { annotateExamText } = await import('../modules/questions/components/question-renderer/annotate.ts')
 hook.deregister()
 
 const lexicon = Object.fromEntries(['猫', '0', '1', 'EXAM', 'BLANK'].map(surface => [surface, {

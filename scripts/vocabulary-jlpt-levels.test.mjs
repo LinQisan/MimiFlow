@@ -9,11 +9,6 @@ import {
   normalizeVocabularyJlptLevels,
   resolvePrimaryVocabularyJlpt,
 } from '../modules/knowledge/vocabulary/domain/jlpt.ts'
-import {
-  mergeJlptLevels,
-  normalizeJlptLevels,
-  resolvePrimaryJlpt,
-} from '../features/reading/domain/wordbook-highlight-groups.ts'
 
 test('single JLPT values normalize without dropping information', () => {
   assert.equal(normalizeVocabularyJlpt(' n2 '), 'N2')
@@ -51,13 +46,4 @@ test('levels sort by priority N1 first', () => {
     mergeVocabularyJlptLevels(['N3'], 'N1/N2', ['N2', 'N6']),
     ['N1', 'N2', 'N3'],
   )
-})
-
-test('reading re-exports stay identical to the canonical helper', () => {
-  const inputs = ['N2', ['N2', 'N3'], '["N1", "N2"]', 'N2/N3', null, ['N9']]
-  for (const input of inputs) {
-    assert.deepEqual(normalizeJlptLevels(input), normalizeVocabularyJlptLevels(input))
-    assert.equal(resolvePrimaryJlpt(input), resolvePrimaryVocabularyJlpt(input))
-  }
-  assert.deepEqual(mergeJlptLevels(['N3'], 'N1'), mergeVocabularyJlptLevels(['N3'], 'N1'))
 })

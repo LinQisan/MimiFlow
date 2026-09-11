@@ -12,12 +12,12 @@ test('reading materials persist uploaded audio and expose playback controls', as
       readFile(path.join(ROOT, 'modules/content/actions/materials.ts'), 'utf8'),
       readFile(path.join(ROOT, 'lib/repositories/collection/manage.ts'), 'utf8'),
       readFile(path.join(ROOT, 'lib/repositories/materials/index.ts'), 'utf8'),
-      readFile(path.join(ROOT, 'features/content/ui/EditArticleUI.tsx'), 'utf8'),
+      readFile(path.join(ROOT, 'modules/content/components/EditArticleUI.tsx'), 'utf8'),
       readFile(
-        path.join(ROOT, 'app/(library)/reading/articles/[id]/page.tsx'),
+        path.join(ROOT, 'app/reading/articles/[id]/page.tsx'),
         'utf8',
       ),
-      readFile(path.join(ROOT, 'features/audio/manage-actions.ts'), 'utf8'),
+      readFile(path.join(ROOT, 'modules/media/audio/manage-actions.ts'), 'utf8'),
     ])
 
   assert.match(codec, /audioFile: z\.string\(\)\.catch\(''\)/)

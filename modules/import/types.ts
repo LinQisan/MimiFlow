@@ -1,5 +1,5 @@
 import type { CollectionType, MaterialType } from '@prisma/client'
-import type { NewsColumn, NewsEdition, NewsSource, NewsType } from '@/features/reading/domain/news-metadata'
+import type { NewsColumn, NewsEdition, NewsSource, NewsType } from '@/modules/reading/domain/news-metadata'
 
 export type UploadLevelLite = {
   id: string
@@ -75,8 +75,6 @@ export type ArticleFormState = {
   sourceKind: 'ARTICLE' | 'NEWS'
   publishedDate: string
   edition: NewsEdition
-  newsSeries: '' | '天声人語' | '社説' | '春秋'
-  pageNumber: string
   newsSource: NewsSource
   newsType: NewsType
   newsSection: string

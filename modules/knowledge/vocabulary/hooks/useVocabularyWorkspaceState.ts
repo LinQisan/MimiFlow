@@ -80,7 +80,6 @@ export function useVocabularyWorkspaceState(input: {
   const initialItems = filterAndSortVocabulary(
     input.groupedData[initialActiveTab] || [],
     input.initialPosFilter || 'all',
-    'all',
     'recent',
   )
   const initialFocusIndex = input.initialFocusId

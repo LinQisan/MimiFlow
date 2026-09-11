@@ -9,10 +9,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 test('article copy falls back when the mobile clipboard API rejects', async () => {
   const [reader, clipboard] = await Promise.all([
     readFile(
-      path.join(ROOT, 'features/reading/ui/ArticleReaderClient.tsx'),
+      path.join(ROOT, 'modules/reading/components/ArticleReaderClient.tsx'),
       'utf8',
     ),
-    readFile(path.join(ROOT, 'features/reading/ui/copy-text.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/reading/components/copy-text.ts'), 'utf8'),
   ])
 
   assert.match(reader, /await copyText\(textToCopy\)/)

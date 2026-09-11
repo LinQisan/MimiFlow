@@ -61,7 +61,7 @@ test('reclassification is idempotent, preserves spelling and authored order', ()
 })
 
 
-test('legacy audio keeps its file while its button names the Japanese word', () => {
+test('existing audio keeps its file while its button names the Japanese word', () => {
   assert.deepEqual(dedupeVocabularyReadingAudios([
     { reading: 'Interior', audioFile: '/audios/personal.mp3' },
     { reading: 'インテリア', audioFile: '/audios/personal.mp3' },

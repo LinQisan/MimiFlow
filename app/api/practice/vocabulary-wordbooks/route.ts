@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server'
 import { NextResponse } from 'next/server'
 
-import { getPracticeVocabularyWordbookEntries } from '@/features/practice/server/vocabulary-analytics'
+import { getPracticeVocabularyWordbookEntries } from '@/modules/practice/server/vocabulary-analytics'
 
 export async function GET(request: NextRequest) {
   try {

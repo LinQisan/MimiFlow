@@ -40,7 +40,7 @@ export type SerializedVocabulary = Omit<
 }
 
 /**
- * Expand the compact server payload into the existing client-side shape.
+ * Expand the compact server payload into the canonical client-side shape.
  * Every reference resolves synchronously from props, so changing list/card
  * modes never adds a request or exposes a partially-loaded vocabulary.
  */

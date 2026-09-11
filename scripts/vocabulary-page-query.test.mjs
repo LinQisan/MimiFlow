@@ -111,7 +111,7 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
   await client.connect()
   try {
     await client.query('BEGIN')
-    for (const table of ['Vocabulary', 'wordbooks', 'wordbook_vocabularies', 'VocabularyTag', 'VocabularyTagOnVocabulary']) {
+    for (const table of ['Vocabulary', 'wordbook_series', 'wordbooks', 'wordbook_vocabularies', 'VocabularyTag', 'VocabularyTagOnVocabulary']) {
       await client.query(`CREATE TEMP TABLE "${table}" (LIKE public."${table}" INCLUDING DEFAULTS) ON COMMIT DROP`)
     }
     const words = [
@@ -128,7 +128,8 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
       sourceType: vocabularySqlSourceTypes[i % vocabularySqlSourceTypes.length],
       pronunciations: '["あ"]', meanings: i % 2 ? '["meaning"]' : null,
       createdAt: new Date(Date.UTC(2025, 0, 1, 0, 0, i)),
-      books: i % 3 === 0 ? ['book'] : i % 3 === 1 ? ['legacy-book'] : [],
+      entryOrder: 100 - i,
+      books: i % 3 === 0 ? (i % 6 === 0 ? ['book', 'book-next'] : ['book']) : i % 3 === 1 ? ['book-next'] : [],
       tags: i % 2 ? ['tag'] : [],
     }))
     records.push({ ...records[0], id: 'other-user', userId: 'mine', word: 'PRIVATE' })
@@ -136,12 +137,14 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
       await client.query(`INSERT INTO "Vocabulary" (id, user_id, word, normalized_word, "sourceType", "sourceId", pronunciations, "partsOfSpeech", meanings, "createdAt", "updatedAt")
         VALUES ($1,$2,$3,$4,$5,'fixture',$6,$7,$8,$9,$9)`, [record.id, record.userId, record.word, normalizeWord(record.word), record.sourceType, record.pronunciations, record.partsOfSpeech, record.meanings, record.createdAt])
     }
-    for (const id of ['book', 'legacy-book']) {
+    await client.query(`INSERT INTO wordbook_series (id,user_id,title,"updatedAt") VALUES ('series','default','Series',now())`)
+    for (const id of ['book', 'book-next']) {
       await client.query('INSERT INTO wordbooks (id,user_id,title,series_id,"updatedAt") VALUES ($1,\'default\',$1,\'series\',now())', [id])
     }
+    await client.query(`UPDATE wordbooks SET "sortOrder" = 1 WHERE id = 'book-next'`)
     await client.query(`INSERT INTO "VocabularyTag" (id,user_id,name) VALUES ('tag','default','tag')`)
     for (const record of records) {
-      for (const book of record.books) await client.query('INSERT INTO wordbook_vocabularies (id,wordbook_id,vocabulary_id,updated_at) VALUES ($1,$2,$3,now())', [`${record.id}-${book}`, book, record.id])
+      for (const book of record.books) await client.query('INSERT INTO wordbook_vocabularies (id,wordbook_id,vocabulary_id,sort_order,updated_at) VALUES ($1,$2,$3,$4,now())', [`${record.id}-${book}`, book, record.id, record.entryOrder])
       for (const tag of record.tags) await client.query('INSERT INTO "VocabularyTagOnVocabulary" ("vocabularyId","tagId") VALUES ($1,$2)', [record.id, tag])
     }
     const scenarios = [
@@ -151,7 +154,7 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
       ...['日语', '英语', '中文', '韩语', '未分类', 'missing'].map(groupFilter => ({ groupFilter })),
       ...['名詞', '動詞', '形容詞', 'い形容詞', 'unknown'].map(posFilter => ({ posFilter })),
       { groupFilter: '英语', posFilter: '形容詞' },
-      { wordbookFilter: 'none' }, { wordbookFilter: 'book' }, { wordbookFilter: 'legacy-book' },
+      { wordbookFilter: 'none' }, { wordbookFilter: 'book' }, { wordbookFilter: 'book-next' },
       { wordbookFilter: 'series:series', seriesFilter: 'series' }, { wordbookFilter: 'missing' },
       { tagFilter: 'tag' }, { tagFilter: 'missing' }, { keyword: 'meaning' },
       { keyword: 'あ' }, { keyword: '%' }, { keyword: '_' }, { keyword: 'unmatched' },
@@ -168,11 +171,21 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
           const input = { ...defaults, ...scenario }
           const rows = records.filter(row => row.userId === userId)
             .filter(row => input.wordbookFilter === 'all' || (input.wordbookFilter === 'none'
-              ? !row.books.some(id => !id.startsWith('legacy-'))
-              : input.seriesFilter ? row.books.length > 0 : row.books.includes(input.wordbookFilter)))
+              ? row.books.length === 0
+              : input.seriesFilter ? row.books.length > 0 : userId === 'default' && row.books.includes(input.wordbookFilter)))
             .filter(row => input.tagFilter === 'all' || row.tags.includes(input.tagFilter))
             .filter(row => !input.keyword || [row.word, row.pronunciations, row.meanings].some(value => like(value, input.keyword)))
-            .sort((a, b) => b.createdAt - a.createdAt)
+            .sort((a, b) => {
+              const rank = row => {
+                if (userId !== 'default') return Number.MAX_SAFE_INTEGER
+                const book = ['book', 'book-next'].findIndex(id => row.books.includes(id))
+                return book < 0 ? Number.MAX_SAFE_INTEGER : book * 10000 + row.entryOrder
+              }
+              const order = input.wordbookFilter === 'all' || input.seriesFilter
+                ? rank(a) - rank(b)
+                : input.wordbookFilter !== 'none' ? a.entryOrder - b.entryOrder : 0
+              return order || a.createdAt - b.createdAt || a.id.localeCompare(b.id)
+            })
           const dictionary = [...new Set(rows.map(row => row.partsOfSpeech))].map(raw => ({
             raw, options: getVocabularyPartOfSpeechFilterOptions(parseJsonStringList(raw)),
           }))

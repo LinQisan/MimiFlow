@@ -1,5 +1,3 @@
-export { RELATION_TYPE_OPTIONS } from './relations.ts'
-
 export const VOCABULARY_POS_OPTIONS = [
   ['noun', '名詞'],
   ['verb', '動詞'],
@@ -34,7 +32,7 @@ export const USAGE_NOTE_TYPE_OPTIONS = [
 export type VocabularyEntryDraft = {
   vocabularyId: string
   word: string
-  reading: string
+  pronunciations: string[]
   etymologies?: string[]
   grammarPartOfSpeech: 'noun' | 'verb' | 'i_adjective' | 'na_adjective' | 'adverb' | 'adnominal' | 'other'
   transitivity?: 'intransitive' | 'transitive' | 'both' | null
@@ -56,7 +54,6 @@ export type VocabularyEntryDraft = {
     relations: Array<{ id: string; type: 'compound' | 'synonym' | 'antonym' | 'related' | 'collocation' | 'transitivity_pair' | 'derived'; targetVocabularyId?: string | null; targetText: string; targetReading?: string | null; marker?: string | null; pattern?: string | null }>
     notes: Array<{ id: string; type: 'usage' | 'register' | 'restriction' | 'grammar' | 'nuance' | 'warning'; text: string }>
   }>
-  relations: Array<{ id: string; type: 'compound' | 'synonym' | 'antonym' | 'related' | 'collocation' | 'transitivity_pair' | 'derived'; targetVocabularyId?: string | null; targetText: string; targetReading?: string | null; marker?: string | null; pattern?: string | null }>
 }
 
 export function inferStructuredPartOfSpeech(partsOfSpeech: string[]) {
@@ -72,4 +69,8 @@ export function inferStructuredPartOfSpeech(partsOfSpeech: string[]) {
 
 export function structuredPartOfSpeechLabel(value: string) {
   return VOCABULARY_POS_OPTIONS.find(option => option[0] === value)?.[1] || '其他'
+}
+
+export function normalizeEntryPronunciations(pronunciations: string[]) {
+  return [...new Set(pronunciations.map(value => value.trim()).filter(Boolean))]
 }

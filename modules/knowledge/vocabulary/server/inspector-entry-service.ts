@@ -9,7 +9,8 @@ import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { normalizeVocabularySentenceTextKey } from '@/utils/vocabulary/sentenceQuality'
 import { normalizeVocabularyWord } from '../domain/normalized-word'
 import { normalizeRelationMetadata } from '../domain/relations'
-import { normalizeSentencePosTags } from './repository'
+import { normalizeVocabularySentencePosTags } from '../domain/sentence-pos-tags'
+import { listVocabularySentenceLinks, resolveAudioDialogueClips } from './repository'
 import {
   hasClientSenseId,
   parseVocabularyInspectorEntry,
@@ -28,6 +29,24 @@ import { dedupeAndRankSentences } from '@/utils/vocabulary/sentenceQuality'
 
 const INSPECTOR_ORIGINAL_SOURCE_URL = '__mimiflowInspectorOriginalSourceUrl'
 
+function effectiveSourceUrl(sourceUrl: string, sourceMetadata: Prisma.JsonValue | null) {
+  if (sourceMetadata && typeof sourceMetadata === 'object' && !Array.isArray(sourceMetadata)) {
+    const value = (sourceMetadata as Record<string, unknown>)[INSPECTOR_ORIGINAL_SOURCE_URL]
+    if (typeof value === 'string' && value) return value
+  }
+  return sourceUrl
+}
+
+function clonedSourceMetadata(sourceMetadata: Prisma.JsonValue | null, originalSourceUrl: string) {
+  const object = sourceMetadata && typeof sourceMetadata === 'object' && !Array.isArray(sourceMetadata)
+    ? sourceMetadata
+    : {}
+  return {
+    ...object,
+    [INSPECTOR_ORIGINAL_SOURCE_URL]: originalSourceUrl,
+  } as Prisma.InputJsonValue
+}
+
 const wordbookLabel = (wordbook: { title: string; series: { title: string } }) =>
   [wordbook.series.title, wordbook.title].filter(Boolean).join(' / ')
 
@@ -38,22 +57,11 @@ const INSPECTOR_SELECT = {
   etymologies: true,
   pronunciations: true,
   partsOfSpeech: true,
-  meanings: true,
   grammarPartOfSpeech: true,
   transitivity: true,
   conjugationType: true,
   wordAudio: true,
   tags: { select: { tag: { select: { name: true } } } },
-  definitions: {
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    select: {
-      id: true,
-      language: true,
-      dictionaryName: true,
-      definition: true,
-      senseId: true,
-    },
-  },
   senses: {
     orderBy: { order: 'asc' },
     select: {
@@ -68,7 +76,6 @@ const INSPECTOR_SELECT = {
         select: {
           id: true,
           senseId: true,
-          meaningIndex: true,
           posTags: true,
           sentence: {
             select: {
@@ -108,21 +115,11 @@ const INSPECTOR_SELECT = {
       },
     },
   },
-  relations: {
-    where: { senseId: null },
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
-    select: {
-      id: true, senseId: true, type: true, targetVocabularyId: true,
-      targetText: true, targetReading: true, marker: true, pattern: true,
-      targetVocabulary: { select: { userId: true, word: true } },
-    },
-  },
   sentenceLinks: {
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
       senseId: true,
-      meaningIndex: true,
       posTags: true,
       sentence: {
         select: {
@@ -141,27 +138,9 @@ const INSPECTOR_SELECT = {
 
 type InspectorRow = Prisma.VocabularyGetPayload<{ select: typeof INSPECTOR_SELECT }>
 
-function effectiveSourceUrl(sourceUrl: string, sourceMetadata: Prisma.JsonValue | null) {
-  if (sourceMetadata && typeof sourceMetadata === 'object' && !Array.isArray(sourceMetadata)) {
-    const value = sourceMetadata[INSPECTOR_ORIGINAL_SOURCE_URL]
-    if (typeof value === 'string' && value) return value
-  }
-  return sourceUrl
-}
-
-function clonedSourceMetadata(sourceMetadata: Prisma.JsonValue | null, originalSourceUrl: string) {
-  const object = sourceMetadata && typeof sourceMetadata === 'object' && !Array.isArray(sourceMetadata)
-    ? sourceMetadata
-    : {}
-  return {
-    ...object,
-    [INSPECTOR_ORIGINAL_SOURCE_URL]: originalSourceUrl,
-  } as Prisma.InputJsonValue
-}
-
 function buildEntry(row: InspectorRow, userId: string): VocabularyInspectorEntryDraft {
   const senses = row.senses.map(sense => ({ id: sense.id }))
-  const definitions = row.definitions.map(definition => ({
+  const definitions = row.senses.flatMap(sense => sense.definitions).map(definition => ({
     id: definition.id,
     language: definition.language,
     dictionaryName: definition.dictionaryName,
@@ -176,15 +155,11 @@ function buildEntry(row: InspectorRow, userId: string): VocabularyInspectorEntry
     source: link.sentence.source,
     sourceUrl: effectiveSourceUrl(link.sentence.sourceUrl, link.sentence.sourceMetadata),
     audioFile: link.sentence.audioFile,
-    meaningIndex: link.meaningIndex,
-    posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
+    posTags: normalizeVocabularySentencePosTags(parseJsonStringList(link.posTags)),
   }))
   const patterns = row.senses.flatMap(sense => sense.patterns.map(pattern => ({ ...pattern })))
   const expressions = row.senses.flatMap(sense => sense.expressions.map(expression => ({ ...expression })))
-  const relations = [
-    ...row.relations,
-    ...row.senses.flatMap(sense => sense.relations),
-  ].map(relation => ({
+  const relations = row.senses.flatMap(sense => sense.relations).map(relation => ({
     id: relation.id,
     senseId: relation.senseId,
     type: relation.type,
@@ -201,12 +176,11 @@ function buildEntry(row: InspectorRow, userId: string): VocabularyInspectorEntry
     word: row.word,
     ...splitJapaneseEtymologies(row.word, parseJsonStringList(row.pronunciations), parseJsonStringList(row.etymologies)),
     partsOfSpeech: parseJsonStringList(row.partsOfSpeech),
-    meanings: parseJsonStringList(row.meanings),
     grammarPartOfSpeech: row.grammarPartOfSpeech,
     transitivity: row.transitivity,
     conjugationType: row.conjugationType,
     wordAudio: row.wordAudio,
-    tags: row.tags.map(item => item.tag.name),
+    tags: filterVocabularyTags(row.tags.map(item => item.tag.name)),
     wordbookIds: row.wordbooks.map(item => item.wordbook.id),
     senses,
     definitions,
@@ -218,50 +192,26 @@ function buildEntry(row: InspectorRow, userId: string): VocabularyInspectorEntry
   }
 }
 
-function buildLegacyData(row: InspectorRow, userId: string, availableWordbooks: Array<{ id: string; title: string; series: { title: string } }>): VocabularyInspectorData {
+function buildInspectorData(row: InspectorRow, userId: string, availableWordbooks: Array<{ id: string; title: string; series: { title: string } }>): VocabularyInspectorData {
   const entry = buildEntry(row, userId)
-  const expressions = row.senses.flatMap(sense => sense.expressions.map(expression => ({
-    id: expression.id,
-    type: expression.type,
-    text: expression.text,
-    reading: expression.reading,
-    meaning: expression.meaning,
-    senseOrder: sense.order,
-  })))
-  const relations = [...row.relations, ...row.senses.flatMap(sense => sense.relations)].map(relation => ({
-    id: relation.id,
-    type: relation.type,
-    text: relation.targetVocabulary?.userId === userId ? relation.targetVocabulary.word : relation.targetText || '',
-    reading: relation.targetReading,
-    senseOrder: relation.senseId ? row.senses.find(sense => sense.id === relation.senseId)?.order ?? null : null,
-  }))
   const summarySentences = dedupeAndRankSentences(row.sentenceLinks.map(link => ({
     text: link.sentence.text.trim(),
     translation: link.sentence.translation?.trim() || null,
     audioFile: link.sentence.audioFile || null,
     source: link.sentence.source.trim(),
-    sourceUrl: effectiveSourceUrl(link.sentence.sourceUrl, link.sentence.sourceMetadata),
+    sourceUrl: link.sentence.sourceUrl,
     sourceType: link.sentence.sourceType,
-    meaningIndex: link.meaningIndex,
-    posTags: normalizeSentencePosTags(parseJsonStringList(link.posTags)),
+    senseId: link.senseId,
+    posTags: normalizeVocabularySentencePosTags(parseJsonStringList(link.posTags)),
   })), 12).map(({ text, translation, audioFile, source, posTags }) => ({ text, translation, audioFile, source, posTags }))
 
   return {
     id: row.id,
     word: row.word,
-    pronunciations: entry.pronunciations,
-    etymologies: entry.etymologies,
-    partsOfSpeech: entry.partsOfSpeech,
-    tags: filterVocabularyTags(entry.tags),
-    meanings: entry.meanings,
-    expressions,
-    relations,
-    structured: row.senses.length > 0,
     wordAudio: row.wordAudio,
     sentences: summarySentences,
     memberships: row.wordbooks.map(item => ({ id: item.wordbook.id, label: wordbookLabel(item.wordbook) })),
     availableWordbooks: availableWordbooks.map(item => ({ id: item.id, label: wordbookLabel(item) })),
-    definitions: row.definitions.map(({ id, language, dictionaryName, definition }) => ({ id, language, dictionaryName, definition })),
     entry,
   }
 }
@@ -273,11 +223,25 @@ export async function readVocabularyInspectorData(userId: string, vocabularyId: 
   })
   if (!row) return null
   const availableWordbooks = await prisma.wordbook.findMany({
-    where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
+    where: { userId },
     orderBy: [{ series: { sortOrder: 'asc' } }, { series: { createdAt: 'asc' } }, { sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: { id: true, title: true, series: { select: { title: true } } },
   })
-  return buildLegacyData(row, userId, availableWordbooks)
+  const data = buildInspectorData(row, userId, availableWordbooks)
+  const links = await listVocabularySentenceLinks([row.id])
+  const clips = await resolveAudioDialogueClips(links.map(link => link.sentence.sourceId || '').filter(Boolean))
+  data.sentences = dedupeAndRankSentences(links.map(link => ({
+    text: link.sentence.text,
+    translation: link.sentence.translation || null,
+    audioFile: link.sentence.audioFile || null,
+    audioData: clips[link.sentence.sourceId || ''] || null,
+    source: link.sentence.source,
+    sourceUrl: link.sentence.sourceUrl,
+    sourceType: link.sentence.sourceType,
+    senseId: link.senseId,
+    posTags: normalizeVocabularySentencePosTags(parseJsonStringList(link.posTags)),
+  })), 12)
+  return data
 }
 
 export async function findVocabularyInspectorData(userId: string, word: string, wordbookId?: string) {
@@ -304,8 +268,7 @@ function assertExistingIds(ids: string[], owned: Set<string>, label: string) {
   if (ids.some(id => !owned.has(id))) fail(`${label}已变化，请重新打开后编辑。`, 'CONFLICT')
 }
 
-function senseIdFor(value: string | null, senseMap: Map<string, string>, label: string) {
-  if (!value) return null
+function senseIdFor(value: string, senseMap: Map<string, string>, label: string) {
   const mapped = senseMap.get(value)
   if (!mapped) fail(`${label}引用了不存在的义项。`)
   return mapped
@@ -339,9 +302,9 @@ async function writeSentence(
   tx: Tx,
   vocabularyId: string,
   item: VocabularyInspectorEntryInput['sentences'][number],
-  senseId: string | null,
+  senseId: string,
   sortOrder: number,
-  existingLink: { id: string; sentenceId: string; senseId: string | null; meaningIndex: number | null; posTags: string | null; sentence: { id: string; text: string; translation: string | null; audioFile: string | null; source: string; sourceUrl: string; sourceType: any; sourceId: string | null; sourceMetadata: Prisma.JsonValue | null; provider: string | null; externalId: string | null; pronunciationData: Prisma.JsonValue | null; pronunciationVersion: number | null; _count: { links: number; grammarExamples: number } } } | undefined,
+  existingLink: { id: string; sentenceId: string; senseId: string; posTags: string | null; sentence: { id: string; text: string; translation: string | null; audioFile: string | null; source: string; sourceUrl: string; sourceType: any; sourceId: string | null; sourceMetadata: Prisma.JsonValue | null; provider: string | null; externalId: string | null; pronunciationData: Prisma.JsonValue | null; pronunciationVersion: number | null; _count: { links: number; grammarExamples: number } } } | undefined,
   sentencePronunciations: Map<string, Awaited<ReturnType<typeof computeSingleSentencePronunciation>>>,
 ) {
   const currentEffectiveSourceUrl = existingLink
@@ -375,8 +338,7 @@ async function writeSentence(
         vocabularyId,
         sentenceId: created.id,
         senseId,
-        meaningIndex: item.meaningIndex,
-        posTags: toJsonStringList(normalizeSentencePosTags(item.posTags)),
+        posTags: toJsonStringList(normalizeVocabularySentencePosTags(item.posTags)),
         sortOrder,
       },
     })
@@ -384,7 +346,7 @@ async function writeSentence(
   }
 
   if (!contentChanged) {
-    await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { senseId, meaningIndex: item.meaningIndex, posTags: toJsonStringList(normalizeSentencePosTags(item.posTags)), sortOrder } })
+    await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { senseId, posTags: toJsonStringList(normalizeVocabularySentencePosTags(item.posTags)), sortOrder } })
     return existingLink.sentenceId
   }
 
@@ -414,7 +376,7 @@ async function writeSentence(
       },
       select: { id: true },
     })
-    await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { sentenceId: created.id, senseId, meaningIndex: item.meaningIndex, posTags: toJsonStringList(normalizeSentencePosTags(item.posTags)), sortOrder } })
+    await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { sentenceId: created.id, senseId, posTags: toJsonStringList(normalizeVocabularySentencePosTags(item.posTags)), sortOrder } })
     return created.id
   }
 
@@ -430,7 +392,7 @@ async function writeSentence(
       ...(textChanged ? { pronunciationData: pron ? (pron as unknown as Prisma.InputJsonValue) : Prisma.JsonNull, pronunciationVersion: pron ? PRONUNCIATION_VERSION : null } : {}),
     },
   })
-  await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { senseId, meaningIndex: item.meaningIndex, posTags: toJsonStringList(normalizeSentencePosTags(item.posTags)), sortOrder } })
+  await tx.vocabularySentenceLink.update({ where: { id: existingLink.id }, data: { senseId, posTags: toJsonStringList(normalizeVocabularySentencePosTags(item.posTags)), sortOrder } })
   return existingLink.sentenceId
 }
 
@@ -500,9 +462,14 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     const relationIds = duplicateIds(draft.relations, '关联词')
     assertExistingIds(relationIds, new Set(existingRelations.map(item => item.id)), '关联词')
 
-    for (const item of [...draft.definitions, ...draft.sentences, ...draft.relations]) senseIdFor(item.senseId, senseMap, '记录')
-    for (const item of [...draft.patterns, ...draft.expressions, ...draft.notes]) {
-      if (!item.senseId) fail('句型、表达和用法备注必须归属于义项。')
+    for (const item of [
+      ...draft.definitions,
+      ...draft.sentences,
+      ...draft.patterns,
+      ...draft.expressions,
+      ...draft.relations,
+      ...draft.notes,
+    ]) {
       senseIdFor(item.senseId, senseMap, '记录')
     }
 
@@ -518,7 +485,7 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     const sentenceRows = await tx.vocabularySentenceLink.findMany({
       where: { vocabularyId: vocabulary.id },
       select: {
-        id: true, sentenceId: true, senseId: true, meaningIndex: true, posTags: true,
+        id: true, sentenceId: true, senseId: true, posTags: true,
         sentence: {
           select: {
             id: true, text: true, translation: true, audioFile: true, source: true, sourceUrl: true,
@@ -540,7 +507,6 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
         pronunciations: JSON.stringify(splitJapaneseEtymologies(draft.word, draft.pronunciations).pronunciations),
         etymologies: JSON.stringify(splitJapaneseEtymologies(draft.word, draft.pronunciations, draft.etymologies ?? parseJsonStringList(vocabulary.etymologies)).etymologies),
         partsOfSpeech: draft.partsOfSpeech.length ? JSON.stringify(draft.partsOfSpeech) : null,
-        meanings: draft.meanings.length ? JSON.stringify(draft.meanings) : null,
         grammarPartOfSpeech: draft.grammarPartOfSpeech,
         transitivity: draft.transitivity,
         conjugationType: draft.conjugationType ?? null,
@@ -564,9 +530,8 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     const perSenseSentenceOrder = new Map<string, number>()
     for (const item of draft.sentences) {
       const mappedSenseId = senseIdFor(item.senseId, senseMap, '例句')
-      const orderKey = mappedSenseId || 'root'
-      const sortOrder = perSenseSentenceOrder.get(orderKey) || 0
-      perSenseSentenceOrder.set(orderKey, sortOrder + 1)
+      const sortOrder = perSenseSentenceOrder.get(mappedSenseId) || 0
+      perSenseSentenceOrder.set(mappedSenseId, sortOrder + 1)
       await writeSentence(tx, vocabulary.id, item, mappedSenseId, sortOrder, item.id ? sentenceById.get(item.id) : undefined, sentencePronunciations)
     }
 
@@ -574,7 +539,7 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     await tx.vocabularyPattern.deleteMany({ where: { sense: { vocabularyId: vocabulary.id }, id: { notIn: Array.from(submittedPatternIds) } } })
     const patternOrder = new Map<string, number>()
     for (const item of draft.patterns) {
-      const senseId = senseIdFor(item.senseId, senseMap, '句型')!
+      const senseId = senseIdFor(item.senseId, senseMap, '句型')
       const sortOrder = patternOrder.get(senseId) || 0
       patternOrder.set(senseId, sortOrder + 1)
       if (item.id) await tx.vocabularyPattern.update({ where: { id: item.id }, data: { senseId, text: item.text, meaning: item.meaning ?? null, sortOrder } })
@@ -585,7 +550,7 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     await tx.vocabularyExpression.deleteMany({ where: { sense: { vocabularyId: vocabulary.id }, id: { notIn: Array.from(submittedExpressionIds) } } })
     const expressionOrder = new Map<string, number>()
     for (const item of draft.expressions) {
-      const senseId = senseIdFor(item.senseId, senseMap, '表达')!
+      const senseId = senseIdFor(item.senseId, senseMap, '表达')
       const sortOrder = expressionOrder.get(senseId) || 0
       expressionOrder.set(senseId, sortOrder + 1)
       if (item.id) await tx.vocabularyExpression.update({ where: { id: item.id }, data: { senseId, type: item.type, text: item.text, reading: item.reading ?? null, meaning: item.meaning ?? null, sortOrder } })
@@ -596,7 +561,7 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     await tx.vocabularyUsageNote.deleteMany({ where: { sense: { vocabularyId: vocabulary.id }, id: { notIn: Array.from(submittedNoteIds) } } })
     const noteOrder = new Map<string, number>()
     for (const item of draft.notes) {
-      const senseId = senseIdFor(item.senseId, senseMap, '用法备注')!
+      const senseId = senseIdFor(item.senseId, senseMap, '用法备注')
       const sortOrder = noteOrder.get(senseId) || 0
       noteOrder.set(senseId, sortOrder + 1)
       if (item.id) await tx.vocabularyUsageNote.update({ where: { id: item.id }, data: { senseId, type: item.type, text: item.text, sortOrder } })
@@ -608,9 +573,8 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
     const relationOrder = new Map<string, number>()
     for (const item of draft.relations) {
       const senseId = senseIdFor(item.senseId, senseMap, '关联词')
-      const orderKey = senseId || 'root'
-      const sortOrder = relationOrder.get(orderKey) || 0
-      relationOrder.set(orderKey, sortOrder + 1)
+      const sortOrder = relationOrder.get(senseId) || 0
+      relationOrder.set(senseId, sortOrder + 1)
       const normalized = normalizeRelationMetadata(item)
       const data = { senseId, type: normalized.type, targetVocabularyId: normalized.targetVocabularyId ?? null, targetText: normalized.targetText || null, targetReading: normalized.targetReading ?? null, marker: normalized.marker ?? null, pattern: normalized.pattern ?? null, sortOrder }
       if (item.id) await tx.vocabularyRelation.update({ where: { id: item.id }, data })
@@ -636,7 +600,13 @@ export async function updateFullVocabularyFromInspector(userId: string, input: u
       pronunciations: data.entry.pronunciations,
       etymologies: data.entry.etymologies,
       partsOfSpeech: data.entry.partsOfSpeech,
-      meanings: data.entry.meanings,
+      meanings: Array.from(
+        new Set(
+          data.entry.definitions
+            .map(definition => definition.definition.trim())
+            .filter(Boolean),
+        ),
+      ),
       wordAudio: data.entry.wordAudio,
     },
   }

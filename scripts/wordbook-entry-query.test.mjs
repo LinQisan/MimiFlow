@@ -18,9 +18,10 @@ test('search normalizes fullwidth input and includes readings, etymologies, mean
   assert.equal(normalizeWordbookQuery('字'.repeat(120)).length, 100)
   assert.equal(wordbookEntryWhere('u', 'b', '  ').vocabulary.OR, undefined)
   const filters = wordbookEntryWhere('u', 'b', '　青春 ').vocabulary.OR
-  assert.deepEqual(filters, ['word', 'pronunciations', 'etymologies', 'meanings', 'partsOfSpeech'].map(field => ({
+  assert.deepEqual(filters.slice(0, 4), ['word', 'pronunciations', 'etymologies', 'partsOfSpeech'].map(field => ({
     [field]: { contains: '青春', mode: 'insensitive' },
   })))
+  assert.deepEqual(filters[4], { senses: { some: { definitions: { some: { definition: { contains: '青春', mode: 'insensitive' } } } } } })
 })
 
 test('view and edit target the requested card in its wordbook scope', () => {

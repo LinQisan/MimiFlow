@@ -71,8 +71,9 @@ test('server-only modules cannot leak into client bundles', async () => {
     'modules/practice/server/attempt-service.ts',
     'modules/review/server/mistake-repository.ts',
     'modules/review/server/queries.ts',
-    'features/practice/server/vocabulary-analytics.ts',
-    'features/practice/server/paper-wordbook-distribution.ts',
+    'modules/practice/server/vocabulary-analytics.ts',
+    'modules/practice/server/paper-wordbook-distribution.ts',
+    'modules/practice/server/custom-session-service.ts',
   ]) {
     const content = await read(relative)
     assert.match(content, /import 'server-only'/, relative)

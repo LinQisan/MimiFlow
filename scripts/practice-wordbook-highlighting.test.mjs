@@ -11,8 +11,8 @@ import {
 import {
   groupWordbookDistributionBySource,
   isJlptVisibleWithHiddenLevels,
-  JLPT_LEVELS,
-} from '../features/reading/domain/wordbook-highlight-groups.ts'
+} from '../modules/reading/domain/wordbook-highlight-groups.ts'
+import { JLPT_LEVELS } from '../modules/knowledge/vocabulary/domain/jlpt.ts'
 import { buildSurfaceAliasMapForText } from '../utils/vocabulary/japaneseInflection.ts'
 
 const ROOT = process.cwd()
@@ -118,7 +118,7 @@ test('annotateJapaneseTextWithSudachi wraps tokenWords even when lexicon has no 
 
 test('annotate.ts wires tokenWords, vocab-token class, and Sudachi into annotateExamText', async () => {
   const annotateCode = await readFile(
-    path.join(ROOT, 'components/exam/question-renderer/annotate.ts'),
+    path.join(ROOT, 'modules/questions/components/question-renderer/annotate.ts'),
     'utf8',
   )
 
@@ -231,10 +231,10 @@ test('practice wordbook distribution groups by source and supports JLPT level fi
 
 test('PracticePlayer source code wires WordbookHighlightSelector and QuestionRenderer correctly', async () => {
   const [playerCode, hooksCode, sortingCode, reviewPageCode] = await Promise.all([
-    readFile(path.join(ROOT, 'components/exam/PracticePlayer.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'hooks/useStudyTextHighlights.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'components/exam/question-renderer/SortingQuestion.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'app/(study)/practice/[id]/submissions/[submissionId]/page.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/practice/components/PracticePlayer.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/knowledge/learning-records/useStudyTextHighlights.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/questions/components/question-renderer/SortingQuestion.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'app/practice/[id]/submissions/[submissionId]/page.tsx'), 'utf8'),
   ])
 
   // WordbookHighlightSelector receives JLPT and bulk toggle props
@@ -388,7 +388,7 @@ test('headword JLPT metadata is mapped for inflected forms and selector filters 
 
 test('PracticePlayer isolates keyboard navigation when inspectedWord is open and resets inspection on question transition', async () => {
   const playerCode = await readFile(
-    path.join(ROOT, 'components/exam/PracticePlayer.tsx'),
+    path.join(ROOT, 'modules/practice/components/PracticePlayer.tsx'),
     'utf8',
   )
 
@@ -422,7 +422,7 @@ test('PracticePlayer isolates keyboard navigation when inspectedWord is open and
 
 test('withTargetHighlight handles edge cases without string replacement corruption', async () => {
   const annotateCode = await readFile(
-    path.join(ROOT, 'components/exam/question-renderer/annotate.ts'),
+    path.join(ROOT, 'modules/questions/components/question-renderer/annotate.ts'),
     'utf8',
   )
 

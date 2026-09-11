@@ -26,7 +26,6 @@ import {
   findExistingVocabularyCandidate,
   findSentenceLinkByText,
   listVocabularySentenceRecords,
-  normalizeSentencePosTags,
   resolveAudioDialogueSentenceText,
   resolveVocabularySourceMeta,
   upsertVocabularySentenceLink,
@@ -48,6 +47,8 @@ import { computeSingleVocabularyPronunciation } from './server/pronunciation-ser
 import { PRONUNCIATION_VERSION } from './domain/pronunciation'
 import { hasJapanese } from '@/modules/language/domain/text'
 import { normalizeVocabularyWord } from './domain/normalized-word'
+import { normalizeVocabularySentencePosTags } from './domain/sentence-pos-tags'
+import { listVocabularyMeanings } from './domain/meanings'
 
 
 
@@ -57,11 +58,9 @@ export async function saveVocabulary(
   contextSentence: string,
   sourceType: SourceType,
   sourceId: string,
-  pronunciation?: string,
-  pronunciations?: string[],
+  pronunciations: string[],
   meanings?: string[],
-  partOfSpeech?: string,
-  partsOfSpeech?: string[],
+  partsOfSpeech: string[] = [],
 ) {
   try {
     const userId = await getCurrentUserId()
@@ -79,15 +78,15 @@ export async function saveVocabulary(
 
     const normalizedPronunciations = sanitizePronunciations(
       trimmedWord,
-      pronunciations || [],
+      pronunciations,
     )
     const normalizedPrimaryPronunciation = sanitizePronunciation(
       trimmedWord,
-      pronunciation || '',
+      normalizedPronunciations[0] || '',
     )
     const normalizedPartsOfSpeech = Array.from(
       new Set(
-        [partOfSpeech || '', ...(partsOfSpeech || [])]
+        partsOfSpeech
           .map(item => item.trim())
           .filter(Boolean),
       ),
@@ -100,15 +99,26 @@ export async function saveVocabulary(
       new Set((meanings || []).map(item => item.trim()).filter(Boolean)),
     )
 
-    let exists = await prisma.vocabulary.findFirst({
+    let candidate = await prisma.vocabulary.findFirst({
       where: { userId, word: normalizedWord },
+      select: { id: true },
     })
 
-    if (!exists) {
-      exists = await findExistingVocabularyCandidate(normalizedWord)
+    if (!candidate) {
+      candidate = await findExistingVocabularyCandidate(normalizedWord)
     }
 
-    if (exists) {
+    if (candidate) {
+      const exists = await prisma.vocabulary.findFirst({
+        where: { id: candidate.id, userId },
+        include: {
+          senses: {
+            orderBy: { order: 'asc' },
+            include: { definitions: { orderBy: { sortOrder: 'asc' } } },
+          },
+        },
+      })
+      if (!exists) return { success: false, message: '单词不存在' }
       const mergedPronunciations = toJsonStringList([
         normalizedPrimaryPronunciation,
         ...normalizedPronunciations,
@@ -117,50 +127,76 @@ export async function saveVocabulary(
           parseJsonStringList(exists.pronunciations),
         ),
       ])
-      const mergedMeanings = toJsonStringList([
-        ...normalizedMeanings,
-        ...parseJsonStringList(exists.meanings),
-      ])
+      const existingMeanings = listVocabularyMeanings(exists.senses)
+      const meaningsToCreate = normalizedMeanings.filter(
+        meaning => !existingMeanings.includes(meaning),
+      )
       const mergedPartsOfSpeech = toJsonStringList([
         ...normalizedPartsOfSpeech,
         ...parseJsonStringList(exists.partsOfSpeech),
       ])
-      const newSentence: VocabularySentenceRecord | null =
+      const newSentence: Omit<VocabularySentenceRecord, 'senseId'> | null =
         normalizedContextSentence
           ? {
               text: normalizedContextSentence,
               source: sourceMeta.source,
               sourceUrl: sourceMeta.sourceUrl,
-              meaningIndex: null,
-              posTags: normalizeSentencePosTags(normalizedPartsOfSpeech),
+              posTags: normalizeVocabularySentencePosTags(normalizedPartsOfSpeech),
             }
           : null
       const existedLink = newSentence
         ? await findSentenceLinkByText(exists.id, newSentence.text)
         : null
 
-      await prisma.vocabulary.update({
-        where: { id: exists.id },
-        data: {
-          pronunciations: mergedPronunciations,
-          partsOfSpeech: mergedPartsOfSpeech,
-          meanings: mergedMeanings,
-        },
+      let firstSenseId = exists.senses[0]?.id
+      await prisma.$transaction(async tx => {
+        await tx.vocabulary.update({
+          where: { id: exists.id },
+          data: {
+            pronunciations: mergedPronunciations,
+            partsOfSpeech: mergedPartsOfSpeech,
+          },
+        })
+        let nextOrder = exists.senses.length
+        if (!firstSenseId && meaningsToCreate.length === 0) {
+          const sense = await tx.vocabularySense.create({
+            data: { vocabularyId: exists.id, order: nextOrder },
+          })
+          firstSenseId = sense.id
+          nextOrder += 1
+        }
+        for (const meaning of meaningsToCreate) {
+          const sense = await tx.vocabularySense.create({
+            data: { vocabularyId: exists.id, order: nextOrder },
+          })
+          firstSenseId ||= sense.id
+          await tx.vocabularyDefinition.create({
+            data: {
+              vocabularyId: exists.id,
+              senseId: sense.id,
+              language: 'zh',
+              dictionaryName: '用户录入',
+              definition: meaning,
+              sortOrder: 0,
+            },
+          })
+          nextOrder += 1
+        }
       })
       const mergedMeta: VocabularyMeta = {
         pronunciations: parseJsonStringList(mergedPronunciations),
         partsOfSpeech: parseJsonStringList(mergedPartsOfSpeech),
-        meanings: parseJsonStringList(mergedMeanings),
+        meanings: [...existingMeanings, ...meaningsToCreate],
         wordAudio: exists.wordAudio || null,
       }
-      if (newSentence && !existedLink) {
+      if (newSentence && !existedLink && firstSenseId) {
         await upsertVocabularySentenceLink(exists.id, {
           text: newSentence.text,
           source: newSentence.source,
           sourceUrl: newSentence.sourceUrl,
           sourceType,
           sourceId,
-          meaningIndex: null,
+          senseId: firstSenseId,
           posTags: newSentence.posTags || [],
         })
       }
@@ -194,22 +230,45 @@ export async function saveVocabulary(
       }
     }
 
-    const created = await prisma.vocabulary.create({
-      data: {
-        userId,
-        word: normalizedWord,
-        normalizedWord: normalizeVocabularyWord(normalizedWord),
-        sourceType: sourceType,
-        sourceId: sourceId,
-        pronunciations: toJsonStringList([
-          normalizedPrimaryPronunciation,
-          ...normalizedPronunciations,
-        ]),
-        partsOfSpeech: toJsonStringList(normalizedPartsOfSpeech),
-        meanings: toJsonStringList(normalizedMeanings),
-        pronunciationData,
-        pronunciationVersion: pronunciationData ? PRONUNCIATION_VERSION : null,
-      },
+    const created = await prisma.$transaction(async tx => {
+      const vocabulary = await tx.vocabulary.create({
+        data: {
+          userId,
+          word: normalizedWord,
+          normalizedWord: normalizeVocabularyWord(normalizedWord),
+          sourceType,
+          sourceId,
+          pronunciations: toJsonStringList([
+            ...normalizedPronunciations,
+          ]),
+          partsOfSpeech: toJsonStringList(normalizedPartsOfSpeech),
+          pronunciationData,
+          pronunciationVersion: pronunciationData ? PRONUNCIATION_VERSION : null,
+        },
+      })
+      const meaningsForSenses = normalizedMeanings.length
+        ? normalizedMeanings
+        : [null]
+      let firstSenseId = ''
+      for (const [order, meaning] of meaningsForSenses.entries()) {
+        const sense = await tx.vocabularySense.create({
+          data: { vocabularyId: vocabulary.id, order },
+        })
+        firstSenseId ||= sense.id
+        if (meaning) {
+          await tx.vocabularyDefinition.create({
+            data: {
+              vocabularyId: vocabulary.id,
+              senseId: sense.id,
+              language: 'zh',
+              dictionaryName: '用户录入',
+              definition: meaning,
+              sortOrder: 0,
+            },
+          })
+        }
+      }
+      return { ...vocabulary, firstSenseId }
     })
     if (normalizedContextSentence) {
       await upsertVocabularySentenceLink(created.id, {
@@ -218,8 +277,8 @@ export async function saveVocabulary(
         sourceUrl: sourceMeta.sourceUrl,
         sourceType,
         sourceId,
-        meaningIndex: null,
-        posTags: normalizeSentencePosTags(normalizedPartsOfSpeech),
+        senseId: created.firstSenseId,
+        posTags: normalizeVocabularySentencePosTags(normalizedPartsOfSpeech),
       })
     }
 
@@ -232,7 +291,7 @@ export async function saveVocabulary(
       meta: {
         pronunciations: parseJsonStringList(created.pronunciations),
         partsOfSpeech: parseJsonStringList(created.partsOfSpeech),
-        meanings: parseJsonStringList(created.meanings),
+        meanings: normalizedMeanings,
         wordAudio: created.wordAudio || null,
       } satisfies VocabularyMeta,
     }
@@ -391,7 +450,7 @@ export async function searchSentencesForWord(
         MaterialType.READING,
         article.contentPayload,
       )
-      const articleText = String(payload.text || payload.transcript || '')
+      const articleText = String(payload.text || '')
       const parts = articleText.match(/[^。！？.!\?\n]+[。！？.!\?\n]*/g) || [
         articleText,
       ]
@@ -446,18 +505,27 @@ export async function searchSentencesForWord(
 export async function addVocabularySentence(
   id: string,
   newSentenceObj: { text: string; source: string; sourceUrl: string },
-  meaningIndex = 0,
+  senseId: string,
 ) {
   try {
     const userId = await getCurrentUserId()
-    const vocab = await prisma.vocabulary.findFirst({ where: { id, userId } })
+    const vocab = await prisma.vocabulary.findFirst({
+      where: { id, userId },
+      select: {
+        id: true,
+        senses: { where: { id: senseId }, select: { id: true } },
+      },
+    })
     if (!vocab) return { success: false, message: '单词不存在' }
+    if (vocab.senses.length === 0) {
+      return { success: false, message: '义项不存在' }
+    }
 
     const normalizedSentence: VocabularySentenceRecord = {
       text: newSentenceObj.text.trim(),
       source: newSentenceObj.source.trim() || '未知来源',
       sourceUrl: newSentenceObj.sourceUrl.trim() || '#',
-      meaningIndex: null,
+      senseId,
       posTags: [],
     }
     if (!normalizedSentence.text) {
@@ -471,26 +539,13 @@ export async function addVocabularySentence(
         sentences: await listVocabularySentenceRecords(id),
       }
     }
-    const sense = await prisma.vocabularySense.findUnique({
-      where: { vocabularyId_order: { vocabularyId: id, order: meaningIndex } },
-      select: { id: true },
-    })
     await upsertVocabularySentenceLink(id, {
       text: normalizedSentence.text,
       source: normalizedSentence.source,
       sourceUrl: normalizedSentence.sourceUrl,
-      meaningIndex: sense ? meaningIndex : null,
+      senseId,
       posTags: [],
     })
-    if (sense) {
-      const link = await findSentenceLinkByText(id, normalizedSentence.text)
-      if (link) {
-        await prisma.vocabularySentenceLink.update({
-          where: { id: link.id },
-          data: { senseId: sense.id, meaningIndex },
-        })
-      }
-    }
     return {
       success: true,
       message: '例句已添加',

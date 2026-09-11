@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import WordAudioButton from '@/components/vocabulary/WordAudioButton'
+import WordAudioButton from '@/modules/knowledge/vocabulary/components/WordAudioButton'
 import { buildWordbookEntryHref } from '@/modules/knowledge/vocabulary/domain/navigation'
 import type { WordbookVocabularyItem } from '../types'
 
 export default function WordbookEntryRow({
-  item, wordbookId, position, managing, selected, removing, onToggle, onRemove,
+  item, wordbookId, position, managing, selected, removing, reordering,
+  canMoveUp, canMoveDown, onToggle, onMoveUp, onMoveDown, onRemove,
 }: {
   item: WordbookVocabularyItem
   wordbookId: string
@@ -12,7 +13,12 @@ export default function WordbookEntryRow({
   managing: boolean
   selected: boolean
   removing: boolean
+  reordering: boolean
+  canMoveUp?: boolean
+  canMoveDown?: boolean
   onToggle: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
   onRemove: () => void
 }) {
   return (
@@ -37,6 +43,28 @@ export default function WordbookEntryRow({
         </div>
       </div>
       <div className='col-start-2 flex flex-wrap items-center gap-2 sm:col-start-3'>
+        {managing && onMoveUp && onMoveDown ? (
+          <div className='flex items-center gap-1' role='group' aria-label={`调整 ${item.word} 的排序`} aria-busy={reordering}>
+            <button
+              type='button'
+              disabled={reordering || !canMoveUp}
+              onClick={onMoveUp}
+              className='ui-btn ui-btn-sm h-8 w-8 px-0 disabled:opacity-40'
+              aria-label={`上移 ${item.word}`}
+              title='上移'>
+              ↑
+            </button>
+            <button
+              type='button'
+              disabled={reordering || !canMoveDown}
+              onClick={onMoveDown}
+              className='ui-btn ui-btn-sm h-8 w-8 px-0 disabled:opacity-40'
+              aria-label={`下移 ${item.word}`}
+              title='下移'>
+              ↓
+            </button>
+          </div>
+        ) : null}
         <WordAudioButton audioFile={item.wordAudio} word={item.word} />
         <Link href={buildWordbookEntryHref(wordbookId, item.id)} prefetch={false} className='ui-btn' aria-label={`查看 ${item.word}`}>查看</Link>
         <Link href={buildWordbookEntryHref(wordbookId, item.id, true)} prefetch={false} className='ui-btn' aria-label={`编辑 ${item.word}`}>编辑</Link>

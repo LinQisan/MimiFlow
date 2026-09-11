@@ -23,8 +23,8 @@ import type {
   VocabularySenseItem,
 } from '../types'
 import {
+  normalizeEntryPronunciations,
   EXPRESSION_TYPE_OPTIONS,
-  RELATION_TYPE_OPTIONS,
   USAGE_NOTE_TYPE_OPTIONS,
   inferStructuredPartOfSpeech,
   structuredPartOfSpeechLabel,
@@ -33,6 +33,7 @@ import {
 import {
   groupVocabularyRelationsForDisplay,
   normalizeRelationMetadata,
+  RELATION_TYPE_OPTIONS,
   relationReadingPattern,
   relationUsesPattern,
 } from '../domain/relations'
@@ -40,7 +41,7 @@ import { saveVocabularyEntryDraft } from '../entry-actions'
 import VocabularyRelationWord from './VocabularyRelationWord'
 
 type DraftSense = VocabularyEntryDraft['senses'][number]
-type DraftRelation = VocabularyEntryDraft['relations'][number]
+type DraftRelation = DraftSense['relations'][number]
 
 const fieldClass =
   'min-h-8 w-full border-0 border-transparent bg-transparent px-0.5 py-1 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-300 hover:border-slate-200 focus:border-slate-400 focus:ring-0'
@@ -55,8 +56,8 @@ let clientIdSequence = 0
  * Generate an ID for a newly-created draft entity.
  *
  * This is intentionally only called from user events. Missing IDs while
- * normalizing server data use makeLegacyDraftId below so render stays pure
- * and hydration does not depend on browser randomness.
+ * Server-provided entities already have persistent IDs, so this helper is
+ * reserved for rows created by a user interaction.
  */
 export function makeVocabularyClientId(prefix: string) {
   const cryptoApi =
@@ -88,9 +89,6 @@ export function makeVocabularyClientId(prefix: string) {
   return `${prefix}-${suffix}`
 }
 
-const makeLegacyDraftId = (prefix: string, scope: string, index: number) =>
-  `legacy-${prefix}-${encodeURIComponent(scope)}-${index}`
-
 const exampleKey = (example: {
   text: string
   translation?: string | null
@@ -101,24 +99,7 @@ const exampleKey = (example: {
   )
 
 function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
-  const senses = vocabulary.senses?.length
-    ? vocabulary.senses
-    : [
-        {
-          id: makeLegacyDraftId('sense', vocabulary.id, 0),
-          order: 0,
-          definitions: (vocabulary.meanings || ['']).map((text, index) => ({
-            id: makeLegacyDraftId('definition', vocabulary.id, index),
-            language: 'zh',
-            text,
-          })),
-          examples: vocabulary.sentences,
-          patterns: [],
-          expressions: [],
-          relations: [],
-          notes: [],
-        } satisfies VocabularySenseItem,
-      ]
+  const senses = vocabulary.senses || []
 
   const draftSenses = senses.map(sense => ({
     id: sense.id,
@@ -126,40 +107,20 @@ function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
       const chineseDefinitions = sense.definitions.filter(item =>
         /^zh(?:-|$)/i.test(item.language),
       )
-      return (
-        chineseDefinitions.length > 0
-          ? chineseDefinitions
-          : [
-              {
-                id: makeLegacyDraftId('definition', sense.id, 0),
-                language: 'zh',
-                text: '',
-              },
-            ]
-      ).map((item, definitionIndex) => ({
-        ...item,
-        id:
-          item.id || makeLegacyDraftId('definition', sense.id, definitionIndex),
-      }))
+      return chineseDefinitions.map(item => ({ ...item }))
     })(),
-    examples: sense.examples.map((example, exampleIndex) => ({
-      id: example.id || makeLegacyDraftId('example', sense.id, exampleIndex),
+    examples: sense.examples.map(example => ({
+      id: example.id!,
       text: example.text,
       translation: example.translation || '',
       source: example.source || '手动录入',
       sourceUrl: example.sourceUrl || '#',
       posTags: example.posTags || [],
     })),
-    patterns: sense.patterns.map((item, itemIndex) => ({
-      ...item,
-      id: item.id || makeLegacyDraftId('pattern', sense.id, itemIndex),
-    })),
-    expressions: sense.expressions.map((item, itemIndex) => ({
-      ...item,
-      id: item.id || makeLegacyDraftId('expression', sense.id, itemIndex),
-    })),
-    relations: sense.relations.map((item, itemIndex) => ({
-      id: item.id || makeLegacyDraftId('relation', sense.id, itemIndex),
+    patterns: sense.patterns.map(item => ({ ...item })),
+    expressions: sense.expressions.map(item => ({ ...item })),
+    relations: sense.relations.map(item => ({
+      id: item.id,
       type: item.type,
       targetVocabularyId: item.targetVocabularyId || null,
       targetText: item.targetText,
@@ -167,10 +128,7 @@ function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
       marker: item.marker || '',
       pattern: item.pattern || '',
     })),
-    notes: sense.notes.map((item, itemIndex) => ({
-      ...item,
-      id: item.id || makeLegacyDraftId('note', sense.id, itemIndex),
-    })),
+    notes: sense.notes.map(item => ({ ...item })),
   }))
   const assignedExampleIds = new Set(
     draftSenses.flatMap(sense => sense.examples.map(example => example.id)),
@@ -179,14 +137,12 @@ function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
     draftSenses.flatMap(sense => sense.examples.map(exampleKey)),
   )
   const unassignedExamples = vocabulary.sentences.flatMap(
-    (example, sentenceIndex) => {
+    example => {
       if (example.id && assignedExampleIds.has(example.id)) return []
       if (assignedExampleKeys.has(exampleKey(example))) return []
       return [
         {
-          id:
-            example.id ||
-            makeLegacyDraftId('example', vocabulary.id, sentenceIndex),
+          id: example.id!,
           text: example.text,
           translation: example.translation || '',
           source: example.source || '手动录入',
@@ -206,7 +162,7 @@ function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
   return {
     vocabularyId: vocabulary.id,
     word: vocabulary.word,
-    reading: vocabulary.pronunciation || vocabulary.pronunciations?.[0] || '',
+    pronunciations: [...new Set(vocabulary.pronunciations || [])],
     etymologies: vocabulary.etymologies || [],
     grammarPartOfSpeech:
       vocabulary.grammarPartOfSpeech ||
@@ -215,15 +171,6 @@ function toVocabularyEntryDraft(vocabulary: VocabItem): VocabularyEntryDraft {
     conjugationType: vocabulary.conjugationType || '',
     tags: [...(vocabulary.tags || [])],
     senses: draftSenses,
-    relations: (vocabulary.relations || []).map(item => ({
-      id: item.id,
-      type: item.type,
-      targetVocabularyId: item.targetVocabularyId || null,
-      targetText: item.targetText,
-      targetReading: item.targetReading || '',
-      marker: item.marker || '',
-      pattern: item.pattern || '',
-    })),
   }
 }
 
@@ -258,7 +205,6 @@ function vocabularyDraftToPreview(
         translation: example.translation || null,
         source: example.source,
         sourceUrl: example.sourceUrl,
-        meaningIndex: senseIndex,
         senseId: sense.id,
         posTags: example.posTags || [],
       })),
@@ -283,19 +229,16 @@ function vocabularyDraftToPreview(
   return {
     ...vocabulary,
     word: draft.word,
-    pronunciation: draft.reading || null,
-    pronunciations: draft.reading ? [draft.reading] : [],
+    pronunciations: normalizeEntryPronunciations(draft.pronunciations),
     etymologies: draft.etymologies ?? vocabulary.etymologies,
     grammarPartOfSpeech: draft.grammarPartOfSpeech,
     transitivity: draft.transitivity || null,
     conjugationType: draft.conjugationType || null,
-    partOfSpeech,
     partsOfSpeech: [partOfSpeech],
     tags: [...draft.tags],
     meanings,
     senses,
     sentences: senses.flatMap(sense => sense.examples),
-    relations: draft.relations.map(relation => ({ ...relation })),
   }
 }
 
@@ -407,15 +350,13 @@ export function useVocabularyInlineEditor({
       )
       return {
         ...previous,
-        relations: relations
-          .filter(
-            relation => !senseRelationIds.some(ids => ids.has(relation.id)),
-          )
-          .map(draftRelation),
         senses: previous.senses.map((sense, senseIndex) => ({
           ...sense,
           relations: relations
-            .filter(relation => senseRelationIds[senseIndex]?.has(relation.id))
+            .filter(relation =>
+              senseRelationIds[senseIndex]?.has(relation.id) ||
+              (senseIndex === 0 && !senseRelationIds.some(ids => ids.has(relation.id))),
+            )
             .map(draftRelation),
         })),
       }
@@ -424,21 +365,26 @@ export function useVocabularyInlineEditor({
 
   const addRelation = useCallback((type: DraftRelation['type']) => {
     setDraft(previous =>
-      previous
+      previous && previous.senses.length > 0
         ? {
             ...previous,
-            relations: [
-              ...previous.relations,
-              {
-                id: makeVocabularyClientId('relation'),
-                type,
-                targetVocabularyId: null,
-                targetText: '',
-                targetReading: '',
-                marker: '',
-                pattern: '',
-              },
-            ],
+            senses: previous.senses.map((sense, index) => index === 0
+              ? {
+                  ...sense,
+                  relations: [
+                    ...sense.relations,
+                    {
+                      id: makeVocabularyClientId('relation'),
+                      type,
+                      targetVocabularyId: null,
+                      targetText: '',
+                      targetReading: '',
+                      marker: '',
+                      pattern: '',
+                    },
+                  ],
+                }
+              : sense),
           }
         : previous,
     )

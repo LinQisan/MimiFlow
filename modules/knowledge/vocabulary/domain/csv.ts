@@ -66,24 +66,12 @@ const parseCsvCells = (text: string) => {
   return rows
 }
 
-const OPTIONAL_VOCABULARY_CSV_HEADERS = new Set([
-  '词源',
-  'JLPT',
-  '例句',
-  '例句词性',
-])
-
 export const parseVocabularyCsvDocument = (text: string) => {
   const rows = parseCsvCells(text.replace(/^\uFEFF/, ''))
   const headers = rows.shift()?.map(header => header.trim()) || []
   const indexes = new Map(headers.map((header, index) => [header, index]))
-  const missing = VOCABULARY_CSV_HEADERS.filter(
-    header => !OPTIONAL_VOCABULARY_CSV_HEADERS.has(header) && !indexes.has(header),
-  )
+  const missing = VOCABULARY_CSV_HEADERS.filter(header => !indexes.has(header))
   if (missing.length > 0) throw new Error(`缺少列：${missing.join('、')}`)
-  if (indexes.has('例句词性') && !indexes.has('例句')) {
-    throw new Error('缺少列：例句')
-  }
 
   const parsedRows = rows.map((cells, rowIndex) => {
     const row = Object.fromEntries(

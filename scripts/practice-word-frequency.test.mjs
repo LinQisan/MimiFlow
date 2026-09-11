@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   buildPaperFrequencyDocuments,
   buildPaperWordbookDistribution,
-} from '../features/practice/domain/paper-word-frequency.ts'
+} from '../modules/practice/domain/paper-word-frequency.ts'
 
 const ROOT = process.cwd()
 
@@ -140,14 +140,14 @@ test('wordbook distribution keeps explicit multi-JLPT metadata independent from 
 
 test('paper overview exposes Sudachi word frequency in a dialog', async () => {
   const [page, repository, dialog, chart, route, server, nextConfig] = await Promise.all([
-    readFile(path.join(ROOT, 'app/(study)/practice/[id]/page.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'app/practice/[id]/page.tsx'), 'utf8'),
     readFile(path.join(ROOT, 'lib/repositories/exam/index.ts'), 'utf8'),
     readFile(
-      path.join(ROOT, 'features/practice/ui/PaperWordFrequencyDialog.tsx'),
+      path.join(ROOT, 'modules/practice/components/PaperWordFrequencyDialog.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'components/vocabulary/WordbookDistributionChart.tsx'),
+      path.join(ROOT, 'modules/knowledge/vocabulary/components/WordbookDistributionChart.tsx'),
       'utf8',
     ),
     readFile(
@@ -155,7 +155,7 @@ test('paper overview exposes Sudachi word frequency in a dialog', async () => {
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'features/practice/server/paper-wordbook-distribution.ts'),
+      path.join(ROOT, 'modules/practice/server/paper-wordbook-distribution.ts'),
       'utf8',
     ),
     readFile(path.join(ROOT, 'next.config.ts'), 'utf8'),

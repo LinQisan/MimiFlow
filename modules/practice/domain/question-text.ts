@@ -89,7 +89,7 @@ const SORTING_SLOT_TOKEN = '[[sort]]'
 const SORTING_STAR_SLOT_TOKEN = '[[sort:star]]'
 
 const CANONICAL_SORTING_SLOT_PATTERN = /\[\[sort(?::star)?\]\]/g
-const LEGACY_SORTING_SLOT_PATTERN =
+const AUTHORED_SORTING_SLOT_PATTERN =
   /[＿_]{2,}[★＊][＿_]{2,}|[★＊][ \u3000]*(?:[＿_]{2,})?|[＿_]{2,}|[（(][\s　]*[）)]|[（(]\s*\d+\s*[）)]|\[\s*\d+\s*\]|［\s*\d+\s*］/g
 
 type SortingPromptSegment = {
@@ -105,7 +105,7 @@ type SortingPromptSegment = {
 export function normalizeSortingPrompt(value: string | null | undefined) {
   const prompt = (value || '').trim()
   if (!prompt) return ''
-  return prompt.replace(LEGACY_SORTING_SLOT_PATTERN, token =>
+  return prompt.replace(AUTHORED_SORTING_SLOT_PATTERN, token =>
     /[★＊]/.test(token) ? SORTING_STAR_SLOT_TOKEN : SORTING_SLOT_TOKEN,
   )
 }

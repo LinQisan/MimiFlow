@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { groupWordbooksForFilter } from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
+import { groupWordbooksForFilter, listWordbookFilterOptions } from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
 
 test('wordbook filter groups preserve authored order and series identity', () => {
   const books = [
@@ -14,6 +14,13 @@ test('wordbook filter groups preserve authored order and series identity', () =>
   assert.deepEqual(groups.map(group => group.books.map(book => book.id)), [['b', 'a'], ['c']])
   assert.equal(groups[0].books[0].count, 12)
   assert.deepEqual(books, before)
+  const options = listWordbookFilterOptions(books)
+  assert.deepEqual(options.map(option => option.value), ['series:s2', 'b', 'a', 'series:s1', 'c'])
+  assert.equal(options[0].meta, '2 个词表')
+  assert.equal(options[1].count, 12)
+  assert.equal(options[1].depth, 1)
+  assert.equal(options[1].selectedLabel, '系列乙 / Unit10')
+  assert.equal(options[4].count, 0)
 })
 
 test('same-named series remain distinct and empty collections have no groups', () => {

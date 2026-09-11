@@ -3,6 +3,7 @@ import 'server-only'
 import prisma from '@/lib/prisma'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { listVocabularyMeanings } from '@/modules/knowledge/vocabulary/domain/meanings'
 
 export type MemoryReviewItem =
   | {
@@ -75,7 +76,15 @@ export async function getDueMemoryReviewItems(
           select: {
             word: true,
             pronunciations: true,
-            meanings: true,
+            senses: {
+              orderBy: { order: 'asc' },
+              select: {
+                definitions: {
+                  orderBy: { sortOrder: 'asc' },
+                  select: { definition: true },
+                },
+              },
+            },
           },
         },
       },
@@ -100,7 +109,7 @@ export async function getDueMemoryReviewItems(
         vocabularyId: item.vocabularyId,
         text: item.vocabulary.word,
         pronunciations: parseJsonStringList(item.vocabulary.pronunciations),
-        meanings: parseJsonStringList(item.vocabulary.meanings),
+        meanings: listVocabularyMeanings(item.vocabulary.senses),
         due: item.due,
       }),
     ),

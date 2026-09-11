@@ -6,11 +6,11 @@ import {
   filterPracticeVocabularyWords,
   isPracticeVocabularyCategory,
   type PracticeVocabularyAnalyticsWordsResponse,
-} from '@/features/practice/domain/vocabulary-analytics'
+} from '@/modules/practice/domain/vocabulary-analytics'
 import {
   getPracticeVocabularyAnalytics,
   personalizePracticeVocabularyAnalytics,
-} from '@/features/practice/server/vocabulary-analytics'
+} from '@/modules/practice/server/vocabulary-analytics'
 
 const getCachedPracticeVocabularyAnalytics = unstable_cache(
   getPracticeVocabularyAnalytics,
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     const profile = profileValue && isPracticeVocabularyCategory(profileValue)
       ? profileValue
       : undefined
-    const query = searchParams.get('q') || searchParams.get('query') || undefined
+    const query = searchParams.get('q') || undefined
     const all = searchParams.get('all') === 'true'
     const page = all
       ? 1

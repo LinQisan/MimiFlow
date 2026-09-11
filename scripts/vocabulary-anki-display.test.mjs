@@ -20,7 +20,7 @@ test('shows the Anki list name instead of classifying it as reading', () => {
   assert.equal(
     formatVocabularySentenceSource({
       source: 'Unit02 动词A',
-      sourceUrl: '/manage/import?type=anki',
+      sourceUrl: '/manage/import?language=ja&scope=vocabulary&type=anki',
       sourceType: 'ARTICLE_TEXT',
     }),
     'Unit02 动词A',

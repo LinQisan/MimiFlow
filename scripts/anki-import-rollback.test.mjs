@@ -1,3 +1,4 @@
+import { persistImportedWordbookOrder } from '../modules/knowledge/wordbooks/entry-order-writer.ts'
 import { splitJapaneseEtymologies } from '../modules/language/domain/etymology.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -10,10 +11,11 @@ import ts from 'typescript'
 import { hasJapanese } from '../modules/language/domain/text.ts'
 
 const require = createRequire(import.meta.url)
-const source = await readFile(new URL('../features/import/anki-actions.ts', import.meta.url), 'utf8')
+const source = await readFile(new URL('../modules/import/anki-actions.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText
 
 async function harness(root, fail, rowOverride = {}) {
+  const invalidations = []
   let committed = []
   let draft = []
   let transactionClient
@@ -26,7 +28,14 @@ async function harness(root, fail, rowOverride = {}) {
     if (method === 'create' || method === 'upsert') return { id: `${name}-id` }
     return { count: 1 }
   } })
-  transactionClient = new Proxy({}, { get: (_, name) => model(name) })
+  transactionClient = new Proxy({}, { get: (_, name) => name === '$executeRaw' ? async query => {
+    if (fail === 'entryOrder.update') throw new Error('injected ordering failure')
+    assert.ok(query.values.includes('test-user'))
+    assert.ok(query.values.includes('wordbook-id'))
+    const ordered = JSON.parse(query.values.find(value => typeof value === 'string' && value.startsWith('[{')))
+    assert.deepEqual(ordered, [{ id: 'vocabulary-id', position: 1 }])
+    draft.push({ name: 'entryOrder', method: 'update' }); return 1
+  } : model(name) })
   const db = new Proxy({
     $transaction: async operation => {
       draft = []
@@ -43,6 +52,7 @@ async function harness(root, fail, rowOverride = {}) {
     toJsonStringList: value => JSON.stringify([...new Set(value)]),
   }
   const stubs = {
+    '@/modules/knowledge/wordbooks/entry-order-writer': { persistImportedWordbookOrder },
     '@/modules/language/domain/etymology': { splitJapaneseEtymologies },
     '@/lib/prisma': { default: db, __esModule: true },
     '@/modules/import/domain/anki-reading-audio': {
@@ -55,7 +65,14 @@ async function harness(root, fail, rowOverride = {}) {
       },
     },
     '@/modules/users/server/current-user': { getCurrentUserId: async () => 'test-user' },
-    '@/modules/knowledge/vocabulary/server/repository': { invalidateVocabularyGroupsCache() {} },
+    '@/modules/knowledge/vocabulary/server/repository': { VOCABULARY_GROUPS_CACHE_TAG: 'vocabulary-groups' },
+    'next/cache': {
+      updateTag: tag => {
+        assert.ok(committed.length > 0, 'expire only after commit')
+        invalidations.push(['tag', tag])
+      },
+      revalidatePath: (...args) => invalidations.push(['path', ...args]),
+    },
     '@/utils/text/jsonList': list,
     '@/utils/text/pronunciation': { sanitizePronunciations: (_, p) => p, mergeVocabularyPronunciations: ({existing,incoming}) => [...existing,...incoming] },
     '@/utils/vocabulary/vocabularyCanonical': { buildVocabularyCanonicalKeys: w => [w] },
@@ -93,7 +110,7 @@ async function harness(root, fail, rowOverride = {}) {
   data.set('rowsJson',JSON.stringify([{rowNo:1,word:'歩く',pronunciations:['あるく'],meanings:['走路'],sentence:'道を歩く。',sentenceTranslation:'走在路上',wordAudioName:'sample.mp3',tags:[], ...rowOverride}]))
   data.append('audioFiles',new File(['test audio bytes'],'sample.mp3'))
   const result = await exports.runAnkiImport(data)
-  return {result, committed, attempted:draft, actions: exports}
+  return {result, committed, invalidations, attempted:draft, actions: exports}
 }
 
 test('Japanese detection can execute on the server without a client hook', () => {
@@ -101,14 +118,15 @@ test('Japanese detection can execute on the server without a client hook', () =>
   assert.equal(hasJapanese('カタカナ'),true)
   assert.equal(hasJapanese('English 123'),false)
 })
-for (const failure of ['vocabulary.create','vocabularySentence.upsert','wordbookVocabulary.createMany']) {
+for (const failure of ['vocabulary.create','vocabularySentence.upsert','wordbookVocabulary.createMany','entryOrder.update']) {
   test(`failure at ${failure} rolls back book/word writes and removes new audio`, async () => {
     const root = await mkdtemp(path.join(tmpdir(),'anki-rollback-'))
     try {
-      const {result,committed,attempted} = await harness(root,failure)
+      const {result,committed,attempted,invalidations} = await harness(root,failure)
       assert.equal(result.success,false)
       assert.ok(attempted.some(write=>write.name==='wordbook'))
       assert.deepEqual(committed,[])
+      assert.deepEqual(invalidations,[])
       assert.deepEqual(await readdir(root,{recursive:true}),[])
     } finally { await rm(root,{recursive:true,force:true}) }
   })
@@ -116,8 +134,10 @@ for (const failure of ['vocabulary.create','vocabularySentence.upsert','wordbook
 test('successful import commits all associations and retains its audio',async()=>{
   const root=await mkdtemp(path.join(tmpdir(),'anki-success-'))
   try {
-    const {result,committed}=await harness(root)
+    const {result,committed,invalidations}=await harness(root)
     assert.equal(result.success,true)
+    assert.deepEqual(invalidations, [['tag', 'vocabulary-groups'], ['path', '/vocabulary', 'layout'], ['path', '/manage/vocabulary']])
+    assert.ok(committed.some(write=>write.name==='entryOrder'))
     assert.ok(committed.some(write=>write.name==='wordbookVocabulary'))
     assert.ok(committed.some(write=>write.name==='vocabularyReadingAudio'))
     assert.equal((await readFile(path.join(root,'Test/Unit02/sample.mp3'))).toString(),'test audio bytes')
@@ -140,7 +160,7 @@ test('new imported definitions retain the wordbook title as their source', async
     vocabularySense: { create: async () => ({ id: 'sense', order: 0 }) },
     vocabularyDefinition: { create: async ({ data }) => definitions.push(data) },
   }
-  await exports.ensureAnkiVocabularySenses('user', 'word', ['走路'], ['走路'], '', 'Unit02 动词A', tx)
+  await exports.ensureAnkiVocabularySenses('user', 'word', ['走路'], '', 'Unit02 动词A', tx)
   assert.equal(definitions.length, 1)
   assert.equal(definitions[0].dictionaryName, 'Unit02 动词A')
   assert.equal(definitions[0].definition, '走路')

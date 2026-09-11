@@ -2454,3 +2454,22 @@ body.editorial-ui
     --color-primary-light: rgba(59, 91, 219, 0.22);
   }
 }
+
+/* Inspector content uses straight editorial rules, including inside article pages. */
+body .vocab-inspector .vocab-inspector-summary > section,
+body .vocab-inspector .vocab-inspector-definitions > article {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+body .vocab-inspector .vocab-inspector-meaning-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+body .vocab-inspector .vocab-inspector-definitions > article {
+  border-left: 0;
+  padding-left: 0;
+}
+.vocab-inspector-summary a:hover { text-decoration: underline; text-underline-offset: 0.2em; }
+body .vocab-inspector { border-radius: 0 !important; }

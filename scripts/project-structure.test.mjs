@@ -4,7 +4,7 @@ import path from 'node:path'
 import test from 'node:test'
 
 const ROOT = process.cwd()
-const SOURCE_DIRS = ['app', 'components', 'features', 'hooks', 'lib', 'modules', 'utils']
+const SOURCE_DIRS = ['app', 'components', 'hooks', 'lib', 'modules', 'utils']
 
 async function sourceFiles(directory) {
   const absolute = path.join(ROOT, directory)
@@ -21,6 +21,55 @@ async function sourceFiles(directory) {
   }
   return files
 }
+
+async function routeGroupDirectories(directory = 'app') {
+  const absolute = path.join(ROOT, directory)
+  const entries = await readdir(absolute, { withFileTypes: true })
+  const groups = []
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const child = path.join(directory, entry.name)
+    if (/^\(.+\)$/.test(entry.name)) groups.push(child)
+    groups.push(...(await routeGroupDirectories(child)))
+  }
+  return groups
+}
+
+test('app routes use real URL segments instead of business route groups', async () => {
+  assert.deepEqual(await routeGroupDirectories(), [])
+})
+
+test('routes compose modules instead of owning business implementation files', async () => {
+  const routeFiles = await sourceFiles('app')
+  const allowedRouteFiles = new Set([
+    'page.tsx',
+    'layout.tsx',
+    'loading.tsx',
+    'error.tsx',
+    'not-found.tsx',
+    'route.ts',
+  ])
+
+  const violations = routeFiles
+    .filter(file => !allowedRouteFiles.has(path.basename(file)))
+    .map(file => path.relative(ROOT, file))
+
+  assert.deepEqual(violations, [])
+})
+
+test('business code has one home under modules', async () => {
+  await assert.rejects(stat(path.join(ROOT, 'features')), { code: 'ENOENT' })
+
+  for (const directory of [
+    'components/AudioPlayer',
+    'components/exam',
+    'components/vocabulary',
+    'components/manage',
+    'components/search',
+  ]) {
+    await assert.rejects(stat(path.join(ROOT, directory)), { code: 'ENOENT' })
+  }
+})
 
 test('removed product routes are not referenced by source code', async () => {
   const files = (
@@ -62,24 +111,24 @@ test('removed product routes are not referenced by source code', async () => {
 
 test('review routes and feature modules exist', async () => {
   const required = [
-    'app/(study)/review/page.tsx',
-    'app/(study)/review/memory/page.tsx',
-    'app/(study)/review/mistakes/page.tsx',
-    'app/(study)/listening/page.tsx',
-    'app/(study)/listening/[id]/page.tsx',
-    'app/(study)/practice/page.tsx',
-    'app/(study)/practice/[id]/page.tsx',
-    'app/(study)/practice/[id]/do/page.tsx',
-    'app/(library)/subtitles/page.tsx',
-    'app/(library)/subtitles/[id]/page.tsx',
-    'app/(admin)/manage/import/page.tsx',
-    'app/(admin)/manage/grammar/page.tsx',
-    'app/(admin)/manage/listening/page.tsx',
-    'app/(admin)/manage/shadowing/page.tsx',
-    'app/(admin)/manage/reading/page.tsx',
-    'app/(admin)/manage/system/page.tsx',
+    'app/review/page.tsx',
+    'app/review/memory/page.tsx',
+    'app/review/mistakes/page.tsx',
+    'app/listening/page.tsx',
+    'app/listening/[id]/page.tsx',
+    'app/practice/page.tsx',
+    'app/practice/[id]/page.tsx',
+    'app/practice/[id]/do/page.tsx',
+    'app/subtitles/page.tsx',
+    'app/subtitles/[id]/page.tsx',
+    'app/manage/import/page.tsx',
+    'app/manage/grammar/page.tsx',
+    'app/manage/listening/page.tsx',
+    'app/manage/shadowing/page.tsx',
+    'app/manage/reading/page.tsx',
+    'app/manage/system/page.tsx',
     'components/layout/StudyNavigation.tsx',
-    'components/layout/ManageShell.tsx',
+    'modules/manage/ManageShell.tsx',
     'modules/review/actions/memory.ts',
     'modules/review/actions/mistakes.ts',
     'modules/review/server/mistake-repository.ts',
@@ -119,34 +168,31 @@ test('review routes and feature modules exist', async () => {
     'lib/codecs/material-payload.ts',
     'lib/codecs/question-content.ts',
     'lib/server/public-paths.ts',
-    'features/collections/ui/DndSystem.tsx',
-    'features/content/ui/EditArticleUI.tsx',
-    'features/content/ui/EditQuizUI.tsx',
-    'features/import/ui/UploadCenterUI.tsx',
-    'features/import/hooks/useUploadMutations.ts',
-    'features/listening/ui/ListeningListClient.tsx',
-    'features/listening/ui/ListeningViewSwitcher.tsx',
-    'features/listening/hooks/useListeningListQuery.ts',
-    'features/listening/hooks/useListeningListState.ts',
-    'features/listening/hooks/useListeningListMutations.ts',
-    'features/practice/ui/PaperQuestionEditor.tsx',
-    'features/practice/ui/PaperLibraryItem.tsx',
-    'features/practice/domain/paper-library.ts',
-    'features/practice/hooks/usePaperLibraryState.ts',
+    'modules/content/collections/components/DndSystem.tsx',
+    'modules/content/components/EditArticleUI.tsx',
+    'modules/content/components/EditQuizUI.tsx',
+    'modules/import/components/UploadCenterUI.tsx',
+    'modules/import/hooks/useUploadMutations.ts',
+    'modules/listening/components/ListeningListClient.tsx',
+    'modules/listening/components/ListeningViewSwitcher.tsx',
+    'modules/listening/hooks/useListeningListQuery.ts',
+    'modules/listening/hooks/useListeningListState.ts',
+    'modules/listening/hooks/useListeningListMutations.ts',
+    'modules/practice/components/PaperQuestionEditor.tsx',
+    'modules/practice/components/PaperLibraryItem.tsx',
+    'modules/practice/domain/paper-library.ts',
+    'modules/practice/hooks/usePaperLibraryState.ts',
     'modules/questions/domain/editor.ts',
     'modules/questions/domain/paper-editor.ts',
-    'features/questions/components/QuestionTypeBadge.tsx',
-    'features/questions/hooks/useQuestionEditorMutations.ts',
-    'features/questions/hooks/useQuestionEditorPageState.ts',
-    'features/questions/hooks/useQuestionListEditorState.ts',
-    'features/questions/hooks/usePaperQuestionEditorState.ts',
-    'features/reading/ui/ArticleReaderClient.tsx',
-    'modules/knowledge/vocabulary/hooks/useVocabularyMutations.ts',
+    'modules/questions/components/QuestionTypeBadge.tsx',
+    'modules/questions/hooks/useQuestionEditorPageState.ts',
+    'modules/questions/hooks/useQuestionListEditorState.ts',
+    'modules/questions/hooks/usePaperQuestionEditorState.ts',
+    'modules/reading/components/ArticleReaderClient.tsx',
     'modules/knowledge/vocabulary/hooks/useVocabularyWorkspaceState.ts',
     'modules/media-subtitles/domain/editor.ts',
     'modules/media-subtitles/components/HighlightedSubtitleText.tsx',
     'modules/media-subtitles/hooks/useMediaSubtitleEditorState.ts',
-    'modules/media-subtitles/hooks/useMediaSubtitleMutations.ts',
   ]
 
   for (const file of required) {
@@ -198,7 +244,7 @@ test('route, persistence, validation, and action boundaries stay explicit', asyn
   assert.deepEqual(violations, [])
 })
 
-test('shared question rules and pronunciation stay outside feature-specific paths', async () => {
+test('shared question rules and pronunciation stay in their shared modules', async () => {
   const files = (
     await Promise.all(SOURCE_DIRS.map(directory => sourceFiles(directory)))
   ).flat()
@@ -207,16 +253,16 @@ test('shared question rules and pronunciation stay outside feature-specific path
   for (const file of files) {
     const relative = path.relative(ROOT, file)
     const content = await readFile(file, 'utf8')
-    if (content.includes('features/questions/domain')) {
-      violations.push(`${relative} -> feature-owned shared question domain`)
+    if (content.includes('components/questions/domain')) {
+      violations.push(`${relative} -> component-owned shared question domain`)
     }
     if (content.includes('/api/practice/pronunciation')) {
       violations.push(`${relative} -> feature-specific pronunciation endpoint`)
     }
-    if (content.includes('features/reading/domain/sudachi')) {
+    if (content.includes('modules/reading/domain/sudachi')) {
       violations.push(`${relative} -> reading-owned shared language domain`)
     }
-    if (content.includes('features/reading/ui/PronunciationSourceSelector')) {
+    if (content.includes('modules/reading/components/PronunciationSourceSelector')) {
       violations.push(`${relative} -> reading-owned shared pronunciation control`)
     }
   }
@@ -226,11 +272,11 @@ test('shared question rules and pronunciation stay outside feature-specific path
 
 test('review workflows preserve submitted state and keep clear exits', async () => {
   const questionReview = await readFile(
-    path.join(ROOT, 'app/(study)/review/[id]/ReviewQuestionClient.tsx'),
+    path.join(ROOT, 'modules/review/components/ReviewQuestionClient.tsx'),
     'utf8',
   )
   const memoryReview = await readFile(
-    path.join(ROOT, 'app/(study)/review/memory/MemoryReviewClient.tsx'),
+    path.join(ROOT, 'modules/review/components/MemoryReviewClient.tsx'),
     'utf8',
   )
   const mistakeActions = await readFile(
@@ -238,7 +284,7 @@ test('review workflows preserve submitted state and keep clear exits', async () 
     'utf8',
   )
   const questionRenderer = await readFile(
-    path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
+    path.join(ROOT, 'modules/questions/components/QuestionRenderer.tsx'),
     'utf8',
   )
   assert.match(
@@ -266,11 +312,11 @@ test('large feature entry points delegate distinct responsibilities', async () =
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
+    path.join(ROOT, 'modules/import/components/UploadCenterUI.tsx'),
     'utf8',
   )
   const vocabularyTabs = await readFile(
-    path.join(ROOT, 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    path.join(ROOT, 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
     'utf8',
   )
 
@@ -294,35 +340,35 @@ test('large feature entry points delegate distinct responsibilities', async () =
 
 test('content import keeps one task visible at a time', async () => {
   const importPage = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
+    path.join(ROOT, 'app/manage/import/page.tsx'),
     'utf8',
   )
   const importNavigation = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/import/ImportNavigation.tsx'),
+    path.join(ROOT, 'modules/import/components/ImportNavigation.tsx'),
     'utf8',
   )
   const uploadCenter = await readFile(
-    path.join(ROOT, 'features/import/ui/UploadCenterUI.tsx'),
+    path.join(ROOT, 'modules/import/components/UploadCenterUI.tsx'),
     'utf8',
   )
   const uploadForm = await readFile(
-    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
+    path.join(ROOT, 'modules/import/components/UploadForm.tsx'),
     'utf8',
   )
   const listeningQuestionEditor = await readFile(
-    path.join(ROOT, 'features/collections/ui/LessonQuestionsPanel.tsx'),
+    path.join(ROOT, 'modules/content/collections/components/LessonQuestionsPanel.tsx'),
     'utf8',
   )
   const importActions = await readFile(
-    path.join(ROOT, 'features/import/actions.ts'),
+    path.join(ROOT, 'modules/import/actions.ts'),
     'utf8',
   )
   const questionRenderer = await readFile(
-    path.join(ROOT, 'components/exam/QuestionRenderer.tsx'),
+    path.join(ROOT, 'modules/questions/components/QuestionRenderer.tsx'),
     'utf8',
   )
   const optionsList = await readFile(
-    path.join(ROOT, 'components/exam/question-renderer/OptionsList.tsx'),
+    path.join(ROOT, 'modules/questions/components/question-renderer/OptionsList.tsx'),
     'utf8',
   )
   const toeicTypes = await readFile(
@@ -349,7 +395,7 @@ test('content import keeps one task visible at a time', async () => {
   assert.match(importPage, /label: language === 'ja' \? '文字·词汇·语法' : '文法题'/)
   assert.match(importPage, /aria-label='选择 TOEIC Part'/)
   assert.match(importPage, /part=\$\{part\.part\}/)
-  assert.match(importPage, /legacyToeicPart/)
+  assert.equal(importPage.includes('legacyToeicPart'), false)
   assert.match(importPage, /collectionTypesByScope/)
   assert.match(uploadCenter, /collectionScope/)
   assert.match(uploadForm, /name='collectionLanguage'/)
@@ -415,7 +461,7 @@ test('content import loads the audio catalogue on demand without effect loops', 
     'utf8',
   )
   const uploadForm = await readFile(
-    path.join(ROOT, 'features/import/ui/UploadForm.tsx'),
+    path.join(ROOT, 'modules/import/components/UploadForm.tsx'),
     'utf8',
   )
 
@@ -431,7 +477,7 @@ test('content import filters collections by explicit material capabilities', asy
     'utf8',
   )
   const importPage = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/import/page.tsx'),
+    path.join(ROOT, 'app/manage/import/page.tsx'),
     'utf8',
   )
   assert.match(schema, /provider = "postgresql"/)
@@ -442,15 +488,15 @@ test('content import filters collections by explicit material capabilities', asy
 
 test('management pages keep classification, exams, and audio responsibilities separate', async () => {
   const shadowingLibraryManager = await readFile(
-    path.join(ROOT, 'features/listening/ui/ShadowingLibraryManager.tsx'),
+    path.join(ROOT, 'modules/listening/components/ShadowingLibraryManager.tsx'),
     'utf8',
   )
   const practicePage = await readFile(
-    path.join(ROOT, 'features/practice/ui/ManagePapersListClient.tsx'),
+    path.join(ROOT, 'modules/practice/components/ManagePapersListClient.tsx'),
     'utf8',
   )
   const listeningPage = await readFile(
-    path.join(ROOT, 'features/listening/ui/ListeningListClient.tsx'),
+    path.join(ROOT, 'modules/listening/components/ListeningListClient.tsx'),
     'utf8',
   )
   const examRepository = await readFile(
@@ -458,25 +504,25 @@ test('management pages keep classification, exams, and audio responsibilities se
     'utf8',
   )
   const listeningEditor = await readFile(
-    path.join(ROOT, 'app/(admin)/manage/listening/[id]/page.tsx'),
+    path.join(ROOT, 'app/manage/listening/[id]/page.tsx'),
     'utf8',
   )
   const listeningQuestionEditor = await readFile(
     path.join(
       ROOT,
-      'features/collections/ui/LessonQuestionsPanel.tsx',
+      'modules/content/collections/components/LessonQuestionsPanel.tsx',
     ),
     'utf8',
   )
   const paperQuestionEditor = await readFile(
     path.join(
       ROOT,
-      'features/practice/ui/PaperQuestionEditor.tsx',
+      'modules/practice/components/PaperQuestionEditor.tsx',
     ),
     'utf8',
   )
   const paperQuestionActions = await readFile(
-    path.join(ROOT, 'features/practice/admin-actions.ts'),
+    path.join(ROOT, 'modules/practice/actions/admin.ts'),
     'utf8',
   )
 
@@ -562,7 +608,7 @@ test('local users own learning records and can be created or switched', async ()
     'utf8',
   )
   const practiceSession = await readFile(
-    path.join(ROOT, 'hooks/usePracticeSession.ts'),
+    path.join(ROOT, 'modules/practice/hooks/usePracticeSession.ts'),
     'utf8',
   )
 

@@ -117,11 +117,11 @@ export async function getReadingEditData(maybeId: string) {
       material.contentPayload,
       material.id,
     ),
-    content: readString(payload.text) || readString(payload.transcript),
+    content: readString(payload.text),
     sourceKind: readString(payload.sourceKind),
     publishedDate: readString(payload.publishedDate),
     edition: readString(payload.edition),
-    pageNumber: readString(payload.pageNumber),
+    newsSection: readString(payload.newsSection),
     audioFile: readString(payload.audioFile),
     category: {
       levelId: collection?.id || null,
@@ -194,10 +194,7 @@ export async function getQuizEditData(maybeId: string) {
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
           content.listeningSectionNumber,
-          content.sectionNumber,
-          content.partNumber,
           content.listeningSectionTitle,
-          content.sectionTitle,
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,
@@ -292,12 +289,9 @@ export async function getListeningEditData(maybeId: string) {
       material.contentPayload,
       material.id,
     ),
-    audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+    audioFile: readString(payload.audioFile),
     listeningSectionNumber: asPositiveIntegerString(
       payload.listeningSectionNumber,
-      payload.sectionNumber,
-      payload.partNumber,
-      payload.jlptPartNumber,
       titleSectionNumber,
     ),
     subtitleMeta: {
@@ -329,10 +323,7 @@ export async function getListeningEditData(maybeId: string) {
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
           content.listeningSectionNumber,
-          content.sectionNumber,
-          content.partNumber,
           content.listeningSectionTitle,
-          content.sectionTitle,
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,
@@ -425,7 +416,7 @@ export async function getSpeakingEditData(maybeId: string) {
       material.contentPayload,
       material.id,
     ),
-    audioFile: readString(payload.audioFile) || readString(payload.audioUrl),
+    audioFile: readString(payload.audioFile),
     collectionId,
     collectionTitle:
       material.collectionMaterials[0]?.collection.title || '未分组',
@@ -447,7 +438,6 @@ export async function getSpeakingEditData(maybeId: string) {
         explanation: question.analysis,
         listeningSectionNumber: asPositiveIntegerString(
           content.listeningSectionNumber,
-          content.sectionNumber,
         ),
         optionLabelFormat: normalizeOptionLabelFormat(
           content.optionLabelFormat,

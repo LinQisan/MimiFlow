@@ -229,7 +229,7 @@ test('custom ruby never shifts adjacent lexical token ranges', () => {
 
 test('wordbook underlines target token wrappers instead of ruby fragments', async () => {
   const [hook, css] = await Promise.all([
-    readFile(path.join(ROOT, 'hooks/useStudyTextHighlights.ts'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/knowledge/learning-records/useStudyTextHighlights.ts'), 'utf8'),
     readFile(path.join(ROOT, 'app/globals.css'), 'utf8'),
   ])
   const underlineRule = css.match(

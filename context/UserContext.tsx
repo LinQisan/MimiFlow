@@ -27,13 +27,5 @@ export const userStorageKey = (userId: string, key: string) =>
 
 export const readUserStorageValue = (userId: string, key: string) => {
   if (typeof window === 'undefined') return null
-  const scopedKey = userStorageKey(userId, key)
-  const scopedValue = window.localStorage.getItem(scopedKey)
-  if (scopedValue !== null || userId !== 'default') return scopedValue
-
-  const legacyValue = window.localStorage.getItem(key)
-  if (legacyValue !== null) {
-    window.localStorage.setItem(scopedKey, legacyValue)
-  }
-  return legacyValue
+  return window.localStorage.getItem(userStorageKey(userId, key))
 }

@@ -1,10 +1,6 @@
 import type { QuestionType } from '@prisma/client'
 
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
-export {
-  MIN_QUESTION_OPTION_COUNT,
-  removeQuestionOptionAt,
-} from '@/utils/questions/editorOptions'
 
 export type EditableQuestionOption = {
   id: string

@@ -5,6 +5,7 @@ import {
 } from "../../questions/domain/paper-editor.ts";
 import { getToeicPartByQuestionType } from "../../questions/domain/toeic.ts";
 import { buildPracticeQuestionNumberMap } from "./question-numbering.ts";
+import { normalizeQuestionSectionTitle } from "../../questions/domain/section-heading.ts";
 
 export type AnswerCardQuestion = {
   id: string;
@@ -71,7 +72,9 @@ const getQuestionSection = (
       materialKey: "LISTENING" as const,
       materialTitle: isEnglish ? "Listening" : "聴解",
       sectionNumber: question.lesson?.sectionNumber || 1,
-      sectionTitle: question.lesson?.sectionTitle || "聴解",
+      sectionTitle: isEnglish
+        ? question.lesson?.sectionTitle || "Listening"
+        : normalizeQuestionSectionTitle(question.lesson?.sectionTitle || "聴解", question.lesson?.sectionNumber || 1),
     };
   }
 

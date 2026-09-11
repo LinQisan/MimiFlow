@@ -5,7 +5,7 @@ import {
   buildPriorityReviewPlan,
   getPracticeWordRecommendReasons,
   PRACTICE_WORD_RECOMMEND_REASON_LABELS,
-} from '../features/practice/domain/vocabulary-analytics.ts'
+} from '../modules/practice/domain/vocabulary-analytics.ts'
 
 const insight = (overrides = {}) => ({
   word: 'こと',

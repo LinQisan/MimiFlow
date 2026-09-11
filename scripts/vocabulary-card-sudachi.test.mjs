@@ -65,7 +65,7 @@ test('parenthesized headword uses the analyzed reading, not the parens', () => {
   assert.match(html, /data-vocab-start="0"/)
   assert.match(html, /data-vocab-end="4"/)
   // Genuine inline notation (authored kana covered by the token reading)
-  // keeps the legacy rendering: no regression for 辿（たど）っ.
+  // Keeps the authored rendering for 辿（たど）っ.
   const inlineLexicon = {
     '辿（たど）っ': { surface: '辿（たど）っ', dictionaryForm: '辿る', normalizedForm: '辿る', reading: 'たどっ', dictionaryReading: 'たどる', partsOfSpeech: ['動詞'] },
   }
@@ -94,7 +94,7 @@ test('card sentence renders Sudachi ruby on every kanji token', () => {
 
 test('card resolver prefers Sudachi in default mode, keeps personal fallback', async () => {
   const tabs = await readFile(
-    path.join(process.cwd(), 'app/(knowledge)/vocabulary/VocabularyTabs.tsx'),
+    path.join(process.cwd(), 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
     'utf8',
   )
   const resolver = tabs.slice(tabs.indexOf('const pronunciationSourceForVocab'))

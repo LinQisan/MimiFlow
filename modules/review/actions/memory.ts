@@ -80,7 +80,7 @@ async function getListeningDialoguesByIds(targetIds: number[]) {
     const rawDialogues = Array.isArray(payload.dialogues)
       ? (payload.dialogues as Record<string, unknown>[])
       : []
-    const audioFile = readString(payload.audioFile) || readString(payload.audioUrl)
+    const audioFile = readString(payload.audioFile)
 
     for (const row of rawDialogues) {
       const dialogueId = readFiniteNumber(row.id, readFiniteNumber(row.sequenceId))

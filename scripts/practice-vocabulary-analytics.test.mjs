@@ -9,7 +9,7 @@ import {
   buildPracticeVocabularyAnalytics,
   buildPracticeVocabularyAnalyticsSummary,
   rankPracticeVocabularyTrendWords,
-} from '../features/practice/domain/vocabulary-analytics.ts'
+} from '../modules/practice/domain/vocabulary-analytics.ts'
 import { isSudachiContentWord } from '../modules/language/domain/sudachi.ts'
 
 const ROOT = process.cwd()
@@ -133,7 +133,7 @@ test('practice analytics prioritizes direct targets without assuming a fixed use
 
 const profileKeys = ['TEXT_VOCAB', 'GRAMMAR', 'READING', 'LISTENING']
 
-const legacyProfile = (analytics, key) => {
+const expectedProfile = (analytics, key) => {
   const matching = analytics.words.filter(row => row.categoryCounts[key] > 0)
   return {
     key,
@@ -155,7 +155,7 @@ const legacyProfile = (analytics, key) => {
   }
 }
 
-test('practice profile aggregation preserves the previous results and tie order', () => {
+test('practice profile aggregation preserves result semantics and tie order', () => {
   const build = words => {
     const document = {
       paperId: 'paper-1',
@@ -188,7 +188,7 @@ test('practice profile aggregation preserves the previous results and tie order'
   const fewerThanTwenty = build(['環境', '取り組む', '学習'])
   assert.deepEqual(
     fewerThanTwenty.profiles,
-    profileKeys.map(key => legacyProfile(fewerThanTwenty, key)),
+    profileKeys.map(key => expectedProfile(fewerThanTwenty, key)),
   )
 
   const tiedWords = Array.from({ length: 25 }, (_, index) =>
@@ -197,7 +197,7 @@ test('practice profile aggregation preserves the previous results and tie order'
   const moreThanTwenty = build(tiedWords)
   assert.deepEqual(
     moreThanTwenty.profiles,
-    profileKeys.map(key => legacyProfile(moreThanTwenty, key)),
+    profileKeys.map(key => expectedProfile(moreThanTwenty, key)),
   )
   assert.equal(moreThanTwenty.profiles[2].topWords.length, 20)
 
@@ -308,18 +308,18 @@ test('wordbook scope options preserve authored order, empty lists and distinct s
 
 test('practice page exposes the vocabulary analysis dialog and source builder', async () => {
   const [page, client, launcher, server, domain, route, wordbookRoute, wordsRoute] = await Promise.all([
-    readFile(path.join(ROOT, 'app/(study)/practice/page.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'app/(study)/practice/PapersListClient.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'app/practice/page.tsx'), 'utf8'),
+    readFile(path.join(ROOT, 'modules/practice/components/PapersListClient.tsx'), 'utf8'),
     readFile(
-      path.join(ROOT, 'features/practice/ui/PracticeInsightsLaunchers.tsx'),
+      path.join(ROOT, 'modules/practice/components/PracticeInsightsLaunchers.tsx'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'features/practice/server/vocabulary-analytics.ts'),
+      path.join(ROOT, 'modules/practice/server/vocabulary-analytics.ts'),
       'utf8',
     ),
     readFile(
-      path.join(ROOT, 'features/practice/domain/vocabulary-analytics.ts'),
+      path.join(ROOT, 'modules/practice/domain/vocabulary-analytics.ts'),
       'utf8',
     ),
     readFile(

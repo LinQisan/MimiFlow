@@ -10,6 +10,7 @@ import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { normalizeVocabularySentenceTextKey } from '@/utils/vocabulary/sentenceQuality'
 import {
+  normalizeEntryPronunciations,
   structuredPartOfSpeechLabel,
   type VocabularyEntryDraft,
 } from './domain/entry'
@@ -21,6 +22,7 @@ import {
   computeSingleVocabularyPronunciation,
   batchComputeSentencePronunciations,
 } from './server/pronunciation-service'
+import { resolveListeningSentenceReferences } from './server/listening-source'
 import { PRONUNCIATION_VERSION } from './domain/pronunciation'
 import { normalizeVocabularyWord } from './domain/normalized-word'
 import { hasJapanese } from '@/modules/language/domain/text'
@@ -51,8 +53,8 @@ async function replaceTags(
 async function createRelation(
   tx: Prisma.TransactionClient,
   vocabularyId: string,
-  senseId: string | null,
-  relation: VocabularyEntryDraft['relations'][number],
+  senseId: string,
+  relation: VocabularyEntryDraft['senses'][number]['relations'][number],
   sortOrder: number,
 ) {
   await tx.vocabularyRelation.create({
@@ -94,7 +96,7 @@ export async function saveVocabularyEntryDraft(input: unknown) {
 
     const targetIds = Array.from(
       new Set(
-        [...draft.relations, ...draft.senses.flatMap(sense => sense.relations)]
+        draft.senses.flatMap(sense => sense.relations)
           .map(relation => compact(relation.targetVocabularyId))
           .filter((value): value is string => Boolean(value)),
       ),
@@ -108,16 +110,18 @@ export async function saveVocabularyEntryDraft(input: unknown) {
       }
     }
 
-    const legacyMeanings = draft.senses
-      .map(sense => sense.definitions.find(definition => definition.language === 'zh')?.text || sense.definitions[0]?.text || '')
-      .filter(Boolean)
-    const legacyPartOfSpeech = structuredPartOfSpeechLabel(draft.grammarPartOfSpeech)
+    const partOfSpeechLabel = structuredPartOfSpeechLabel(draft.grammarPartOfSpeech)
 
-    const classified = splitJapaneseEtymologies(draft.word, draft.reading ? [draft.reading] : [], draft.etymologies ?? parseJsonStringList(owned.etymologies))
+    const classified = splitJapaneseEtymologies(
+      draft.word,
+      normalizeEntryPronunciations(draft.pronunciations),
+      draft.etymologies ?? parseJsonStringList(owned.etymologies),
+    )
     const wordPronunciationData = hasJapanese(draft.word)
       ? await computeSingleVocabularyPronunciation(draft.word, classified.pronunciations[0] || null)
       : null
 
+    const recoveredSources = await resolveListeningSentenceReferences(draft.senses.flatMap(sense => sense.examples))
     const exampleTexts = draft.senses
       .flatMap(s => s.examples.map(e => e.text))
       .filter(Boolean)
@@ -137,10 +141,6 @@ export async function saveVocabularyEntryDraft(input: unknown) {
       await tx.vocabularySense.deleteMany({
         where: { vocabularyId: draft.vocabularyId },
       })
-      await tx.vocabularyDefinition.deleteMany({
-        where: { vocabularyId: draft.vocabularyId, senseId: null },
-      })
-
       await tx.vocabulary.update({
         where: { id: draft.vocabularyId },
         data: {
@@ -148,8 +148,7 @@ export async function saveVocabularyEntryDraft(input: unknown) {
           normalizedWord: normalizeVocabularyWord(draft.word),
           pronunciations: toJsonStringList(classified.pronunciations),
           etymologies: toJsonStringList(classified.etymologies),
-          partsOfSpeech: toJsonStringList([legacyPartOfSpeech]),
-          meanings: toJsonStringList(legacyMeanings),
+          partsOfSpeech: toJsonStringList([partOfSpeechLabel]),
           grammarPartOfSpeech: draft.grammarPartOfSpeech,
           transitivity:
             draft.grammarPartOfSpeech === 'verb' ? draft.transitivity : null,
@@ -184,6 +183,8 @@ export async function saveVocabularyEntryDraft(input: unknown) {
         }
         for (const [index, example] of senseDraft.examples.entries()) {
           const sourceUrl = example.sourceUrl.trim() || '#'
+          const recoveredSourceId = recoveredSources.get(JSON.stringify([sourceUrl, example.text]))
+          const recoveredSource = recoveredSourceId ? { sourceType: 'AUDIO_DIALOGUE' as const, sourceId: recoveredSourceId } : {}
           const examplePronData = examplePronMap.get(example.text) || null
           const sentence = await tx.vocabularySentence.upsert({
             where: {
@@ -193,6 +194,7 @@ export async function saveVocabularyEntryDraft(input: unknown) {
               },
             },
             update: {
+              ...recoveredSource,
               text: example.text,
               translation: compact(example.translation),
               source: example.source.trim() || '手动录入',
@@ -205,6 +207,7 @@ export async function saveVocabularyEntryDraft(input: unknown) {
                 : {}),
             },
             create: {
+              ...recoveredSource,
               text: example.text,
               normalizedText: normalizeVocabularySentenceTextKey(example.text),
               translation: compact(example.translation),
@@ -222,7 +225,6 @@ export async function saveVocabularyEntryDraft(input: unknown) {
               vocabularyId: draft.vocabularyId,
               sentenceId: sentence.id,
               senseId: sense.id,
-              meaningIndex: senseIndex,
               posTags: serializeVocabularyEntryPosTags(
                 example.posTags,
                 existingSentencePosTags.get(sentence.id),
@@ -256,9 +258,6 @@ export async function saveVocabularyEntryDraft(input: unknown) {
             data: { senseId: sense.id, type: note.type, text: note.text, sortOrder: index },
           })
         }
-      }
-      for (const [index, relation] of draft.relations.entries()) {
-        await createRelation(tx, draft.vocabularyId, null, relation, index)
       }
     })
 

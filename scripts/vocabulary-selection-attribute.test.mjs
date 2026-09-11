@@ -35,9 +35,13 @@ function harness({ missing = false, fail = false } = {}) {
       }, findFirst: async ({ where }) => {
         assert.equal(where.userId, 'current-user')
         return draft.words.find(w => w.normalizedWord === where.normalizedWord) || null
-      }, create: async ({ data }) => { const word = { ...data, id: data.word, senses: [], definitions: [] }; draft.words.push(word); return word } },
+      }, create: async ({ data }) => { const word = { ...data, id: data.word, senses: [], definitions: [] }; draft.words.push(word); return word },
+      findUniqueOrThrow: async ({ where }) => draft.words.find(w => w.id === where.id),
+      },
       vocabularySense: { create: async ({ data }) => { const sense = { id: `sense-${data.vocabularyId}`, order: data.order }; draft.words.find(w => w.id === data.vocabularyId).senses.push(sense); return sense } },
-      vocabularyDefinition: { createMany: async ({ data }) => { for (const definition of data) draft.words.find(w => w.id === definition.vocabularyId).definitions.push(definition) } },
+      vocabularyDefinition: {
+        create: async ({ data }) => { draft.words.find(w => w.id === data.vocabularyId).definitions.push(data); return data },
+      },
       vocabularyExpression: {
         findFirst: async ({ where }) => draft.expressions.find(e => e.senseId === where.senseId && e.text === where.text && e.type === where.type),
         aggregate: async () => ({ _max: { sortOrder: 4 } }),
@@ -65,6 +69,7 @@ function harness({ missing = false, fail = false } = {}) {
     './domain/pronunciation': { PRONUNCIATION_VERSION: 1 },
     './domain/normalized-word': { normalizeVocabularyWord: text => text.trim() },
     './domain/entry': { inferStructuredPartOfSpeech: () => 'noun' },
+    './domain/meanings': { listVocabularyMeanings: senses => senses.flatMap(sense => sense.definitions?.map(item => item.definition) || []) },
     './server/repository': { invalidateVocabularyGroupsCache() {}, resolveVocabularySourceMeta: async () => ({ source: 'N1', sourceUrl: '/practice/n1' }) },
     './domain/selection-attribute': { selectionAttributeSchema },
   }

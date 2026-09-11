@@ -5,7 +5,7 @@ import { matchesLearningRecordSelection as matches } from '../modules/knowledge/
 const sentence = 'この問題は一筋縄ではいかない。'
 const point = { kind: 'LEARNING_POINT', title: '難しい問題', sentenceText: sentence, fragments: ['一筋縄ではいかない'] }
 
-test('matches legacy fragments even when the title differs', () => {
+test('matches saved fragments even when the title differs', () => {
   assert.equal(matches(point, '一筋縄ではいかない', sentence), true)
   assert.equal(matches(point, 'では', sentence), false)
   assert.equal(matches(point, '', sentence), false)

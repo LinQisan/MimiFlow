@@ -21,17 +21,27 @@ const questionContentSchema = z
     shuffleOptions: z.boolean().optional(),
     sortingOrder: z.array(z.number().int().nonnegative()).optional(),
     listeningSectionNumber: z.number().int().positive().nullable().optional(),
-    sectionNumber: z.number().int().positive().nullable().optional(),
     listeningSectionTitle: z.string().optional(),
-    sectionTitle: z.string().optional(),
     imageUrl: z.string().optional(),
-    order: z.number().int().nonnegative().optional(),
   })
   .passthrough()
 
 export type QuestionContent = z.output<typeof questionContentSchema>
 
+const retiredQuestionContentKeys = [
+  'order',
+  'legacy',
+  'sectionNumber',
+  'sectionTitle',
+] as const
+
 export function decodeQuestionContent(value: unknown): QuestionContent {
+  if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    const retiredKey = retiredQuestionContentKeys.find(key => key in value)
+    if (retiredKey) {
+      throw new Error(`Question content contains retired key: ${retiredKey}`)
+    }
+  }
   return questionContentSchema.parse(value)
 }
 

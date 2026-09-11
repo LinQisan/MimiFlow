@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 
 import prisma from '@/lib/prisma'
-import { normalizePracticeVocabularyWord } from '@/features/practice/domain/vocabulary-analytics'
+import { normalizeVocabularyWord } from '@/modules/knowledge/vocabulary/domain/normalized-word'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 
 const preferenceSchema = z.object({
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   try {
     const input = preferenceSchema.parse(await request.json())
     const userId = await getCurrentUserId()
-    const normalizedWord = normalizePracticeVocabularyWord(input.word)
+    const normalizedWord = normalizeVocabularyWord(input.word)
 
     if (input.mastered) {
       await prisma.practiceVocabularyPreference.upsert({

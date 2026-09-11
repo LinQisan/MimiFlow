@@ -7,8 +7,8 @@ import { formatJapaneseTextWithSudachiRubyNotation } from '../../../utils/langua
  * The shared lexicon keeps only one entry per surface, so it cannot represent
  * two readings for the same surface in a batch. Sudachi token offsets provide
  * that missing occurrence context. They are validated against the original
- * text before use; malformed or incompatible offsets fall back to the legacy
- * lexicon formatter so this path never drops or rewrites source characters.
+ * text before use; malformed or incompatible offsets use the lexicon formatter
+ * so this path never drops or rewrites source characters.
  * Sudachi reports offsets in Unicode code points, while JavaScript slices by
  * UTF-16 units, hence the explicit boundary map.
  */

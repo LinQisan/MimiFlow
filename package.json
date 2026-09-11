@@ -21,7 +21,6 @@
     "postinstall": "prisma generate",
     "db:generate": "prisma generate --config prisma.config.ts",
     "db:push": "prisma db push --config prisma.config.ts",
-    "db:migrate:vocabulary-senses": "node scripts/migrate-vocabulary-senses.mjs",
     "db:import:red-book": "node scripts/import-red-book-vocabulary.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "sudachi:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt",

@@ -10,7 +10,7 @@ import { getCurrentUserId } from '@/modules/users/server/current-user'
 import {
   invalidatePracticeVocabularyAnalytics,
   precomputePracticeVocabularyMaterialAnalyses,
-} from '@/features/practice/server/vocabulary-analytics'
+} from '@/modules/practice/server/vocabulary-analytics'
 
 const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'

@@ -15,9 +15,20 @@ export function wordbookEntryWhere(
     vocabulary: {
       userId,
       ...(keyword ? {
-        OR: ['word', 'pronunciations', 'etymologies', 'meanings', 'partsOfSpeech'].map(field => ({
-          [field]: { contains: keyword, mode: 'insensitive' },
-        })),
+        OR: [
+          ...['word', 'pronunciations', 'etymologies', 'partsOfSpeech'].map(field => ({
+            [field]: { contains: keyword, mode: 'insensitive' as const },
+          })),
+          {
+            senses: {
+              some: {
+                definitions: {
+                  some: { definition: { contains: keyword, mode: 'insensitive' } },
+                },
+              },
+            },
+          },
+        ],
       } : {}),
     },
   }

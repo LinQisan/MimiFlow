@@ -1,3 +1,4 @@
+import { normalizeQuestionSectionTitle } from '@/modules/questions/domain/section-heading';
 import prisma from "@/lib/prisma";
 import { CollectionType, MaterialType, QuestionType } from "@prisma/client";
 import { cache } from "react";
@@ -29,6 +30,7 @@ import {
 } from "@/modules/questions/domain/toeic";
 import { getCurrentUserId } from "@/modules/users/server/current-user";
 import { buildExamAnnotationTexts } from "@/modules/practice/domain/exam-annotation-texts";
+import { buildRandomPracticeFilterOptions } from "@/modules/practice/domain/custom-session";
 
 export type ExamHubPaperSummary = {
   id: string;
@@ -203,17 +205,6 @@ function toAnswerIds(answer: unknown): string[] {
   return [];
 }
 
-function toQuestionOrder(
-  content: Record<string, unknown>,
-  fallback: number,
-): number {
-  const fromContent = content.order;
-  if (typeof fromContent === "number" && Number.isFinite(fromContent)) {
-    return Math.max(0, Math.floor(fromContent));
-  }
-  return fallback;
-}
-
 const LISTENING_SECTION_FALLBACK = {
   key: "listening",
   title: "听力",
@@ -257,7 +248,6 @@ function toPositiveInteger(value: unknown): number | null {
 export function resolveListeningSection({
   content,
   payload,
-  metadata,
   chapterName,
   questionType,
   language,
@@ -280,17 +270,7 @@ export function resolveListeningSection({
 
   const explicitTitle = firstString(
     payload.listeningSectionTitle,
-    payload.sectionTitle,
-    payload.partTitle,
-    payload.jlptPartTitle,
-    metadata.listeningSectionTitle,
-    metadata.sectionTitle,
-    metadata.partTitle,
-    metadata.jlptPartTitle,
     content.listeningSectionTitle,
-    content.sectionTitle,
-    content.partTitle,
-    content.jlptPartTitle,
   );
   const normalizedLanguage = (language || "").trim().toLowerCase();
   const isEnglish =
@@ -299,9 +279,6 @@ export function resolveListeningSection({
     ? [
         chapterName,
         explicitTitle,
-        content.partTitle,
-        payload.partTitle,
-        metadata.partTitle,
       ]
         .filter((value): value is string => typeof value === "string")
         .join(" ")
@@ -321,55 +298,19 @@ export function resolveListeningSection({
     ?.match(/(?:問題|问题)\s*\d+(?:\s*[-_－]\s*\d+)?\s*[｜|]\s*(.+)$/i)?.[1]
     ?.trim();
   const explicitPart = toPositiveInteger(
-    content.listeningSectionNumber ??
-      content.sectionNumber ??
-      content.partNumber ??
-      content.jlptPartNumber ??
-      content.listeningSectionOrder ??
-      content.sectionOrder ??
-      content.partOrder ??
-      payload.listeningSectionNumber ??
-      payload.sectionNumber ??
-      payload.partNumber ??
-      payload.jlptPartNumber ??
-      metadata.listeningSectionNumber ??
-      metadata.sectionNumber ??
-      metadata.partNumber ??
-      metadata.jlptPartNumber,
+    content.listeningSectionNumber ?? payload.listeningSectionNumber,
   );
   if (explicitPart) {
     return {
       key: `listening-part-${explicitPart}`,
-      title: explicitTitle || titleFromChapter || "听力",
+      title: isEnglish ? explicitTitle || titleFromChapter || "听力" : normalizeQuestionSectionTitle(explicitTitle || titleFromChapter || "听力", explicitPart),
       partNumber: explicitPart,
     };
   }
 
   const title = firstString(
     content.listeningSectionTitle,
-    content.sectionTitle,
-    content.partTitle,
-    content.jlptPartTitle,
     payload.listeningSectionTitle,
-    payload.sectionTitle,
-    payload.partTitle,
-    payload.jlptPartTitle,
-    metadata.listeningSectionTitle,
-    metadata.sectionTitle,
-    metadata.partTitle,
-    metadata.jlptPartTitle,
-    content.listeningSection,
-    content.section,
-    content.part,
-    content.jlptPart,
-    payload.listeningSection,
-    payload.section,
-    payload.part,
-    payload.jlptPart,
-    metadata.listeningSection,
-    metadata.section,
-    metadata.part,
-    metadata.jlptPart,
     chapterName,
   );
 
@@ -383,7 +324,7 @@ export function resolveListeningSection({
     if (sectionNumber && sectionTitle) {
       return {
         key: `listening-part-${sectionNumber}`,
-        title: sectionTitle,
+        title: normalizeQuestionSectionTitle(sectionTitle, sectionNumber),
         partNumber: sectionNumber,
       };
     }
@@ -473,7 +414,7 @@ function buildQuestionView(
     attempts: row.attempts || [],
     attemptCount: row.attemptCount,
     correctAttemptCount: row.correctAttemptCount,
-    order: toQuestionOrder(content, row.sortOrder || fallbackOrder),
+    order: row.sortOrder || fallbackOrder,
     questionType,
     prompt: normalizeQuestionDisplayText(row.prompt),
     contextSentence: normalizeQuestionDisplayText(row.context),
@@ -497,8 +438,7 @@ function buildQuestionView(
       passageId: material.id,
       passage: {
         id: material.id,
-        content:
-          readString(payload.text) || readString(payload.transcript) || "",
+        content: readString(payload.text),
       },
     };
   }
@@ -520,7 +460,7 @@ function buildQuestionView(
       lesson: {
         id: material.id,
         audioFile:
-          readString(payload.audioFile) || readString(payload.audioUrl),
+          readString(payload.audioFile),
         sectionKey: section.key,
         sectionTitle: section.title,
         sectionNumber: section.partNumber,
@@ -535,13 +475,24 @@ function buildQuestionView(
 async function buildVocabularyMaps(userId: string, relevantText = "") {
   const metadataFilter = {
     userId,
-    OR: [{ pronunciations: { not: null } }, { meanings: { not: null } }],
+    OR: [
+      { pronunciations: { not: null } },
+      { senses: { some: { definitions: { some: {} } } } },
+    ],
   };
   const selectMetadata = {
     word: true,
     pronunciations: true,
     partsOfSpeech: true,
-    meanings: true,
+    senses: {
+      orderBy: { order: "asc" as const },
+      select: {
+        definitions: {
+          orderBy: { sortOrder: "asc" as const },
+          select: { definition: true },
+        },
+      },
+    },
   } as const;
   const matchedWords = relevantText
     ? Array.from(
@@ -1169,7 +1120,6 @@ export async function findPaperDetailById(id: string) {
         ),
         description: readString(contentPayload.description),
         questions: material.questions.map((question, index) => {
-          const content = decodeQuestionContent(question.content);
           return {
             id: question.id,
             questionType: question.questionType,
@@ -1178,7 +1128,7 @@ export async function findPaperDetailById(id: string) {
             options: asArray<Record<string, unknown>>(question.options)
               .map(option => readString(option.text))
               .filter(Boolean),
-            order: toQuestionOrder(content, question.sortOrder || index + 1),
+            order: question.sortOrder || index + 1,
           };
         }),
       };
@@ -1210,7 +1160,7 @@ export async function findPaperDetailById(id: string) {
           material.id,
         ),
         audioFile:
-          readString(payload.audioFile) || readString(payload.audioUrl),
+          readString(payload.audioFile),
         transcript:
           dialogueTranscript ||
           readString(payload.transcript) ||
@@ -1236,7 +1186,7 @@ export async function findPaperDetailById(id: string) {
             sectionKey: section.key,
             sectionTitle: section.title,
             sectionNumber: section.partNumber,
-            order: toQuestionOrder(content, question.sortOrder || index + 1),
+            order: question.sortOrder || index + 1,
           };
         }),
       };
@@ -1263,7 +1213,6 @@ export async function findPaperDetailById(id: string) {
         content:
           readString(payload.text) || readString(payload.transcript) || "",
         questions: material.questions.map((question, index) => {
-          const content = decodeQuestionContent(question.content);
           return {
             id: question.id,
             questionType: question.questionType,
@@ -1272,7 +1221,7 @@ export async function findPaperDetailById(id: string) {
             options: asArray<Record<string, unknown>>(question.options)
               .map(option => readString(option.text))
               .filter(Boolean),
-            order: toQuestionOrder(content, question.sortOrder || index + 1),
+            order: question.sortOrder || index + 1,
           };
         }),
       };
@@ -1413,7 +1362,7 @@ export async function getManagePaperEditData(paperId: string) {
           sortingOrder: Array.isArray(content.sortingOrder)
             ? content.sortingOrder
             : [],
-          sortOrder: toQuestionOrder(content, row.sortOrder || index + 1),
+          sortOrder: row.sortOrder || index + 1,
           options,
         };
       }),
@@ -1708,7 +1657,37 @@ export async function getPracticeSubmissionReview(
   };
 }
 
-export async function getRandomExamQuestionsBySelections(
+function getQuestionGroupKey(question: {
+  id: string;
+  materialId: string;
+  material: {
+    type: MaterialType;
+    contentPayload?: unknown;
+  };
+}) {
+  if (
+    question.material.type === MaterialType.LISTENING ||
+    question.material.type === MaterialType.READING ||
+    question.material.type === MaterialType.SPEAKING ||
+    question.material.type === MaterialType.MEDIA_SUBTITLE
+  ) {
+    return `material:${question.materialId}`;
+  }
+  const payload = question.material.contentPayload;
+  if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+    const record = payload as Record<string, unknown>;
+    if (
+      (typeof record.text === 'string' && record.text.trim()) ||
+      (typeof record.audioFile === 'string' && record.audioFile.trim()) ||
+      (typeof record.transcript === 'string' && record.transcript.trim())
+    ) {
+      return `material:${question.materialId}`;
+    }
+  }
+  return `question:${question.id}`;
+}
+
+export async function getRandomExamQuestionIdsBySelections(
   selectionKeys: string[],
   requestedCount: number,
   filters?: RandomPracticeFilters,
@@ -1736,11 +1715,6 @@ export async function getRandomExamQuestionsBySelections(
 
   const candidateRows = await prisma.question.findMany({
     where: {
-      ...(scope === "unattempted"
-        ? { attempts: { none: { userId } } }
-        : scope === "attempted"
-          ? { attempts: { some: { userId } } }
-          : {}),
       material: {
         type: { in: Array.from(selectedMaterialTypes) },
         ...(hasCollectionFilter
@@ -1761,10 +1735,18 @@ export async function getRandomExamQuestionsBySelections(
     },
     select: {
       id: true,
+      materialId: true,
       questionType: true,
       content: true,
+      sortOrder: true,
+      createdAt: true,
+      attempts: {
+        where: { userId },
+        select: { id: true },
+      },
       material: {
         select: {
+          id: true,
           type: true,
           chapterName: true,
           contentPayload: true,
@@ -1772,51 +1754,103 @@ export async function getRandomExamQuestionsBySelections(
         },
       },
     },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
-  const matchingIds = candidateRows
-    .filter((row) => {
-      const materialType = row.material.type;
-      if (selectedKeySet.has(`MATERIAL:${materialType}`)) return true;
-      if (materialType === MaterialType.LISTENING) {
-        const section = resolveListeningSection({
-          content: decodeQuestionContent(row.content),
-          payload: decodeMaterialPayloadRecord(
-            materialType,
-            row.material.contentPayload,
-          ),
-          metadata: readJsonRecord(row.material.metadata),
-          chapterName: row.material.chapterName,
-        });
-        return selectedKeySet.has(`LISTENING:${section.partNumber || 1}`);
-      }
+  const groupsMap = new Map<
+    string,
+    {
+      groupKey: string;
+      material: (typeof candidateRows)[0]["material"];
+      questions: typeof candidateRows;
+    }
+  >();
+
+  for (const question of candidateRows) {
+    const groupKey = getQuestionGroupKey(question);
+    const existing = groupsMap.get(groupKey);
+    if (existing) {
+      existing.questions.push(question);
+    } else {
+      groupsMap.set(groupKey, {
+        groupKey,
+        material: question.material,
+        questions: [question],
+      });
+    }
+  }
+
+  const matchingGroups = Array.from(groupsMap.values()).filter((group) => {
+    const materialType = group.material.type;
+    const firstQ = group.questions[0];
+    let matchesSelection = false;
+
+    if (selectedKeySet.has(`MATERIAL:${materialType}`)) {
+      matchesSelection = true;
+    } else if (materialType === MaterialType.LISTENING) {
+      const section = resolveListeningSection({
+        content: decodeQuestionContent(firstQ.content),
+        payload: decodeMaterialPayloadRecord(
+          materialType,
+          group.material.contentPayload,
+        ),
+        metadata: readJsonRecord(group.material.metadata),
+        chapterName: group.material.chapterName,
+      });
+      matchesSelection = selectedKeySet.has(
+        `LISTENING:${section.partNumber || 1}`,
+      );
+    } else {
       const sectionNumber = getPaperQuestionSectionNumber(
         materialType,
-        row.questionType,
+        firstQ.questionType,
       );
-      return selectedKeySet.has(`LANGUAGE:${sectionNumber}`);
-    })
-    .map((row) => row.id);
+      matchesSelection = selectedKeySet.has(`LANGUAGE:${sectionNumber}`);
+    }
 
-  const uniqueIds = shuffleList(matchingIds).slice(
+    if (!matchesSelection) return false;
+
+    if (scope === "unattempted") {
+      return group.questions.every((q) => q.attempts.length === 0);
+    }
+    if (scope === "attempted") {
+      return group.questions.some((q) => q.attempts.length > 0);
+    }
+    return true;
+  });
+
+  const selectedGroups = shuffleList(matchingGroups).slice(
     0,
     Math.max(0, Math.floor(requestedCount)),
   );
 
-  if (uniqueIds.length === 0) {
+  return selectedGroups.flatMap((group) => group.questions.map((q) => q.id));
+}
+
+export async function getExamQuestionsByIds(
+  questionIds: string[],
+  options?: {
+    language?: string | null;
+    paperTitle?: string;
+  },
+) {
+  const userId = await getCurrentUserId();
+  const normalizedLanguage = (options?.language || "").trim();
+
+  if (questionIds.length === 0) {
     return {
-      paperTitle: "自定义练习",
+      paperTitle: options?.paperTitle || "自定义练习",
       paperLanguage: normalizedLanguage || null,
       sourceCollections: [] as string[],
-      questions: [],
-      pronunciationMap: {},
-      vocabularyMetaMap: {},
+      questions: [] as ReturnType<typeof buildQuestionView>[],
+      pronunciationMap: {} as Record<string, string>,
+      vocabularyMetaMap: {} as Record<string, VocabularyMeta>,
       selectedCount: 0,
     };
   }
 
   const questionRows = await prisma.question.findMany({
-    where: { id: { in: uniqueIds } },
+    where: { id: { in: questionIds } },
     include: {
       attempts: {
         where: { userId },
@@ -1851,7 +1885,7 @@ export async function getRandomExamQuestionsBySelections(
   });
 
   const byId = new Map(questionRows.map((row) => [row.id, row]));
-  const questions = uniqueIds
+  const questions = questionIds
     .map((id, index) => {
       const row = byId.get(id);
       if (!row) return null;
@@ -1870,6 +1904,7 @@ export async function getRandomExamQuestionsBySelections(
         },
         row.material,
         index + 1,
+        normalizedLanguage || null,
       );
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -1889,7 +1924,7 @@ export async function getRandomExamQuestionsBySelections(
     await buildVocabularyMaps(userId);
 
   return {
-    paperTitle: "自定义练习",
+    paperTitle: options?.paperTitle || "自定义练习",
     paperLanguage: normalizedLanguage || null,
     sourceCollections,
     questions,
@@ -1897,6 +1932,22 @@ export async function getRandomExamQuestionsBySelections(
     vocabularyMetaMap,
     selectedCount: questions.length,
   };
+}
+
+export async function getRandomExamQuestionsBySelections(
+  selectionKeys: string[],
+  requestedCount: number,
+  filters?: RandomPracticeFilters,
+) {
+  const uniqueIds = await getRandomExamQuestionIdsBySelections(
+    selectionKeys,
+    requestedCount,
+    filters,
+  );
+  return getExamQuestionsByIds(uniqueIds, {
+    language: filters?.language,
+    paperTitle: "自定义练习",
+  });
 }
 
 export async function getRandomPracticeFilterOptions() {
@@ -1912,16 +1963,5 @@ export async function getRandomPracticeFilterOptions() {
     },
   });
 
-  const languages = Array.from(
-    new Set(
-      collections.map((item) => (item.language || "").trim()).filter(Boolean),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
-  const levels = Array.from(
-    new Set(
-      collections.map((item) => (item.level || "").trim()).filter(Boolean),
-    ),
-  ).sort((a, b) => a.localeCompare(b));
-
-  return { languages, levels };
+  return buildRandomPracticeFilterOptions(collections);
 }

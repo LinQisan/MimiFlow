@@ -1,8 +1,8 @@
 import { ZipArchive } from 'archiver'
 import { PassThrough, Readable } from 'node:stream'
 
-import { getPaperExportData } from '@/features/practice/export/paper-export-data'
-import { generatePaperExportPdfs } from '@/features/practice/export/paper-export-pdf'
+import { getPaperExportData } from '@/modules/practice/export/paper-export-data'
+import { generatePaperExportPdfs } from '@/modules/practice/export/paper-export-pdf'
 
 export const dynamic = 'force-dynamic'
 

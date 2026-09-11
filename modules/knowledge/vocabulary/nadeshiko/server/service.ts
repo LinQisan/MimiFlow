@@ -49,10 +49,10 @@ export async function addExample(input: unknown) {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${vocabularyId}))`
         const owned = await tx.vocabulary.findFirst({ where: { id: vocabularyId, userId }, select: { id: true } })
         if (!owned) throw new DomainError('NOT_FOUND', '单词不存在或无权操作')
-        const sense = senseId ? await tx.vocabularySense.findFirst({
+        const sense = await tx.vocabularySense.findFirst({
           where: { id: senseId, vocabularyId }, select: { id: true, order: true },
-        }) : null
-        if (senseId && !sense) throw new DomainError('VALIDATION_ERROR', '义项不存在，请重新打开单词')
+        })
+        if (!sense) throw new DomainError('VALIDATION_ERROR', '义项不存在，请重新打开单词')
         const sentence = await tx.vocabularySentence.upsert({
           where: { provider_externalId: { provider: 'nadeshiko', externalId } },
           update: {},
@@ -85,7 +85,7 @@ export async function addExample(input: unknown) {
           update: {},
           create: {
             vocabularyId, sentenceId: sentence.id,
-            senseId: sense?.id, meaningIndex: sense?.order,
+            senseId: sense.id,
             sortOrder: (last._max.sortOrder ?? -1) + 1,
           },
           select: { id: true },

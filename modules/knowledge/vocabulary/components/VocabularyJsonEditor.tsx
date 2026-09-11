@@ -29,7 +29,7 @@ export default function VocabularyJsonEditor({ value, onChange, disabled }: {
       </p>
       <details className='mb-3 text-sm text-slate-500'>
         <summary className='cursor-pointer py-2'>字段填写说明</summary>
-        <p className='leading-7'>word：单词；reading：读音；etymologies：词源列表；grammarPartOfSpeech：noun / verb / i_adjective / na_adjective / adverb / adnominal / other；tags：标签。senses：义项；definitions：释义；examples：例句（text 原文、translation 翻译、posTags 词性、source 来源、sourceUrl 来源链接）；patterns：用法；expressions：表达；relations：关联词；notes：备注。</p>
+        <p className='leading-7'>word：单词；pronunciations：完整读音列表，如 <code>{'["びん", "べん"]'}</code>，第一个为首选读音，[] 清空；etymologies：词源列表；grammarPartOfSpeech：noun / verb / i_adjective / na_adjective / adverb / adnominal / other；tags：标签。senses：义项；definitions：释义；examples：例句（text 原文、translation 翻译、posTags 词性、source 来源、sourceUrl 来源链接）；patterns：用法；expressions：表达；relations：关联词；notes：备注。</p>
       </details>
       <textarea id='vocabulary-entry-json' aria-describedby='vocabulary-json-help' spellCheck={false}
         value={value} onChange={event => { onChange(event.target.value); setMessage('') }} disabled={disabled}

@@ -1,5 +1,5 @@
-import { buildReadingFrequencyMaterials } from '@/features/reading/server/word-frequency'
-import { getPaperWordbookDistribution } from '@/features/practice/server/paper-wordbook-distribution'
+import { buildReadingFrequencyMaterials } from '@/modules/reading/server/word-frequency'
+import { getPaperWordbookDistribution } from '@/modules/practice/server/paper-wordbook-distribution'
 import { mergeWordFrequencyRows } from '@/modules/language/domain/sudachi'
 
 export async function GET() {

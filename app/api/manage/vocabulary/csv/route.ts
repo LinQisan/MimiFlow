@@ -1,7 +1,7 @@
 import {
   exportVocabularyCsvAdmin,
   importVocabularyCsvAdmin,
-} from '@/features/vocabulary/admin-actions'
+} from '@/modules/knowledge/vocabulary/admin-actions'
 
 export async function GET(request: Request) {
   const wordbookId = new URL(request.url).searchParams.get('wordbook') || ''

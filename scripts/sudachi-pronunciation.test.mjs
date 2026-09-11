@@ -17,22 +17,22 @@ import {
   buildJapaneseRubyHtml,
   formatJapaneseTextWithSudachiRubyNotation,
 } from '../utils/language/japaneseRuby.ts'
-import { filterReadingFrequencyRowsByWordbooks } from '../features/reading/domain/word-frequency.ts'
+import { filterReadingFrequencyRowsByWordbooks } from '../modules/reading/domain/word-frequency.ts'
 import { resolveWordbookFilterIds } from '../modules/knowledge/vocabulary/domain/wordbook-list.ts'
 const ROOT = process.cwd()
 
 test('article reading wires SudachiPy as an optional pronunciation source', async () => {
   const requirements = await readFile(path.join(ROOT, 'requirements.txt'), 'utf8')
   const articlePage = await readFile(
-    path.join(ROOT, 'app/(library)/reading/articles/[id]/page.tsx'),
+    path.join(ROOT, 'app/reading/articles/[id]/page.tsx'),
     'utf8',
   )
   const ebookPage = await readFile(
-    path.join(ROOT, 'app/(library)/reading/ebooks/[id]/page.tsx'),
+    path.join(ROOT, 'app/reading/ebooks/[id]/page.tsx'),
     'utf8',
   )
   const reader = await readFile(
-    path.join(ROOT, 'features/reading/ui/ArticleReaderClient.tsx'),
+    path.join(ROOT, 'modules/reading/components/ArticleReaderClient.tsx'),
     'utf8',
   )
   const pronunciationRoute = await readFile(
@@ -47,19 +47,19 @@ test('article reading wires SudachiPy as an optional pronunciation source', asyn
     'utf8',
   )
   const readingCenter = await readFile(
-    path.join(ROOT, 'app/(library)/reading/page.tsx'),
+    path.join(ROOT, 'app/reading/page.tsx'),
     'utf8',
   )
   const readingCenterClient = await readFile(
-    path.join(ROOT, 'app/(library)/reading/ReadingCenterClient.tsx'),
+    path.join(ROOT, 'modules/reading/components/ReadingCenterClient.tsx'),
     'utf8',
   )
   const frequencyDialog = await readFile(
-    path.join(ROOT, 'features/reading/ui/WordFrequencyDialog.tsx'),
+    path.join(ROOT, 'modules/reading/components/WordFrequencyDialog.tsx'),
     'utf8',
   )
   const frequencyServer = await readFile(
-    path.join(ROOT, 'features/reading/server/word-frequency.ts'),
+    path.join(ROOT, 'modules/reading/server/word-frequency.ts'),
     'utf8',
   )
   const frequencyRoute = await readFile(

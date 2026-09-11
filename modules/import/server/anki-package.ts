@@ -94,7 +94,6 @@ function skipProtobufField(buffer: Buffer, offset: number, wireType: number) {
 function parseMediaEntry(buffer: Buffer) {
   let offset = 0
   let name = ''
-  let legacyZipFilename: number | null = null
   while (offset < buffer.length) {
     const tag = readVarint(buffer, offset)
     offset = tag.offset
@@ -106,15 +105,11 @@ function parseMediaEntry(buffer: Buffer) {
       if (end > buffer.length) throw new Error('Anki 媒体名称不完整。')
       name = buffer.subarray(length.offset, end).toString('utf8')
       offset = end
-    } else if (fieldNumber === 255 && wireType === 0) {
-      const value = readVarint(buffer, offset)
-      legacyZipFilename = value.value
-      offset = value.offset
     } else {
       offset = skipProtobufField(buffer, offset, wireType)
     }
   }
-  return { name, legacyZipFilename }
+  return { name }
 }
 
 export function parseAnkiMediaEntries(buffer: Buffer) {
@@ -137,7 +132,7 @@ export function parseAnkiMediaEntries(buffer: Buffer) {
     if (entry.name) {
       entries.push({
         name: entry.name,
-        zipFilename: String(entry.legacyZipFilename ?? entryIndex),
+        zipFilename: String(entryIndex),
       })
     }
     entryIndex += 1
@@ -152,18 +147,6 @@ function normalizeDeckName(value: string) {
     .map(segment => segment.trim())
     .filter(Boolean)
     .join(' / ')
-}
-
-function parseJsonRecord(value: unknown) {
-  if (typeof value !== 'string' || !value.trim()) return {}
-  try {
-    const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object'
-      ? (parsed as Record<string, unknown>)
-      : {}
-  } catch {
-    return {}
-  }
 }
 
 function readModernNotes(database: DatabaseSync) {
@@ -200,41 +183,6 @@ function readModernNotes(database: DatabaseSync) {
   }))
 }
 
-function readLegacyNotes(database: DatabaseSync) {
-  const col = database.prepare('SELECT decks, models FROM col LIMIT 1').get() as
-    | DatabaseRow
-    | undefined
-  const decks = parseJsonRecord(col?.decks)
-  const models = parseJsonRecord(col?.models)
-  const rows = database
-    .prepare(`
-      SELECT n.id, n.mid, n.tags, n.flds, MIN(c.did) AS did
-      FROM notes n
-      LEFT JOIN cards c ON c.nid = n.id
-      GROUP BY n.id, n.mid, n.tags, n.flds
-      ORDER BY n.id
-      LIMIT ?
-    `)
-    .all(MAX_PACKAGE_NOTES + 1) as DatabaseRow[]
-  return rows.map((row, index) => {
-    const model = models[String(row.mid)] as
-      | { flds?: Array<{ name?: string; ord?: number }> }
-      | undefined
-    const fieldNames: string[] = []
-    for (const field of model?.flds || []) {
-      fieldNames[Number(field.ord) || 0] = String(field.name || '')
-    }
-    const deck = decks[String(row.did)] as { name?: string } | undefined
-    return {
-      rowNo: index + 1,
-      deckName: normalizeDeckName(String(deck?.name || '')),
-      fieldNames,
-      fieldValues: String(row.flds || '').split(FIELD_SEPARATOR),
-      tags: String(row.tags || '').trim().split(/\s+/).filter(Boolean),
-    }
-  })
-}
-
 async function readPackageNotes(databaseBuffer: Buffer) {
   if (!databaseBuffer.subarray(0, 16).toString('utf8').startsWith('SQLite format 3')) {
     throw new Error('APKG 中的 Anki 数据库无效。')
@@ -244,11 +192,11 @@ async function readPackageNotes(databaseBuffer: Buffer) {
   let database: DatabaseSync | null = null
   try {
     await writeFile(databasePath, databaseBuffer)
-    const compatibilityDatabase = new DatabaseSync(databasePath, {
+    const writableDatabase = new DatabaseSync(databasePath, {
       defensive: false,
     })
     try {
-      const row = compatibilityDatabase
+      const row = writableDatabase
         .prepare(`
           SELECT COUNT(*) AS count
           FROM sqlite_schema
@@ -256,33 +204,27 @@ async function readPackageNotes(databaseBuffer: Buffer) {
         `)
         .get() as { count?: number } | undefined
       if (Number(row?.count) > 0) {
-        const schemaVersion = compatibilityDatabase
+        const schemaVersion = writableDatabase
           .prepare('PRAGMA schema_version')
           .get() as { schema_version?: number } | undefined
-        compatibilityDatabase.exec('PRAGMA writable_schema = ON')
-        compatibilityDatabase
+        writableDatabase.exec('PRAGMA writable_schema = ON')
+        writableDatabase
           .prepare(`
             UPDATE sqlite_schema
             SET sql = replace(sql, ' COLLATE unicase', '')
             WHERE sql LIKE '%COLLATE unicase%'
           `)
           .run()
-        compatibilityDatabase.exec(
+        writableDatabase.exec(
           `PRAGMA schema_version = ${Number(schemaVersion?.schema_version || 0) + 1}`,
         )
-        compatibilityDatabase.exec('PRAGMA writable_schema = OFF')
+        writableDatabase.exec('PRAGMA writable_schema = OFF')
       }
     } finally {
-      compatibilityDatabase.close()
+      writableDatabase.close()
     }
     database = new DatabaseSync(databasePath, { readOnly: true })
-    const tables = database
-      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
-      .all() as Array<{ name: string }>
-    const tableNames = new Set(tables.map(row => row.name))
-    const rows = tableNames.has('fields') && tableNames.has('decks')
-      ? readModernNotes(database)
-      : readLegacyNotes(database)
+    const rows = readModernNotes(database)
     if (rows.length > MAX_PACKAGE_NOTES) {
       throw new Error(`APKG 超过 ${MAX_PACKAGE_NOTES} 条笔记，无法一次导入。`)
     }
@@ -309,13 +251,6 @@ async function readMediaIndex(zip: JSZip) {
   if (!entry) return []
   const raw = Buffer.from(await entry.async('nodebuffer'))
   const decoded = await maybeDecompressZstd(raw)
-  const text = decoded.toString('utf8').trim()
-  if (text.startsWith('{')) {
-    const legacy = parseJsonRecord(text)
-    return Object.entries(legacy).flatMap(([zipFilename, name]) =>
-      typeof name === 'string' ? [{ zipFilename, name }] : [],
-    )
-  }
   return parseAnkiMediaEntries(decoded)
 }
 
@@ -327,10 +262,7 @@ export async function parseAnkiPackage(
     throw new Error('APKG 文件为空或超过 90 MB。')
   }
   const zip = await JSZip.loadAsync(packageBuffer, { checkCRC32: true })
-  const collectionEntry =
-    zip.file('collection.anki21b') ||
-    zip.file('collection.anki21') ||
-    zip.file('collection.anki2')
+  const collectionEntry = zip.file('collection.anki21b')
   if (!collectionEntry) throw new Error('APKG 中没有 Anki 数据库。')
   const databaseBuffer = await maybeDecompressZstd(
     Buffer.from(await collectionEntry.async('nodebuffer')),

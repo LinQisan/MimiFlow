@@ -32,8 +32,8 @@ test('every vocabulary row writer busts the groups cache', async () => {
   const [actions, inspector, admin, anki] = await Promise.all([
     read('modules/knowledge/vocabulary/actions.ts'),
     read('modules/knowledge/vocabulary/inspector-actions.ts'),
-    read('features/vocabulary/admin-actions.ts'),
-    read('features/import/anki-actions.ts'),
+    read('modules/knowledge/vocabulary/admin-actions.ts'),
+    read('modules/import/anki-actions.ts'),
   ])
   // save/create, delete, tags, inspector, admin delete/update/
   // batch/csv-import/merge, anki bulk import.
@@ -43,7 +43,7 @@ test('every vocabulary row writer busts the groups cache', async () => {
   assert.ok(countOccurrences(actions, 'invalidateVocabularyGroupsCache()') >= 3)
   assert.ok(countOccurrences(inspector, 'invalidateVocabularyGroupsCache()') >= 1)
   assert.ok(countOccurrences(admin, 'invalidateVocabularyGroupsCache()') >= 5)
-  assert.ok(countOccurrences(anki, 'invalidateVocabularyGroupsCache()') >= 1)
+  assert.match(anki, /updateTag\(VOCABULARY_GROUPS_CACHE_TAG\)/)
 })
 
 test('every wordbook membership writer busts the groups cache', async () => {

@@ -1,3 +1,5 @@
+import { normalizeVocabularyWord } from '../../knowledge/vocabulary/domain/normalized-word.ts'
+
 /** Resolve real leaf lists without confusing a book (series) with a list. */
 export function resolveVocabularyScopeIds(
   lists: ReadonlyArray<{ id: string; seriesId: string }>,
@@ -7,8 +9,6 @@ export function resolveVocabularyScopeIds(
   if (mode === 'all') return []
   return lists.filter(list => mode === 'series' ? list.seriesId === id : list.id === id).map(list => list.id)
 }
-
-const normalize = (word: string) => word.normalize('NFKC').trim().toLocaleLowerCase('ja')
 
 type ScopedWord = {
   word: string
@@ -26,10 +26,10 @@ export function mergeVocabularyScope<T extends ScopedWord>(
   createAbsent: (entry: ScopeEntry) => T,
   masteryOverrides: Record<string, boolean> = {},
 ): T[] {
-  const corpusByWord = new Map(corpus.map(row => [normalize(row.word), row]))
+  const corpusByWord = new Map(corpus.map(row => [normalizeVocabularyWord(row.word), row]))
   const result = new Map<string, T>()
   entries.forEach(entry => {
-    const key = normalize(entry.word)
+    const key = normalizeVocabularyWord(entry.word)
     const current = result.get(key) || corpusByWord.get(key) || createAbsent(entry)
     result.set(key, {
       ...current,

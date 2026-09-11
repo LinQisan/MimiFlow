@@ -8,32 +8,30 @@ const entry = {
   word: '学ぶ',
   pronunciations: [],
   partsOfSpeech: [],
-  meanings: [],
   grammarPartOfSpeech: 'verb',
   transitivity: null,
   conjugationType: null,
   wordAudio: null,
   tags: [],
   wordbookIds: [],
-  senses: [{ id: 'sense-1', clientMetadata: { source: 'editor' } }],
+  senses: [{ id: 'sense-1' }],
   definitions: [],
   sentences: [],
   patterns: [],
   expressions: [],
   relations: [],
   notes: [],
-  clientMetadata: { source: 'editor' },
 }
 
-test('inspector parser accepts direct and wrapped entries without dropping unknown fields', () => {
+test('inspector parser accepts the canonical direct entry', () => {
   const direct = parseVocabularyInspectorEntry(entry)
   assert.equal(direct.success, true)
-  assert.deepEqual(direct.data.clientMetadata, { source: 'editor' })
+})
 
-  const wrapped = parseVocabularyInspectorEntry({ entry, requestId: 'request-1' })
-  assert.equal(wrapped.success, true)
-  assert.equal(wrapped.data.id, entry.id)
-  assert.deepEqual(wrapped.data.senses[0].clientMetadata, { source: 'editor' })
+test('inspector parser rejects unknown fields and wrapped payloads', () => {
+  assert.equal(parseVocabularyInspectorEntry({ ...entry, meanings: [] }).success, false)
+  assert.equal(parseVocabularyInspectorEntry({ ...entry, clientMetadata: {} }).success, false)
+  assert.equal(parseVocabularyInspectorEntry({ entry }).success, false)
 })
 
 test('inspector parser rejects incomplete entries', () => {

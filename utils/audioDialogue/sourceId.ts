@@ -21,9 +21,7 @@ export function parseAudioDialogueSourceId(sourceId: string) {
 
 export function findAudioDialogueTiming(
   dialogues: Array<{
-    stableId?: string
-    sequenceId?: number
-    id?: number
+    stableId: string
     start: number
     end: number
   }>,
@@ -31,12 +29,7 @@ export function findAudioDialogueTiming(
 ) {
   const normalizedKey = (sourceKey || '').trim()
   if (!normalizedKey) return null
-  const dialogue = dialogues.find(item =>
-    [item.stableId, item.sequenceId, item.id]
-      .map(value => String(value ?? '').trim())
-      .filter(Boolean)
-      .includes(normalizedKey),
-  )
+  const dialogue = dialogues.find(item => item.stableId.trim() === normalizedKey)
   if (!dialogue || dialogue.end <= dialogue.start) return null
   return { start: dialogue.start, end: dialogue.end }
 }

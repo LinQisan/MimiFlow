@@ -369,7 +369,6 @@ async function applyDatabaseImport(prisma, records, userId) {
       wordAudio: webAudio,
       pronunciations: toJsonList(pronunciation),
       partsOfSpeech: toJsonList(record.partsOfSpeech),
-      meanings: null,
     }
     createdRows.push(row)
     const wordKey = comparable(row.word)

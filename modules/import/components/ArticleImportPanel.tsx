@@ -14,7 +14,7 @@ import type { ArticleFormState, ArticleImportedQuestionDraft } from '../types'
 import {
   MIN_QUESTION_OPTION_COUNT,
   removeQuestionOptionAt,
-} from '@/modules/questions/domain/editor'
+} from '@/utils/questions/editorOptions'
 import {
   getReadingQuestionSection,
   PAPER_READING_QUESTION_TYPES,
@@ -24,13 +24,13 @@ import { toggleUnderlineSelection } from '@/utils/text/underlineMarkup'
 import {
   parseArticleContentBlocks,
   renderSafeArticleContentBlocksHtml,
-} from '@/features/reading/domain/article-blocks'
+} from '@/modules/reading/domain/article-blocks'
 import { escapeHtml } from '@/utils/language/japaneseRuby'
 import {
   ARTICLE_TABLE_TEMPLATE,
   insertArticleFootnote,
-} from '@/features/reading/domain/article-editing'
-import ArticleBodyPreview from '@/features/reading/ui/ArticleBodyPreview'
+} from '@/modules/reading/domain/article-editing'
+import ArticleBodyPreview from '@/modules/reading/components/ArticleBodyPreview'
 import DatePicker from '@/components/ui/DatePicker'
 import {
   formatNewsDate,
@@ -43,7 +43,7 @@ import {
   isAutomaticMorningEdition,
   isAutomaticFrontPageSection,
   supportsBreakingEdition,
-} from '@/features/reading/domain/news-metadata'
+} from '@/modules/reading/domain/news-metadata'
 
 const STRUCTURED_QUESTION_PATTERN = /(?:^|\n)\s*\|.+\|\s*$/m
 const ARTICLE_FILL_BLANK_TOKEN_PATTERN =

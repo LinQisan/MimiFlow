@@ -3,7 +3,7 @@ export type RankedSentenceLike = {
   source?: string
   sourceUrl?: string
   sourceType?: string | null
-  meaningIndex?: number | null
+  senseId?: string | null
   posTags?: string[] | null
   audioFile?: string | null
 }
@@ -46,7 +46,7 @@ const sentenceScore = (item: RankedSentenceLike) => {
   const sourceScore = sourceWeight(resolveSourceType(item)) * 1000
   const textLength = Array.from((item.text || '').trim()).length
   const shortSentenceScore = Math.max(0, 260 - Math.min(260, textLength))
-  const meaningScore = typeof item.meaningIndex === 'number' ? 80 : 0
+  const meaningScore = item.senseId ? 80 : 0
   const posScore = (item.posTags || []).filter(Boolean).length > 0 ? 25 : 0
   return sourceScore + shortSentenceScore + meaningScore + posScore
 }

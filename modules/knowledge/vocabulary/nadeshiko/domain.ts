@@ -54,7 +54,7 @@ export const searchInputSchema = z.object({
 }).strict()
 export const addInputSchema = searchInputSchema.extend({
   externalId: z.string().trim().min(1).max(128),
-  senseId: z.string().trim().min(1).max(128).nullable().optional(),
+  senseId: z.string().trim().min(1).max(128),
 })
 
 function safeUrl(value: string | null | undefined) {

@@ -6,7 +6,6 @@ import {
   selectVocabularyDisplayPronunciation,
 } from '@/utils/text/pronunciation'
 import { normalizeVocabularyHeadword } from '@/utils/vocabulary/vocabularyCanonical'
-import { formatVocabularySentenceSource } from '@/utils/vocabulary/sourceDisplay'
 import {
   getVocabularyPartOfSpeechFilterOptions,
   matchesVocabularyPartsOfSpeech,
@@ -16,11 +15,6 @@ import type {
   InflectionVariant,
   VocabItem,
 } from '../types'
-
-export {
-  listWordbookFilterOptions,
-  listWordbooks,
-} from './wordbook-list.ts'
 
 export const LANGUAGE_NAMES: Record<string, string> = {
   ja: '日语',
@@ -49,16 +43,10 @@ export const firstSentencePosTag = (tags?: string[]) => {
 }
 
 export const getPrimaryPronunciation = (vocab: VocabItem) =>
-  selectVocabularyDisplayPronunciation(vocab.word, [
-    ...(vocab.pronunciations || []),
-    vocab.pronunciation || '',
-  ])
+  selectVocabularyDisplayPronunciation(vocab.word, vocab.pronunciations || [])
 
 export const getVocabularyMatchVariants = (vocab: VocabItem) =>
-  resolveVocabularyMatchVariants(vocab.word, [
-    ...(vocab.pronunciations || []),
-    vocab.pronunciation || '',
-  ])
+  resolveVocabularyMatchVariants(vocab.word, vocab.pronunciations || [])
 
 export const getVocabularyDisplayPronunciations = (
   word: string,
@@ -76,8 +64,6 @@ export const normalizeLanguageCode = (value: string) => {
 
 export const supportsPronunciationByLanguage = (languageCode?: string) =>
   languageCode === 'ja' || languageCode === 'en'
-
-export const getSentenceSourceDisplay = formatVocabularySentenceSource
 
 const dateToMs = (value?: Date | string | null) => {
   if (!value) return Number.NaN
@@ -178,32 +164,26 @@ export const getVocabularyPosOptions = (items: VocabItem[]) =>
 export const filterAndSortVocabulary = (
   items: VocabItem[],
   selectedPos: string,
-  selectedFolder: string,
   sortMode: 'recent' | 'word' | 'pos',
 ) =>
   items
-    .filter(item => {
-      const matchesPos = matchesVocabularyPartsOfSpeech(
+    .filter(item =>
+      matchesVocabularyPartsOfSpeech(
         item.partsOfSpeech || [],
         selectedPos,
-      )
-      const matchesFolder =
-        selectedFolder === 'all' ||
-        (selectedFolder === 'none'
-          ? !item.folderId
-          : item.folderId === selectedFolder)
-      return matchesPos && matchesFolder
-    })
+      ),
+    )
     .sort((left, right) => {
       if (sortMode === 'word') return left.word.localeCompare(right.word, 'ja')
       if (sortMode === 'pos') {
         const leftPos = (left.partsOfSpeech || [])[0] || ''
         const rightPos = (right.partsOfSpeech || [])[0] || ''
         return leftPos === rightPos
-          ? right.createdAt.getTime() - left.createdAt.getTime()
+          ? left.createdAt.getTime() - right.createdAt.getTime()
           : leftPos.localeCompare(rightPos, 'zh-Hans-CN')
       }
-      return right.createdAt.getTime() - left.createdAt.getTime()
+      // Default mode preserves the globally paginated server order.
+      return 0
     })
 
 export const buildFlashVocabularyList = (

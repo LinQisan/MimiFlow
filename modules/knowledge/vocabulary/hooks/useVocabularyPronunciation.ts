@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useCurrentUser } from '@/context/UserContext'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
-import { usePronunciationSource } from '@/hooks/usePronunciationSource'
-import { hasJapanese } from '@/hooks/usePronunciationPrefs'
+import { usePronunciationSource } from '@/modules/language/hooks/usePronunciationSource'
+import { hasJapanese } from '@/modules/language/domain/text'
 import type { VocabItem } from '@/modules/knowledge/vocabulary/types'
 import {
   isPronunciationUpToDate,
@@ -76,20 +76,9 @@ export function useVocabularyPronunciation(
     [missingVocabIds, missingSentenceIds],
   )
 
-  // Runtime texts fallback signature preserved for compatibility tests
-  const pronunciationTexts = useMemo<string[]>(() => [], [])
-
   useEffect(() => {
     // If no misses on current page, NEVER fetch: POST count = 0
     if (missingVocabIds.length === 0 && missingSentenceIds.length === 0) {
-      // Compatibility branch: if pronunciationTexts ever populated
-      if (pronunciationTexts.length > 0) {
-        void fetch('/api/pronunciation', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ texts: pronunciationTexts }),
-        })
-      }
       return
     }
 

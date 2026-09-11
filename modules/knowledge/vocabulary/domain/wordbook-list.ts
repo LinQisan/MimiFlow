@@ -20,7 +20,8 @@ export const listWordbookFilterOptions = (wordbooks: FolderItem[]) => {
     string,
     { seriesName: string; wordbooks: ReturnType<typeof listWordbooks> }
   >()
-  listWordbooks(wordbooks).forEach(wordbook => {
+  wordbooks.forEach(book => {
+    const wordbook = { ...book, depth: 0, pathLabel: `${book.seriesName} / ${book.name}`, totalCount: book.count ?? 0 }
     const group = groups.get(wordbook.seriesId) || {
       seriesName: wordbook.seriesName,
       wordbooks: [],

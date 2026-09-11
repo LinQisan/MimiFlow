@@ -1,6 +1,7 @@
 import { unstable_cache } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { WORDBOOK_ENTRY_ORDER } from './entry-order'
 import { normalizeWordbookQuery, wordbookEntryWhere } from './entry-query'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { VOCABULARY_GROUPS_CACHE_TAG } from '@/modules/knowledge/vocabulary/server/repository'
@@ -8,12 +9,14 @@ import { VOCABULARY_GROUPS_CACHE_TAG } from '@/modules/knowledge/vocabulary/serv
 const getCachedWordbookOptions = unstable_cache(
   async (userId: string) =>
     prisma.wordbook.findMany({
-      where: { userId, NOT: { id: { startsWith: 'legacy-' } } },
+      where: { userId },
       orderBy: [
         { series: { sortOrder: 'asc' } },
         { series: { createdAt: 'asc' } },
+        { series: { id: 'asc' } },
         { sortOrder: 'asc' },
         { createdAt: 'asc' },
+        { id: 'asc' },
       ],
       select: {
         id: true,
@@ -81,7 +84,7 @@ export async function listWordbookEntries(input: {
   const page = Math.min(Math.max(1, input.page), totalPages)
   const rows = await prisma.wordbookVocabulary.findMany({
     where,
-    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }, { id: 'asc' }],
+    orderBy: WORDBOOK_ENTRY_ORDER,
     skip: (page - 1) * input.pageSize,
     take: input.pageSize,
     include: {
@@ -92,7 +95,15 @@ export async function listWordbookEntries(input: {
           wordAudio: true,
           pronunciations: true,
           etymologies: true,
-          meanings: true,
+          senses: {
+            orderBy: { order: 'asc' },
+            select: {
+              definitions: {
+                orderBy: { sortOrder: 'asc' },
+                select: { definition: true },
+              },
+            },
+          },
           partsOfSpeech: true,
           tags: { select: { tag: { select: { name: true } } } },
           createdAt: true,

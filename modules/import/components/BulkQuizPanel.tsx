@@ -2,7 +2,7 @@
 
 import type { RefObject } from 'react'
 import CustomSelect from '@/components/ui/CustomSelect'
-import { MIN_QUESTION_OPTION_COUNT } from '@/modules/questions/domain/editor'
+import { MIN_QUESTION_OPTION_COUNT } from '@/utils/questions/editorOptions'
 import type { ParsedQuizDraft } from '../types'
 import {
   supportsSeparateQuestionContext,

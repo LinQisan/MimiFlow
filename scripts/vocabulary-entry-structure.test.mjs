@@ -16,7 +16,7 @@ import {
 const validDraft = {
   vocabularyId: 'vocabulary-1',
   word: 'ねじれる',
-  reading: 'ねじれる',
+  pronunciations: ['ねじれる'],
   grammarPartOfSpeech: 'verb',
   transitivity: 'intransitive',
   conjugationType: '一段',
@@ -41,7 +41,6 @@ const validDraft = {
       notes: [{ id: 'note-1', type: 'restriction', text: '良いことにはあまり使わない。' }],
     },
   ],
-  relations: [{ id: 'relation-2', type: 'related', targetVocabularyId: null, targetText: 'ゆがむ' }],
 }
 
 test('structured vocabulary draft keeps sense-owned content separate', () => {
@@ -53,10 +52,12 @@ test('structured vocabulary draft keeps sense-owned content separate', () => {
 })
 
 test('relations allow an unbound targetText fallback', () => {
-  const result = vocabularyEntryDraftSchema.safeParse(validDraft)
+  const draft = structuredClone(validDraft)
+  draft.senses[0].relations = [{ id: 'relation-2', type: 'related', targetVocabularyId: null, targetText: 'ゆがむ' }]
+  const result = vocabularyEntryDraftSchema.safeParse(draft)
   assert.equal(result.success, true)
-  assert.equal(result.data.relations[0].targetVocabularyId, null)
-  assert.equal(result.data.relations[0].targetText, 'ゆがむ')
+  assert.equal(result.data.senses[0].relations[0].targetVocabularyId, null)
+  assert.equal(result.data.senses[0].relations[0].targetText, 'ゆがむ')
 })
 
 test('example posTags are optional, trimmed, and bounded', () => {
@@ -130,19 +131,20 @@ test('textbook relation metadata stays separate from the real vocabulary word', 
 
 test('relations reject an empty target', () => {
   const invalid = structuredClone(validDraft)
-  invalid.relations[0].targetText = ''
+  invalid.senses[1].relations[0].targetVocabularyId = null
+  invalid.senses[1].relations[0].targetText = ''
   const result = vocabularyEntryDraftSchema.safeParse(invalid)
   assert.equal(result.success, false)
 })
 
 test('saving relations discards fields that do not belong to the relationship type', () => {
   const draft = structuredClone(validDraft)
-  draft.relations = [
+  draft.senses[0].relations = [
     { id: 'related', type: 'related', targetText: '頼る', targetReading: 'たよる', marker: ' が ', pattern: '～に頼る' },
     { id: 'compound', type: 'compound', targetText: '依存症', marker: 'が', pattern: ' ～症 ' },
     { id: 'synonym', type: 'synonym', targetText: '頼る', marker: 'が', pattern: '～症' },
   ]
-  const { relations } = vocabularyEntryDraftSchema.parse(draft)
+  const relations = vocabularyEntryDraftSchema.parse(draft).senses[0].relations
   assert.equal(relations[0].marker, 'が')
   assert.equal(relations[0].pattern, null)
   assert.equal(relations[1].pattern, '～症')
@@ -158,7 +160,7 @@ test('changing relation type clears now-inapplicable metadata', () => {
   assert.equal(compound.marker, null)
 })
 
-test('legacy Japanese parts of speech map to structured grammar', () => {
+test('Japanese parts of speech map to structured grammar', () => {
   assert.equal(inferStructuredPartOfSpeech(['名詞']), 'noun')
   assert.equal(inferStructuredPartOfSpeech(['自動詞']), 'verb')
   assert.equal(inferStructuredPartOfSpeech(['ナ形容詞']), 'na_adjective')
