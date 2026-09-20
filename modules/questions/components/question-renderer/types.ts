@@ -28,7 +28,7 @@ export type ExamQuestion = {
   optionLabelFormat?: OptionLabelFormat | null
   customOptionLabels?: string[]
   shuffleOptions?: boolean
-  sortingOrder?: number[]
+  correctOrder?: string[]
   imageUrl?: string | null
   passageId?: string | null
   lessonId?: string | null

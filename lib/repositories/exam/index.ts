@@ -4,6 +4,7 @@ import { CollectionType, MaterialType, QuestionType } from "@prisma/client";
 import { cache } from "react";
 import { getMaterialDisplayTitle } from "../materials/material-title";
 import { reorderExamOptionsForSession } from "./exam-option-order";
+import { resolveCorrectOrderIds } from "@/modules/questions/domain/sorting";
 import {
   toVocabularyMeta,
   type VocabularyMeta,
@@ -426,9 +427,7 @@ function buildQuestionView(
       : null,
     customOptionLabels: parseCustomOptionLabels(content.customOptionLabels),
     shuffleOptions,
-    sortingOrder: Array.isArray(content.sortingOrder)
-      ? content.sortingOrder
-      : undefined,
+    correctOrder: resolveCorrectOrderIds(options, content.sortingOrder),
     imageUrl: readString(content.imageUrl),
   };
 
@@ -1627,6 +1626,7 @@ export async function getPracticeSubmissionReview(
           isCorrect: true,
           selectedOptionId: true,
           correctOptionId: true,
+          selectedOrder: true,
           timeSpentMs: true,
         },
       },

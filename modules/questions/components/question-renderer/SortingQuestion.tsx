@@ -23,13 +23,12 @@ type SortingQuestionProps = {
   annotation: ExamAnnotationSettings
 }
 
-const resolveSubmittedOptionOrder = (
-  sortingOrder: number[] | undefined,
+const resolveOptionOrder = (
+  order: Array<string | null> | undefined,
   options: ExamQuestionOption[],
 ) => {
-  if (!sortingOrder || sortingOrder.length !== options.length) return options
-  const ordered = sortingOrder.map(index => options[index]).filter(Boolean)
-  return ordered.length === options.length ? ordered : options
+  if (!order) return []
+  return order.map(id => options.find(option => option.id === id) || null)
 }
 
 const createSlotDraft = (
@@ -81,7 +80,6 @@ export function SortingQuestion({
   annotation,
 }: SortingQuestionProps) {
   const options = useMemo(() => question.options || [], [question.options])
-  const correctOptionId = options.find(option => option.isCorrect)?.id
   const promptText = (question.prompt || '').trim()
   const parsedPrompt = useMemo(
     () => parseSortingPrompt(promptText),
@@ -116,23 +114,14 @@ export function SortingQuestion({
 
   const [slots, setSlots] = useState<(ExamQuestionOption | null)[]>([])
   const [pool, setPool] = useState<ExamQuestionOption[]>([])
-  const submittedSlots = useMemo(() => {
-    if (!isSubmitted) return slots
-
-    const baseOrder = resolveSubmittedOptionOrder(
-      question.sortingOrder,
-      options,
-    )
-
-    const next = Array(slotCount).fill(null) as (ExamQuestionOption | null)[]
-    for (let i = 0; i < slotCount; i += 1) {
-      next[i] = baseOrder[i] || null
-    }
-    return next
-  }, [isSubmitted, options, question.sortingOrder, slotCount, slots])
+  const correctSlots = useMemo(
+    () => resolveOptionOrder(question.correctOrder, options),
+    [options, question.correctOrder],
+  )
+  const correctOption = starIndex >= 0 ? correctSlots[starIndex] : null
 
   useEffect(() => {
-    const initialAnswerId = isSubmitted ? correctOptionId : currentAnswer
+    const initialAnswerId = currentOrder?.some(Boolean) ? undefined : currentAnswer
     const draft = createSlotDraft(
       slotCount,
       options,
@@ -143,7 +132,6 @@ export function SortingQuestion({
     setSlots(draft.slots)
     setPool(draft.pool)
   }, [
-    correctOptionId,
     currentAnswer,
     currentOrder,
     isSubmitted,
@@ -155,10 +143,15 @@ export function SortingQuestion({
 
   const syncAnswer = useCallback(
     (nextSlots: Array<ExamQuestionOption | null>) => {
-      if (starIndex >= 0) {
+      if (starIndex >= 0 && nextSlots.every(Boolean)) {
         const starOption = nextSlots[starIndex]
         if (starOption) onSelect(starOption.id)
         else onClear?.()
+        return
+      }
+
+      if (starIndex >= 0) {
+        onClear?.()
         return
       }
 
@@ -280,10 +273,12 @@ export function SortingQuestion({
           }
 
           const slotIndex = segment.slotIndex!
-          const filled = isSubmitted
-            ? submittedSlots[slotIndex]
-            : slots[slotIndex]
+          const filled = slots[slotIndex]
           const isStar = segment.isStar || slotIndex === starIndex
+          const positionIsCorrect =
+            isSubmitted &&
+            Boolean(filled) &&
+            filled?.id === correctSlots[slotIndex]?.id
 
           return (
             <button
@@ -302,8 +297,12 @@ export function SortingQuestion({
               data-context-role='sorting-slot'
               aria-label={`${isStar ? '星号' : `第 ${slotIndex + 1}`}排序位${filled ? `：${filled.text}` : ''}`}
               className={`relative mx-1 inline-flex min-h-12 min-w-24 items-center justify-center rounded-lg border px-3 align-middle shadow-sm transition-colors duration-200 ${
-                filled
-                  ? 'border-orange-300 bg-orange-50 text-gray-800'
+                isSubmitted && filled
+                  ? positionIsCorrect
+                    ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
+                    : 'border-rose-400 bg-rose-50 text-rose-900'
+                  : filled
+                    ? 'border-orange-300 bg-orange-50 text-gray-800'
                   : 'border-dashed border-slate-300 bg-slate-50 text-slate-400'
               }`}>
               <span data-context-ignore='true' aria-hidden='true' className='select-none absolute -top-2.5 left-2 rounded-full bg-white px-1.5 text-[10px] font-bold leading-5 text-orange-500 shadow-sm'>
@@ -334,26 +333,6 @@ export function SortingQuestion({
               : '点击选项填入上方空缺处'}
           </div>
         )}
-        {isSubmitted && (
-          <div
-            data-source-type='QUIZ_QUESTION'
-            data-source-id={question.id}
-            data-context-block='true'
-            data-context-role='sorting-correct-answer'
-            className='mb-5 text-center text-xs font-semibold tracking-wide text-gray-600'>
-            <span>正确答案：</span>
-            <span
-              dangerouslySetInnerHTML={{
-                __html: annotateExamText({
-                  text:
-                    options.find(option => option.isCorrect)?.text || '未配置',
-                  settings: annotation,
-                }),
-              }}
-            />
-          </div>
-        )}
-
         {!isSubmitted && (
           <div className='flex flex-wrap justify-center gap-3'>
             {pool.map(option => (
@@ -388,33 +367,66 @@ export function SortingQuestion({
         )}
 
         {isSubmitted && (
-          <div className='flex flex-wrap justify-center gap-3'>
-            {options.map(option => {
-              const used = submittedSlots.some(item => item?.id === option.id)
-              return (
-                <div
-                  key={option.id}
-                  data-source-type='QUIZ_QUESTION'
-                  data-source-id={question.id}
-                  data-context-block='true'
-                  data-context-role='sorting-option'
-                  className={`select-none border px-6 py-3 font-semibold ${
-                    used
-                      ? 'border-orange-300 bg-orange-50 text-orange-700'
-                      : 'border-gray-200 bg-white text-gray-600'
-                  }`}>
-                  <span
-                    className={isJapanesePaper ? 'exam-japanese-text' : ''}
-                    dangerouslySetInnerHTML={{
-                      __html: annotateExamText({
-                        text: option.text || '',
-                        settings: annotation,
-                      }),
-                    }}
-                  />
+          <div
+            data-source-type='QUIZ_QUESTION'
+            data-source-id={question.id}
+            data-context-block='true'
+            data-context-role='sorting-result'
+            className='mx-auto max-w-4xl space-y-5'>
+            {[
+              { label: '你的排列', values: slots, compare: true },
+              { label: '正确排列', values: correctSlots, compare: false },
+            ].map(row => (
+              <div key={row.label}>
+                <div className='mb-2 text-xs font-bold tracking-wide text-slate-600'>
+                  {row.label}：
                 </div>
-              )
-            })}
+                <div className='flex flex-wrap items-center gap-2' aria-label={row.label}>
+                  {row.values.map((option, index) => {
+                    const positionIsCorrect = option?.id === correctSlots[index]?.id
+                    const tone = row.compare
+                      ? positionIsCorrect
+                        ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                        : 'border-rose-300 bg-rose-50 text-rose-900'
+                      : 'border-slate-300 bg-white text-slate-800'
+                    return (
+                      <span key={`${row.label}-${index}`} className='contents'>
+                        {index > 0 && <span aria-hidden='true' className='text-slate-400'>→</span>}
+                        <span className={`rounded-lg border px-3 py-2 text-sm font-semibold ${tone}`}>
+                          {index === starIndex && <span className='mr-1 text-orange-600'>★</span>}
+                          <span
+                            className={isJapanesePaper ? 'exam-japanese-text' : ''}
+                            dangerouslySetInnerHTML={{
+                              __html: annotateExamText({
+                                text: option?.text || '未作答',
+                                settings: annotation,
+                              }),
+                            }}
+                          />
+                        </span>
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+            <div
+              data-source-type='QUIZ_QUESTION'
+              data-source-id={question.id}
+              data-context-block='true'
+              data-context-role='sorting-correct-answer'
+              className='border-t border-slate-200 pt-4 text-sm font-bold text-slate-700'>
+              <span>★ 正确答案：</span>
+              <span
+                className='text-emerald-700'
+                dangerouslySetInnerHTML={{
+                  __html: annotateExamText({
+                    text: correctOption?.text || '未配置',
+                    settings: annotation,
+                  }),
+                }}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -1,55 +1,42 @@
 # MimiFlow
 
-MimiFlow は、リスニング、シャドーイング、読解、問題演習、語彙管理、間隔反復をまとめた語学学習アプリです。
+リスニング、シャドーイング、読解、問題演習、単語帳、FSRS 間隔反復をまとめた語学学習アプリです。
 
-## 主な機能
+Next.js 16 · React 19 · TypeScript · Tailwind CSS · Prisma · PostgreSQL
 
-- 文単位の音声再生とシャドーイング、現在文の語彙表示
-- 読解・字幕学習と選択語彙の保存
-- 選択肢数を変更できる問題、試験演習、誤答復習
-- 語彙ノートと FSRS による記憶復習
-- コンテンツ、音声、分類、インポートの管理
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-## 技術スタック
+## ローカル開発
 
-Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL、ts-fsrs。
+Node.js 22–26、Python 3、PostgreSQL が必要です。`.env.local` に `DATABASE_URL` を設定して実行します。
 
-## ローカル実行
-
-Node.js 22–26、Python 3、PostgreSQL が必要です。
-
-```bash
-npm install
+```sh
+npm ci
 npm run sudachi:setup
-npm run db:generate
 npm run db:push
 npm run dev
 ```
 
-データベースコマンドの実行前に、`.env.local` に `DATABASE_URL` を設定してください。
-`sudachi:setup` は読解・聴解・問題演習・語彙で共有する日本語解析環境を
-`.venv` に構築します。既存環境を使う場合は `SUDACHI_PYTHON` を指定できます。
-macOS で Homebrew 版 PostgreSQL を使用する場合、`npm run dev` はローカル
-データベースを確認し、停止中なら Homebrew サービスを自動起動します。複数の
-PostgreSQL がある場合は `.env.local` の `POSTGRES_SERVICE` で指定できます
-（例: `postgresql@16`）。
+[localhost:3000](http://localhost:3000) を開きます。コンテンツ管理は `/manage` です。
+`npm ci` は Prisma Client を生成します。スキーマ変更後は `npm run db:generate` と `npm run db:push` を実行します。
+日本語解析には Sudachi を使用します。既存の Python 環境は `SUDACHI_PYTHON` で指定できます。
+macOS では開発起動時に Homebrew PostgreSQL を起動できます。複数バージョンがある場合は `POSTGRES_SERVICE` を指定します。
 
-## チェック
+## 構成
 
-```bash
+- `app/`：ページ、レイアウト、API ルート
+- `modules/`：ドメイン、サービス、hooks、機能別 UI
+- `components/`、`context/`、`hooks/`：共通 UI とアプリの状態
+- `lib/`、`utils/`：基盤、コーデック、既存リポジトリ、共通関数
+- `prisma/`：データモデル、`scripts/`：テストと保守ツール
+
+新しいドメイン・永続化処理は `modules/` に配置します。開発規約は [AGENTS.md](AGENTS.md)、UI 規約は [DESIGN.md](DESIGN.md) を参照してください。
+
+## 検証
+
+```sh
 npm run typecheck
 npm run lint
 npm test
 npm run build
 ```
-
-## 主なルート
-
-- `/listening`、`/reading`、`/subtitles`、`/practice`
-- `/vocabulary`、`/review`
-- `/manage` コンテンツ管理
-
-## 他言語
-
-- [English](./README.md)
-- [简体中文](./README.zh-CN.md)

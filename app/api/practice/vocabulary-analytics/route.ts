@@ -9,7 +9,7 @@ import {
 
 const getCachedPracticeVocabularyAnalytics = unstable_cache(
   getPracticeVocabularyAnalytics,
-  ['practice-vocabulary-analytics-v10'],
+  ['practice-vocabulary-analytics-v10', 'paper-locations-v1'],
   { revalidate: 300, tags: ['practice-vocabulary-analytics'] },
 )
 

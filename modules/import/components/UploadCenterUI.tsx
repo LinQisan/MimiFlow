@@ -1,6 +1,8 @@
 // app/admin/upload/UploadCenterUI.tsx
 'use client'
 
+import { parseListeningOptionText } from '@/modules/import/domain/listening-option-parser'
+
 import React, { useEffect, useMemo } from 'react'
 import type { MaterialType } from '@prisma/client'
 import UploadForm from '@/modules/import/components/UploadForm'
@@ -384,11 +386,9 @@ export default function UploadCenterUI({
   // ================= 🌟 3. 新增：单题专属的选项解析魔法 =================
   const handleParseCardOptions = (qIndex: number, text: string) => {
     if (!text.trim()) return false
-    const draft = parseMultiQuizText(text)[0]
+    const newOptionsTexts = parseListeningOptionText(text)
 
-    if (draft && draft.options.length >= MIN_QUESTION_OPTION_COUNT) {
-      const newOptionsTexts = draft.options.map((option) => option.text)
-
+    if (newOptionsTexts.length >= MIN_QUESTION_OPTION_COUNT) {
       const newQs = [...articleQuestions]
 
       // 🌟 自动寻的魔法：寻找哪个新选项包含了我们刚才“划词”选中的正确答案
@@ -413,7 +413,7 @@ export default function UploadCenterUI({
       setArticleQuestions(newQs)
       return true
     } else {
-      void dialog.alert('解析失败：请至少提供 2 个带序号的选项。')
+      void dialog.alert('解析失败：请至少提供 2 个选项，每行一个，序号可省略。')
       return false
     }
   }

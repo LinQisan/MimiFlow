@@ -3,22 +3,26 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { formatMediaTime } from '@/utils/time/format'
+import { useOptionalListeningAudio } from './ListeningAudioProvider'
 
 export default function ManageAudioPlayer({ src }: { src: string }) {
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
+  const sharedAudio = useOptionalListeningAudio()
+  const hasSharedAudio = sharedAudio !== null
+  const localAudioRef = useRef<HTMLAudioElement>(null)
+  const [localIsPlaying, setLocalIsPlaying] = useState(false)
+  const [localCurrentTime, setLocalCurrentTime] = useState(0)
+  const [localDuration, setLocalDuration] = useState(0)
 
   useEffect(() => {
-    const audio = audioRef.current
+    if (hasSharedAudio) return
+    const audio = localAudioRef.current
     if (!audio) return
 
-    const syncTime = () => setCurrentTime(audio.currentTime || 0)
+    const syncTime = () => setLocalCurrentTime(audio.currentTime || 0)
     const syncDuration = () =>
-      setDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
-    const handlePlay = () => setIsPlaying(true)
-    const handlePause = () => setIsPlaying(false)
+      setLocalDuration(Number.isFinite(audio.duration) ? audio.duration : 0)
+    const handlePlay = () => setLocalIsPlaying(true)
+    const handlePause = () => setLocalIsPlaying(false)
 
     audio.addEventListener('loadedmetadata', syncDuration)
     audio.addEventListener('durationchange', syncDuration)
@@ -37,22 +41,33 @@ export default function ManageAudioPlayer({ src }: { src: string }) {
       audio.removeEventListener('pause', handlePause)
       audio.removeEventListener('ended', handlePause)
     }
-  }, [src])
+  }, [hasSharedAudio, src])
 
   const togglePlayback = () => {
-    const audio = audioRef.current
+    if (sharedAudio) {
+      sharedAudio.toggleFullPlayback()
+      return
+    }
+    const audio = localAudioRef.current
     if (!audio) return
     if (audio.paused) void audio.play().catch(() => {})
     else audio.pause()
   }
 
   const seek = (value: number) => {
-    const audio = audioRef.current
+    if (sharedAudio) {
+      sharedAudio.seek(value)
+      return
+    }
+    const audio = localAudioRef.current
     if (!audio || !Number.isFinite(value)) return
     audio.currentTime = value
-    setCurrentTime(value)
+    setLocalCurrentTime(value)
   }
 
+  const isPlaying = sharedAudio?.isPlaying ?? localIsPlaying
+  const currentTime = sharedAudio?.currentTime ?? localCurrentTime
+  const duration = sharedAudio?.duration ?? localDuration
   const progress = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0
 
   return (
@@ -89,9 +104,11 @@ export default function ManageAudioPlayer({ src }: { src: string }) {
         />
       </div>
 
-      <audio ref={audioRef} src={src} preload='metadata' className='hidden'>
-        您的浏览器不支持音频播放。
-      </audio>
+      {!sharedAudio ? (
+        <audio ref={localAudioRef} src={src} preload='metadata' className='hidden'>
+          您的浏览器不支持音频播放。
+        </audio>
+      ) : null}
     </div>
   )
 }

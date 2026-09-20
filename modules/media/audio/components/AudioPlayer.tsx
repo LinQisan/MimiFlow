@@ -106,7 +106,7 @@ export default function AudioPlayer({
     toggleTrackLoop,
     playSentence,
     toggleLoop,
-  } = useAudioController(lesson.dialogue)
+  } = useAudioController(lesson.dialogue, lesson.audioFile)
   const [isBlindMode, setIsBlindMode] = useState(false)
   const { selection, closeSelection } = useTextSelection(!isBlindMode)
   const [showAnnotations, setShowAnnotations] = useState(true)

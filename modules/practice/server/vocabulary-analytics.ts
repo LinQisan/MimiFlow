@@ -856,7 +856,7 @@ export async function getPracticeVocabularyAnalytics() {
         materialGroups.set(material.id, group)
       }
       const globalStart = documents.length
-      documents.push(...localDocuments)
+      documents.push(...localDocuments.map(document => ({ ...document, paperTitle: paper.title })))
       group.occurrences.push({
         globalStart,
         length: localDocuments.length,

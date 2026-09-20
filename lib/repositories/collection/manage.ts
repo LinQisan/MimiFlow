@@ -270,14 +270,12 @@ export async function getListeningEditData(maybeId: string) {
 
   const titleSectionNumber =
     material.title.match(/(?:問題|问题|P)\s*0*(\d+)/i)?.[1] || ''
-  const dialogues = asArray<JsonRecord>(payload.dialogues).map(
-    (item, index) => ({
-      id: Number(item.id) || index + 1,
-      text: readString(item.text),
-      start: Number(item.start || 0),
-      end: Number(item.end || 0),
-    }),
-  )
+  const dialogues = asArray<JsonRecord>(payload.dialogues).map(item => ({
+    stableId: readString(item.stableId),
+    text: readString(item.text),
+    start: Number(item.start || 0),
+    end: Number(item.end || 0),
+  }))
 
   return {
     id: material.id,

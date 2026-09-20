@@ -919,7 +919,7 @@ export default function ArticleImportPanel({
                         }
                         rows={2}
                         placeholder={
-                          '粘贴选项，例如：\n1　正确答案　2　干扰项A　3　干扰项B　4　干扰项C'
+                          '每行一个选项，序号可省略，例如：\n正确答案\n干扰项A\n干扰项B\n干扰项C'
                         }
                         className="w-full resize-y border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-500 focus:bg-white"
                       />

@@ -14,6 +14,7 @@ import type {
   OnSelectOption,
 } from './question-renderer/types'
 import { formatMediaTime } from '@/utils/time/format'
+import { usePcmAudioSource } from '@/modules/media/audio/components/usePcmAudioSource'
 import { normalizeQuestionDisplayText } from '@/modules/practice/domain/question-text'
 
 type QuestionRendererProps = {
@@ -119,6 +120,7 @@ function ListeningQuestion({
 }: QuestionRendererProps) {
   const dialogueSourceId = question.lessonId || question.id
   const audioRef = useRef<HTMLAudioElement>(null)
+  const decodedAudio = usePcmAudioSource(question.lesson?.audioFile ?? undefined)
   const [isPlaying, setIsPlaying] = React.useState(false)
   const [currentTime, setCurrentTime] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
@@ -130,7 +132,6 @@ function ListeningQuestion({
   )
   const displayedQuestions =
     lessonQuestions.length > 0 ? lessonQuestions : [question]
-  const hasPhotograph = displayedQuestions.some(item => Boolean(item.imageUrl))
 
   React.useEffect(() => {
     setIsPlaying(false)
@@ -155,7 +156,7 @@ function ListeningQuestion({
     }
 
     const tryAutoplay = () => {
-      if (autoPlayAttempted) return
+      if (autoPlayAttempted || !audio.currentSrc || audio.readyState < 3) return
       setAutoPlayAttempted(true)
       audio.play().catch(() => {})
     }
@@ -181,48 +182,52 @@ function ListeningQuestion({
     }
   }, [autoPlayAttempted, lessonId, question.lesson?.audioFile])
 
+  React.useEffect(() => {
+    const audio = audioRef.current
+    return () => { audio?.pause() }
+  }, [lessonId, question.lesson?.audioFile])
+
   const togglePlayback = () => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !decodedAudio.src) return
     if (audio.paused) audio.play().catch(() => {})
     else audio.pause()
   }
 
   const handleSeek = (value: number) => {
     const audio = audioRef.current
-    if (!audio || !Number.isFinite(value)) return
+    if (!audio || !decodedAudio.src || audio.readyState < 1 || !Number.isFinite(value)) return
     audio.currentTime = value
     setCurrentTime(value)
   }
 
   return (
     <div
-      className={`mx-auto w-full max-w-4xl ${hasPhotograph ? 'py-1 md:py-2' : 'py-5 md:py-8'}`}>
+      className='listening-practice mx-auto w-full py-1'>
       {question.lesson?.audioFile && (
         <div
-          className={hasPhotograph ? 'mb-3 py-2' : 'mb-5 py-3 md:py-4'}>
+          className='mb-3 py-1'>
           <div className='flex items-center gap-3'>
             <button
               type='button'
               onClick={togglePlayback}
-              className='inline-flex h-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-100'>
-              {isPlaying ? '暂停' : '播放'}
+              disabled={!decodedAudio.src}
+              className='ui-btn h-10 shrink-0 px-4'>
+              {decodedAudio.error ? '音频加载失败' : !decodedAudio.src ? '加载中…' : isPlaying ? '暂停' : '播放'}
             </button>
+            <span className='shrink-0 text-xs tabular-nums text-slate-500'>
+              {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
+            </span>
             <div className='min-w-0 flex-1'>
-              <div className='mb-2 flex items-center justify-between gap-3 text-[11px] font-semibold text-slate-500'>
-                <span>音频</span>
-                <span>
-                  {formatMediaTime(currentTime)} / {formatMediaTime(duration)}
-                </span>
-              </div>
               <input
                 type='range'
+                disabled={!decodedAudio.src}
                 min={0}
                 max={Math.max(duration, 0)}
                 step='0.1'
                 value={Math.min(currentTime, duration || currentTime)}
                 onChange={e => handleSeek(Number(e.target.value))}
-                className='h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-slate-900 outline-none'
+                className='h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-slate-500'
                 aria-label='音频进度'
               />
             </div>
@@ -234,7 +239,7 @@ function ListeningQuestion({
             playsInline
             preload='auto'
             className='hidden'
-            src={question.lesson.audioFile}
+            src={decodedAudio.src || undefined}
             controlsList='nodownload'>
             您的浏览器不支持音频播放。
           </audio>
@@ -351,6 +356,7 @@ function ListeningQuestion({
             lessonId={lessonId}
             dialogues={dialogues}
             audioRef={audioRef}
+            audioReady={Boolean(decodedAudio.src)}
             annotation={annotation}
           />
         )}

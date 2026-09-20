@@ -728,6 +728,7 @@ model QuestionAttempt {
   submission       PracticePaperSubmission? @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   selectedOptionId String?                  @map("selected_option_id")
   correctOptionId  String?                  @map("correct_option_id")
+  selectedOrder    String[]                 @default([]) @map("selected_order")
 
   isCorrect   Boolean // 用户是否做对
   timeSpentMs Int // 这道题思考/停留的耗时（毫秒）
@@ -966,6 +967,9 @@ model MaterialPronunciationChoice {
 }
 
 model CustomPracticeSession {
+  completedAt       DateTime? @map("completed_at")
+  answers           Json      @default("{}")
+  sortingOrders     Json      @default("{}") @map("sorting_orders")
   id                String    @id @default(cuid())
   userId            String    @map("user_id")
   title             String

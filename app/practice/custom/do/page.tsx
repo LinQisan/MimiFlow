@@ -1,5 +1,6 @@
 // Custom focused practice session.
 import Link from 'next/link'
+import { readJsonRecord } from '@/lib/validation/schema'
 import { redirect } from 'next/navigation'
 
 import { PracticePlayer } from '@/modules/practice/components/PracticePlayer'
@@ -43,8 +44,24 @@ export default async function CustomPaperDoingPage({
 
     return (
       <PracticePlayer
+        key={session.id}
         questions={examData.questions}
+        customSessionId={session.id}
+        initialSubmitted={Boolean(session.completedAt)}
+        initialAnswers={Object.fromEntries(
+          Object.entries(readJsonRecord(session.answers)).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        )}
+        initialSortingOrders={Object.fromEntries(
+          Object.entries(readJsonRecord(session.sortingOrders)).filter(
+            (entry): entry is [string, string[]] =>
+              Array.isArray(entry[1]) &&
+              entry[1].every(value => typeof value === 'string'),
+          ),
+        )}
         paperTitle={session.title}
+        sourceTitles={examData.sourceCollections}
         paperLanguage={session.language}
         mode='random'
         exitHref='/practice/custom'

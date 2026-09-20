@@ -113,7 +113,9 @@ export function OptionsList({
   if (audioOnly) {
     return (
       <div
-        className={`${compact ? 'mt-3' : 'mt-7'} flex flex-wrap items-center gap-3 py-2`}>
+        role='group'
+        aria-label='答案选项'
+        className='flex flex-wrap items-center gap-3 py-1'>
         {options.map((option, index) => {
           const label = formatOptionLabel(
             index,

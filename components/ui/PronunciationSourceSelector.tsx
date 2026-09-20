@@ -1,5 +1,7 @@
 'use client'
 
+import CustomSelect from './CustomSelect'
+
 export type PronunciationSource = 'sudachi' | 'personal'
 export const PRONUNCIATION_SOURCE_STORAGE_KEY =
   'mimiflow_article_pronunciation_source'
@@ -13,36 +15,14 @@ export default function PronunciationSourceSelector({
   onChange: (source: PronunciationSource) => void
   sudachiAvailable: boolean
 }) {
-  const optionClassName = (selected: boolean) =>
-    `h-7 border-0 px-2 text-[11px] font-medium transition ${
-      selected
-        ? 'text-slate-950 underline decoration-slate-400 underline-offset-4'
-        : 'text-slate-400 hover:text-slate-700'
-    }`
-
   return (
-    <div
-      role='radiogroup'
+    <CustomSelect
       aria-label='注音来源'
-      className='flex items-center divide-x divide-slate-300'>
-      <button
-        type='button'
-        role='radio'
-        aria-checked={value === 'sudachi'}
-        disabled={!sudachiAvailable}
-        title={sudachiAvailable ? '显示默认自动注音' : '默认自动注音当前不可用'}
-        onClick={() => onChange('sudachi')}
-        className={`${optionClassName(value === 'sudachi')} disabled:cursor-not-allowed disabled:opacity-40`}>
-        默认
-      </button>
-      <button
-        type='button'
-        role='radio'
-        aria-checked={value === 'personal'}
-        onClick={() => onChange('personal')}
-        className={optionClassName(value === 'personal')}>
-        我的
-      </button>
-    </div>
+      value={value}
+      onChange={event => onChange(event.target.value as PronunciationSource)}
+      className='h-8 w-20 rounded-md border border-slate-300 bg-transparent px-2 text-xs font-medium text-slate-600'>
+      <option value='sudachi' disabled={!sudachiAvailable}>默认</option>
+      <option value='personal'>我的</option>
+    </CustomSelect>
   )
 }

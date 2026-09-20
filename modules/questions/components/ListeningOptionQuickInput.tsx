@@ -25,7 +25,7 @@ export default function ListeningOptionQuickInput({
       </summary>
       <div className='mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end'>
         <label className='block'>
-          <span className='sr-only'>粘贴带序号的选项</span>
+          <span className='sr-only'>粘贴选项，每行一个，序号可省略</span>
           <textarea
             value={text}
             onChange={event => {
@@ -53,7 +53,7 @@ export default function ListeningOptionQuickInput({
         </button>
       </div>
       <p className='mt-2 text-[11px] text-slate-400'>
-        每行一个选项，支持数字、字母或带圈序号；序号后可使用 Tab 或空格。
+        每行一个选项，无需序号；也支持数字、字母或带圈序号，序号后可使用 Tab 或空格。
         {recognizedCount >= 2 ? ` 已识别 ${recognizedCount} 个选项。` : ''}
       </p>
     </details>

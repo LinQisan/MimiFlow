@@ -1,5 +1,6 @@
 'use client'
 
+import styles from './ListeningTranscript.module.css'
 import React, { useEffect, useMemo, useState } from 'react'
 import { annotateExamText } from './annotate'
 import type {
@@ -16,6 +17,7 @@ type ListeningTranscriptProps = {
   lessonId: string
   dialogues: DialogueLine[]
   audioRef: React.RefObject<HTMLAudioElement | null>
+  audioReady: boolean
   annotation: ExamAnnotationSettings
 }
 
@@ -23,6 +25,7 @@ export function ListeningTranscript({
   lessonId,
   dialogues,
   audioRef,
+  audioReady,
   annotation,
 }: ListeningTranscriptProps) {
   const [activeLineId, setActiveLineId] = useState<number | null>(null)
@@ -62,42 +65,37 @@ export function ListeningTranscript({
 
   const handleLineClick = (line: DialogueLine) => {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !audioReady || audio.readyState < 1) return
     audio.currentTime = line.start
     audio.play().catch(() => {})
   }
 
   return (
-    <section className='mt-8 border-t border-slate-200 pt-6'>
-      <div className='mb-3'>
+    <section className={styles.transcript} aria-label='听力原文'>
+      <div className={styles.heading}>
         <h3 className='text-base font-bold tracking-tight text-slate-900'>
           听力原文
         </h3>
-        <p className='mt-1 text-xs text-slate-500'>
+        <p className='text-xs text-slate-500'>
           共 {sortedDialogues.length} 句 · 点按时间可从该处播放
         </p>
       </div>
 
-      <div className='divide-y divide-slate-100 border-y border-slate-200'>
+      <div>
         {sortedDialogues.map(line => {
           const isActive = activeLineId === line.id
           return (
             <div
               key={`dialogue-${lessonId}-${line.id}`}
-              className={`grid w-full grid-cols-[4rem_minmax(0,1fr)] gap-3 px-2 py-3 text-left transition-colors md:grid-cols-[4.75rem_minmax(0,1fr)] md:px-3 ${
-                isActive
-                  ? 'bg-slate-100'
-                  : 'bg-white hover:bg-slate-50'
-              }`}>
+              data-active={isActive}
+              className={styles.line}>
               <button
                 type='button'
                 onClick={() => handleLineClick(line)}
+                disabled={!audioReady}
                 aria-label={`从 ${formatMediaTime(line.start)} 播放`}
-                className={`h-fit rounded-md px-1.5 py-1 font-mono text-[11px] font-medium transition-colors ${
-                  isActive
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700'
-                }`}>
+                aria-current={isActive ? 'true' : undefined}
+                className={styles.time}>
                 {formatMediaTime(line.start)}
               </button>
               <div
@@ -108,7 +106,7 @@ export function ListeningTranscript({
                 )}
                 data-context-block='true'
                 data-context-role='listening-dialogue-line'
-                className='cursor-text select-text text-[15px] leading-7 text-slate-800 md:text-base md:leading-8'
+                className={styles.text}
                 dangerouslySetInnerHTML={{
                   __html: annotateExamText({ text: line.text, settings: annotation }),
                 }}

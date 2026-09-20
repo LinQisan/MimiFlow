@@ -19,6 +19,7 @@ export type PracticeVocabularyCategory =
 
 export type PracticeVocabularyDocument = {
   paperId: string
+  paperTitle?: string
   year: string
   category: PracticeVocabularyCategory
   kind: 'body' | 'question' | 'option' | 'target'
@@ -39,6 +40,7 @@ export type PracticeVocabularyWordInsight = {
   isMastered: boolean
   categoryCounts: Record<PracticeVocabularyCategory, number>
   yearCounts: Record<string, number>
+  occurrences?: Array<{ paperId: string; paperTitle: string; categories: PracticeVocabularyCategory[] }>
 }
 
 export type PracticeVocabularyWordbookOption = {
@@ -564,6 +566,7 @@ export function buildPracticeVocabularyAnalytics({
   years?: string[]
 }): PracticeVocabularyAnalytics {
   const words = new Map<string, InternalWord>()
+  const paperTitles = new Map(documents.map(document => [document.paperId, document.paperTitle || document.paperId]))
   const kanji = new Map<
     string,
     { count: number; paperIds: Set<string> }
@@ -671,6 +674,13 @@ export function buildPracticeVocabularyAnalytics({
         targetCount: row.targetCount,
         categoryCounts: row.categoryCounts,
         yearCounts: row.yearCounts,
+        occurrences: [...row.paperIds].map(paperId => ({
+          paperId,
+          paperTitle: paperTitles.get(paperId) || paperId,
+          categories: PRACTICE_VOCABULARY_CATEGORIES.filter(category =>
+            row.categoryUnitIds[category.key].has(`${paperId}:${category.key}`),
+          ).map(category => category.key),
+        })),
         paperCount: row.paperIds.size,
         coverageRate:
           denominator > 0

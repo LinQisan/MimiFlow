@@ -15,6 +15,9 @@ type PracticeOptionLike = {
 
 type PracticeQuestionLike = {
   id: string
+  questionType?: string | null
+  prompt?: string | null
+  correctOrder?: string[]
   options?: PracticeOptionLike[]
 }
 
@@ -22,6 +25,7 @@ type PracticeSessionOptions = {
   draftKey?: string
   restoreDraftIndex?: boolean
   initialAnswers?: Record<string, string>
+  initialSortingOrders?: Record<string, Array<string | null>>
   initialSubmitted?: boolean
 }
 
@@ -44,6 +48,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
     draftKey,
     restoreDraftIndex = true,
     initialAnswers = {},
+    initialSortingOrders = {},
     initialSubmitted = false,
   } = options
   const scopedDraftKey = draftKey
@@ -53,12 +58,18 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   const [answers, setAnswers] = useState<Record<string, string>>(initialAnswers)
   const [sortingDrafts, setSortingDrafts] = useState<
     Record<string, Array<string | null>>
-  >({})
+  >(initialSortingOrders)
   const [draftReady, setDraftReady] = useState(!draftKey)
   const [showSheet, setShowSheet] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(initialSubmitted)
   const [submittedQuestionIds, setSubmittedQuestionIds] = useState<string[]>(
-    initialSubmitted ? questions.map(question => question.id) : [],
+    initialSubmitted
+      ? summarizePracticeSubmission(
+          questions,
+          initialAnswers,
+          initialSortingOrders,
+        ).submittedQuestionIds
+      : [],
   )
   const [timeSpentByQuestionId, setTimeSpentByQuestionId] = useState<
     Record<string, number>
@@ -66,7 +77,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   const questionEnterAtRef = useRef<number>(0)
 
   useEffect(() => {
-    if (!scopedDraftKey || typeof window === 'undefined') {
+    if (initialSubmitted || !scopedDraftKey || typeof window === 'undefined') {
       setDraftReady(true)
       return
     }
@@ -121,7 +132,7 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
     } finally {
       setDraftReady(true)
     }
-  }, [currentUser.id, draftKey, questions, restoreDraftIndex, scopedDraftKey])
+  }, [currentUser.id, draftKey, initialSubmitted, questions, restoreDraftIndex, scopedDraftKey])
 
   const getCorrectOptionId = useCallback(
     (question: TQuestion) =>
@@ -136,8 +147,8 @@ export function usePracticeSession<TQuestion extends PracticeQuestionLike>(
   )
 
   const submissionSummary = useMemo(
-    () => summarizePracticeSubmission(questions, answers),
-    [questions, answers],
+    () => summarizePracticeSubmission(questions, answers, sortingDrafts),
+    [questions, answers, sortingDrafts],
   )
   const {
     wrongIndexes,

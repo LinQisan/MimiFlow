@@ -13,6 +13,7 @@ type SubmissionItem = {
     isCorrect: boolean
     selectedOptionId: string | null
     correctOptionId: string | null
+    selectedOrder: unknown
     timeSpentMs: number
   }
 }
@@ -102,6 +103,14 @@ export default function PracticeSubmissionReviewClient({
       sudachiAvailable={sudachiAvailable}
       vocabularyMetaMap={vocabularyMetaMap}
       initialAnswers={initialAnswers}
+      initialSortingOrders={Object.fromEntries(
+        submissionItems.flatMap(item =>
+          Array.isArray(item.attempt.selectedOrder) &&
+          item.attempt.selectedOrder.every(value => typeof value === 'string')
+            ? [[item.question.id, item.attempt.selectedOrder as string[]]]
+            : [],
+        ),
+      )}
       initialSubmitted
       historyCorrectQuestionIds={correctQuestionIds}
       historyWrongQuestionIds={wrongQuestionIds}

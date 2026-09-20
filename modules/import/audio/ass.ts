@@ -5,6 +5,8 @@ export type RawAssSubtitle = {
   rawEnd: number
 }
 
+export type RawSubtitle = RawAssSubtitle
+
 export type TimelineDialogue = {
   id: number
   text: string
@@ -13,10 +15,26 @@ export type TimelineDialogue = {
   sequenceId: number
 }
 
-function assTimeToSeconds(timeText: string): number {
-  const match = timeText.trim().match(/^(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)$/)
+function subtitleTimeToSeconds(timeText: string): number {
+  const match = timeText
+    .trim()
+    .match(/^(\d+):(\d{1,2}):(\d{1,2})(?:[.,](\d+))?$/)
   if (!match) return Number.NaN
-  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])
+
+  const hours = Number(match[1])
+  const minutes = Number(match[2])
+  const seconds = Number(match[3])
+  const fraction = match[4] ? Number(`0.${match[4]}`) : 0
+  if (
+    !Number.isFinite(hours) ||
+    !Number.isFinite(minutes) ||
+    !Number.isFinite(seconds) ||
+    !Number.isFinite(fraction)
+  ) {
+    return Number.NaN
+  }
+
+  return hours * 3600 + minutes * 60 + seconds + fraction
 }
 
 function splitAssRow(row: string, splitLimit: number) {
@@ -84,8 +102,8 @@ export function parseAssToRawSubtitles(assContent: string): RawAssSubtitle[] {
     const parts = splitAssRow(row, splitLimit)
     if (parts.length <= Math.max(startIndex, endIndex, textIndex)) continue
 
-    const rawStart = assTimeToSeconds(parts[startIndex])
-    const rawEnd = assTimeToSeconds(parts[endIndex])
+    const rawStart = subtitleTimeToSeconds(parts[startIndex])
+    const rawEnd = subtitleTimeToSeconds(parts[endIndex])
     if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) continue
     if (rawEnd <= rawStart) continue
 
@@ -98,6 +116,86 @@ export function parseAssToRawSubtitles(assContent: string): RawAssSubtitle[] {
   return subtitles.sort(
     (left, right) => left.rawStart - right.rawStart || left.rawEnd - right.rawEnd,
   )
+}
+
+function splitSrtTextToLines(text: string) {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => item.replace(/<[^>]+>/g, ''))
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+export function parseSrtToRawSubtitles(srtContent: string): RawSubtitle[] {
+  const subtitles: RawSubtitle[] = []
+  const blocks = srtContent
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+  let subtitleId = 1
+
+  for (const block of blocks) {
+    const lines = block
+      .split('\n')
+      .map(item => item.trim())
+      .filter(Boolean)
+    const timingIndex = lines.findIndex(line => line.includes('-->'))
+    if (timingIndex < 0) continue
+
+    const timing = lines[timingIndex].match(
+      /^(\d+:[^\s]+)\s*-->\s*(\d+:[^\s]+)/,
+    )
+    if (!timing) continue
+
+    const rawStart = subtitleTimeToSeconds(timing[1])
+    const rawEnd = subtitleTimeToSeconds(timing[2])
+    if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) continue
+    if (rawEnd <= rawStart) continue
+
+    for (const text of splitSrtTextToLines(lines.slice(timingIndex + 1).join('\n'))) {
+      subtitles.push({
+        id: subtitleId,
+        text,
+        rawStart,
+        rawEnd,
+      })
+      subtitleId += 1
+    }
+  }
+
+  return subtitles.sort(
+    (left, right) => left.rawStart - right.rawStart || left.rawEnd - right.rawEnd,
+  )
+}
+
+export function parseSubtitleToRawSubtitles(
+  content: string,
+  extension: string,
+): RawSubtitle[] {
+  const normalizedExtension = extension.trim().toLowerCase()
+  return normalizedExtension === '.srt'
+    ? parseSrtToRawSubtitles(content)
+    : parseAssToRawSubtitles(content)
+}
+
+/**
+ * Convert parsed subtitle timestamps without any timeline business rules.
+ * Re-importing a subtitle file must use this path so padding, gap filling,
+ * overlap repair, and audio-based alignment cannot change the source times.
+ */
+export function convertRawSubtitlesToTimeline(
+  subtitles: readonly RawSubtitle[],
+): TimelineDialogue[] {
+  return subtitles.map((subtitle, index) => ({
+    id: index + 1,
+    text: subtitle.text,
+    start: subtitle.rawStart,
+    end: subtitle.rawEnd,
+    sequenceId: index + 1,
+  }))
 }
 
 export function applyAssTimelinePadding(

@@ -387,3 +387,26 @@ test('mastered vocabulary preferences are persisted per user', async () => {
     /model PracticeVocabularyPreference[\s\S]*onDelete: Cascade/,
   )
 })
+
+test('word locations deduplicate paper/category pairs and preserve source paper order', () => {
+  const documents = [
+    { paperId: 'b', paperTitle: '2025年7月N1', year: '2025', category: 'READING', kind: 'body', text: '環境' },
+    { paperId: 'b', paperTitle: '2025年7月N1', year: '2025', category: 'READING', kind: 'option', text: '環境' },
+    { paperId: 'b', paperTitle: '2025年7月N1', year: '2025', category: 'GRAMMAR', kind: 'question', text: '環境' },
+    { paperId: 'a', paperTitle: '2024年12月N1', year: '2024', category: 'LISTENING', kind: 'body', text: '環境' },
+    { paperId: 'c', paperTitle: 'Target only', year: '2024', category: 'TEXT_VOCAB', kind: 'target', text: '環境' },
+  ]
+  const analytics = buildPracticeVocabularyAnalytics({ documents, tokens: documents.map((_, index) => token('環境', '環境', index)), totalPapers: 3 })
+  const row = analytics.words.find(word => word.word === '環境')
+  assert.deepEqual(row.occurrences, [
+    { paperId: 'b', paperTitle: '2025年7月N1', categories: ['GRAMMAR', 'READING'] },
+    { paperId: 'a', paperTitle: '2024年12月N1', categories: ['LISTENING'] },
+  ])
+  assert.equal(row.paperCount, row.occurrences.length)
+  assert.equal(row.count, row.occurrences.reduce((sum, location) => sum + location.categories.length, 0))
+  assert.equal(row.coverageRate, 66.7)
+  const personalized = applyPracticeVocabularyKnowledge(analytics, [], ['環境'])
+  assert.deepEqual(personalized.words[0].occurrences, row.occurrences)
+  assert.equal(analytics.words[0].isMastered, false)
+  assert.equal(personalized.words[0].isMastered, true)
+})

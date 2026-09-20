@@ -3,6 +3,7 @@
 import { formatQuestionSectionHeading } from '@/modules/questions/domain/section-heading'
 
 import React from 'react'
+import styles from './PracticePlayer.module.css'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import {
@@ -65,6 +66,8 @@ const WordTooltip = dynamic(() =>
 
 interface PracticePlayerProps {
   questions: ExamQuestion[]
+  customSessionId?: string
+  sourceTitles?: string[]
   paperTitle?: string
   paperLanguage?: string | null
   mode?: 'exam' | 'random' | 'single' | 'history'
@@ -84,6 +87,7 @@ interface PracticePlayerProps {
   loadSudachiInBackground?: boolean
   vocabularyMetaMap: Record<string, VocabularyMeta>
   initialAnswers?: Record<string, string>
+  initialSortingOrders?: Record<string, Array<string | null>>
   initialSubmitted?: boolean
   historyCorrectQuestionIds?: string[]
   historyWrongQuestionIds?: string[]
@@ -134,6 +138,8 @@ const isInteractiveSpaceTarget = (target: EventTarget | null) => {
 export function PracticePlayer({
   questions,
   paperTitle = '专项练习',
+  sourceTitles = [],
+  customSessionId,
   paperLanguage = null,
   mode = 'exam',
   initialIndex = 0,
@@ -152,6 +158,7 @@ export function PracticePlayer({
   loadSudachiInBackground = false,
   vocabularyMetaMap,
   initialAnswers = {},
+  initialSortingOrders = {},
   initialSubmitted = false,
   historyCorrectQuestionIds = [],
   historyWrongQuestionIds = [],
@@ -227,6 +234,7 @@ export function PracticePlayer({
     draftKey,
     restoreDraftIndex,
     initialAnswers,
+    initialSortingOrders,
     initialSubmitted,
   })
   const questionGroups = React.useMemo(
@@ -647,9 +655,10 @@ export function PracticePlayer({
 
   const handleSelectOption = React.useCallback(
     (questionId: string, optionId: string) => {
+      if (persistState === 'saving' || !session.draftReady) return
       session.selectOption(questionId, optionId)
     },
-    [session],
+    [persistState, session],
   )
 
   const handleQuestionNoteSaved = React.useCallback(
@@ -823,8 +832,8 @@ export function PracticePlayer({
     : `${currentGroup.startIndex + 1}`
   const currentQuestionRange = currentCardSection
     ? isJapanesePaper
-      ? `${formatQuestionSectionHeading(currentCardSection.sectionTitle, currentCardSection.sectionNumber)} · ${currentLocalRange}/${currentNumberTotal}`
-      : `${currentCardSection.sectionTitle} · ${currentLocalRange}/${currentNumberTotal}`
+      ? formatQuestionSectionHeading(currentCardSection.sectionTitle, currentCardSection.sectionNumber).replace('｜', ' ')
+      : currentCardSection.sectionTitle
     : `第 ${currentGroup.startIndex + 1} 题`
   const isSingleMode = questionGroups.length === 1
   const currentWrongPosition = session.wrongIndexes.indexOf(
@@ -862,9 +871,8 @@ export function PracticePlayer({
       : Math.round((session.answeredCount / questions.length) * 100)
 
   const handleSubmit = async () => {
-    if (session.isSubmitted || persistState === 'saving') return
+    if (session.isSubmitted || persistState === 'saving' || !session.draftReady) return
 
-    session.submit()
     setPersistState('saving')
 
     const attempts = questions
@@ -874,6 +882,12 @@ export function PracticePlayer({
         return {
           questionId: question.id,
           selectedOptionId: selectedId,
+          selectedOrder:
+            question.questionType === 'SORTING'
+              ? (session.sortingDrafts[question.id] || []).filter(
+                  (id): id is string => Boolean(id),
+                )
+              : undefined,
           timeSpentMs: Math.max(
             0,
             session.timeSpentByQuestionId[question.id] || 0,
@@ -882,46 +896,58 @@ export function PracticePlayer({
       })
       .filter((item): item is NonNullable<typeof item> => item !== null)
 
-    if (attempts.length === 0) {
+    if (attempts.length === 0 && !customSessionId) {
+      session.submit()
       setPersistState('idle')
       return
     }
 
-    const response = await fetch('/api/quiz-attempts', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        attempts,
-        completedPaperId:
-          paperId && attempts.length === questions.length ? paperId : undefined,
-      }),
-    })
-    const result = (await response.json()) as {
-      success?: boolean
-      results?: Array<{ questionId: string; isCorrect: boolean }>
-      submission?: JlptScoreSummaryData | null
-    }
-    if (!result.success) {
-      setPersistState('error')
-      return
-    }
-
-    setAttemptStatsByQuestion(prev => {
-      const next = { ...prev }
-      for (const item of result.results || []) {
-        const current = next[item.questionId] || { total: 0, correct: 0 }
-        next[item.questionId] = {
-          total: current.total + 1,
-          correct: current.correct + (item.isCorrect ? 1 : 0),
-        }
+    try {
+      const response = await fetch('/api/quiz-attempts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          attempts,
+          customSessionId,
+          completedPaperId:
+            paperId && attempts.length === questions.length ? paperId : undefined,
+        }),
+      })
+      const result = (await response.json()) as {
+        success?: boolean
+        alreadyCompleted?: boolean
+        results?: Array<{ questionId: string; isCorrect: boolean }>
+        submission?: JlptScoreSummaryData | null
       }
-      return next
-    })
-    session.clearDraft()
-    setScoreSummary(result.submission || null)
-    setPersistState('saved')
+      if (!response.ok || !result.success) {
+        setPersistState('error')
+        return
+      }
+
+      if (result.alreadyCompleted) {
+        window.location.reload()
+        return
+      }
+      session.submit()
+      setAttemptStatsByQuestion(prev => {
+        const next = { ...prev }
+        for (const item of result.results || []) {
+          const current = next[item.questionId] || { total: 0, correct: 0 }
+          next[item.questionId] = {
+            total: current.total + 1,
+            correct: current.correct + (item.isCorrect ? 1 : 0),
+          }
+        }
+        return next
+      })
+      session.clearDraft()
+      setScoreSummary(result.submission || null)
+      setPersistState('saved')
+    } catch {
+      setPersistState('error')
+    }
   }
 
   const formatCopyText = (value: string) => {
@@ -1038,7 +1064,7 @@ export function PracticePlayer({
   const handleQuestionAreaMouseDown = (
     event: React.MouseEvent<HTMLDivElement>,
   ) => {
-    if (session.isSubmitted) return
+    if (session.isSubmitted || persistState === 'saving') return
     const target = event.target as HTMLElement
     const clickedInsideOption = Boolean(
       target.closest('[data-context-role="question-option"]') ||
@@ -1053,12 +1079,12 @@ export function PracticePlayer({
   return (
     <div
       ref={playerRootRef}
-      className={`relative flex min-h-screen flex-col bg-[#f7f7f5] font-sans ${
+      className={`${styles.player} relative flex min-h-screen flex-col bg-[#f7f7f5] font-sans ${
         isJapanesePaper ? 'exam-japanese' : ''
       }`}>
       <header className='sticky top-0 z-40 border-b border-slate-200 bg-[#f7f7f5]'>
-        <div className='mx-auto grid min-h-14 max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 px-2 md:flex md:h-14 md:gap-2 md:px-6'>
-          <div className='flex h-12 min-w-0 items-center gap-2 md:h-auto md:flex-1'>
+        <div className={styles.headerInner}>
+          <div className={styles.navigation}>
             {mode !== 'single' && (
               <>
                 <button
@@ -1084,14 +1110,22 @@ export function PracticePlayer({
                 <span className='h-4 w-px shrink-0 bg-slate-300' />
               </>
             )}
-            <h1 className='hidden shrink-0 text-sm font-bold tracking-tight text-slate-900 lg:block'>
-              {paperTitle}
-            </h1>
-            <span className='hidden h-4 w-px bg-slate-300 lg:block' />
-            <div className='min-w-0'>
-              <p className='truncate text-xs font-semibold text-slate-900 sm:text-sm'>
-                {currentQuestionRange}
-              </p>
+            <div className='min-w-0 flex-1'>
+              <h1 className={styles.breadcrumb}>
+                {mode === 'random' ? (
+                  <>
+                    <span>随机练习</span>
+                    {sourceTitles.length > 0 && <>
+                      <span aria-hidden='true'>›</span>
+                      <span className={styles.sourceTitle} title={sourceTitles.join(' / ')}>
+                        {sourceTitles.join(' / ').replace(/月(?=N[1-5]\b)/g, '月 ')}
+                      </span>
+                    </>}
+                  </>
+                ) : <span className={styles.sourceTitle} title={paperTitle}>{paperTitle}</span>}
+                <span aria-hidden='true'>›</span>
+                <span aria-current='step'>{currentQuestionRange}</span>
+              </h1>
               {!isSingleMode && (
                 <p className='mt-0.5 hidden truncate text-[10px] text-slate-500 md:block'>
                   {mode === 'history' ? (
@@ -1125,6 +1159,9 @@ export function PracticePlayer({
                 </p>
               )}
             </div>
+            <span className={styles.position} aria-label='当前题目位置'>
+              {currentLocalRange} / {currentNumberTotal || questions.length}
+            </span>
           </div>
 
           {!isSingleMode ? (
@@ -1148,7 +1185,7 @@ export function PracticePlayer({
             </div>
           ) : null}
 
-          <div className='col-span-2 flex min-w-0 items-center justify-between gap-2 border-t border-slate-200/80 py-1.5 md:col-span-1 md:shrink-0 md:justify-start md:gap-1 md:border-0 md:py-0'>
+          <div className={styles.toolbar}>
             <div className='flex min-w-0 items-center gap-0.5 sm:gap-1'>
             <button
               type='button'
@@ -1165,26 +1202,28 @@ export function PracticePlayer({
             </button>
             {isJapanesePaper ? (
               <>
-                <button
-                  type='button'
-                  aria-pressed={showPronunciation}
-                  aria-label='切换注音'
-                  onClick={() => setShowPronunciation(!showPronunciation)}
-                  className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
-                    showPronunciation
-                      ? 'bg-slate-200 text-slate-900'
-                      : 'text-slate-500 hover:bg-slate-200/70'
-                  }`}>
-                  <span className='sm:hidden'>注</span>
-                  <span className='hidden sm:inline'>注音</span>
-                </button>
-                {showPronunciation ? (
-                  <PronunciationSourceSelector
-                    value={pronunciationSource}
-                    onChange={setPronunciationSource}
-                    sudachiAvailable={sudachiAvailable}
-                  />
-                ) : null}
+                <div role='group' aria-label='注音设置' className={styles.pronunciationControls}>
+                  <button
+                    type='button'
+                    aria-pressed={showPronunciation}
+                    aria-label='切换注音'
+                    onClick={() => setShowPronunciation(!showPronunciation)}
+                    className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
+                      showPronunciation
+                        ? 'bg-slate-200 text-slate-900'
+                        : 'text-slate-500 hover:bg-slate-200/70'
+                    }`}>
+                    <span className='sm:hidden'>注</span>
+                    <span className='hidden sm:inline'>注音</span>
+                  </button>
+                  {showPronunciation ? (
+                    <PronunciationSourceSelector
+                      value={pronunciationSource}
+                      onChange={setPronunciationSource}
+                      sudachiAvailable={sudachiAvailable}
+                    />
+                  ) : null}
+                </div>
                 <button
                   type='button'
                   aria-pressed={showMeaning}
@@ -1243,43 +1282,6 @@ export function PracticePlayer({
                   </svg>
                   <span className='hidden xl:inline'>答题卡</span>
                 </button>
-                <button
-                  type='button'
-                  onClick={() => void handleCopyCurrentQuestion()}
-                  aria-label={
-                    currentGroup.questions.some(
-                      question => (question.lesson?.dialogues || []).length > 0,
-                    )
-                      ? '复制听力原文和选项'
-                      : '复制题目和选项'
-                  }
-                  className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
-                    copyState === 'copied'
-                      ? 'bg-slate-200 text-slate-900'
-                      : copyState === 'error'
-                        ? 'bg-rose-50 text-rose-700'
-                        : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
-                  }`}>
-                  <svg
-                    className='h-4 w-4'
-                    fill='none'
-                    viewBox='0 0 24 24'
-                    stroke='currentColor'>
-                    <path
-                      strokeLinecap='round'
-                      strokeLinejoin='round'
-                      strokeWidth={2}
-                      d='M8 7V5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 01-2 2h-2M6 7h8a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2z'
-                    />
-                  </svg>
-                  <span className='sr-only' aria-live='polite'>
-                    {copyState === 'copied'
-                      ? '已复制'
-                      : copyState === 'error'
-                        ? '复制失败'
-                        : '复制'}
-                  </span>
-                </button>
                 <div className='hidden items-center gap-0.5 md:flex'>
                   <button
                     type='button'
@@ -1303,11 +1305,50 @@ export function PracticePlayer({
               </>
             )}
 
+            <button
+              type='button'
+              onClick={() => void handleCopyCurrentQuestion()}
+              title='复制题目和选项'
+              aria-label={
+                currentGroup.questions.some(
+                  question => (question.lesson?.dialogues || []).length > 0,
+                )
+                  ? '复制听力原文和选项'
+                  : '复制题目和选项'
+              }
+              className={`inline-flex h-9 min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold transition-colors ${
+                copyState === 'copied'
+                  ? 'bg-slate-200 text-slate-900'
+                  : copyState === 'error'
+                    ? 'bg-rose-50 text-rose-700'
+                    : 'text-slate-600 hover:bg-slate-200/70 hover:text-slate-900'
+              }`}>
+              <svg
+                className='h-4 w-4'
+                fill='none'
+                viewBox='0 0 24 24'
+                stroke='currentColor'>
+                <path
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  strokeWidth={2}
+                  d='M8 7V5a2 2 0 012-2h8a2 2 0 012 2v10a2 2 0 01-2 2h-2M6 7h8a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2z'
+                />
+              </svg>
+              <span className='sr-only' aria-live='polite'>
+                {copyState === 'copied'
+                  ? '已复制'
+                  : copyState === 'error'
+                    ? '复制失败'
+                    : '复制'}
+              </span>
+            </button>
+
             {mode !== 'single' && !session.isSubmitted ? (
               <button
                 type='button'
                 onClick={() => void handleSubmit()}
-                disabled={session.isSubmitted || persistState === 'saving'}
+                disabled={session.isSubmitted || persistState === 'saving' || !session.draftReady}
                 className='ml-0.5 h-9 rounded-md bg-slate-900 px-2.5 text-xs font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50 md:px-3'>
                 {persistState === 'saving' ? '保存中' : '交卷'}
               </button>
@@ -1418,7 +1459,12 @@ export function PracticePlayer({
                         const question = questions[item.questionIndex]
                         const isCurrent =
                           session.currentIndex === item.questionIndex
-                        const isAnswered = !!session.answers[question.id]
+                        const isAnswered =
+                          question.questionType === 'SORTING'
+                            ? (session.sortingDrafts[question.id] || []).every(Boolean) &&
+                              (session.sortingDrafts[question.id] || []).length ===
+                                (question.options || []).length
+                            : !!session.answers[question.id]
                         const isHistoryCorrect =
                           mode === 'history' &&
                           historyCorrectQuestionIdSet.has(question.id)
@@ -1426,9 +1472,7 @@ export function PracticePlayer({
                           mode === 'history'
                             ? historyWrongQuestionIdSet.has(question.id)
                             : session.isQuestionSubmitted(question.id) &&
-                              !!session.getCorrectOptionId(question) &&
-                              session.answers[question.id] !==
-                                session.getCorrectOptionId(question)
+                              session.wrongIndexes.includes(item.questionIndex)
 
                         return (
                           <button
@@ -1469,7 +1513,10 @@ export function PracticePlayer({
 
       <main
         onMouseDown={handleQuestionAreaMouseDown}
-        className='flex w-full flex-1 flex-col px-5 py-4 md:px-10 md:py-6'>
+        className='mx-auto flex w-full max-w-7xl flex-1 flex-col px-4 py-4 md:px-6'>
+        {persistState === 'error' && (
+          <p role='alert' className='mb-3 text-sm text-rose-600'>保存失败，答案已保留。请再次点击交卷重试。</p>
+        )}
         {session.isSubmitted && mode !== 'history' && (
           <div className='mx-auto mb-3 flex w-full max-w-5xl flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3 text-xs text-slate-500'>
             <div className='flex flex-wrap items-center gap-x-3 gap-y-1.5'>
@@ -1546,13 +1593,15 @@ export function PracticePlayer({
           onSelect={optionId =>
             handleSelectOption(currentQuestion.id, optionId)
           }
-          onClear={() => session.clearOption(currentQuestion.id)}
+          onClear={() => {
+            if (persistState !== 'saving') session.clearOption(currentQuestion.id)
+          }}
           onSortingOrderChange={order =>
-            session.setSortingDraft(currentQuestion.id, order)
+            persistState !== 'saving' && session.setSortingDraft(currentQuestion.id, order)
           }
           onSelectQuestion={handleSelectOption}
           isSubmitted={session.isQuestionSubmitted(currentQuestion.id)}
-          isInteractionLocked={session.isSubmitted}
+          isInteractionLocked={session.isSubmitted || persistState === 'saving'}
           submittedQuestionIds={session.submittedQuestionIds}
           wrongQuestionIds={reviewWrongQuestionIds}
           questionNumberMap={questionNumberMap}

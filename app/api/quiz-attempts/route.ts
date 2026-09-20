@@ -15,17 +15,25 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       attempts?: AttemptPayload[]
       completedPaperId?: string
+      customSessionId?: string
     }
     const attempts = Array.isArray(body?.attempts) ? body.attempts : []
     const normalized = attempts.map(item => ({
       questionId: String(item.questionId || '').trim(),
       selectedOptionId: String(item.selectedOptionId || '').trim(),
+      selectedOrder: Array.isArray(item.selectedOrder)
+        ? item.selectedOrder.map(value => String(value || '').trim())
+        : undefined,
       timeSpentMs: Number(item.timeSpentMs || 0),
     }))
 
     if (
       normalized.length === 0 ||
-      normalized.some(item => !item.questionId || !item.selectedOptionId)
+      normalized.some(
+        item =>
+          !item.questionId ||
+          (!item.selectedOptionId && !item.selectedOrder?.length),
+      )
     ) {
       if (normalized.length > 0) {
         return NextResponse.json(
@@ -33,12 +41,13 @@ export async function POST(request: Request) {
           { status: 400 },
         )
       }
-      return NextResponse.json({ success: true, message: '无可保存作答。' })
+      if (!body.customSessionId) return NextResponse.json({ success: true, message: '无可保存作答。' })
     }
 
     const completedPaperId = String(body.completedPaperId || '').trim()
     const record = await recordQuizAttempts(normalized, {
       completedPaperId: completedPaperId || undefined,
+      customSessionId: String(body.customSessionId || '').trim() || undefined,
     })
     revalidatePath('/')
     revalidatePath('/practice')
@@ -48,6 +57,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: true,
       message: '做题数据已保存。',
+      alreadyCompleted: record.alreadyCompleted,
       results: record.results,
       submission: record.submission,
     })
@@ -56,8 +66,12 @@ export async function POST(request: Request) {
     if (
       error instanceof Error &&
       [
+        '自定义练习不存在',
+        '提交类型不一致',
+        '作答题目不属于当前练习',
         '题目不存在',
         '所选答案无效',
+        '排序题作答数据无效',
         '同一道题不能在一次提交中重复作答',
         '整套练习记录与试卷题目不一致',
       ].includes(error.message)

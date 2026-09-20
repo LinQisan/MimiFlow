@@ -19,10 +19,14 @@ import {
 } from '@/lib/codecs/material-payload'
 import { DomainError } from '@/lib/errors/domain-error'
 import { formDataObject, parseInput } from '@/lib/validation/schema'
-import { updateDialogueTextAtIndex } from './domain/dialogue-editor'
+import { updateDialogueTextAtId } from './domain/dialogue-editor'
 import {
-  applyAssTimelinePadding,
-  parseAssToRawSubtitles,
+  getTimelineRangeError,
+  updateDialogueTimelineAtId,
+} from './domain/timeline'
+import {
+  convertRawSubtitlesToTimeline,
+  parseSubtitleToRawSubtitles,
 } from '@/modules/import/audio/ass'
 
 const materialIdSchema = z.string().trim().min(1, '材料 ID 缺失。')
@@ -33,10 +37,21 @@ const speakingTitleSchema = z.object({
 const deleteAudioMaterialSchema = z.object({ id: materialIdSchema })
 const dialogueTextSchema = z.object({
   id: materialIdSchema,
-  dialogueIndex: z.coerce.number().int().nonnegative(),
+  dialogueId: z.string().trim().min(1, '时间轴文本 ID 缺失。'),
   text: z.string().trim().min(1, '文本不能为空。').max(10000, '文本过长。'),
 })
-const MAX_ASS_FILE_BYTES = 5 * 1024 * 1024
+const optionalAudioDurationSchema = z.preprocess(
+  value => (value === '' || value === null ? undefined : value),
+  z.coerce.number().finite().nonnegative().optional(),
+)
+const dialogueTimelineSchema = z.object({
+  id: materialIdSchema,
+  dialogueId: z.string().trim().min(1, '时间轴文本 ID 缺失。'),
+  start: z.coerce.number().finite(),
+  end: z.coerce.number().finite(),
+  audioDuration: optionalAudioDurationSchema,
+})
+const MAX_SUBTITLE_FILE_BYTES = 5 * 1024 * 1024
 
 async function resolveLessonMaterialId(maybeId: string) {
   const material = await prisma.material.findUnique({
@@ -74,7 +89,7 @@ export async function updateSpeakingTitle(formData: FormData) {
 
 export async function updateListeningDialogueText(formData: FormData) {
   try {
-    const { id, dialogueIndex, text } = parseInput(
+    const { id, dialogueId, text } = parseInput(
       dialogueTextSchema,
       formDataObject(formData),
     )
@@ -90,9 +105,9 @@ export async function updateListeningDialogueText(formData: FormData) {
       MaterialType.LISTENING,
       material.contentPayload,
     )
-    const dialogues = updateDialogueTextAtIndex(
+    const dialogues = updateDialogueTextAtId(
       payload.dialogues,
-      dialogueIndex,
+      dialogueId,
       text,
     )
     if (!dialogues) {
@@ -120,20 +135,81 @@ export async function updateListeningDialogueText(formData: FormData) {
   }
 }
 
+export async function updateListeningDialogueTimeline(formData: FormData) {
+  try {
+    const { id, dialogueId, start, end, audioDuration } = parseInput(
+      dialogueTimelineSchema,
+      formDataObject(formData),
+    )
+    const rangeError = getTimelineRangeError({
+      start,
+      end,
+      audioDuration,
+    })
+    if (rangeError) {
+      throw new DomainError('VALIDATION_ERROR', rangeError)
+    }
+
+    const material = await prisma.material.findUnique({
+      where: { id },
+      select: { id: true, type: true, contentPayload: true },
+    })
+    if (!material || material.type !== MaterialType.LISTENING) {
+      throw new DomainError('NOT_FOUND', '听力材料不存在。')
+    }
+
+    const payload = decodeMaterialPayload(
+      MaterialType.LISTENING,
+      material.contentPayload,
+    )
+    const dialogues = updateDialogueTimelineAtId(
+      payload.dialogues,
+      dialogueId,
+      { start, end },
+    )
+    if (!dialogues) {
+      throw new DomainError('NOT_FOUND', '未找到对应的时间轴文本。')
+    }
+
+    await prisma.material.update({
+      where: { id: material.id },
+      data: {
+        contentPayload: patchMaterialPayload(
+          MaterialType.LISTENING,
+          material.contentPayload,
+          { dialogues },
+        ),
+      },
+    })
+
+    revalidatePath(`/manage/listening/${material.id}`)
+    revalidatePath(`/listening/${material.id}`)
+    revalidatePath('/listening')
+    return actionSuccess({ start, end }, '时间轴已保存。')
+  } catch (error) {
+    return actionFailure(error, '保存时间轴失败。')
+  }
+}
+
 export async function replaceListeningSubtitles(formData: FormData) {
   try {
     const id = parseInput(materialIdSchema, formData.get('id'))
     const subtitleFile = formData.get('subtitleFile')
     if (!(subtitleFile instanceof File) || subtitleFile.size === 0) {
-      throw new DomainError('VALIDATION_ERROR', '请选择 ASS 字幕文件。')
+      throw new DomainError('VALIDATION_ERROR', '请选择 ASS 或 SRT 字幕文件。')
     }
-    if (!subtitleFile.name.toLowerCase().endsWith('.ass')) {
-      throw new DomainError('VALIDATION_ERROR', '仅支持 .ass 字幕文件。')
-    }
-    if (subtitleFile.size > MAX_ASS_FILE_BYTES) {
+    const extension =
+      subtitleFile.name.toLowerCase().match(/\.[^.]+$/)?.[0] || ''
+    if (!['.ass', '.ssa', '.srt'].includes(extension)) {
       throw new DomainError(
         'VALIDATION_ERROR',
-        'ASS 字幕文件不能超过 5 MB。',
+        '仅支持 .ass、.ssa 或 .srt 字幕文件。',
+      )
+    }
+    if (subtitleFile.size > MAX_SUBTITLE_FILE_BYTES) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        '字幕文件不能超过 5 MB。',
       )
     }
 
@@ -145,14 +221,17 @@ export async function replaceListeningSubtitles(formData: FormData) {
       throw new DomainError('NOT_FOUND', '听力材料不存在。')
     }
 
-    const rawSubtitles = parseAssToRawSubtitles(await subtitleFile.text())
+    const rawSubtitles = parseSubtitleToRawSubtitles(
+      await subtitleFile.text(),
+      extension,
+    )
     if (rawSubtitles.length === 0) {
       throw new DomainError(
         'VALIDATION_ERROR',
-        '文件中没有可识别的 ASS 字幕行。',
+        '文件中没有可识别的字幕行。',
       )
     }
-    const dialogues = applyAssTimelinePadding(rawSubtitles).map(dialogue => ({
+    const dialogues = convertRawSubtitlesToTimeline(rawSubtitles).map(dialogue => ({
       ...dialogue,
       stableId: randomUUID(),
     }))

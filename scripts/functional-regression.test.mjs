@@ -1031,7 +1031,14 @@ test("practice player separates mobile navigation and utility controls", async (
     "utf8",
   );
 
-  assert.match(player, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
+  const styles = await readFile(
+    path.join(ROOT, "modules/practice/components/PracticePlayer.module.css"),
+    "utf8",
+  );
+  assert.match(player, /className=\{styles\.navigation\}/);
+  assert.match(player, /className=\{styles\.toolbar\}/);
+  assert.match(styles, /@media[^}]+\.headerInner\s*\{[^}]*flex-wrap:\s*wrap/);
+  assert.match(styles, /\.toolbar\s*\{[^}]*width:\s*100%/);
   assert.match(player, /md:hidden/);
   assert.match(player, /top-\[6\.5rem\]/);
 });
@@ -3036,10 +3043,15 @@ test("custom practice selects JLPT groups or individual problem sections", async
   assert.match(builder, /'unattempted' \| 'attempted' \| 'all'/);
   assert.match(builder, /params\.set\('scope', selectedScope\)/);
   assert.match(builder, /params\.set\('sections', selectedKeys\.join\(','\)\)/);
-  assert.match(builder, /选择分类，或只选择具体問題/);
-  assert.match(builder, /开始练未做题/);
-  assert.match(builder, /开始复习已做题/);
-  assert.match(builder, /fixed inset-x-0 bottom-0/);
+  assert.match(builder, /aria-pressed=\{allSelected\}/);
+  assert.match(builder, /onChange=\{\(\) => toggleOption\(option.key\)\}/);
+  assert.match(builder, /onClick=\{handleStart\}/);
+  assert.match(builder, /className=\{styles.footer\}/);
+  const styles = await readFile(
+    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.module.css"),
+    "utf8",
+  );
+  assert.match(styles, /\.footer\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0/);
   assert.match(
     customSession,
     /rawScope === 'attempted' \|\| rawScope === 'all'/,
@@ -3125,7 +3137,7 @@ test("practice review reveals answers only for submitted questions", async () =>
     player,
     /isSubmitted=\{session\.isQuestionSubmitted\(currentQuestion\.id\)\}/,
   );
-  assert.match(player, /isInteractionLocked=\{session\.isSubmitted\}/);
+  assert.match(player, /isInteractionLocked=\{session\.isSubmitted \|\| persistState === 'saving'\}/);
   assert.match(
     readingPassage,
     /submittedQuestionIdSet\.has\(fillQuestion\.id\)/,
@@ -3160,7 +3172,14 @@ test("listening practice keeps compact controls and readable transcript", async 
   assert.match(optionsList, /aria-keyshortcuts/);
   assert.doesNotMatch(optionsList, /String\.fromCharCode\(65 \+ index\)/);
   assert.doesNotMatch(optionsList, />\{`选项 \$\{label\}`\}<\/span>/);
-  assert.match(transcript, /divide-y divide-slate-100/);
+  assert.match(transcript, /className=\{styles.line\}/);
+  assert.match(transcript, /aria-current=\{isActive \? 'true' : undefined\}/);
+  const styles = await readFile(
+    path.join(ROOT, "modules/questions/components/question-renderer/ListeningTranscript.module.css"),
+    "utf8",
+  );
+  assert.match(styles, /\.text\s*\{[^}]*user-select:\s*text/);
+  assert.match(styles, /\.line\[data-active='true'\]/);
   assert.equal(transcript.includes("max-h-[45vh]"), false);
 });
 

@@ -51,8 +51,8 @@ jobs:
       - name: Audit production dependencies
         run: npm run audit:production
 
-      - name: Apply database migrations
-        run: npm run db:migrate:deploy
+      - name: Initialize CI database schema
+        run: npm run db:push
 
       - name: Typecheck
         run: npm run typecheck

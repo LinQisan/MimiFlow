@@ -135,7 +135,7 @@ export async function restartCustomPracticeSession(sessionId: string) {
 export async function getLatestActiveCustomPracticeSession() {
   const userId = await getCurrentUserId()
   return prisma.customPracticeSession.findFirst({
-    where: { userId },
+    where: { userId, completedAt: null },
     orderBy: { updatedAt: 'desc' },
   })
 }

@@ -33,9 +33,14 @@ export function parseListeningOptionText(text: string) {
   if (numberedLines.length >= 2) return numberedLines
 
   const draft = parseMultiQuizText(text)[0]
-  if (!draft || draft.options.length < 2) return []
+  if (draft && draft.options.length >= 2) {
+    return draft.options
+      .map(option => normalizeOptionText(option.text))
+      .filter(Boolean)
+  }
 
-  return draft.options
-    .map(option => normalizeOptionText(option.text))
-    .filter(Boolean)
+  // With no recognized option markers, each non-empty line is one option.
+  // Keep authored order and internal markup intact.
+  const lines = text.split(/\r\n|[\n\r]/).map(normalizeOptionText).filter(Boolean)
+  return lines.length >= 2 ? lines : []
 }

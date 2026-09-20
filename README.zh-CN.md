@@ -1,53 +1,42 @@
 # MimiFlow
 
-MimiFlow 是一个语言学习应用，整合听力、跟读、阅读、做题、生词管理和间隔复习。
+整合听力、跟读、阅读、做题、生词本和 FSRS 间隔复习的语言学习应用。
 
-## 主要功能
+Next.js 16 · React 19 · TypeScript · Tailwind CSS · Prisma · PostgreSQL
 
-- 按句播放听力与跟读，支持当前句词汇提示
-- 阅读和字幕学习，支持划词收录
-- 可变选项数量的题目、试卷练习与错题复习
-- 生词本和基于 FSRS 的记忆复习
-- 内容、音频、分类和导入管理
-
-## 技术栈
-
-Next.js 16、React 19、TypeScript、Tailwind CSS、Prisma、PostgreSQL 和 ts-fsrs。
+[English](README.md) · [日本語](README.ja.md)
 
 ## 本地运行
 
-需要 Node.js 22–26、Python 3 和 PostgreSQL。
+需要 Node.js 22–26、Python 3 和 PostgreSQL。先在 `.env.local` 中设置 `DATABASE_URL`，再运行：
 
-```bash
-npm install
+```sh
+npm ci
 npm run sudachi:setup
-npm run db:generate
 npm run db:push
 npm run dev
 ```
 
-运行数据库命令前，请在 `.env.local` 中设置 `DATABASE_URL`。
-`sudachi:setup` 会在项目的 `.venv` 中安装 SudachiPy 与 full 日语词典，供文章注音、原形识别和词频统计使用；也可通过 `SUDACHI_PYTHON` 指定已有的 Python 环境。
-在 macOS 上通过 Homebrew 安装 PostgreSQL 时，`npm run dev` 会检查本地数据库，
-并在数据库未运行时自动启动对应的 Homebrew 服务。若安装了多个 PostgreSQL
-版本，可在 `.env.local` 中用 `POSTGRES_SERVICE` 指定服务名，例如 `postgresql@16`。
+访问 [localhost:3000](http://localhost:3000)，内容管理入口为 `/manage`。
+`npm ci` 自动生成 Prisma 客户端；修改 schema 后执行 `npm run db:generate` 和 `npm run db:push`。
+Sudachi 提供日语文本分析，可用 `SUDACHI_PYTHON` 指定已有 Python 环境。
+macOS 开发启动支持自动启动 Homebrew PostgreSQL；安装多个版本时可设置 `POSTGRES_SERVICE`。
 
-## 检查命令
+## 项目结构
 
-```bash
+- `app/`：页面、布局和 API 路由
+- `modules/`：业务领域、服务、hooks 和业务界面
+- `components/`、`context/`、`hooks/`：共享界面和应用状态
+- `lib/`、`utils/`：基础设施、编解码、现有仓储和工具函数
+- `prisma/`：数据库模型；`scripts/`：测试与维护脚本
+
+新增领域和持久化逻辑放在 `modules/`。工程约定见 [AGENTS.md](AGENTS.md)，界面规范见 [DESIGN.md](DESIGN.md)。
+
+## 验证
+
+```sh
 npm run typecheck
 npm run lint
 npm test
 npm run build
 ```
-
-## 主要入口
-
-- `/listening`、`/reading`、`/subtitles`、`/practice`
-- `/vocabulary`、`/review`
-- `/manage` 内容管理
-
-## 其他语言
-
-- [English](./README.md)
-- [日本語](./README.ja.md)

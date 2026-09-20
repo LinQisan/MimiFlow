@@ -12,16 +12,20 @@ import { decodeMaterialPayloadRecord } from '@/lib/codecs/material-payload'
 import { readJsonRecord } from '@/lib/validation/schema'
 import { resolveListeningSection } from '@/lib/repositories/exam'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { evaluateSortingOrder, resolveCorrectOrderIds } from '@/modules/questions/domain/sorting'
+import { parseSortingPrompt } from '@/modules/practice/domain/question-text'
 
 export type QuizAttemptInput = {
   questionId: string
-  selectedOptionId: string
+  selectedOptionId?: string
+  selectedOrder?: string[]
   timeSpentMs: number
 }
 
 type QuizAttemptResult = {
   questionId: string
   selectedOptionId: string
+  selectedOrder: string[] | null
   correctOptionId: string | null
   isCorrect: boolean
 }
@@ -34,6 +38,7 @@ type PracticeSubmissionResult = JlptScoreSummary & {
 }
 
 export type QuizAttemptRecordResult = {
+  alreadyCompleted?: boolean
   results: QuizAttemptResult[]
   submission: PracticeSubmissionResult | null
 }
@@ -48,6 +53,9 @@ const DAY_IN_MS = 24 * 60 * 60 * 1000
 const normalizeAttempt = (input: QuizAttemptInput): QuizAttemptInput => ({
   questionId: String(input.questionId || '').trim(),
   selectedOptionId: String(input.selectedOptionId || '').trim(),
+  selectedOrder: Array.isArray(input.selectedOrder)
+    ? input.selectedOrder.map(value => String(value || '').trim())
+    : undefined,
   timeSpentMs: Math.min(
     24 * 60 * 60 * 1000,
     Math.max(0, Math.floor(Number(input.timeSpentMs) || 0)),
@@ -56,14 +64,26 @@ const normalizeAttempt = (input: QuizAttemptInput): QuizAttemptInput => ({
 
 export async function recordQuizAttempts(
   inputs: QuizAttemptInput[],
-  options: { completedPaperId?: string } = {},
+  options: { completedPaperId?: string; customSessionId?: string } = {},
 ): Promise<QuizAttemptRecordResult> {
   const userId = await getCurrentUserId()
   const normalized = inputs
     .map(normalizeAttempt)
-    .filter(item => item.questionId && item.selectedOptionId)
+    .filter(item => item.questionId && (item.selectedOptionId || item.selectedOrder?.length))
 
-  if (normalized.length === 0) return { results: [], submission: null }
+  const customSessionId = options.customSessionId?.trim()
+  const customSession = customSessionId
+    ? await prisma.customPracticeSession.findFirst({ where: { id: customSessionId, userId } })
+    : null
+  if (customSessionId && !customSession) throw new Error('自定义练习不存在')
+  if (customSession && options.completedPaperId) throw new Error('提交类型不一致')
+  if (customSession?.completedAt) {
+    return { results: [], submission: null, alreadyCompleted: true }
+  }
+  if (customSession && normalized.some(item => !customSession.questionIds.includes(item.questionId))) {
+    throw new Error('作答题目不属于当前练习')
+  }
+  if (!customSession && normalized.length === 0) return { results: [], submission: null }
 
   const uniqueQuestionIds = Array.from(
     new Set(normalized.map(item => item.questionId)),
@@ -78,6 +98,9 @@ export async function recordQuizAttempts(
       id: true,
       options: true,
       answer: true,
+      questionType: true,
+      prompt: true,
+      content: true,
     },
   })
   const questionById = new Map(questions.map(question => [question.id, question]))
@@ -87,11 +110,26 @@ export async function recordQuizAttempts(
     if (!question) throw new Error('题目不存在')
 
     const options = normalizeQuestionOptions(question.options, question.answer)
-    const evaluation = evaluateSelectedOption(options, input.selectedOptionId)
+    const evaluation =
+      question.questionType === 'SORTING'
+        ? evaluateSortingOrder({
+            options,
+            correctOrder: resolveCorrectOrderIds(
+              options,
+              decodeQuestionContent(question.content).sortingOrder,
+            ),
+            selectedOrder: input.selectedOrder,
+            starIndex: parseSortingPrompt(question.prompt || '').starIndex,
+          })
+        : evaluateSelectedOption(options, input.selectedOptionId || '')
 
     return {
       questionId: input.questionId,
       ...evaluation,
+      selectedOrder:
+        question.questionType === 'SORTING'
+          ? input.selectedOrder || null
+          : null,
       timeSpentMs: input.timeSpentMs,
     }
   })
@@ -188,7 +226,24 @@ export async function recordQuizAttempts(
         : null
   }
 
-  const savedSubmission = await prisma.$transaction(async tx => {
+  const saved = await prisma.$transaction(async tx => {
+    if (customSessionId) {
+      const claimed = await tx.customPracticeSession.updateMany({
+        where: { id: customSessionId, userId, completedAt: null },
+        data: {
+          completedAt: new Date(),
+          answers: Object.fromEntries(
+            results.map(item => [item.questionId, item.selectedOptionId]),
+          ),
+          sortingOrders: Object.fromEntries(
+            results
+              .filter(result => result.selectedOrder)
+              .map(result => [result.questionId, result.selectedOrder]),
+          ),
+        },
+      })
+      if (claimed.count === 0) return { submission: null, alreadyCompleted: true }
+    }
     const submission =
       completedPaperId
         ? await tx.practicePaperSubmission.create({
@@ -214,6 +269,7 @@ export async function recordQuizAttempts(
         submissionId: submission?.id,
         selectedOptionId: result.selectedOptionId,
         correctOptionId: result.correctOptionId,
+        selectedOrder: result.selectedOrder || [],
         isCorrect: result.isCorrect,
         timeSpentMs: result.timeSpentMs,
       })),
@@ -241,14 +297,17 @@ export async function recordQuizAttempts(
       })
     }
 
-    return submission
+    return { submission, alreadyCompleted: false }
   })
+  const savedSubmission = saved.submission
+  if (saved.alreadyCompleted) return { results: [], submission: null, alreadyCompleted: true }
 
   const publicResults = results.map(
     (result): QuizAttemptResult => ({
       questionId: result.questionId,
       selectedOptionId: result.selectedOptionId,
       correctOptionId: result.correctOptionId,
+      selectedOrder: result.selectedOrder,
       isCorrect: result.isCorrect,
     }),
   )

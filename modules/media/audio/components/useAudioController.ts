@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { PcmAudioSource, waitForAudioMetadata } from '../browser/pcm-source'
 
 type DialogueItem = {
   id: number
@@ -7,7 +8,7 @@ type DialogueItem = {
   end: number
 }
 
-export function useAudioController(dialogue: DialogueItem[]) {
+export function useAudioController(dialogue: DialogueItem[], src: string) {
   const audioRef = useRef<HTMLAudioElement>(null)
 
   const [activeId, setActiveId] = useState<number | null>(null)
@@ -15,6 +16,58 @@ export function useAudioController(dialogue: DialogueItem[]) {
   const [playbackRate, setPlaybackRate] = useState(1)
   const [isTrackLoop, setIsTrackLoop] = useState(false)
   const [loopId, setLoopId] = useState<number | null>(null)
+
+  const pcmRef = useRef<PcmAudioSource | null>(null)
+  const requestRef = useRef(0)
+  const pendingRef = useRef(false)
+  const metadataAbortRef = useRef<AbortController | null>(null)
+
+  const pause = useCallback(() => {
+    requestRef.current += 1
+    pendingRef.current = false
+    metadataAbortRef.current?.abort()
+    audioRef.current?.pause()
+  }, [])
+
+  const startAt = useCallback((time: number) => {
+    const audio = audioRef.current
+    if (!audio) return
+    pause()
+    const request = requestRef.current
+    pendingRef.current = true
+    pcmRef.current ??= new PcmAudioSource()
+    void (async () => {
+      try {
+        const url = await pcmRef.current!.prepare(src)
+        if (request !== requestRef.current) return
+        if (audio.src !== url) {
+          audio.src = url
+          audio.load()
+        }
+        const abort = new AbortController()
+        metadataAbortRef.current = abort
+        await waitForAudioMetadata(audio, abort.signal)
+        if (request !== requestRef.current) return
+        audio.currentTime = Math.max(0, Math.min(time, audio.duration))
+        await audio.play()
+      } catch (error) {
+        if (request === requestRef.current) {
+          console.error('Unable to prepare precise listening audio', error)
+          setIsPlaying(false)
+        }
+      } finally {
+        if (request === requestRef.current) pendingRef.current = false
+      }
+    })()
+  }, [pause, src])
+
+  useEffect(() => {
+    return () => {
+      pause()
+      pcmRef.current?.dispose()
+      pcmRef.current = null
+    }
+  }, [pause, src])
 
   // 1. 切换播放速度
   const togglePlaybackRate = () => {
@@ -28,6 +81,7 @@ export function useAudioController(dialogue: DialogueItem[]) {
           : playbackRate === 1.5
             ? 0.75
             : 1
+    audio.defaultPlaybackRate = nextRate
     audio.playbackRate = nextRate
     setPlaybackRate(nextRate)
   }
@@ -45,10 +99,13 @@ export function useAudioController(dialogue: DialogueItem[]) {
     const audio = audioRef.current
     if (!audio) return
     if (audio.paused) {
-      if (activeId === null && dialogue[0]) audio.currentTime = dialogue[0].start
-      void audio.play().catch(() => {})
+      if (pendingRef.current) {
+        pause()
+        return
+      }
+      startAt(activeId === null && dialogue[0] ? dialogue[0].start : audio.currentTime)
     } else {
-      audio.pause()
+      pause()
     }
   }
 
@@ -60,10 +117,10 @@ export function useAudioController(dialogue: DialogueItem[]) {
     if (loopId !== null && loopId !== item.id) setLoopId(null)
 
     if (isPlaying && activeId === item.id) {
-      audio.pause()
+      pause()
     } else {
-      audio.currentTime = item.start
-      audio.play().catch(() => {})
+      setActiveId(item.id)
+      startAt(item.start)
     }
   }
 
@@ -75,8 +132,8 @@ export function useAudioController(dialogue: DialogueItem[]) {
       setLoopId(null)
     } else {
       setLoopId(item.id)
-      audio.currentTime = item.start
-      audio.play().catch(() => {})
+      setActiveId(item.id)
+      startAt(item.start)
     }
   }
 
@@ -160,8 +217,8 @@ export function useAudioController(dialogue: DialogueItem[]) {
         e.preventDefault()
         const audio = audioRef.current
         if (!audio) return
-        if (audio.paused) audio.play()
-        else audio.pause()
+        if (audio.paused && !pendingRef.current) startAt(audio.currentTime)
+        else pause()
       }
 
       if (e.code === 'KeyR' || e.key.toLowerCase() === 'r') {
@@ -171,32 +228,29 @@ export function useAudioController(dialogue: DialogueItem[]) {
         if (activeId !== null) {
           const currentItem = dialogue.find(d => d.id === activeId)
           if (currentItem) {
-            audio.currentTime = currentItem.start
-            audio.play()
+            startAt(currentItem.start)
           }
         } else if (dialogue.length > 0) {
-          audio.currentTime = dialogue[0].start
-          audio.play()
+          startAt(dialogue[0].start)
         }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeId, dialogue])
+  }, [activeId, dialogue, pause, startAt])
 
   // 重播事件监听
   useEffect(() => {
     const handleReplay = () => {
       const audio = audioRef.current
       if (!audio) return
-      audio.currentTime = 0
-      audio.play().catch(() => {})
+      startAt(0)
       setActiveId(null)
       setLoopId(null)
     }
     window.addEventListener('replay-audio', handleReplay)
     return () => window.removeEventListener('replay-audio', handleReplay)
-  }, [])
+  }, [startAt])
 
   return {
     audioRef,
