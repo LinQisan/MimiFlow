@@ -18,13 +18,14 @@
     "perf:baseline": "node scripts/performance-baseline.mjs",
     "typecheck": "tsc --noEmit",
     "clean:next": "rm -rf .next",
-    "postinstall": "prisma generate",
+    "postinstall": "prisma generate && npm run sudachi:setup",
     "db:generate": "prisma generate --config prisma.config.ts",
     "db:push": "prisma db push --config prisma.config.ts",
     "db:import:red-book": "node scripts/import-red-book-vocabulary.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
-    "sudachi:setup": "python3 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt",
-    "sudachi:benchmark": "node scripts/sudachi-worker-benchmark.mjs"
+    "sudachi:setup": "node scripts/setup-sudachi.mjs && npm run sudachi:build",
+    "sudachi:benchmark": "node scripts/sudachi-benchmark.mjs",
+    "sudachi:build": "npm --prefix modules/language/native run build"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -44,7 +45,8 @@
     "react-dom": "^19.2.8",
     "server-only": "^0.0.1",
     "ts-fsrs": "^5.4.1",
-    "zod": "^4.5.4"
+    "zod": "^4.5.4",
+    "@mimiflow/sudachi": "file:modules/language/native"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

@@ -56,3 +56,15 @@ test('source-authored marker text is never restored as trusted markup', () => {
   assert.notEqual(token, source)
   assert.equal(slots.restore(source + token), source + '<span>(1)</span>')
 })
+
+
+test('target emphasis preserves literal replacement metacharacters and escapes authored HTML', () => {
+  const html = annotateExamText({
+    text: '価格は$&100です。<script>alert(1)</script>',
+    targetWord: '$&100',
+    settings: { showPronunciation: false, showMeaning: false },
+  })
+  assert.match(html, />\$&amp;100<\/span>/)
+  assert.ok(html.includes('&lt;script&gt;'))
+  assert.doesNotMatch(html, /<script>/)
+})

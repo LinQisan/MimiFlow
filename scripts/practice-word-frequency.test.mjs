@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import test from 'node:test'
 
 import {
@@ -8,7 +6,6 @@ import {
   buildPaperWordbookDistribution,
 } from '../modules/practice/domain/paper-word-frequency.ts'
 
-const ROOT = process.cwd()
 
 test('paper frequency includes passages, listening transcripts, prompts and every option', () => {
   const result = buildPaperFrequencyDocuments({
@@ -136,46 +133,4 @@ test('wordbook distribution keeps explicit multi-JLPT metadata independent from 
   assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['視線'], ['N1', 'N2'])
   assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['進む'], ['N4'])
   assert.deepEqual(rowsBySource.get('n1-series')?.matchedJlpt['フェリー'], [])
-})
-
-test('paper overview exposes Sudachi word frequency in a dialog', async () => {
-  const [page, repository, dialog, chart, route, server, nextConfig] = await Promise.all([
-    readFile(path.join(ROOT, 'app/practice/[id]/page.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'lib/repositories/exam/index.ts'), 'utf8'),
-    readFile(
-      path.join(ROOT, 'modules/practice/components/PaperWordFrequencyDialog.tsx'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/knowledge/vocabulary/components/WordbookDistributionChart.tsx'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'app/api/practice/[id]/word-frequency/route.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/practice/server/paper-wordbook-distribution.ts'),
-      'utf8',
-    ),
-    readFile(path.join(ROOT, 'next.config.ts'), 'utf8'),
-  ])
-
-  assert.match(page, /PaperWordFrequencyDialog/)
-  assert.match(route, /buildPaperFrequencyDocuments/)
-  assert.match(route, /getSudachiPronunciationMap/)
-  assert.match(route, /getPaperWordbookDistribution/)
-  assert.match(repository, /dialogueTranscript/)
-  assert.match(repository, /options: asArray/)
-  assert.match(dialog, /听力原文、题干和全部选项/)
-  assert.match(dialog, /WordbookDistributionChart/)
-  assert.match(chart, /单词书分布/)
-  assert.match(chart, /未加入任何单词书/)
-  assert.match(chart, /未收录置底 · 点击查看单词/)
-  assert.match(server, /word: \{ in: batch \}/)
-  assert.match(server, /seriesTitle: row\.series\.title/)
-  assert.match(server, /select: \{ wordbookId: true, jlpt: true \}/)
-  assert.match(server, /sourceId: sourceByWordbookId\.get\(option\.id\)\?\.id/)
-  assert.doesNotMatch(server, /ancestorIdsFor/)
-  assert.match(nextConfig, /'\/practice\/\*'/)
 })

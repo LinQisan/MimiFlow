@@ -8,18 +8,17 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS · Prisma · PostgreSQL
 
 ## 本地运行
 
-需要 Node.js 22–26、Python 3 和 PostgreSQL。先在 `.env.local` 中设置 `DATABASE_URL`，再运行：
+需要 Node.js 22–26、Rust 1.88+ 和 PostgreSQL。先在 `.env.local` 中设置 `DATABASE_URL`，再运行：
 
 ```sh
 npm ci
-npm run sudachi:setup
 npm run db:push
 npm run dev
 ```
 
 访问 [localhost:3000](http://localhost:3000)，内容管理入口为 `/manage`。
 `npm ci` 自动生成 Prisma 客户端；修改 schema 后执行 `npm run db:generate` 和 `npm run db:push`。
-Sudachi 提供日语文本分析，可用 `SUDACHI_PYTHON` 指定已有 Python 环境。
+Sudachi 通过 Rust Node-API 扩展在进程内运行，`npm ci` 自动编译并安装固定版本的 full 词典，详见[原生模块说明](modules/language/native/README.md)。
 macOS 开发启动支持自动启动 Homebrew PostgreSQL；安装多个版本时可设置 `POSTGRES_SERVICE`。
 
 ## 项目结构

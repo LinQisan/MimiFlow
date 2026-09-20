@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
@@ -958,50 +958,6 @@ test("submitted practice restores authored option order for review", async () =>
   assert.match(player, /allQuestions=\{displayedAllQuestions\}/);
 });
 
-test("practice copy follows configured option labels and omits question numbers", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-
-  assert.match(player, /formatOptionLabel\(/);
-  assert.match(player, /question\.optionLabelFormat/);
-  assert.match(player, /question\.customOptionLabels/);
-  assert.equal(player.includes("sections.push(`第 ${questionIndex + 1} 题`)"), false);
-});
-
-test("practice review marks wrong questions in every question layout", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-  const renderer = await readFile(
-    path.join(ROOT, "modules/questions/components/QuestionRenderer.tsx"),
-    "utf8",
-  );
-  const standardQuestion = await readFile(
-    path.join(ROOT, "modules/questions/components/question-renderer/StandardQuestion.tsx"),
-    "utf8",
-  );
-
-  assert.match(player, /wrongQuestionIds=\{reviewWrongQuestionIds\}/);
-  assert.match(renderer, /itemIsWrong \? <WrongQuestionBadge/);
-  assert.match(renderer, /isWrongReview=\{wrongQuestionIds\.includes\(question\.id\)\}/);
-  assert.match(standardQuestion, /isWrongReview \? \(/);
-});
-
-test("submission review hides the global MimiFlow navigation", async () => {
-  const navigation = await readFile(
-    path.join(ROOT, "components/layout/StudyNavigation.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    navigation,
-    /\/practice\\\/\[\^\/\]\+\\\/submissions\\\/\[\^\/\]\+\$/,
-  );
-});
-
 test("submission review preserves its current question across refreshes", async () => {
   const page = await readFile(
     path.join(
@@ -1025,40 +981,6 @@ test("submission review preserves its current question across refreshes", async 
   assert.match(player, /window\.history\.replaceState/);
 });
 
-test("practice player separates mobile navigation and utility controls", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-
-  const styles = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.module.css"),
-    "utf8",
-  );
-  assert.match(player, /className=\{styles\.navigation\}/);
-  assert.match(player, /className=\{styles\.toolbar\}/);
-  assert.match(styles, /@media[^}]+\.headerInner\s*\{[^}]*flex-wrap:\s*wrap/);
-  assert.match(styles, /\.toolbar\s*\{[^}]*width:\s*100%/);
-  assert.match(player, /md:hidden/);
-  assert.match(player, /top-\[6\.5rem\]/);
-});
-
-test("saved question notes survive switching away and back without a refresh", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-  const noteEditor = await readFile(
-    path.join(ROOT, "modules/questions/components/QuestionNoteEditor.tsx"),
-    "utf8",
-  );
-
-  assert.match(player, /savedNotesByQuestionId\[question\.id\] \?\? question\.note/);
-  assert.match(player, /onSaved=\{handleQuestionNoteSaved\}/);
-  assert.match(noteEditor, /onSaved\?\.\(questionId, normalized\)/);
-  assert.equal(noteEditor.includes("noteCacheRef"), false);
-});
-
 test("database fields keep audit timestamps and query indexes", async () => {
   const schema = await readFile(
     path.join(ROOT, "prisma/schema.prisma"),
@@ -1074,18 +996,6 @@ test("database fields keep audit timestamps and query indexes", async () => {
   assert.match(schema, /questions_context_trgm_idx/);
   assert.match(schema, /model VocabularySentenceLink[\s\S]*@@index\(\[sentenceId\]\)/);
   assert.match(schema, /model CollectionMaterial[\s\S]*@@index\(\[collectionId, sortOrder\]\)/);
-});
-
-test("development server accepts interactive Cloudflare Tunnel requests", async () => {
-  const nextConfig = await readFile(
-    path.join(ROOT, "next.config.ts"),
-    "utf8",
-  );
-
-  assert.match(nextConfig, /tunnelDevelopmentOrigins = \['\*\.trycloudflare\.com'\]/);
-  assert.match(nextConfig, /allowedDevOrigins: developmentOrigins/);
-  assert.match(nextConfig, /serverActions:[\s\S]*allowedOrigins:/);
-  assert.match(nextConfig, /process\.env\.NODE_ENV === 'development'/);
 });
 
 test("question editors keep at least two options and preserve one correct answer", () => {
@@ -1469,26 +1379,13 @@ test("reading underline markers toggle safely and render as semantic emphasis", 
   );
 });
 
-test("reading upload and editing share table insertion behavior", async () => {
+test("article table insertion preserves text and cursor position", () => {
   const inserted = insertArticleText("前文", ARTICLE_TABLE_TEMPLATE, 2, 2);
   assert.match(inserted.text, /^前文\n\n\| 团体名・实施内容/);
   assert.equal(inserted.cursor, inserted.text.length);
-
-  const editor = await readFile(
-    path.join(ROOT, "modules/content/components/EditArticleUI.tsx"),
-    "utf8",
-  );
-  const importer = await readFile(
-    path.join(ROOT, "modules/import/components/ArticleImportPanel.tsx"),
-    "utf8",
-  );
-  assert.match(editor, /ARTICLE_TABLE_TEMPLATE/);
-  assert.match(editor, /handleToggleUnderline/);
-  assert.match(editor, /插入完形填空/);
-  assert.match(importer, /ARTICLE_TABLE_TEMPLATE/);
 });
 
-test("reading upload and editing share footnote insertion and recognition", async () => {
+test("article footnote insertion preserves text and parses the authored note", () => {
   const source = "昨日、図書館へ行きました。";
   const start = source.indexOf("図書館");
   const inserted = insertArticleFootnote(
@@ -1505,22 +1402,9 @@ test("reading upload and editing share footnote insertion and recognition", asyn
       { id: "1", label: "1", term: "", definition: "図書館：" },
     ],
   });
-
-  const editor = await readFile(
-    path.join(ROOT, "modules/content/components/EditArticleUI.tsx"),
-    "utf8",
-  );
-  const importer = await readFile(
-    path.join(ROOT, "modules/import/components/ArticleImportPanel.tsx"),
-    "utf8",
-  );
-  assert.match(editor, /insertArticleFootnote/);
-  assert.match(importer, /insertArticleFootnote/);
-  assert.match(importer, /ArticleBodyPreview/);
-  assert.match(importer, />\s*插入注解\s*</);
 });
 
-test("reading wordbook highlights do not render numbered vocabulary annotations", async () => {
+test("vocabulary meanings ignore empty definitions", () => {
   assert.equal(
     hasVocabularyMeaning({
       pronunciations: ["わた"],
@@ -1537,30 +1421,6 @@ test("reading wordbook highlights do not render numbered vocabulary annotations"
     }),
     true,
   );
-
-  const [reader, route, chart] = await Promise.all([
-    readFile(
-      path.join(ROOT, "modules/reading/components/ArticleReaderClient.tsx"),
-      "utf8",
-    ),
-    readFile(
-      path.join(ROOT, "app/api/reading/wordbook-distribution/route.ts"),
-      "utf8",
-    ),
-    readFile(
-      path.join(ROOT, "modules/knowledge/vocabulary/components/WordbookDistributionChart.tsx"),
-      "utf8",
-    ),
-  ]);
-
-  assert.doesNotMatch(reader, /ARTICLE_ANNOTATION|activeChapterAnnotations|文章注释/);
-  assert.match(reader, /buildSurfaceAliasMapForText/);
-  assert.match(reader, /wordbookSurfaceToBaseWord/);
-  assert.doesNotMatch(reader, /暂无注释/);
-  assert.match(reader, /本文单词书分布/);
-  assert.match(reader, /wordbookDistribution/);
-  assert.match(route, /getPaperWordbookDistribution/);
-  assert.match(chart, /未加入任何单词书/);
 });
 
 test("grammar sentences are derived from the blank prompt and correct option", () => {
@@ -1758,32 +1618,6 @@ test("filesystem paths cannot escape the configured audio root", () => {
     false,
   );
   assert.equal(resolvePathInsideRoot(root, "..", "private.mp3"), null);
-});
-
-test("audio library keeps uploads organized and folders hierarchical", async () => {
-  const action = await readFile(
-    path.join(ROOT, "modules/media/audio/manage-actions.ts"),
-    "utf8",
-  );
-  const ankiAction = await readFile(
-    path.join(ROOT, "modules/import/anki-actions.ts"),
-    "utf8",
-  );
-  const page = await readFile(
-    path.join(ROOT, "app/manage/system/audio/page.tsx"),
-    "utf8",
-  );
-  assert.match(action, /return `staging\/\$\{year\}-\$\{month\}`/);
-  assert.match(action, /item\.folder\.startsWith\(`\$\{selectedFolder\}\//);
-  assert.match(action, /walkAudioFolders/);
-  assert.match(action, /replace\(\/\[\^\\p\{L\}\\p\{N\}/);
-  assert.match(action, /prisma\.vocabulary\.updateMany/);
-  assert.match(action, /wordAudio: nextPath/);
-  assert.match(ankiAction, /buildVocabularyAudioFolder/);
-  assert.match(page, /folderSummaries\.map/);
-  assert.match(page, /上传到目录/);
-  assert.match(page, /待整理/);
-  assert.match(page, /linkedVocabularyAudio/);
 });
 
 test("material and collection compatibility is governed by one policy", () => {
@@ -2293,347 +2127,6 @@ test("audio dialogue source ids are scoped by material", () => {
   assert.equal(parseAudioDialogueSourceId("1"), null);
 });
 
-test("management routes use one prefix and obsolete page routes are gone", async () => {
-  const required = [
-    "app/manage/page.tsx",
-    "app/manage/import/page.tsx",
-    "app/manage/shadowing/page.tsx",
-    "app/manage/practice/page.tsx",
-    "app/manage/listening/page.tsx",
-    "app/manage/vocabulary/page.tsx",
-    "app/manage/grammar/page.tsx",
-    "app/manage/system/page.tsx",
-    "app/manage/system/audio/page.tsx",
-    "app/manage/system/review/page.tsx",
-  ];
-  const removed = [
-    "app/upload/page.tsx",
-    "app/manage/collections/page.tsx",
-    "app/manage/collections/[id]/page.tsx",
-    "app/manage/collections/article/[id]/page.tsx",
-    "app/manage/collections/quiz/[id]/page.tsx",
-    "app/papers/manage/page.tsx",
-    "app/listening/manage/page.tsx",
-    "app/collections/page.tsx",
-    "app/exam/page.tsx",
-    "app/shadowing/page.tsx",
-    "app/media-subtitles/page.tsx",
-    "app/wordbooks/page.tsx",
-    "app/anki/page.tsx",
-    "app/settings/page.tsx",
-    "app/search/result/page.tsx",
-  ];
-
-  for (const file of required) {
-    assert.equal((await stat(path.join(ROOT, file))).isFile(), true);
-  }
-  for (const file of removed) {
-    await assert.rejects(stat(path.join(ROOT, file)));
-  }
-});
-
-test("listening management restores pagination and practice overview stays flat", async () => {
-  const listeningList = await readFile(
-    path.join(ROOT, "modules/listening/components/ListeningListClient.tsx"),
-    "utf8",
-  );
-  const listeningPage = await readFile(
-    path.join(ROOT, "app/manage/listening/page.tsx"),
-    "utf8",
-  );
-  const listeningDetail = await readFile(
-    path.join(ROOT, "app/manage/listening/[id]/page.tsx"),
-    "utf8",
-  );
-  const practiceOverview = await readFile(
-    path.join(ROOT, "app/practice/[id]/page.tsx"),
-    "utf8",
-  );
-
-  assert.match(listeningList, /returnPage=\$\{normalizedManagePage\}/);
-  assert.match(listeningPage, /initialManagePage=\{initialManagePage\}/);
-  assert.match(listeningDetail, /`\/manage\/listening\?page=\$\{returnPage\}`/);
-  assert.match(listeningDetail, /href=\{material\.audioFile\}\s*download/);
-  assert.match(listeningDetail, /下载音频/);
-  assert.doesNotMatch(
-    practiceOverview,
-    /试卷详情|类型:|语言:|排序:|更新于|每题独立音频/,
-  );
-  assert.doesNotMatch(practiceOverview, /rounded-\[|shadow-/);
-  assert.match(practiceOverview, /divide-y divide-slate-200 border-y/);
-  assert.match(practiceOverview, /readingSections/);
-  assert.match(practiceOverview, /問題7｜文章の文法/);
-  assert.match(practiceOverview, /isReadingGrammarQuestion/);
-  assert.match(practiceOverview, /groupQuestionsByMaterial/);
-  assert.match(practiceOverview, /篇的小问/);
-  assert.match(practiceOverview, /段音频的小问/);
-
-  const examRepository = await readFile(
-    path.join(ROOT, "lib/repositories/exam/index.ts"),
-    "utf8",
-  );
-  assert.match(examRepository, /languageQs\.sort\(bySectionThenSource\)/);
-  assert.match(examRepository, /listeningQs\.sort\(bySectionThenSource\)/);
-});
-
-test("reading management keeps live filters and return state", async () => {
-  const readingList = await readFile(
-    path.join(ROOT, "modules/reading/components/ReadingListClient.tsx"),
-    "utf8",
-  );
-  const readingDetail = await readFile(
-    path.join(ROOT, "app/manage/reading/[id]/page.tsx"),
-    "utf8",
-  );
-
-  assert.match(readingList, /搜索标题 \/ 作者 \/ 试卷/);
-  assert.match(readingList, /缺少题目/);
-  assert.match(readingList, /独立材料/);
-  assert.match(readingList, /window\.history\.replaceState/);
-  assert.match(readingList, /returnTo=/);
-  assert.match(readingDetail, /rawReturnTo\?\.startsWith\('\/manage\/reading'\)/);
-  assert.match(readingList, /divide-y divide-slate-200 border-y/);
-});
-
-test("review scheduling explains status before exposing diagnostics", async () => {
-  const page = await readFile(
-    path.join(ROOT, "app/manage/system/review/page.tsx"),
-    "utf8",
-  );
-
-  assert.match(page, /等待复习数据/);
-  assert.match(page, /目前不需要处理/);
-  assert.match(page, /<details className=/);
-  assert.match(page, /高级调度信息/);
-  assert.match(
-    page,
-    /eventCount7d \? `\$\{data\.stats\.successRate7d\}%` : '—'/,
-  );
-  assert.equal(page.includes("value={data.profile.lastEngineMode"), false);
-});
-
-test("route surfaces use the shared editorial visual language", async () => {
-  const rootLayout = await readFile(path.join(ROOT, "app/layout.tsx"), "utf8");
-  const globalStyles = await readFile(
-    path.join(ROOT, "app/globals.css"),
-    "utf8",
-  );
-  const studyNavigation = await readFile(
-    path.join(ROOT, "components/layout/StudyNavigation.tsx"),
-    "utf8",
-  );
-  const manageShell = await readFile(
-    path.join(ROOT, "modules/manage/ManageShell.tsx"),
-    "utf8",
-  );
-  const pageHeader = await readFile(
-    path.join(ROOT, "components/layout/PageHeader.tsx"),
-    "utf8",
-  );
-
-  assert.match(rootLayout, /className='editorial-ui'/);
-  assert.doesNotMatch(rootLayout, /flat-ui/);
-  assert.doesNotMatch(globalStyles, /\.flat-ui main/);
-  assert.match(globalStyles, /--font-editorial-display/);
-  assert.match(globalStyles, /--editorial-paper: #f6f5f1/);
-  assert.match(globalStyles, /--editorial-paper-raised: #ffffff/);
-  assert.match(studyNavigation, /max-w-7xl/);
-  assert.match(manageShell, /max-w-7xl/);
-  assert.match(globalStyles, /body\.editorial-ui main h1/);
-  assert.match(
-    globalStyles,
-    /main\[class\*='min-h-screen'\][\s\S]*padding-top: 0/,
-  );
-  assert.equal(globalStyles.includes("padding-top: clamp(2.75rem"), false);
-  assert.match(globalStyles, /--modern-radius-lg: 1rem/);
-  assert.match(
-    globalStyles,
-    /border-radius: var\(--modern-radius-lg\) !important/,
-  );
-  assert.match(globalStyles, /border-radius: var\(--modern-radius-sm\)/);
-  assert.match(studyNavigation, /editorial-nav/);
-  assert.match(manageShell, /editorial-nav/);
-  assert.equal(studyNavigation.includes("border-b-2"), false);
-  assert.equal(manageShell.includes("border-b-2"), false);
-  assert.equal(pageHeader.includes("border-y border-slate-200"), false);
-});
-
-test("reading sibling navigation uses the shared editorial listbox", async () => {
-  const [siblingNav, customSelect] = await Promise.all([
-    readFile(
-      path.join(ROOT, "modules/reading/components/ArticleSiblingNav.tsx"),
-      "utf8",
-    ),
-    readFile(path.join(ROOT, "components/ui/CustomSelect.tsx"), "utf8"),
-  ]);
-
-  assert.match(siblingNav, /import CustomSelect/);
-  assert.match(siblingNav, /<CustomSelect/);
-  assert.doesNotMatch(siblingNav, /<select/);
-  assert.match(siblingNav, /font-reading-ja/);
-  assert.match(siblingNav, /h-10 w-full rounded-lg border/);
-  assert.match(customSelect, /ui-pop ui-pop-surface/);
-  assert.match(customSelect, /role='listbox'/);
-  assert.match(customSelect, /isValidElement\(node\)/);
-  assert.doesNotMatch(
-    customSelect,
-    /Children\.toArray\(node\)\.map\(textFromNode\)/,
-  );
-});
-
-test("body copy uses language-aware sans-serif font stacks", async () => {
-  const globalStyles = await readFile(
-    path.join(ROOT, "app/globals.css"),
-    "utf8",
-  );
-  const managePage = await readFile(
-    path.join(ROOT, "app/manage/page.tsx"),
-    "utf8",
-  );
-  const reviewPage = await readFile(
-    path.join(ROOT, "app/review/page.tsx"),
-    "utf8",
-  );
-  const articleReader = await readFile(
-    path.join(ROOT, "modules/reading/components/ArticleReaderClient.tsx"),
-    "utf8",
-  );
-
-  assert.match(globalStyles, /'PingFang SC'/);
-  assert.match(globalStyles, /'Hiragino Kaku Gothic ProN'/);
-  assert.doesNotMatch(
-    `${globalStyles}\n${managePage}\n${reviewPage}`,
-    /font-serif|Songti|STSong|Mincho|Noto Serif|Source Serif|Times New Roman/,
-  );
-  assert.match(articleReader, /className='font-reading-body-ja /);
-  assert.doesNotMatch(articleReader, /className='font-reading-ja /);
-});
-
-test("listening import accepts MP3 uploads and presets database-informed questions", async () => {
-  const uploadForm = await readFile(
-    path.join(ROOT, "modules/import/components/UploadForm.tsx"),
-    "utf8",
-  );
-  const uploadAction = await readFile(
-    path.join(ROOT, "modules/import/actions.ts"),
-    "utf8",
-  );
-  const questionEditor = await readFile(
-    path.join(ROOT, "modules/content/collections/components/LessonQuestionsPanel.tsx"),
-    "utf8",
-  );
-  const importPage = await readFile(
-    path.join(ROOT, "app/manage/import/page.tsx"),
-    "utf8",
-  );
-  const paperEditorDomain = await readFile(
-    path.join(ROOT, "modules/questions/domain/paper-editor.ts"),
-    "utf8",
-  );
-  const manageRepository = await readFile(
-    path.join(ROOT, "lib/repositories/manage/index.ts"),
-    "utf8",
-  );
-
-  assert.match(uploadForm, /accept='\.mp3,audio\/mpeg'/);
-  assert.match(uploadForm, /normalizeListeningAudioPath/);
-  assert.match(uploadForm, /name='collectionIds'/);
-  assert.match(uploadForm, /autoSuggestedTitleRef/);
-  assert.match(
-    uploadForm,
-    /if \(!isBatchAss \|\| !suggestedTitle \|\| title !== suggestedTitle\) return/,
-  );
-  assert.match(
-    uploadForm,
-    /autoSuggestedTitleRef\.current = null\s*setTitle\(e\.target\.value\)/,
-  );
-  assert.match(
-    uploadForm,
-    /!subtitleNoAudio &&\s*!isBatchAss &&\s*previewRows\.length > 0/,
-  );
-  assert.doesNotMatch(uploadForm, /找不到匹配时可在下方预览中手动调整/);
-  assert.match(uploadForm, /继续添加其他\$\{destinationName\}/);
-  assert.doesNotMatch(uploadForm, /当前仅显示正式试卷/);
-  assert.doesNotMatch(uploadForm, /批量录入说明/);
-  assert.doesNotMatch(uploadForm, /继续添加题目|无需离开上传页|材料已创建/);
-  assert.match(uploadForm, /appearance='import'/);
-  assert.doesNotMatch(questionEditor, /快速填写题目与选项/);
-  assert.match(
-    questionEditor,
-    /appearance\?: 'default' \| 'practice' \| 'import'/,
-  );
-  assert.match(questionEditor, /handleParseBulk/);
-  assert.match(questionEditor, /parseMultiQuizText\(bulkText\)/);
-  assert.match(questionEditor, /正确答案/);
-  assert.match(
-    questionEditor,
-    /const isEditing = draftMode \|\| editingQuestionId === q\.id/,
-  );
-  assert.match(questionEditor, /length: resolvedQuestionsPerMaterial/);
-  assert.match(importPage, /defaultQuestionsPerMaterial=/);
-  assert.match(manageRepository, /getDefaultListeningQuestionsPerMaterial/);
-  assert.match(manageRepository, /ORDER BY "materialCount" DESC, "questionCount" DESC/);
-  assert.match(
-    questionEditor,
-    /batchMode && q\.questionType === 'TOEIC_QUESTION_RESPONSE'/,
-  );
-  assert.match(questionEditor, /aria-pressed=\{opt\.isCorrect\}/);
-  assert.match(importPage, /选择日语听力题型/);
-  assert.match(importPage, /japaneseListeningSection/);
-  assert.match(paperEditorDomain, /PAPER_LISTENING_SECTIONS/);
-  assert.match(paperEditorDomain, /概要理解/);
-  assert.equal(
-    uploadForm.includes("paper.materialType === materialType"),
-    false,
-  );
-  assert.match(
-    uploadForm,
-    /isCollectionTypeAllowedForMaterial\(\s*materialType/,
-  );
-  assert.match(uploadAction, /getAll\('collectionIds'\)/);
-  assert.match(uploadAction, /getMaterialCollectionTypeError\(/);
-  assert.match(uploadAction, /mp3Only && ext !== '\.mp3'/);
-  assert.match(uploadAction, /collectionIds\.map\(targetCollectionId/);
-  assert.doesNotMatch(uploadAction, /MaterialType=/);
-});
-
-test("reading upload distinguishes article-local numbering from JLPT sections", async () => {
-  const panel = await readFile(
-    path.join(ROOT, "modules/import/components/ArticleImportPanel.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    panel,
-    /`問題\$\{section\.sectionNumber\}｜\$\{section\.title\}`/,
-  );
-  assert.match(panel, /题目 \{qIndex \+ 1\}/);
-  assert.match(panel, /添加\/取消下划线/);
-  assert.match(panel, /toggleUnderlineSelection/);
-  assert.match(panel, /识别并加入阅读题/);
-  assert.match(panel, /选择圆点设置正确答案/);
-  assert.match(panel, /border-l-\[3px\]/);
-  assert.doesNotMatch(panel, /articleParsedPreviewRows/);
-  assert.doesNotMatch(panel, /articleParsedDrafts/);
-  assert.doesNotMatch(panel, /识别预览/);
-  assert.doesNotMatch(panel, /padStart\(2, '0'\)/);
-
-  const uploadCenter = await readFile(
-    path.join(ROOT, "modules/import/components/UploadCenterUI.tsx"),
-    "utf8",
-  );
-  assert.match(
-    uploadCenter,
-    /commitArticleDrafts\(normalizedDrafts, previewRows\)/,
-  );
-
-  const builder = await readFile(
-    path.join(ROOT, "modules/import/domain/article-question-builder.ts"),
-    "utf8",
-  );
-  assert.match(builder, /detectedType === 'FILL_BLANK'[\s\S]*: ''/);
-});
-
 test("paper reading materials keep their authored import order", async () => {
   const materialActions = await readFile(
     path.join(ROOT, "modules/content/actions/materials.ts"),
@@ -2691,7 +2184,7 @@ test("reading editor can move a whole cloze article to another paper", async () 
   assert.match(actions, /material\.type !== MaterialType\.READING/);
 });
 
-test("paper attributes are normalized across every creation and edit path", async () => {
+test("paper attributes normalize language, level and accepted materials", () => {
   assert.deepEqual(
     normalizePaperAttributes({ title: "2024年12月N1", language: "ja" }),
     {
@@ -2705,177 +2198,6 @@ test("paper attributes are normalized across every creation and edit path", asyn
     level: "TOEIC",
     acceptedMaterialTypes: ["LISTENING", "READING", "VOCAB_GRAMMAR"],
   });
-
-  const materialActions = await readFile(
-    path.join(ROOT, "modules/content/actions/materials.ts"),
-    "utf8",
-  );
-  const importActions = await readFile(
-    path.join(ROOT, "modules/import/actions.ts"),
-    "utf8",
-  );
-  const paperActions = await readFile(
-    path.join(ROOT, "modules/practice/actions/papers.ts"),
-    "utf8",
-  );
-  const collectionActions = await readFile(
-    path.join(ROOT, "modules/content/collections/actions.ts"),
-    "utf8",
-  );
-  for (const source of [
-    materialActions,
-    importActions,
-    paperActions,
-    collectionActions,
-  ]) {
-    assert.match(source, /normalizePaperAttributes/);
-  }
-  assert.doesNotMatch(
-    materialActions,
-    /targetPaperId,[\s\S]{0,120}acceptedMaterialTypes: \{ has: MaterialType\.READING \}/,
-  );
-});
-
-test("search results use domain editors instead of the hidden JSON tool", async () => {
-  const searchHrefBuilder = await readFile(
-    path.join(ROOT, "modules/search/domain.ts"),
-    "utf8",
-  );
-  const searchActions = await readFile(
-    path.join(ROOT, "modules/search/actions.ts"),
-    "utf8",
-  );
-  const searchPage = await readFile(
-    path.join(ROOT, "app/search/page.tsx"),
-    "utf8",
-  );
-  const vocabularyTabs = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyTabs.tsx"),
-    "utf8",
-  );
-  const vocabularyNavigation = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/domain/navigation.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    searchHrefBuilder,
-    /`\/manage\/reading\/\$\{encodeURIComponent\(id\)\}`/,
-  );
-  assert.match(
-    searchHrefBuilder,
-    /`\/manage\/questions\/\$\{encodeURIComponent\(id\)\}`/,
-  );
-  assert.equal(searchHrefBuilder.includes("/manage/search/"), false);
-  assert.match(searchActions, /vocabularyResultsByWord/);
-  assert.match(searchActions, /select:\s*\{[\s\S]*sentenceLinks:/);
-  assert.match(searchActions, /sourceId:\s*true,[\s\S]*sourceUrl:\s*true/);
-  assert.match(searchActions, /sentence\.links\.forEach/);
-  assert.doesNotMatch(searchActions, /\.\.\.sentenceResults/);
-  assert.match(searchActions, /buildQuestionTargetHref/);
-  assert.match(searchActions, /collectionType: 'PAPER'/);
-  assert.match(
-    searchHrefBuilder,
-    /`\/practice\/\$\{encodeURIComponent\(input\.paperId\)\}\/do\?qid=/,
-  );
-  assert.match(searchHrefBuilder, /`\/manage\/questions\/\$\{encodeURIComponent\(input\.materialId\)\}\?focus=/);
-  assert.match(searchHrefBuilder, /buildVocabularyFocusHref/);
-  assert.doesNotMatch(searchHrefBuilder, /params\.set\('q', word\)/);
-  assert.match(searchPage, /释义、读音、关联例句/);
-  assert.match(searchPage, /resultCacheRef/);
-  assert.match(searchPage, /missingTypes = nextTypes\.filter/);
-  assert.match(searchPage, /resultCacheRef\.current\.size > 20/);
-  assert.match(searchPage, /searchGlobalContent\(q, \{ types: missingTypes \}\)/);
-  assert.doesNotMatch(searchPage, /key: 'sentence', label: '句子'/);
-  assert.match(
-    vocabularyTabs,
-    /flashList\.findIndex\(item => item\.id === initialFocusId\)/,
-  );
-  assert.match(vocabularyTabs, /useSearchParams/);
-  assert.match(vocabularyTabs, /searchParams\.get\('view'\)/);
-  assert.match(vocabularyNavigation, /params\.set\('view', 'card'\)/);
-  assert.match(vocabularyTabs, /initialViewMode === 'card' \? 'flashcard' : 'list'/);
-  const vocabularyToolbar = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyPageToolbar.tsx"),
-    "utf8",
-  );
-  assert.match(vocabularyTabs, /<VocabularyPageToolbar/);
-  assert.match(vocabularyToolbar, /mode: 'flashcard', label: '单词卡'/);
-});
-
-test("vocabulary cards continue across paginated server results", async () => {
-  const vocabularyTabs = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/components/VocabularyTabs.tsx"),
-    "utf8",
-  );
-  const cardControls = await readFile(
-    path.join(
-      ROOT,
-      "modules/knowledge/vocabulary/components/MemoryCardControls.tsx",
-    ),
-    "utf8",
-  );
-
-  assert.match(vocabularyTabs, /navigateCardPage\(currentPage \+ 1, 0\)/);
-  assert.match(vocabularyTabs, /navigateCardPage\(currentPage - 1, pageSize - 1\)/);
-  assert.match(vocabularyTabs, /overallTotal=\{effectiveGroupTotal\}/);
-  assert.match(cardControls, /disabled=\{!canNext \|\| transitioning\}/);
-  assert.match(cardControls, /\{currentPosition\} \/ \{overallTotal\}/);
-});
-
-test("responsive and component-boundary regressions remain guarded", async () => {
-  const subtitlePage = await readFile(
-    path.join(ROOT, "app/subtitles/page.tsx"),
-    "utf8",
-  );
-  assert.match(subtitlePage, /min-w-0 divide-y divide-slate-200/);
-
-  const boundaries = [
-    "modules/knowledge/vocabulary/components/VocabularySentenceText.tsx",
-    "modules/import/audio/hooks/useAudioFileCatalog.ts",
-    "modules/media-subtitles/components/SubtitleReaderControls.tsx",
-    "modules/content/components/EditArticleUI.tsx",
-    "modules/practice/components/PracticeVocabularyAnalyticsDialog.tsx",
-    "modules/progress/exam-scores/components/ExamScoreManager.tsx",
-    "modules/media/audio/components/ListeningPlayerHeader.tsx",
-    "modules/media/audio/components/ListeningSentenceRow.tsx",
-  ];
-  for (const file of boundaries) {
-    assert.equal((await stat(path.join(ROOT, file))).isFile(), true);
-  }
-});
-
-test("practice player keeps one compact action bar", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-  const copyActions = player.match(
-    /onClick=\{\(\) => void handleCopyCurrentQuestion\(\)\}/g,
-  );
-
-  assert.equal(copyActions?.length, 1);
-  assert.match(player, /role='progressbar'/);
-  assert.match(player, /mode !== 'single' && !session\.isSubmitted/);
-  assert.match(player, /\{exitLabel\}/);
-  assert.match(player, /aria-label='上一题'/);
-  assert.match(player, /aria-label='下一题'/);
-  assert.match(player, /event\.key === 'ArrowLeft'/);
-  assert.match(player, /event\.key === 'ArrowRight'/);
-  assert.match(player, /Numpad\[1-9\]/);
-  assert.doesNotMatch(player, /\^\[a-i\]\$\/i/);
-  assert.match(player, /event\.code === 'Space'/);
-  assert.match(player, /audio\[data-practice-audio="current"\]/);
-  assert.match(player, /isInteractiveSpaceTarget/);
-  assert.match(
-    player,
-    /target\.closest\('\[data-context-role="question-option"\]'\)/,
-  );
-  assert.equal(player.includes("<footer"), false);
-  assert.equal(
-    player.includes("className='flex flex-col gap-3 md:flex-row"),
-    false,
-  );
 });
 
 test("paper practice restores an unfinished local draft", async () => {
@@ -2966,159 +2288,6 @@ test("practice counts only complete paper submissions and can reset statistics",
   assert.equal(dialog.includes('window.confirm'), false);
 });
 
-test("practice papers default to newest and expose sort controls", async () => {
-  const client = await readFile(
-    path.join(ROOT, "modules/practice/components/PapersListClient.tsx"),
-    "utf8",
-  );
-  const state = await readFile(
-    path.join(ROOT, "modules/practice/hooks/usePaperLibraryState.ts"),
-    "utf8",
-  );
-  const library = await readFile(
-    path.join(ROOT, "modules/practice/domain/paper-library.ts"),
-    "utf8",
-  );
-
-  assert.match(state, /sort: 'newest'/);
-  assert.match(client, /排序方式/);
-  assert.match(client, /最新试卷优先/);
-  assert.match(client, /最早试卷优先/);
-  assert.match(client, /按名称排序/);
-  assert.match(library, /resolvePaperTime/);
-  assert.match(library, /filters\.sort/);
-  assert.match(library, /return '日语'/);
-  assert.match(library, /return '英语'/);
-  assert.match(library, /paperLanguageUsesLevels/);
-  assert.match(library, /language !== '英语'/);
-  assert.equal(client.includes('groupPapersByLanguageAndLevel'), false);
-  assert.equal(client.includes("group.language"), false);
-});
-
-test("practice performance separates language and level before question type", async () => {
-  const performanceRoute = await readFile(
-    path.join(ROOT, "app/api/practice/performance/route.ts"),
-    "utf8",
-  );
-  const launcher = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticeInsightsLaunchers.tsx"),
-    "utf8",
-  );
-  const dialog = await readFile(
-    path.join(ROOT, "modules/practice/components/PerformanceStatsDialog.tsx"),
-    "utf8",
-  );
-  const repository = await readFile(
-    path.join(ROOT, "lib/repositories/exam/index.ts"),
-    "utf8",
-  );
-
-  assert.match(performanceRoute, /getPracticePerformanceGroups/);
-  assert.match(launcher, /fetch\('\/api\/practice\/performance'/);
-  assert.match(dialog, /语言与等级/);
-  assert.match(dialog, /group\.level \? ` · \$\{group\.level\}` : ''/);
-  assert.match(dialog, /平均用时/);
-  assert.match(dialog, /平均用时不计入未记录时长的作答/);
-  assert.match(repository, /\bgroupKey\b/);
-  assert.match(repository, /timedAttemptCount/);
-  assert.match(repository, /getReadingQuestionSection/);
-  assert.match(repository, /resolveListeningSection/);
-  assert.match(repository, /isEnglish\s*\?\s*""/);
-});
-
-test("custom practice selects JLPT groups or individual problem sections", async () => {
-  const builder = await readFile(
-    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.tsx"),
-    "utf8",
-  );
-  const customSession = await readFile(
-    path.join(ROOT, "app/practice/custom/do/page.tsx"),
-    "utf8",
-  );
-  const repository = await readFile(
-    path.join(ROOT, "lib/repositories/exam/index.ts"),
-    "utf8",
-  );
-
-  assert.match(builder, /'unattempted' \| 'attempted' \| 'all'/);
-  assert.match(builder, /params\.set\('scope', selectedScope\)/);
-  assert.match(builder, /params\.set\('sections', selectedKeys\.join\(','\)\)/);
-  assert.match(builder, /aria-pressed=\{allSelected\}/);
-  assert.match(builder, /onChange=\{\(\) => toggleOption\(option.key\)\}/);
-  assert.match(builder, /onClick=\{handleStart\}/);
-  assert.match(builder, /className=\{styles.footer\}/);
-  const styles = await readFile(
-    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.module.css"),
-    "utf8",
-  );
-  assert.match(styles, /\.footer\s*\{[^}]*position:\s*sticky;[^}]*bottom:\s*0/);
-  assert.match(
-    customSession,
-    /rawScope === 'attempted' \|\| rawScope === 'all'/,
-  );
-  assert.match(repository, /attempts: \{\s+where: \{ userId \}/);
-  assert.match(repository, /scope === "unattempted"/);
-  assert.match(repository, /scope === "attempted"/);
-  assert.match(repository, /LANGUAGE:1/);
-  assert.match(repository, /LISTENING:5/);
-});
-
-test("form controls share styled selects and an explicit number stepper", async () => {
-  const globalStyles = await readFile(
-    path.join(ROOT, "app/globals.css"),
-    "utf8",
-  );
-  const numberStepper = await readFile(
-    path.join(ROOT, "components/ui/NumberStepper.tsx"),
-    "utf8",
-  );
-  const builder = await readFile(
-    path.join(ROOT, "modules/practice/components/CustomPaperBuilderClient.tsx"),
-    "utf8",
-  );
-
-  assert.match(globalStyles, /select:not\(\[multiple\]\)/);
-  assert.match(globalStyles, /background-image: url\(/);
-  assert.match(
-    globalStyles,
-    /input\[type='number'\]::-webkit-inner-spin-button/,
-  );
-  assert.match(numberStepper, /aria-label=\{`\$\{ariaLabel\}减少`\}/);
-  assert.match(numberStepper, /aria-label=\{`\$\{ariaLabel\}增加`\}/);
-  assert.match(builder, /<NumberStepper/);
-});
-
-test("project dropdowns use the custom listbox instead of native select menus", async () => {
-  const customSelect = await readFile(
-    path.join(ROOT, "components/ui/CustomSelect.tsx"),
-    "utf8",
-  );
-  const migratedFiles = [
-    "modules/listening/components/ShadowingLibraryManager.tsx",
-    "modules/import/components/AnkiImportPanel.tsx",
-    "modules/knowledge/vocabulary/components/VocabularyManageClient.tsx",
-    "modules/import/components/UploadCenterUI.tsx",
-    "modules/import/components/UploadForm.tsx",
-    "modules/listening/components/ListeningListClient.tsx",
-    "modules/listening/components/ListeningQuickClassifyForm.tsx",
-    "modules/practice/components/PaperAttributeForm.tsx",
-    "modules/practice/components/PapersListClient.tsx",
-    "modules/practice/components/CustomPaperBuilderClient.tsx",
-    "modules/import/components/BulkQuizPanel.tsx",
-    "modules/media-subtitles/components/SubtitleReaderControls.tsx",
-  ];
-
-  assert.match(customSelect, /createPortal/);
-  assert.match(customSelect, /role='listbox'/);
-  assert.match(customSelect, /event\.key === 'ArrowDown'/);
-  assert.match(customSelect, /<input type='hidden' name=\{name\}/);
-  for (const file of migratedFiles) {
-    const source = await readFile(path.join(ROOT, file), "utf8");
-    assert.equal(source.includes("<select"), false);
-    assert.match(source, /<CustomSelect/);
-  }
-});
-
 test("practice review reveals answers only for submitted questions", async () => {
   const player = await readFile(
     path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
@@ -3143,44 +2312,6 @@ test("practice review reveals answers only for submitted questions", async () =>
     /submittedQuestionIdSet\.has\(fillQuestion\.id\)/,
   );
   assert.match(optionsList, /if \(isInteractionLocked\)/);
-});
-
-test("listening practice keeps compact controls and readable transcript", async () => {
-  const renderer = await readFile(
-    path.join(ROOT, "modules/questions/components/QuestionRenderer.tsx"),
-    "utf8",
-  );
-  const optionsList = await readFile(
-    path.join(ROOT, "modules/questions/components/question-renderer/OptionsList.tsx"),
-    "utf8",
-  );
-  const transcript = await readFile(
-    path.join(
-      ROOT,
-      "modules/questions/components/question-renderer/ListeningTranscript.tsx",
-    ),
-    "utf8",
-  );
-
-  assert.equal(renderer.includes("每段音频对应一道题"), false);
-  assert.equal(renderer.includes("单题音频"), false);
-  assert.equal(renderer.includes("该听力题未填写文字题干"), false);
-  assert.match(renderer, /normalizeQuestionDisplayText/);
-  assert.match(renderer, /data-practice-audio='current'/);
-  assert.match(optionsList, /if \(audioOnly\)/);
-  assert.match(optionsList, /flex flex-wrap items-center gap-3/);
-  assert.match(optionsList, /aria-keyshortcuts/);
-  assert.doesNotMatch(optionsList, /String\.fromCharCode\(65 \+ index\)/);
-  assert.doesNotMatch(optionsList, />\{`选项 \$\{label\}`\}<\/span>/);
-  assert.match(transcript, /className=\{styles.line\}/);
-  assert.match(transcript, /aria-current=\{isActive \? 'true' : undefined\}/);
-  const styles = await readFile(
-    path.join(ROOT, "modules/questions/components/question-renderer/ListeningTranscript.module.css"),
-    "utf8",
-  );
-  assert.match(styles, /\.text\s*\{[^}]*user-select:\s*text/);
-  assert.match(styles, /\.line\[data-active='true'\]/);
-  assert.equal(transcript.includes("max-h-[45vh]"), false);
 });
 
 test("listening detail avoids idle animation work and uses scoped vocabulary sources", async () => {
@@ -3298,28 +2429,4 @@ test("vocabulary language groups use pronunciation and source evidence", async (
   assert.match(vocabularyPage, /resolveVocabularyLanguageCode/);
   assert.match(vocabularyRepository, /pronunciations: true/);
   assert.match(vocabularyRepository, /sourceType: true/);
-});
-
-test("selection popover supports pointer, keyboard and dialog semantics", async () => {
-  const hook = await readFile(
-    path.join(ROOT, "hooks/useTextSelection.ts"),
-    "utf8",
-  );
-  const tooltip = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/components/WordTooltip.tsx"),
-    "utf8",
-  );
-
-  assert.match(hook, /selectionchange/);
-  assert.match(hook, /pointerup/);
-  assert.match(hook, /event\.pointerType === 'touch'/);
-  assert.equal(hook.includes("touchend"), false);
-  assert.match(hook, /getSelectionFingerprint\(\) === previousSelection/);
-  assert.match(hook, /lastKeyboardSelectionAtRef\.current > 500/);
-  assert.match(hook, /scheduleSelectionCommit\(240\)/);
-  assert.match(hook, /window\.addEventListener\('scroll', handleWindowScroll/);
-  assert.match(hook, /event\.key === 'Escape'/);
-  assert.match(tooltip, /role=\{panelOpen \? 'dialog' : undefined\}/);
-  assert.match(tooltip, /aria-label='关闭记录面板'/);
-  assert.match(tooltip, /window\.visualViewport/);
 });

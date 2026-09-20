@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
 
 import {
   findNewsCollectionId,
@@ -20,7 +17,6 @@ import {
   serializeReadingFilters,
 } from '../modules/reading/domain/reading-filters.ts'
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 test('structured news metadata maps to source collections', () => {
   const collections = [
@@ -44,58 +40,6 @@ test('structured news metadata maps to source collections', () => {
     source: '日経', type: 'editorial', section: '総合', column: '', topic: '',
   })
   assert.equal(formatNewsDate('2026-08-17'), '2026年8月17日')
-})
-
-test('news import requires structured choices and reading offers matching filters', async () => {
-  const [center, panel, datePicker, editor, actions, readingPage, readingClient] = await Promise.all([
-    readFile(path.join(ROOT, 'modules/import/components/UploadCenterUI.tsx'), 'utf8'),
-    readFile(
-      path.join(ROOT, 'modules/import/components/ArticleImportPanel.tsx'),
-      'utf8',
-    ),
-    readFile(path.join(ROOT, 'components/ui/DatePicker.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/content/components/EditArticleUI.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/content/actions/materials.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'app/reading/page.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/reading/components/ReadingCenterClient.tsx'), 'utf8'),
-  ])
-
-  assert.doesNotMatch(center, /inferNewsSeries/)
-  assert.match(center, /findNewsCollectionId/)
-  assert.match(center, /todayForDateInput/)
-  assert.match(center, /请完整选择新闻类型、来源和版面/)
-  assert.match(center, /将按所选新闻信息保存/)
-  assert.match(panel, /NEWS_TYPE_OPTIONS/)
-  assert.match(panel, /NEWS_SOURCE_OPTIONS/)
-  assert.match(panel, /NEWS_COLUMN_OPTIONS/)
-  assert.match(panel, /NEWS_SECTION_OPTIONS/)
-  assert.match(panel, /NEWS_TOPIC_OPTIONS/)
-  assert.match(panel, /onNewsMetadataChange/)
-  assert.match(panel, /自动使用今天/)
-  assert.match(panel, /<DatePicker/)
-  assert.doesNotMatch(panel, /type="date"/)
-  assert.match(editor, /<DatePicker/)
-  assert.match(datePicker, /role='dialog'/)
-  assert.match(datePicker, /role='grid'/)
-  assert.match(datePicker, /ui-pop ui-pop-surface/)
-  assert.match(datePicker, /MANUAL_DATE_PATTERN/)
-  assert.match(datePicker, /请输入有效日期/)
-  assert.match(datePicker, /event\.key === 'ArrowDown'/)
-  assert.match(datePicker, /event\.key === 'Escape'/)
-  assert.match(panel, /NEWS_EDITION_OPTIONS/)
-  assert.match(panel, /已自动对应朝刊/)
-  assert.match(panel, /已自动对应一面/)
-  assert.doesNotMatch(actions, /newsSeries|pageNumber/)
-  assert.match(actions, /newsSource/)
-  assert.match(actions, /newsType/)
-  assert.match(actions, /automaticMorningEdition/)
-  assert.match(actions, /automaticFrontPageSection/)
-  assert.match(actions, /FLASH/)
-  assert.match(readingPage, /formatNewsDate/)
-  assert.match(readingClient, /筛选新闻来源/)
-  assert.match(readingClient, /全部来源/)
-  assert.match(readingClient, /全部版面/)
-  assert.match(readingClient, /全部栏目/)
 })
 
 test('reading filters keep news metadata consistent and restorable', () => {

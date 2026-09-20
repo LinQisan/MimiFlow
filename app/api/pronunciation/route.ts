@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
     // Preserve the existing empty-input semantics
     // (getSudachiPronunciationMap([]) resolves available:true with empty maps)
-    // without warming the persistent worker or touching wordbook tables.
+    // without initializing the native dictionary or touching wordbook tables.
     const includeWordbookAnalysis = rawFlag === true
     if (texts.length === 0) {
       return NextResponse.json({

@@ -21,7 +21,7 @@ export default function QuestionNoteEditor({
   const editorHeightRef = useRef(128)
   const [note, setNote] = useState((initialNote || '').trim())
   const [savedNote, setSavedNote] = useState((initialNote || '').trim())
-  const [isEditing, setIsEditing] = useState(!(initialNote || '').trim())
+  const [isEditing, setIsEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [status, setStatus] = useState<'idle' | 'saved' | 'error'>('idle')
 
@@ -31,7 +31,7 @@ export default function QuestionNoteEditor({
     const nextNote = (initialNote || '').trim()
     setNote(nextNote)
     setSavedNote(nextNote)
-    setIsEditing(nextNote.length === 0)
+    setIsEditing(false)
     setStatus('idle')
     editorHeightRef.current = 128
   }, [questionId, initialNote])
@@ -80,6 +80,20 @@ export default function QuestionNoteEditor({
     setSaving(false)
   }
 
+  if (!isEditing && !savedNote) {
+    return (
+      <section className='mx-auto mt-3 w-full max-w-5xl border-t border-slate-200 pt-2'>
+        <button
+          type='button'
+          aria-expanded={false}
+          onClick={enterEditing}
+          className='min-h-10 text-sm text-slate-500 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2'>
+          ＋ 添加本题笔记
+        </button>
+      </section>
+    )
+  }
+
   return (
     <section className='mx-auto mt-4 w-full max-w-5xl border-y border-slate-200 py-4'>
       <div className='mb-3 flex min-h-8 items-center justify-between gap-3'>
@@ -110,18 +124,17 @@ export default function QuestionNoteEditor({
         <div className='flex items-center gap-2'>
           {isEditing ? (
             <>
-              {savedNote ? (
-                <button
-                  type='button'
-                  onClick={() => {
-                    setNote(savedNote)
-                    setIsEditing(false)
-                    setStatus('idle')
-                  }}
-                  className='ui-btn ui-btn-sm'>
-                  取消
-                </button>
-              ) : null}
+              <button
+                type='button'
+                onClick={() => {
+                  setNote(savedNote)
+                  setIsEditing(false)
+                  setStatus('idle')
+                }}
+                disabled={saving}
+                className='ui-btn ui-btn-sm'>
+                取消
+              </button>
               <button
                 type='button'
                 onClick={handleSave}
@@ -145,6 +158,8 @@ export default function QuestionNoteEditor({
           ref={textareaRef}
           value={note}
           onChange={event => setNote(event.target.value)}
+          aria-label='题目笔记'
+          autoFocus
           placeholder='记录本题思路、错因、语法要点...'
           rows={4}
           className='block min-h-32 w-full resize-y rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-sm leading-7 text-slate-800 outline-none shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow] focus:border-slate-500 focus:ring-2 focus:ring-slate-200'
@@ -154,7 +169,7 @@ export default function QuestionNoteEditor({
           ref={savedNoteRef}
           onDoubleClick={enterEditing}
           title='双击编辑笔记'
-          className='min-h-32 cursor-text whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50/80 px-3.5 py-3 text-sm leading-7 text-slate-700'>
+          className='cursor-text whitespace-pre-wrap py-1 text-sm leading-7 text-slate-700'>
           {savedNote || '暂无笔记'}
         </div>
       )}

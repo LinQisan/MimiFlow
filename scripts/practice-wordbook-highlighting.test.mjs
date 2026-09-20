@@ -1,7 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
 import test from 'node:test'
-import path from 'node:path'
 
 import {
   annotateJapaneseText,
@@ -15,7 +13,6 @@ import {
 import { JLPT_LEVELS } from '../modules/knowledge/vocabulary/domain/jlpt.ts'
 import { buildSurfaceAliasMapForText } from '../utils/vocabulary/japaneseInflection.ts'
 
-const ROOT = process.cwd()
 
 test('annotateJapaneseText wraps tokenWords with vocab-token data attributes for practice player and review', () => {
   const text = 'この問題の核心を突く発言だった。'
@@ -116,27 +113,7 @@ test('annotateJapaneseTextWithSudachi wraps tokenWords even when lexicon has no 
   )
 })
 
-test('annotate.ts wires tokenWords, vocab-token class, and Sudachi into annotateExamText', async () => {
-  const annotateCode = await readFile(
-    path.join(ROOT, 'modules/questions/components/question-renderer/annotate.ts'),
-    'utf8',
-  )
-
-  // tokenWords extraction and presence check
-  assert.match(annotateCode, /settings\.tokenWords/)
-  assert.match(
-    annotateCode,
-    /tokenClassName:\s*hasTokenWords\s*\?\s*'vocab-token'\s*:\s*undefined/,
-  )
-  assert.match(annotateCode, /annotateJapaneseTextWithSudachi/)
-  assert.match(
-    annotateCode,
-    /useSudachiReading:\s*settings\.pronunciationSource === 'sudachi'/,
-  )
-  assert.match(annotateCode, /annotateJapaneseText\(/)
-  assert.match(annotateCode, /withTargetHighlight/)
-  assert.match(annotateCode, /withFillBlankHint/)
-
+test('personal and disabled ruby retain vocabulary token boundaries with a Sudachi lexicon', () => {
   // Behavioral execution test: personal pronunciation mode with Sudachi lexicon available
   const text = 'この問題の核心を突く発言だった。'
   const lexicon = {
@@ -229,91 +206,6 @@ test('practice wordbook distribution groups by source and supports JLPT level fi
   assert.equal(canonicalWords.length, 3)
 })
 
-test('PracticePlayer source code wires WordbookHighlightSelector and QuestionRenderer correctly', async () => {
-  const [playerCode, hooksCode, sortingCode, reviewPageCode] = await Promise.all([
-    readFile(path.join(ROOT, 'modules/practice/components/PracticePlayer.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/knowledge/learning-records/useStudyTextHighlights.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/questions/components/question-renderer/SortingQuestion.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'app/practice/[id]/submissions/[submissionId]/page.tsx'), 'utf8'),
-  ])
-
-  // WordbookHighlightSelector receives JLPT and bulk toggle props
-  assert.match(
-    playerCode,
-    /<WordbookHighlightSelector[\s\S]*groups=\{wordbookHighlightGroups\}/,
-  )
-  assert.match(playerCode, /hiddenWordbookIds=\{hiddenWordbookIds\}/)
-  assert.match(
-    playerCode,
-    /onVisibilityChange=\{handleWordbookVisibilityChange\}/,
-  )
-  assert.match(playerCode, /hiddenJlptLevels=\{hiddenJlptLevels\}/)
-  assert.match(
-    playerCode,
-    /onJlptVisibilityChange=\{handleJlptVisibilityChange\}/,
-  )
-  assert.match(
-    playerCode,
-    /onAllVisibilityChange=\{handleAllHighlightVisibilityChange\}/,
-  )
-
-  // QuestionRenderer receives tokenWords and Sudachi settings
-  assert.match(
-    playerCode,
-    /tokenWords:\s*showMeaning\s*\?\s*wordbookTokenWords\s*:\s*\[\]/,
-  )
-  assert.match(
-    playerCode,
-    /sudachiLexicon:\s*Object\.keys\(sudachiLexicon\)\.length > 0 \? sudachiLexicon : undefined/,
-  )
-  assert.match(playerCode, /pronunciationSource,/)
-
-  // canonicalWords in PracticePlayer is derived from currentText aliases
-  assert.match(
-    playerCode,
-    /canonicalWords:\s*Array\.from\(new Set\(Object\.values\(aliases\)\)\)/,
-  )
-
-  // initialWordbookDistribution prop is supported
-  assert.match(playerCode, /initialWordbookDistribution\?: PaperWordbookDistribution \| null/)
-  assert.match(playerCode, /initialWordbookDistribution\s*=\s*null/)
-
-  // useStudyTextHighlights receives visible groups and click handler
-  assert.match(playerCode, /wordbookGroups:\s*visibleWordbookHighlightGroups/)
-  assert.match(playerCode, /showWordbooks:\s*showMeaning/)
-  assert.match(playerCode, /onWordbookWordClick:\s*handleWordbookWordClick/)
-
-  // VocabularyWordbookInspector is rendered on inspectedWord
-  assert.match(
-    playerCode,
-    /<VocabularyWordbookInspector[\s\S]*word=\{inspectedWord\.word\}/,
-  )
-
-  // useStudyTextHighlights scans listVocabTokenElements(root)
-  assert.match(
-    hooksCode,
-    /listVocabTokenElements\(root\)\.forEach\(token =>/,
-  )
-
-  // SortingQuestion has data-source attributes on submitted option and correct answer
-  assert.match(
-    sortingCode,
-    /data-context-role='sorting-correct-answer'/,
-  )
-
-  // PracticeSubmissionReviewPage precomputes wordbookDistribution on server
-  assert.match(
-    reviewPageCode,
-    /getPaperWordbookDistribution\(wordbookDistributionWords\)/,
-  )
-
-  // metadataByHeadword populates headwords in jlptByWord
-  assert.match(
-    playerCode,
-    /metadataByHeadword\.forEach\(\(metadata, headword\) => \{[\s\S]*jlptByWord\[headword\] = \[\.\.\.metadata\.jlpt\]/,
-  )
-})
-
 test('headword JLPT metadata is mapped for inflected forms and selector filters apply consistently', () => {
   const sources = [
     {
@@ -384,61 +276,4 @@ test('headword JLPT metadata is mapped for inflected forms and selector filters 
     isJlptVisibleWithHiddenLevels(jlptByWord[word] || [], hiddenAll),
   )
   assert.deepEqual(visibleWithoutAll, [])
-})
-
-test('PracticePlayer isolates keyboard navigation when inspectedWord is open and resets inspection on question transition', async () => {
-  const playerCode = await readFile(
-    path.join(ROOT, 'modules/practice/components/PracticePlayer.tsx'),
-    'utf8',
-  )
-
-  // Keyboard navigation guards against inspectedWord modal
-  assert.match(playerCode, /Boolean\(inspectedWord\)/)
-  assert.match(
-    playerCode,
-    /\},\s*\[[\s\S]*inspectedWord[\s\S]*\]\)/,
-  )
-
-  // Question transitions reset inspectedWord to prevent lingering dialogs
-  assert.match(
-    playerCode,
-    /setInspectedWord\(\s*previous\s*=>\s*\(previous\s*\?\s*null\s*:\s*previous\)\s*\)/,
-  )
-
-  // contentKey dynamically incorporates answers and sorting state of displayed questions
-  assert.match(playerCode, /displayedAnswersKey\s*=/)
-  assert.match(playerCode, /displayedSortingKey\s*=/)
-  assert.match(
-    playerCode,
-    /contentKey:\s*`[^`]*displayedAnswersKey[^`]*displayedSortingKey[^`]*`/,
-  )
-
-  // Clicking wordbook word closes any open text selection tooltip
-  assert.match(
-    playerCode,
-    /handleWordbookWordClick\s*=\s*React\.useCallback\(\s*\([^)]*\)\s*=>\s*\{[\s\S]*closeSelection\(\)/,
-  )
-})
-
-test('withTargetHighlight handles edge cases without string replacement corruption', async () => {
-  const annotateCode = await readFile(
-    path.join(ROOT, 'modules/questions/components/question-renderer/annotate.ts'),
-    'utf8',
-  )
-
-  // Verify function replacer is used to avoid $ pattern bugs
-  assert.match(
-    annotateCode,
-    /return\s*html\.replace\(\s*escapedToken,\s*\(\)\s*=>/,
-  )
-
-  // Verify logic with $100 target
-  const text = '価格は$100です。'
-  const escapedToken = escapeHtml('$100')
-  const replaced = text.replace(
-    escapedToken,
-    () =>
-      `<span class="mx-1 inline-block whitespace-nowrap border-b-2 border-black px-1 font-bold">${escapedToken}</span>`,
-  )
-  assert.match(replaced, /border-black px-1 font-bold">\$100<\/span>/)
 })

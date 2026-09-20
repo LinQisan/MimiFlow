@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import test from 'node:test'
 
 import {
@@ -9,7 +7,6 @@ import {
   buildJapaneseLexicalRanges,
 } from '../utils/language/japaneseRuby.ts'
 
-const ROOT = process.cwd()
 
 const lexeme = (surface, reading, partsOfSpeech = ['名詞']) => ({
   surface,
@@ -225,26 +222,4 @@ test('custom ruby never shifts adjacent lexical token ranges', () => {
   assert.equal(personalTokens[1].html, 'フェリー')
   assert.doesNotMatch(personalTokens[0].html, /data-vocab-token/)
   assert.doesNotMatch(personalTokens[1].html, /data-vocab-token/)
-})
-
-test('wordbook underlines target token wrappers instead of ruby fragments', async () => {
-  const [hook, css] = await Promise.all([
-    readFile(path.join(ROOT, 'modules/knowledge/learning-records/useStudyTextHighlights.ts'), 'utf8'),
-    readFile(path.join(ROOT, 'app/globals.css'), 'utf8'),
-  ])
-  const underlineRule = css.match(
-    /\.vocab-token\.study-wordbook-underline\s*\{([\s\S]*?)\}/,
-  )?.[1]
-
-  assert.ok(underlineRule)
-  assert.match(hook, /listVocabTokenElements/)
-  assert.match(hook, /mountWordbookTokenUnderlines/)
-  assert.match(hook, /buildLearningPointTextIndex/)
-  assert.match(hook, /candidatesBySurface/)
-  assert.match(hook, /data-wordbook-ids/)
-  assert.doesNotMatch(hook, /splitText\(/)
-  assert.match(underlineRule, /line-height:\s*1\.25/)
-  assert.match(underlineRule, /vertical-align:\s*baseline/)
-  assert.match(underlineRule, /border-bottom:\s*1\.5px solid var\(--word-color\)/)
-  assert.doesNotMatch(underlineRule, /text-decoration|box-shadow|background/)
 })

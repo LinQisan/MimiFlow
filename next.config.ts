@@ -24,15 +24,15 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  serverExternalPackages: ['@mimiflow/sudachi'],
   outputFileTracingIncludes: {
-    '/api/pronunciation': ['./scripts/sudachi_pronunciation.py'],
-    '/reading/articles/*': ['./scripts/sudachi_pronunciation.py'],
-    '/practice/*': ['./scripts/sudachi_pronunciation.py'],
+    '/*': [
+      './node_modules/@mimiflow/sudachi/sudachi.node',
+      './node_modules/@mimiflow/sudachi/resources/*',
+    ],
   },
-  // The local Sudachi virtualenv is a development runtime, not a deployable
-  // asset. Its Python symlink can point outside the project tracing root.
   outputFileTracingExcludes: {
-    '/*': ['./.venv/**/*'],
+    '/*': ['./modules/language/native/target/**/*'],
   },
   // Allow devices on the local network to load the dev client from this Mac.
   // This must contain the hostname in the page URL, not the client device IP.

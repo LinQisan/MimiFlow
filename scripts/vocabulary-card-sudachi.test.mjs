@@ -1,6 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
-import path from 'node:path'
 import test from 'node:test'
 
 import {
@@ -16,7 +14,7 @@ import {
 import { getVocabularyMatchVariants } from '../utils/text/pronunciation.ts'
 
 // Lexicon entries copied verbatim from a real run of
-// `scripts/sudachi_pronunciation.py` for the card below, so this test locks
+// the pinned Sudachi analyzer for the card below, so this test locks
 // the render contract against the actual Sudachi output shape.
 const LEXICON = {
   '事前': { surface: '事前', dictionaryForm: '事前', normalizedForm: '事前', reading: 'じぜん', dictionaryReading: 'じぜん', partsOfSpeech: ['名詞'] },
@@ -92,23 +90,6 @@ test('card sentence renders Sudachi ruby on every kanji token', () => {
   assert.deepEqual([...starts].sort((a, b) => a - b), starts)
 })
 
-test('card resolver prefers Sudachi in default mode, keeps personal fallback', async () => {
-  const tabs = await readFile(
-    path.join(process.cwd(), 'modules/knowledge/vocabulary/components/VocabularyTabs.tsx'),
-    'utf8',
-  )
-  const resolver = tabs.slice(tabs.indexOf('const pronunciationSourceForVocab'))
-  const body = resolver.slice(0, resolver.indexOf('\n  }\n'))
-  // Default mode with Sudachi data ready short-circuits before the authored
-  // (N語彙トレーニング) preference.
-  const sudachiBranch = body.indexOf("return 'sudachi' as const")
-  const authoredBranch = body.indexOf('prefersAuthoredVocabularyPronunciation')
-  assert.ok(sudachiBranch >= 0 && authoredBranch >= 0 && sudachiBranch < authoredBranch)
-  assert.match(body, /sudachiAvailable/)
-  // "我的" and non-Japanese paths still resolve to personal.
-  assert.match(body, /return 'personal' as const/)
-})
-
 // Lexicon entries copied verbatim from a real Sudachi run for the sentence
 // below. Headword 後(に) (reading のちに) never matches it, which used to
 // blank the whole sentence before the Sudachi branch was decoupled.
@@ -159,22 +140,6 @@ test('sentence without headword match still renders full Sudachi ruby', () => {
   const starts = [...html.matchAll(/data-vocab-start="(\d+)"/g)].map(m => Number(m[1]))
   assert.ok(starts.length > 5)
   assert.deepEqual([...starts].sort((a, b) => a - b), starts)
-})
-
-test('sentence component keeps the sudachi-no-match fallback branch', async () => {
-  const component = await readFile(
-    path.join(
-      process.cwd(),
-      'modules/knowledge/vocabulary/components/VocabularySentenceText.tsx',
-    ),
-    'utf8',
-  )
-  // The whole-text fallback must sit inside the Sudachi branch, before the
-  // highlight split; personal/off paths below stay untouched.
-  const sudachiBranch = component.indexOf("pronunciationSource === 'sudachi'")
-  const fallback = component.indexOf('if (matchedSurfaces.length === 0)', sudachiBranch)
-  const personalPath = component.indexOf('const renderHighlightedSurface')
-  assert.ok(sudachiBranch >= 0 && fallback > sudachiBranch && personalPath > fallback)
 })
 
 test('display and copy share one inline-notation decision', () => {

@@ -29,8 +29,8 @@ import {
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseJsonStringList } from '@/utils/text/jsonList'
 
-// Keep the normal corpus in one worker. Starting a full Sudachi dictionary for
-// every small batch is much more expensive than tokenizing the batch itself.
+// Batch the corpus through the shared native dictionary. Its version key is
+// unchanged because Rust reproduces the same engine/dictionary/split-C output.
 const SUDACHI_ANALYSIS_BATCH_CHARACTERS = 120_000
 const SUDACHI_ANALYSIS_BATCH_TEXTS = 1_000
 export const SUDACHI_ANALYSIS_TOKENIZER_VERSION =

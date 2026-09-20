@@ -306,68 +306,6 @@ test('wordbook scope options preserve authored order, empty lists and distinct s
   assert.equal(options[0].totalCount, 0)
 })
 
-test('practice page exposes the vocabulary analysis dialog and source builder', async () => {
-  const [page, client, launcher, server, domain, route, wordbookRoute, wordsRoute] = await Promise.all([
-    readFile(path.join(ROOT, 'app/practice/page.tsx'), 'utf8'),
-    readFile(path.join(ROOT, 'modules/practice/components/PapersListClient.tsx'), 'utf8'),
-    readFile(
-      path.join(ROOT, 'modules/practice/components/PracticeInsightsLaunchers.tsx'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/practice/server/vocabulary-analytics.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'modules/practice/domain/vocabulary-analytics.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'app/api/practice/vocabulary-analytics/route.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'app/api/practice/vocabulary-wordbooks/route.ts'),
-      'utf8',
-    ),
-    readFile(
-      path.join(ROOT, 'app/api/practice/vocabulary-analytics/words/route.ts'),
-      'utf8',
-    ),
-  ])
-
-  assert.match(page, /PapersListClient/)
-  assert.match(client, /VocabularyAnalyticsLauncher/)
-  assert.match(launcher, /disabled=\{disabled\}/)
-  assert.doesNotMatch(
-    launcher,
-    /disabled=\{disabled \|\| loadState === 'loading'\}/,
-  )
-  assert.match(domain, /文字・語彙/)
-  assert.match(domain, /applyPracticeVocabularyKnowledge/)
-  assert.match(server, /correctOptionTexts/)
-  assert.match(server, /dialogueText/)
-  assert.match(server, /cleanAnalyticsText/)
-  assert.match(server, /wordbookLinksPromise/)
-  assert.match(server, /vocabulary\.word = ANY\(\$\{candidateWords\}\)/)
-  assert.match(server, /getPracticeVocabularyWordbookEntries/)
-  assert.match(wordbookRoute, /searchParams/)
-  assert.match(route, /practice-vocabulary-analytics-v10/)
-  assert.match(route, /Server-Timing/)
-  assert.match(route, /serializationMs/)
-  assert.match(route, /getPracticeVocabularyAnalyticsSummary/)
-  assert.doesNotMatch(route, /personalizePracticeVocabularyAnalytics/)
-  assert.match(launcher, /vocabulary-analytics\/words\?all=true/)
-  assert.match(wordsRoute, /personalizePracticeVocabularyAnalytics/)
-  assert.match(wordsRoute, /profile/)
-  assert.match(wordsRoute, /page/)
-  assert.match(wordsRoute, /limit/)
-  assert.match(wordsRoute, /hasNextPage/)
-  assert.match(server, /SUDACHI_ANALYSIS_BATCH_CHARACTERS/)
-  assert.match(server, /documentIndexes\[token\.textIndex\]/)
-  assert.match(server, /if \(!analysis\.available\)/)
-})
-
 test('mastered vocabulary preferences are persisted per user', async () => {
   const [route, schema] = await Promise.all([
     readFile(

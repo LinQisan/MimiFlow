@@ -1,0 +1,18 @@
+[package]
+name = "mimiflow-sudachi"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", default-features = false, features = ["napi8", "serde-json"] }
+napi-derive = "2"
+serde_json = { version = "1", features = ["preserve_order"] }
+sudachi = { git = "https://github.com/WorksApplications/sudachi.rs.git", rev = "90fd6068c80c2fc3b63e0dbab0e341475bad4d8f" }
+
+[build-dependencies]
+napi-build = "2"

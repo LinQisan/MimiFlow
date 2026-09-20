@@ -1,0 +1,19 @@
+{
+  "name": "@mimiflow/sudachi",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "files": [
+    "index.cjs",
+    "index.d.ts",
+    "LICENSE",
+    "resources/*.def",
+    "resources/sudachi.json",
+    "resources/LEGAL",
+    "resources/LICENSE-2.0.txt"
+  ],
+  "scripts": {
+    "build": "cargo build --locked --release --jobs 2 && node install-binary.mjs"
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { annotateExamText } from './annotate'
+import { SortingResult } from './SortingResult'
 import type {
   ExamAnnotationSettings,
   ExamQuestion,
@@ -21,14 +22,6 @@ type SortingQuestionProps = {
   isInteractionLocked?: boolean
   isJapanesePaper?: boolean
   annotation: ExamAnnotationSettings
-}
-
-const resolveOptionOrder = (
-  order: Array<string | null> | undefined,
-  options: ExamQuestionOption[],
-) => {
-  if (!order) return []
-  return order.map(id => options.find(option => option.id === id) || null)
 }
 
 const createSlotDraft = (
@@ -114,11 +107,6 @@ export function SortingQuestion({
 
   const [slots, setSlots] = useState<(ExamQuestionOption | null)[]>([])
   const [pool, setPool] = useState<ExamQuestionOption[]>([])
-  const correctSlots = useMemo(
-    () => resolveOptionOrder(question.correctOrder, options),
-    [options, question.correctOrder],
-  )
-  const correctOption = starIndex >= 0 ? correctSlots[starIndex] : null
 
   useEffect(() => {
     const initialAnswerId = currentOrder?.some(Boolean) ? undefined : currentAnswer
@@ -243,6 +231,17 @@ export function SortingQuestion({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [isInteractionLocked, onOrderChange, options, pool, slots, syncAnswer])
 
+  if (isSubmitted) {
+    return (
+      <SortingResult
+        question={question}
+        selectedSlots={slots}
+        annotation={annotation}
+        isJapanesePaper={isJapanesePaper}
+      />
+    )
+  }
+
   return (
     <div className='mt-4'>
       <div
@@ -275,10 +274,6 @@ export function SortingQuestion({
           const slotIndex = segment.slotIndex!
           const filled = slots[slotIndex]
           const isStar = segment.isStar || slotIndex === starIndex
-          const positionIsCorrect =
-            isSubmitted &&
-            Boolean(filled) &&
-            filled?.id === correctSlots[slotIndex]?.id
 
           return (
             <button
@@ -297,12 +292,8 @@ export function SortingQuestion({
               data-context-role='sorting-slot'
               aria-label={`${isStar ? '星号' : `第 ${slotIndex + 1}`}排序位${filled ? `：${filled.text}` : ''}`}
               className={`relative mx-1 inline-flex min-h-12 min-w-24 items-center justify-center rounded-lg border px-3 align-middle shadow-sm transition-colors duration-200 ${
-                isSubmitted && filled
-                  ? positionIsCorrect
-                    ? 'border-emerald-400 bg-emerald-50 text-emerald-900'
-                    : 'border-rose-400 bg-rose-50 text-rose-900'
-                  : filled
-                    ? 'border-orange-300 bg-orange-50 text-gray-800'
+                filled
+                  ? 'border-orange-300 bg-orange-50 text-gray-800'
                   : 'border-dashed border-slate-300 bg-slate-50 text-slate-400'
               }`}>
               <span data-context-ignore='true' aria-hidden='true' className='select-none absolute -top-2.5 left-2 rounded-full bg-white px-1.5 text-[10px] font-bold leading-5 text-orange-500 shadow-sm'>
@@ -366,69 +357,6 @@ export function SortingQuestion({
           </div>
         )}
 
-        {isSubmitted && (
-          <div
-            data-source-type='QUIZ_QUESTION'
-            data-source-id={question.id}
-            data-context-block='true'
-            data-context-role='sorting-result'
-            className='mx-auto max-w-4xl space-y-5'>
-            {[
-              { label: '你的排列', values: slots, compare: true },
-              { label: '正确排列', values: correctSlots, compare: false },
-            ].map(row => (
-              <div key={row.label}>
-                <div className='mb-2 text-xs font-bold tracking-wide text-slate-600'>
-                  {row.label}：
-                </div>
-                <div className='flex flex-wrap items-center gap-2' aria-label={row.label}>
-                  {row.values.map((option, index) => {
-                    const positionIsCorrect = option?.id === correctSlots[index]?.id
-                    const tone = row.compare
-                      ? positionIsCorrect
-                        ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
-                        : 'border-rose-300 bg-rose-50 text-rose-900'
-                      : 'border-slate-300 bg-white text-slate-800'
-                    return (
-                      <span key={`${row.label}-${index}`} className='contents'>
-                        {index > 0 && <span aria-hidden='true' className='text-slate-400'>→</span>}
-                        <span className={`rounded-lg border px-3 py-2 text-sm font-semibold ${tone}`}>
-                          {index === starIndex && <span className='mr-1 text-orange-600'>★</span>}
-                          <span
-                            className={isJapanesePaper ? 'exam-japanese-text' : ''}
-                            dangerouslySetInnerHTML={{
-                              __html: annotateExamText({
-                                text: option?.text || '未作答',
-                                settings: annotation,
-                              }),
-                            }}
-                          />
-                        </span>
-                      </span>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
-            <div
-              data-source-type='QUIZ_QUESTION'
-              data-source-id={question.id}
-              data-context-block='true'
-              data-context-role='sorting-correct-answer'
-              className='border-t border-slate-200 pt-4 text-sm font-bold text-slate-700'>
-              <span>★ 正确答案：</span>
-              <span
-                className='text-emerald-700'
-                dangerouslySetInnerHTML={{
-                  __html: annotateExamText({
-                    text: correctOption?.text || '未配置',
-                    settings: annotation,
-                  }),
-                }}
-              />
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

@@ -8,18 +8,17 @@ Next.js 16 · React 19 · TypeScript · Tailwind CSS · Prisma · PostgreSQL
 
 ## Development
 
-Requires Node.js 22–26, Python 3, and PostgreSQL. Set `DATABASE_URL` in `.env.local`, then run:
+Requires Node.js 22–26, Rust 1.88+, and PostgreSQL. Set `DATABASE_URL` in `.env.local`, then run:
 
 ```sh
 npm ci
-npm run sudachi:setup
 npm run db:push
 npm run dev
 ```
 
 Open [localhost:3000](http://localhost:3000). Content management is at `/manage`.
 `npm ci` generates the Prisma client; after schema edits run `npm run db:generate` and `npm run db:push`.
-Sudachi provides Japanese text analysis; use `SUDACHI_PYTHON` for an existing Python environment.
+Sudachi runs in-process through a Rust Node-API addon. `npm ci` builds it and installs the pinned full dictionary; see [native setup](modules/language/native/README.md).
 On macOS, development startup can start Homebrew PostgreSQL; set `POSTGRES_SERVICE` if multiple versions are installed.
 
 ## Structure
