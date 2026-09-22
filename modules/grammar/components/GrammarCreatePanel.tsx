@@ -87,7 +87,7 @@ export default function GrammarCreatePanel({
   }
 
   return (
-    <section className='rounded-xl border border-slate-200 bg-white shadow-sm'>
+    <section className='rounded-xl bg-transparent'>
       <div className='flex items-center justify-between gap-3 px-4 py-3'>
         <h2 className='text-sm font-bold text-slate-900'>新建语法</h2>
         <button
@@ -99,7 +99,7 @@ export default function GrammarCreatePanel({
       </div>
 
       {expanded ? (
-        <div className='border-t border-slate-100 p-4'>
+        <div className='p-4'>
         <label className='space-y-1'>
           <span className='text-xs font-semibold text-slate-600'>语法名称</span>
           <input
@@ -152,7 +152,7 @@ export default function GrammarCreatePanel({
         <summary className='cursor-pointer list-none px-3 py-2 text-xs font-semibold text-slate-600'>
           相似语法 {selectedSimilarIds.length > 0 ? `· 已选 ${selectedSimilarIds.length}` : ''}
         </summary>
-        <div className='border-t border-slate-200 p-3'>
+        <div className='p-3'>
         <div className='mb-2 flex items-center justify-between gap-2'>
           <input
             value={similarFilter}

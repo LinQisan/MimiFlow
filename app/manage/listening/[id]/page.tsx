@@ -108,7 +108,7 @@ export default async function ManageAudioMaterialEditPage({
             </div>
           </header>
 
-          <section className='mb-5 border-y border-slate-200 py-4'>
+          <section className='mb-5 py-4'>
             <div className='mb-3 flex flex-wrap items-center justify-between gap-2'>
               <h2 className='ui-section-head'>材料信息</h2>
               <span className='rounded-full border border-sky-100 bg-white px-2.5 py-1 text-[11px] font-bold text-sky-700'>
@@ -149,13 +149,13 @@ export default async function ManageAudioMaterialEditPage({
             />
           </section>
 
-          <details className='group mt-8 border-y border-slate-200 py-4'>
+          <details className='group mt-8 py-4'>
             <summary className='flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-slate-600 marker:content-none'>
               <span>危险操作</span>
               <span className='text-xs text-slate-400 group-open:hidden'>展开</span>
               <span className='hidden text-xs text-slate-400 group-open:inline'>收起</span>
             </summary>
-            <div className='border-t border-slate-100 p-4'>
+            <div className='p-4'>
               <DeleteAudioMaterialButton
                 id={material.id}
                 title={material.title}

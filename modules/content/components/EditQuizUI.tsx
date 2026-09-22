@@ -254,7 +254,7 @@ export default function EditQuizUI({
 
   return (
     <div className='relative mx-auto max-w-6xl animate-in px-3 pb-28 pt-3 fade-in duration-500 md:px-8 md:pb-32 md:pt-6'>
-      <div className='sticky top-0 z-40 -mx-3 mb-6 border-b border-gray-100 bg-white/95 px-3 py-4 shadow-sm backdrop-blur-md md:-mx-8 md:mb-8 md:px-8 md:py-5'>
+      <div className='sticky top-0 md:top-[4.5rem] z-30 -mx-3 mb-6 border-b border-gray-100 bg-white/95 px-3 py-4 backdrop-blur-md md:-mx-8 md:mb-8 md:px-8 md:py-5'>
         <div className='flex flex-col justify-between gap-4 md:flex-row md:items-start'>
         <div className='flex items-start gap-3 flex-1'>
           <Link
@@ -307,7 +307,7 @@ export default function EditQuizUI({
       </div>
       </div>
 
-      <section className='flex w-full flex-col border-t border-slate-200 py-6 md:py-8'>
+      <section className='flex w-full flex-col py-6 md:py-8'>
         <div className='flex items-center justify-between mb-8 shrink-0 relative'>
           <h2 className='text-xl font-bold text-gray-800'>题目列表</h2>
 
@@ -582,7 +582,7 @@ export default function EditQuizUI({
                         </ActionInterceptor>
                       </div>
                     ) : (
-                      <div className='group relative rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-400 md:p-6'>
+                      <div className='group relative bg-slate-500/[0.025] p-5 transition-colors md:p-6'>
                         <div className='flex justify-between items-start mb-4 gap-2'>
                           <div className='flex items-center gap-3 flex-wrap'>
                             <ActionInterceptor>

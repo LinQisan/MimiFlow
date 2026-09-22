@@ -264,7 +264,7 @@ export default async function UnifiedImportPage({
             />
 
             {toeicPart ? (
-              <div className='mb-5 border-b border-slate-300 pb-4'>
+              <div className='mb-5 pb-4'>
                 <span className='mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-400'>
                   TOEIC Part
                 </span>
@@ -291,7 +291,7 @@ export default async function UnifiedImportPage({
             ) : null}
 
             {japaneseListeningSection ? (
-              <div className='mb-5 border-b border-slate-300 pb-4'>
+              <div className='mb-5 pb-4'>
                 <nav
                   aria-label='选择日语听力题型'
                   className='flex flex-wrap gap-x-5 gap-y-2'>

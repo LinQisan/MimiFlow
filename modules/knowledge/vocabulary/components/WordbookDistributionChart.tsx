@@ -12,10 +12,12 @@ export default function WordbookDistributionChart({
   distribution,
   title = '单词书分布',
   description,
+  compact = false,
 }: {
   distribution: PaperWordbookDistribution
   title?: string
   description?: string
+  compact?: boolean
 }) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
@@ -41,7 +43,7 @@ export default function WordbookDistributionChart({
   ].filter(row => row.matchedCount > 0)
 
   return (
-    <section aria-label={title} className='border-y border-slate-200 py-5'>
+    <section aria-label={title} className={compact ? 'py-2' : 'border-y border-slate-200 py-5'}>
       <div className='flex flex-wrap items-end justify-between gap-x-4 gap-y-1'>
         <div>
           <h3 className='text-sm font-semibold text-slate-950'>{title}</h3>
@@ -55,7 +57,7 @@ export default function WordbookDistributionChart({
         </p>
       </div>
 
-      <ol className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
+      <ol className={compact ? 'mt-3 space-y-3' : 'mt-4 divide-y divide-slate-200 border-y border-slate-200'}>
         {rows.map((row, index) => {
           const isExpanded = expandedId === row.id
           const isOutside = row.kind === 'outside'
@@ -120,7 +122,7 @@ export default function WordbookDistributionChart({
               {isExpanded ? (
                 <div
                   id={`wordbook-distribution-${row.id}`}
-                  className='border-t border-slate-200 px-4 py-3 sm:pl-[3.25rem]'>
+                  className={compact ? 'bg-slate-500/[0.025] px-4 py-3 sm:pl-[3.25rem]' : 'border-t border-slate-200 px-4 py-3 sm:pl-[3.25rem]'}>
                   <p className='mb-2 text-[11px] font-medium text-slate-400'>
                     {isOutside
                       ? '尚未收录的单词'
@@ -131,7 +133,7 @@ export default function WordbookDistributionChart({
                       <li
                         key={word}
                         lang='ja'
-                        className='rounded-md border border-slate-200 bg-white px-2.5 py-1 text-sm font-medium text-slate-700'>
+                        className={compact ? 'px-2 py-1 text-sm font-medium text-slate-700' : 'rounded-md border border-slate-200 bg-white px-2.5 py-1 text-sm font-medium text-slate-700'}>
                         {word}
                       </li>
                     ))}

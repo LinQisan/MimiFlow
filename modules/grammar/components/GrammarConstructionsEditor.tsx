@@ -103,8 +103,8 @@ export default function GrammarConstructionsEditor({
             setDraggingId(null)
             setOverId(null)
           }}
-          className={`rounded-lg border bg-white p-2.5 transition-colors ${
-            overId === item.id ? 'border-slate-500' : 'border-slate-200'
+          className={`px-2.5 py-3 transition-colors ${
+            overId === item.id ? 'bg-slate-100 ring-1 ring-slate-500' : 'bg-transparent'
           }`}>
           <div className='mb-2 flex items-center justify-between'>
             <div className='flex items-center gap-2 text-xs font-semibold text-slate-500'>

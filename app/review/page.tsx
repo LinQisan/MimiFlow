@@ -27,18 +27,18 @@ export default async function ReviewPage() {
   return (
     <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-8 md:py-8'>
       <div className='mx-auto max-w-5xl space-y-2'>
-        <section className='grid gap-4 md:grid-cols-2'>
+        <section className='grid gap-8 md:grid-cols-2 md:gap-12'>
           {sections.map(section => (
             <article
               key={section.title}
-              className='border-b border-slate-200 py-5 first:border-t md:py-6'>
+              className='py-2'>
               <div className='flex items-start justify-between gap-4'>
                 <div>
                   <h2 className='text-base font-bold text-slate-900'>
                     {section.title}
                   </h2>
                 </div>
-                <span className='min-w-16 border-l border-slate-300 pl-4 text-right font-sans text-2xl font-semibold text-slate-800'>
+                <span className='min-w-16 pl-4 text-right font-sans text-2xl font-semibold text-slate-800'>
                   {section.count}
                 </span>
               </div>

@@ -781,7 +781,7 @@ export default function PaperQuestionEditor({
     <main
       className={`min-h-screen bg-[#f6f5f1] px-3 py-4 md:px-6 md:py-6 ${selectedCount > 0 ? 'pb-28' : ''}`}>
       <div className='mx-auto max-w-6xl space-y-5'>
-        <header className='space-y-4 border-b border-slate-200 pb-5'>
+        <header className='space-y-4 pb-5'>
           <div className='flex flex-wrap items-center gap-x-4 gap-y-2'>
             <Link
               href='/manage/practice'
@@ -885,7 +885,7 @@ export default function PaperQuestionEditor({
         ) : null}
 
         {questionSectionGroups.length === 0 ? (
-          <section className='rounded-xl border border-dashed border-slate-300 bg-white px-4 py-10 text-center text-sm text-slate-500'>
+          <section className='rounded-xl border border-dashed border-slate-300 bg-transparent px-4 py-10 text-center text-sm text-slate-500'>
             暂无题目
           </section>
         ) : (
@@ -909,11 +909,11 @@ export default function PaperQuestionEditor({
                 </span>
               </div>
 
-              <div className='border-t border-slate-200'>
+              <div className=''>
                 {group.materials.map((material, materialIndex) => (
                   <div key={material.id} className='contents'>
                     {material.materialType !== 'VOCAB_GRAMMAR' ? (
-                      <div className='border-b border-slate-200 bg-white/70 px-3 py-2.5'>
+                      <div className='bg-white/70 px-3 py-2.5'>
                         <div className='flex min-w-0 items-center justify-between gap-2'>
                           <div className='min-w-0'>
                             <h3 className='truncate text-sm font-bold text-slate-900'>
@@ -977,7 +977,7 @@ export default function PaperQuestionEditor({
                         return (
                           <article
                             key={question.id}
-                            className={`paper-question-row overflow-hidden border-b border-slate-200 bg-transparent ${
+                            className={`paper-question-row mb-4 overflow-hidden bg-transparent ${
                               dirtyIds.has(question.id) ? 'bg-amber-50/40' : ''
                             }`}>
                             <div className='flex min-h-12 items-center gap-2 px-3 py-2'>
@@ -1059,9 +1059,9 @@ export default function PaperQuestionEditor({
                             </div>
 
                             {isOpen ? (
-                              <div className='border-t border-slate-200 bg-slate-100/70 p-3 md:p-4'>
+                              <div className='bg-slate-100/70 p-3 md:p-4'>
                                 <div className='grid gap-3 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]'>
-                                  <section className='space-y-4 rounded-xl border border-slate-200 bg-white p-4'>
+                                  <section className='space-y-4 rounded-xl bg-transparent p-4'>
                                     <div className='flex items-center justify-between gap-3'>
                                       <h4 className='text-sm font-bold text-slate-900'>
                                         题目内容
@@ -1130,7 +1130,7 @@ export default function PaperQuestionEditor({
                                               ? '引用原文（可选）'
                                               : '语境句（可选）'}
                                         </summary>
-                                        <div className='border-t border-slate-200 p-2'>
+                                        <div className='p-2'>
                                           <textarea
                                             value={question.contextSentence}
                                             onChange={event =>
@@ -1170,7 +1170,7 @@ export default function PaperQuestionEditor({
                                     </label>
                                   </section>
 
-                                  <section className='rounded-xl border border-slate-200 bg-white p-4'>
+                                  <section className='rounded-xl bg-transparent p-4'>
                                     <div className='flex flex-wrap items-center justify-between gap-2'>
                                       <div>
                                         <h4 className='text-sm font-bold text-slate-900'>
@@ -1214,7 +1214,7 @@ export default function PaperQuestionEditor({
                                     </div>
 
                                     {question.questionType === 'SORTING' ? (
-                                      <div className='mt-4 border-y border-slate-200 py-4'>
+                                      <div className='mt-4 py-4'>
                                         <div className='mb-3 flex items-center justify-between gap-3'>
                                           <span className='text-xs font-bold text-slate-700'>
                                             按正确语序点击选项

@@ -71,7 +71,7 @@ export default async function ManageFsrsPage() {
   return (
     <main className='min-h-screen bg-slate-50 px-4 pb-12 text-slate-900 md:px-8'>
       <div className='mx-auto max-w-5xl'>
-        <header className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 py-4'>
+        <header className='flex flex-wrap items-center justify-between gap-3 py-4'>
           <p className='ui-meta'>复习调度</p>
           <div className='flex gap-2'>
             <Link href='/manage/system' className='ui-btn ui-btn-sm'>返回系统</Link>
@@ -91,12 +91,12 @@ export default async function ManageFsrsPage() {
           </div>
         </section>
 
-        <section aria-label='近期复习概览' className='grid grid-cols-3 border-y border-slate-200 py-5'>
-          <div className='border-r border-slate-200 pr-4'>
+        <section aria-label='近期复习概览' className='grid grid-cols-3 py-5'>
+          <div className='pr-4'>
             <p className='text-[11px] font-semibold tracking-wide text-slate-500'>30 天复习</p>
             <p className='mt-1 text-2xl font-semibold tabular-nums'>{data.stats.eventCount30d}</p>
           </div>
-          <div className='border-r border-slate-200 px-4'>
+          <div className='px-4'>
             <p className='text-[11px] font-semibold tracking-wide text-slate-500'>7 天记住</p>
             <p className='mt-1 text-2xl font-semibold tabular-nums'>
               {data.stats.eventCount7d ? `${data.stats.successRate7d}%` : '—'}
@@ -111,7 +111,7 @@ export default async function ManageFsrsPage() {
         </section>
 
         {hasRecentData ? (
-          <section className='grid gap-8 border-b border-slate-200 py-8 md:grid-cols-2'>
+          <section className='grid gap-8 py-8 md:grid-cols-2'>
             <div>
               <div className='mb-5 flex items-end justify-between gap-3'>
                 <div>
@@ -152,7 +152,7 @@ export default async function ManageFsrsPage() {
             </div>
           </section>
         ) : (
-          <section className='border-b border-slate-200 py-8'>
+          <section className='py-8'>
             <h2 className='text-base font-semibold'>目前不需要处理</h2>
             <p className='mt-2 max-w-2xl text-sm leading-6 text-slate-500'>
               系统会在每次记忆复习后记录结果。积累数据后，这里才会显示评分分布和变化趋势，避免用没有意义的 0% 造成误解。
@@ -160,7 +160,7 @@ export default async function ManageFsrsPage() {
           </section>
         )}
 
-        <details className='group border-b border-slate-200 py-5'>
+        <details className='group py-5'>
           <summary className='flex cursor-pointer list-none items-center justify-between gap-4 marker:content-none'>
             <div>
               <h2 className='text-sm font-semibold'>高级调度信息</h2>
@@ -168,7 +168,7 @@ export default async function ManageFsrsPage() {
             </div>
             <span aria-hidden className='text-sm text-slate-400 transition-transform group-open:rotate-180'>⌄</span>
           </summary>
-          <div className='mt-5 grid gap-5 border-t border-slate-100 pt-5 sm:grid-cols-2'>
+          <div className='mt-5 grid gap-5 pt-5 sm:grid-cols-2'>
             <dl className='grid grid-cols-[8rem_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm'>
               <dt className='text-slate-500'>当前模式</dt>
               <dd className='font-semibold'>{data.stats.usingFallback ? '默认安全参数' : '自定义参数'}</dd>

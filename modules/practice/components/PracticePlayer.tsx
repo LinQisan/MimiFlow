@@ -6,10 +6,6 @@ import React from 'react'
 import styles from './PracticePlayer.module.css'
 import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
-import {
-  useShowMeaning,
-  useShowPronunciation,
-} from '@/modules/language/hooks/usePronunciationPrefs'
 import { usePracticeSession } from '@/modules/practice/hooks/usePracticeSession'
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { QuestionRenderer } from '@/modules/questions/components/QuestionRenderer'
@@ -170,8 +166,8 @@ export function PracticePlayer({
   const [learningPointsEnabled, setLearningPointsEnabled] = React.useState(false)
   const playerRootRef = React.useRef<HTMLDivElement>(null)
   const { selection, closeSelection } = useTextSelection(selectionEnabled)
-  const { showPronunciation, setShowPronunciation } = useShowPronunciation()
-  const { showMeaning, setShowMeaning } = useShowMeaning()
+  const [showPronunciation, setShowPronunciation] = React.useState(false)
+  const [showMeaning, setShowMeaning] = React.useState(false)
   const [localPronunciationMap, setLocalPronunciationMap] =
     React.useState(pronunciationMap)
   const [sudachiPronunciationMap, setSudachiPronunciationMap] =
@@ -520,7 +516,7 @@ export function PracticePlayer({
   }, [currentGroupIndex, session.currentIndex])
 
   React.useEffect(() => {
-    const needsSudachi = loadSudachiInBackground && !sudachiAvailable
+    const needsSudachi = showPronunciation && loadSudachiInBackground && !sudachiAvailable
     const needsWordbooks = showMeaning && !wordbookAnalysisLoaded
     if (!isJapanesePaper || (!needsSudachi && !needsWordbooks)) return
     const controller = new AbortController()
@@ -580,6 +576,7 @@ export function PracticePlayer({
     localVocabularyMetaMap,
     questions,
     showMeaning,
+    showPronunciation,
     sudachiAvailable,
     wordbookAnalysisLoaded,
   ])

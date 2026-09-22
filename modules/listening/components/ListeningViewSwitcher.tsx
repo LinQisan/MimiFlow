@@ -50,15 +50,19 @@ export default function ListeningViewSwitcher({
     () => Array.from(new Set(entries.flatMap(entry => entry.languages))).sort((a, b) => a.localeCompare(b, 'zh-CN')),
     [entries],
   )
+  const searchIndex = useMemo(
+    () => new Map(entries.map(entry => [entry.id, entry.searchText.normalize('NFKC').toLowerCase()])),
+    [entries],
+  )
   const filteredEntries = useMemo(() => {
     const query = filters.query.trim().normalize('NFKC').toLowerCase()
     return entries.filter(entry => {
       if (filters.kind !== 'all' && entry.kind !== filters.kind) return false
       if (filters.language !== 'all' && !entry.languages.includes(filters.language)) return false
       if (!query) return true
-      return entry.searchText.normalize('NFKC').toLowerCase().includes(query)
+      return searchIndex.get(entry.id)?.includes(query)
     })
-  }, [entries, filters])
+  }, [entries, filters, searchIndex])
   const hasActiveFilter = Boolean(filters.query.trim()) || filters.kind !== 'all' || filters.language !== 'all'
   const visibleItemCount = filteredEntries.reduce(
     (sum, entry) => sum + entry.itemCount,
@@ -72,7 +76,7 @@ export default function ListeningViewSwitcher({
     .filter(group => group.entries.length > 0)
 
   return (
-    <div className='grid gap-8 py-8 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-10 lg:py-11'>
+    <div className='grid gap-5 py-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-8'>
       <aside className='lg:sticky lg:top-24 lg:self-start'>
         <div className='border-b border-slate-200 py-4 lg:border-b-0 lg:py-0'>
           <div className='flex items-center justify-between gap-3'>
@@ -87,8 +91,8 @@ export default function ListeningViewSwitcher({
             ) : null}
           </div>
 
-          <div className='mt-4 space-y-4'>
-            <label className='block'>
+          <div className='mt-3 grid grid-cols-2 gap-3 lg:grid-cols-1'>
+            <label className='col-span-2 block lg:col-span-1'>
               <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>关键词</span>
               <input
                 value={filters.query}
@@ -98,7 +102,7 @@ export default function ListeningViewSwitcher({
               />
             </label>
 
-            <label className='block'>
+            <label className='min-w-0'>
               <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>材料类型</span>
               <CustomSelect
                 value={filters.kind}
@@ -110,7 +114,7 @@ export default function ListeningViewSwitcher({
               </CustomSelect>
             </label>
 
-            <label className='block'>
+            <label className='min-w-0'>
               <span className='mb-1.5 block text-[11px] font-bold tracking-[0.06em] text-slate-500'>语言</span>
               <CustomSelect
                 value={filters.language}
@@ -131,7 +135,7 @@ export default function ListeningViewSwitcher({
         </div>
       </aside>
 
-      <main className='min-w-0'>
+      <div className='min-w-0'>
         {filteredEntries.length === 0 ? (
             <section className='ui-empty'>
             <p className='text-lg font-semibold text-slate-950'>没有找到匹配的听力材料</p>
@@ -144,15 +148,15 @@ export default function ListeningViewSwitcher({
             </button>
           </section>
         ) : (
-          <div className='space-y-10'>
+          <div className='space-y-6'>
             {visibleKinds.map(group => (
               <section key={group.kind}>
-                <div className='mb-4 flex items-center gap-3'>
+                <div className='mb-1 flex items-center gap-2'>
                   <h2 className='text-sm font-semibold text-slate-800'>{kindLabels[group.kind]}</h2>
-                  <span className='h-px flex-1 bg-slate-900/10' />
+
                   <span className='text-xs tabular-nums text-slate-400'>{group.entries.length} 组</span>
                 </div>
-                <div className='space-y-3'>
+                <div className='space-y-7 pt-3'>
                   {group.entries.map(entry => (
                     <div key={entry.id}>{entry.content}</div>
                   ))}
@@ -161,7 +165,7 @@ export default function ListeningViewSwitcher({
             ))}
           </div>
         )}
-      </main>
+      </div>
     </div>
   )
 }

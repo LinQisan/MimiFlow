@@ -630,8 +630,8 @@ export default function VocabularyManageClient({
   return (
     <main className='min-h-full bg-[#f6f5f1] px-3 py-4 md:px-6'>
       <div className='mx-auto max-w-7xl space-y-3'>
-        <section className='border-y border-slate-200 bg-white'>
-          <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
+        <section className='bg-transparent'>
+          <div className='flex flex-wrap items-center justify-between gap-3 px-4 py-3'>
             <div className='flex items-center gap-2 text-sm tabular-nums text-slate-500'>
               <strong className='font-bold text-slate-900'>{totalCount.toLocaleString()}</strong>
               <span>条词汇</span>
@@ -754,7 +754,7 @@ export default function VocabularyManageClient({
         </section>
 
         {activeTool === 'csv' ? (
-          <section className='border-y border-slate-200 bg-white px-4 py-5'>
+          <section className='bg-transparent px-4 py-5'>
             <div className='grid gap-5 lg:grid-cols-2'>
               <div>
                 <h2 className='text-sm font-bold text-slate-900'>按词表导出</h2>
@@ -801,7 +801,7 @@ export default function VocabularyManageClient({
         ) : null}
 
         {activeTool === 'batch' ? (
-          <section className='border-y border-slate-200 bg-white px-4 py-5'>
+          <section className='bg-transparent px-4 py-5'>
             <div className='mb-3 flex items-center justify-between gap-3'>
               <h2 className='text-sm font-bold text-slate-900'>批量编辑</h2>
               <button
@@ -835,7 +835,7 @@ export default function VocabularyManageClient({
                 />
               </label>
             </div>
-            <div className='mt-4 border-t border-slate-200 pt-4'>
+            <div className='mt-4 pt-4'>
               <div className='flex flex-wrap items-center justify-between gap-3'>
                 <div>
                   <h3 className='text-sm font-semibold text-slate-900'>词性</h3>
@@ -914,7 +914,7 @@ export default function VocabularyManageClient({
         ) : null}
 
         {activeTool === 'parts-of-speech' ? (
-          <section className='border-y border-slate-200 bg-white px-4 py-5'>
+          <section className='bg-transparent px-4 py-5'>
             <div className='grid gap-5 lg:grid-cols-[minmax(260px,0.7fr)_1.3fr]'>
               <div>
                 <h2 className='text-sm font-bold text-slate-900'>添加词性层级</h2>
@@ -966,7 +966,7 @@ export default function VocabularyManageClient({
               </div>
               <div>
                 <h2 className='text-sm font-bold text-slate-900'>当前层级 · {languageLabels[partOfSpeechLanguageCode] || partOfSpeechLanguageCode}</h2>
-                <div className='mt-3 divide-y divide-slate-100 border-y border-slate-200'>
+                <div className='mt-3 space-y-4'>
                   {partOfSpeechHierarchy
                     .filter(item => item.languageCode === partOfSpeechLanguageCode)
                     .map(item => (
@@ -1002,7 +1002,7 @@ export default function VocabularyManageClient({
         ) : null}
 
         {activeTool === 'duplicates' ? (
-          <section className='border-y border-slate-200 bg-white px-4 py-5'>
+          <section className='bg-transparent px-4 py-5'>
             <div className='flex flex-wrap items-center justify-between gap-3'>
               <div>
                 <h2 className='text-base font-bold text-slate-900'>重复项整理</h2>
@@ -1027,7 +1027,7 @@ export default function VocabularyManageClient({
                 </button>
               </div>
             </div>
-            <div className='mt-3 divide-y divide-slate-100'>
+            <div className='mt-3 space-y-4'>
               {mergePreview.groups.slice(0, 12).map(group => (
                 <div
                   key={group.groupKey}
@@ -1058,8 +1058,8 @@ export default function VocabularyManageClient({
           </section>
         ) : null}
 
-        <section className='overflow-hidden border-y border-slate-200 bg-white'>
-          <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-stone-50/60 px-4 py-3'>
+        <section className='overflow-hidden bg-transparent'>
+          <div className='flex flex-wrap items-center justify-between gap-3 bg-stone-50/60 px-4 py-3'>
             <p className='text-xs tabular-nums text-slate-500'>
               {rangeStart}–{rangeEnd} / {totalCount.toLocaleString()}
             </p>
@@ -1074,7 +1074,7 @@ export default function VocabularyManageClient({
               ))}
             </div>
           ) : (
-            <div className='divide-y divide-slate-100'>
+            <div className='space-y-4'>
               {vocabList.map(item => {
                 const isEditing = editingId === item.id
                 const isSaving = savingId === item.id
@@ -1087,7 +1087,7 @@ export default function VocabularyManageClient({
                     key={item.id}
                     data-editing={isEditing || undefined}
                     className={`px-3 py-3 transition-colors md:px-4 ${
-                      isEditing ? 'bg-indigo-50/45' : 'hover:bg-stone-50/70'
+                      isEditing ? 'bg-slate-500/[0.025]' : 'hover:bg-stone-50/70'
                     }`}>
                     <div className='grid grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-2 md:grid-cols-[1rem_minmax(10rem,0.75fr)_minmax(14rem,1.25fr)_minmax(11rem,0.9fr)_auto] md:items-center'>
                       <input

@@ -34,11 +34,11 @@ export default async function ManageShadowingEditPage({
           hrefBase='/manage/shadowing'
         />
 
-        <section className='border-b border-slate-200 py-4'>
+        <section className='py-4'>
           <div className='flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between'>
             <div className='min-w-0'>
               <div className='flex flex-wrap items-center gap-2'>
-                <span className='rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700'>
+                <span className='text-xs font-semibold text-slate-500'>
                   跟读材料
                 </span>
                 <span className='rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600'>
@@ -62,7 +62,7 @@ export default async function ManageShadowingEditPage({
             </div>
           </div>
 
-          <div className='mt-5 grid gap-4 border-t border-slate-100 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]'>
+          <div className='mt-5 grid gap-4 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,0.8fr)]'>
             <ListeningTitleForm id={material.id} title={material.title} />
             <div className='min-w-0 rounded-xl bg-slate-50 p-3'>
               <p className='text-[11px] font-bold tracking-wide text-slate-400 uppercase'>音频</p>
@@ -78,17 +78,17 @@ export default async function ManageShadowingEditPage({
           </div>
         </section>
 
-        <section className='rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3 text-sm leading-6 text-slate-700'>
+        <section className='bg-slate-500/[0.025] px-4 py-3 text-sm leading-6 text-slate-700'>
           跟读材料不配置听力题目，主要维护音频、标题、字幕时间轴以及教材章节归类。
         </section>
 
-        <details className='group overflow-hidden border-y border-slate-200 py-4' open>
+        <details className='group overflow-hidden py-4' open>
           <summary className='flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-bold text-slate-800 marker:content-none md:px-5'>
             <span>字幕与时间轴</span>
             <span className='text-xs font-semibold text-slate-400'>{material.dialogues.length} 句</span>
           </summary>
-          <div className='border-t border-slate-200'>
-            <div className='divide-y divide-slate-100 px-3 md:px-4'>
+          <div className=''>
+            <div className='px-3 md:px-4 space-y-4'>
               {material.dialogues.length === 0 ? (
                 <div className='py-10 text-center text-sm text-slate-400'>暂无字幕数据</div>
               ) : material.dialogues.map(dialogue => (

@@ -618,7 +618,7 @@ export default function EditArticleUI({
         ) : null}
 
         {!isPaperArticle ? (
-          <section className="border-b border-slate-200 py-5">
+          <section className="py-5">
             <div className="mb-4 flex flex-wrap gap-2">
               {(
                 [
@@ -671,7 +671,7 @@ export default function EditArticleUI({
           </section>
         ) : null}
 
-        <section className="border-b border-slate-200 py-5">
+        <section className="py-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <h2 className="text-sm font-bold text-slate-900">文章音频</h2>
@@ -821,14 +821,14 @@ export default function EditArticleUI({
                 className="min-h-[68vh] w-full resize-y border border-slate-300 bg-white px-5 py-4 text-base leading-8 text-slate-800 outline-none selection:bg-slate-200 focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
               />
             ) : (
-              <div className='overflow-hidden border border-slate-300'>
+              <div className='overflow-hidden border border-slate-200'>
                 <ArticleBodyPreview text={content} />
               </div>
             )}
           </section>
 
           {isPaperArticle ? (
-            <section className="min-w-0 lg:border-l lg:border-slate-200 lg:pl-8">
+            <section className="min-w-0 lg:pl-8">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-sm font-bold">题目 {questions.length}</h2>
                 <div className="flex items-center gap-3">
@@ -865,7 +865,7 @@ export default function EditArticleUI({
                     const isEditing = editingQuestionId === question.id
                     return (
                       <SortableItem key={question.id} id={question.id}>
-                        <div className="border-b border-slate-200 py-4 last:border-b-0">
+                        <div className="py-4">
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex min-w-0 items-center gap-2 text-xs">
                               <ActionInterceptor>
@@ -909,7 +909,7 @@ export default function EditArticleUI({
 
                           {isEditing ? (
                             <ActionInterceptor className='block w-full'>
-                              <div className='mt-4 border-t border-slate-200 pt-4'>
+                              <div className='mt-4 pt-4'>
                                 <label className='block'>
                                   <span className='flex items-center justify-between gap-3 text-xs font-semibold text-slate-500'>
                                     <span>题干内容</span>
@@ -943,12 +943,12 @@ export default function EditArticleUI({
                                     + 添加选项
                                   </button>
                                 </div>
-                                <div className="mt-2 border-t border-slate-200">
+                                <div className="mt-2">
                                   {question.options.map(
                                     (option, optionIndex) => (
                                       <div
                                         key={option.id}
-                                        className="group flex items-center gap-3 border-b border-slate-200 py-3"
+                                        className="group flex items-center gap-3 py-3"
                                       >
                                         <input
                                           type="radio"

@@ -148,7 +148,7 @@ export default function SearchPage() {
     }
     const missingTypes = nextTypes.filter(type => !cachedByType.has(type))
     const readCachedResults = () =>
-      nextTypes.flatMap(type => cachedByType.get(type) || []).slice(0, 50)
+      nextTypes.flatMap(type => cachedByType.get(type) || [])
 
     if (missingTypes.length === 0) {
       setResults(readCachedResults())
@@ -160,11 +160,7 @@ export default function SearchPage() {
       const next = await searchGlobalContent(q, { types: missingTypes })
       for (const type of missingTypes) {
         const items = next.filter(item => item.type === type)
-        // A full response can truncate later groups. Only cache a missing group
-        // when the result proves that the search was exhaustive.
-        if (items.length > 0 || next.length < 50 || missingTypes.length === 1) {
-          cachedByType.set(type, items)
-        }
+        cachedByType.set(type, items)
       }
       if (requestId === requestIdRef.current) setResults(readCachedResults())
     } finally {

@@ -360,11 +360,11 @@ export default function ReadingCenterClient({
             <div className='space-y-8'>
               {visibleGroups.map(group => (
                 <section key={group.key}>
-                  <div className='flex items-center justify-between gap-4 border-b border-slate-300 py-3'>
-                    <h2 className='text-sm font-semibold text-slate-950'>{group.label}</h2>
+                  <div className='mb-3 flex items-baseline gap-3'>
+                    <h2 className='text-base font-semibold text-slate-950'>{group.label}</h2>
                     <span className='text-xs font-medium text-slate-500'>{group.items.length} 篇</span>
                   </div>
-                  <div className='divide-y divide-slate-200'>
+                  <div className='space-y-3 pl-4 sm:pl-8'>
                     {group.items.map((item, itemIndex) => {
                       const ebook = item.kind === 'ebook'
                       const exam = item.kind === 'exam'
@@ -378,7 +378,7 @@ export default function ReadingCenterClient({
                           : '未命名文章'
                       return (
                         <article key={item.id} className='flex items-center gap-3 transition hover:bg-white/60'>
-                          <Link href={href} prefetch={false} className='group grid min-w-0 flex-1 grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 py-3.5'>
+                          <Link href={href} prefetch={false} className='group grid min-w-0 flex-1 grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-4 py-2'>
                             <span className='truncate text-xs tabular-nums text-slate-400'>
                               {item.kind === 'news'
                                 ? item.publishedDate

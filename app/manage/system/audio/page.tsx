@@ -448,12 +448,12 @@ export default function ManageAudioPage() {
   return (
     <main className='min-h-full px-3 py-4 md:px-6 md:py-8'>
       <div className='mx-auto max-w-7xl space-y-5'>
-        <section className='border-b border-slate-200 py-5'>
+        <section className='py-5'>
           <div className='flex flex-wrap items-end justify-between gap-4'>
             <h1 className='text-xl font-bold text-slate-950'>录音文件</h1>
             <p className='ui-meta'>存储位置：public/audios</p>
           </div>
-          <div className='mt-6 grid grid-cols-2 gap-y-4 border-y border-slate-200 py-4 md:grid-cols-5 md:divide-x md:divide-slate-200'>
+          <div className='mt-6 grid grid-cols-2 gap-y-4 py-4 md:grid-cols-5'>
             {[
               ['文件', summary.totalFiles],
               ['目录', summary.folderCount],
@@ -469,7 +469,7 @@ export default function ManageAudioPage() {
           </div>
         </section>
 
-        <section className='border-y border-slate-200 py-4'>
+        <section className='py-4'>
           <div className='grid gap-3 lg:grid-cols-[minmax(240px,1fr)_220px_auto]'>
             <input
               type='search'
@@ -503,7 +503,7 @@ export default function ManageAudioPage() {
             </button>
           </div>
 
-          <div className='mt-4 grid gap-3 border-t border-slate-200 pt-4 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto] lg:items-end'>
+          <div className='mt-4 grid gap-3 pt-4 lg:grid-cols-[minmax(220px,1fr)_minmax(240px,1fr)_auto] lg:items-end'>
             <div>
               <p className='mb-2 text-xs font-semibold text-slate-600'>上传文件</p>
               <input
@@ -572,7 +572,7 @@ export default function ManageAudioPage() {
               <h2 className='text-sm font-semibold text-slate-900'>目录</h2>
               <span className='text-[11px] text-slate-400'>{summary.folderCount}</span>
             </div>
-            <div className='max-h-[52vh] space-y-0.5 overflow-y-auto border-y border-slate-100 py-2'>
+            <div className='max-h-[52vh] space-y-0.5 overflow-y-auto py-2'>
               <button
                 type='button'
                 onClick={() => {
@@ -613,8 +613,8 @@ export default function ManageAudioPage() {
             </div>
           </aside>
 
-          <section className='overflow-hidden border-y border-slate-200 bg-white'>
-            <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3'>
+          <section className='overflow-hidden bg-transparent'>
+            <div className='flex flex-wrap items-center justify-between gap-3 px-4 py-3'>
               <div className='min-w-0'>
                 <p className='truncate text-sm font-semibold text-slate-900'>{folder || '全部录音'}</p>
                 <p className='mt-0.5 text-xs text-slate-400'>共 {totalCount} 条 · 当前显示 {filtered.length} 条</p>
@@ -629,7 +629,7 @@ export default function ManageAudioPage() {
 
             <div className='min-h-[58vh]'>
               {loading ? (
-                <div className='divide-y divide-slate-100'>
+                <div className='space-y-4'>
                   {Array.from({ length: 6 }).map((_, index) => (
                     <div key={index} className='grid gap-3 px-4 py-5 md:grid-cols-[minmax(0,1fr)_220px]'>
                       <div className='h-12 animate-pulse rounded-lg bg-slate-100' />
@@ -643,7 +643,7 @@ export default function ManageAudioPage() {
                   <p className='mt-2 text-xs text-slate-400'>可以上传文件，或清除搜索与用途筛选。</p>
                 </div>
               ) : (
-                <div className='divide-y divide-slate-100'>
+                <div className='space-y-4'>
                   {filtered.map(item => (
                     <article key={item.path} className='grid gap-4 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_230px_auto] xl:items-center'>
                       <div className='min-w-0'>
@@ -730,7 +730,7 @@ export default function ManageAudioPage() {
               )}
             </div>
 
-            <div className='flex items-center justify-between border-t border-slate-200 px-4 py-3 text-xs text-slate-500'>
+            <div className='flex items-center justify-between px-4 py-3 text-xs text-slate-500'>
               <span className='ui-meta tabular-nums'>第 {currentPage} / {totalPages} 页</span>
               <div className='flex items-center gap-0.5'>
                 <button type='button' aria-label='上一页' disabled={currentPage <= 1} onClick={() => setCurrentPage(page => Math.max(1, page - 1))} className='inline-flex size-7 items-center justify-center rounded-md text-base leading-none text-slate-400 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40'>‹</button>

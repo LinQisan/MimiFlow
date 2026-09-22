@@ -188,13 +188,13 @@ export default function PapersListClient({
               {filteredLevels.map(levelGroup => (
                 <section key={levelGroup.id} id={`paper-level-${levelGroup.id}`} className='scroll-mt-24'>
                   {filteredLevels.length > 1 ? (
-                    <div className='mb-5 flex items-end justify-between gap-4 border-b border-slate-900/10 pb-3'>
+                    <div className='mb-5 flex items-baseline gap-3'>
                       <h2 className='text-xl font-semibold tracking-tight text-slate-950'>{levelGroup.title}</h2>
                       <span className='text-xs font-medium text-slate-500'>{levelGroup.papers.length} 套试卷</span>
                     </div>
                   ) : null}
 
-                  <div className='space-y-3'>
+                  <div className='space-y-7'>
                     {levelGroup.papers.map(paper => (
                       <PaperLibraryItem key={paper.id} paper={paper} />
                     ))}

@@ -1,7 +1,7 @@
 # MimiFlow design system
 
 MimiFlow uses a calm editorial workspace style: warm paper backgrounds, dark ink,
-clear rules, compact controls, and generous reading space. It should feel closer
+restrained dividers, compact controls, and generous reading space. It should feel closer
 to a well-edited study notebook than a colorful consumer dashboard.
 
 The implemented source of truth is `app/globals.css`; shared interactive controls
@@ -20,8 +20,8 @@ is authoritative.
    Long Japanese passages, transcripts, questions, vocabulary, and notes must remain
    more prominent than navigation or decoration.
 
-2. **Hierarchy comes from typography, spacing, and rules.**
-   Prefer whitespace and divider lines to nested containers. Avoid stacking cards
+2. **Hierarchy comes from whitespace, indentation, and typography.**
+   Prefer whitespace and indentation to nested containers. Avoid stacking cards
    inside cards.
 
 3. **The frame is neutral.**
@@ -137,7 +137,7 @@ actions, metadata, or content rather than repeating the same title and descripti
 
 ## 5. Surfaces and depth
 
-* Prefer flat sections separated by `border-slate-200` rules.
+* Prefer flat sections separated by 24–32px of whitespace. Nested groups use 32–40px indentation, smaller headings, and 12–16px spacing. Avoid repeated row borders and vertical divider lines; use a very subtle background for expanded groups when helpful. Reserve borders for controls, data tables, and boundaries needed to understand interaction.
 * Use raised paper where containment improves comprehension:
 
   * inputs
@@ -155,7 +155,7 @@ actions, metadata, or content rather than repeating the same title and descripti
 
 Prefer:
 
-`spacing + typography + hairline rules`
+`whitespace + indentation + typography`
 
 over:
 
@@ -452,8 +452,8 @@ A route page establishes:
 
 It should not reimplement shared control behavior.
 
-Persistent content sections should remain flat or lightly raised and use spacing
-plus rules for grouping.
+Persistent content sections should remain flat and use whitespace, indentation,
+and heading size for grouping.
 
 Floating controls use shared popover primitives.
 
@@ -496,7 +496,7 @@ controls as one coherent feature rather than separate visual systems.
 * Reuse editorial variables and `ui-*` primitives.
 * Reuse shared controls before creating route-specific ones.
 * Use one primary action per local task.
-* Prefer dividers and whitespace to nested card decoration.
+* Prefer whitespace, indentation, and typography to repeated dividers or nested cards.
 * Keep study content readable.
 * Keep management content scan-friendly.
 * Keep typography and spacing responsible for most visual hierarchy.

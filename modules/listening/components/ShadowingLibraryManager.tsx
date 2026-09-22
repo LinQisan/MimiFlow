@@ -58,7 +58,7 @@ export default function ShadowingLibraryManager({
   )
 
   return (
-    <div className='mb-6 border-y border-slate-200'>
+    <div className='mb-6'>
       <button
         type='button'
         aria-expanded={isOpen}
@@ -72,7 +72,7 @@ export default function ShadowingLibraryManager({
       </button>
 
       {isOpen ? (
-        <div className='border-t border-slate-200 py-4'>
+        <div className='py-4'>
           <div className='grid gap-4 lg:grid-cols-2'>
             <CreateNodeForm
               action={createBookAction}
@@ -98,7 +98,7 @@ export default function ShadowingLibraryManager({
             />
           </div>
 
-          <div className='mt-4 divide-y divide-slate-200 border-y border-slate-200'>
+          <div className='mt-4 space-y-4 pl-4 sm:pl-8'>
             {treeRows.map(({ node, depth }) => (
               <NodeEditor key={node.id} node={node} depth={depth} />
             ))}
@@ -202,7 +202,7 @@ function NodeEditor({ node, depth }: { node: CollectionNode; depth: number }) {
         <span className='text-xs text-slate-400'>{isOpen ? '收起' : '编辑'}</span>
       </button>
       {isOpen ? (
-      <form action={updateAction} className='mt-3 grid gap-2 border-t border-slate-200 pt-3 md:grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)_6rem_auto]'>
+      <form action={updateAction} className='mt-3 grid gap-2 pt-3 md:grid-cols-[minmax(0,2fr)_minmax(7rem,1fr)_6rem_auto]'>
         <input type='hidden' name='collectionId' value={node.id} />
         <input type='hidden' name='parentId' value={node.parentId || ''} />
         <input type='hidden' name='description' value={node.description || ''} />

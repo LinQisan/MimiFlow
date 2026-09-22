@@ -17,12 +17,12 @@ export default function ManageSystemPage() {
   return (
     <main className='min-h-screen bg-[#f6f5f1] px-4 py-6 md:px-6 md:py-8'>
       <div className='mx-auto max-w-5xl'>
-        <section className='grid border-y border-slate-200 sm:grid-cols-2 sm:divide-x sm:divide-slate-200'>
+        <section className='grid sm:grid-cols-2 gap-6'>
           {tools.map(tool => (
             <Link
               key={tool.href}
               href={tool.href}
-              className='border-b border-slate-200 px-1 py-4 transition hover:bg-white sm:border-b-0 last:border-b-0'>
+              className='px-1 py-4 transition hover:bg-white'>
               <h2 className='text-sm font-bold'>{tool.title}</h2>
               <p className='mt-1 text-xs leading-5 text-slate-500'>
                 {tool.description}

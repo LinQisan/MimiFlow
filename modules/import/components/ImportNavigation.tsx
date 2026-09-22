@@ -65,7 +65,7 @@ export default function ImportNavigation({
 
   return (
     <aside className='min-w-0 lg:sticky lg:top-24 lg:self-start'>
-      <div className='border-y border-slate-300 py-5'>
+      <div className='py-5'>
         <p className='text-xs font-bold uppercase tracking-[0.16em] text-slate-400'>Import</p>
         <h2 className='mt-2 text-lg font-semibold text-slate-950'>导入内容</h2>
 

@@ -31,7 +31,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
   }, [currentUser.id, paper.id])
 
   return (
-    <article className='group border-b border-slate-200 py-5 transition-colors first:border-t hover:bg-white md:py-6'>
+    <article className='group py-2 transition-colors hover:bg-white/60'>
       <div className='grid gap-5 md:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)_auto] md:items-center'>
         <div className='min-w-0'>
           <h3 className='text-xl font-semibold tracking-tight text-slate-950 md:text-2xl'>
@@ -51,7 +51,7 @@ export default function PaperLibraryItem({ paper }: { paper: ExamHubPaperSummary
           </div>
         </div>
 
-        <div className='border-t border-slate-100 pt-4 md:border-l md:border-t-0 md:py-1 md:pl-6'>
+        <div className='pt-2 md:py-1 md:pl-6'>
           <div className='flex items-end justify-between gap-4'>
             <div>
               <p className='text-[11px] font-bold tracking-[0.08em] text-slate-400'>练习记录</p>

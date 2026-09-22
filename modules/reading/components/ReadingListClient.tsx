@@ -260,7 +260,7 @@ export default function ReadingListClient({
             暂无符合条件的阅读材料
           </p>
         ) : (
-          <div className="divide-y divide-slate-200 border-y border-slate-200">
+          <div className="space-y-4">
             {visibleRows.map((item) => {
               const isEbook = item.kind === 'ebook'
               const needsQuestions =

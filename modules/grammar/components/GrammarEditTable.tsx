@@ -84,8 +84,8 @@ export default function GrammarEditTable({ initialRows }: GrammarEditTableProps)
   }
 
   return (
-    <section className='overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm'>
-      <div className='flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-3'>
+    <section className='overflow-hidden rounded-xl bg-transparent'>
+      <div className='flex flex-wrap items-center justify-between gap-3 p-3'>
         <h2 className='text-sm font-bold text-slate-900'>语法列表</h2>
         <input
           type='search'
@@ -97,7 +97,7 @@ export default function GrammarEditTable({ initialRows }: GrammarEditTableProps)
         />
       </div>
 
-      <div className='divide-y divide-slate-100'>
+      <div className='space-y-4'>
         {filteredRows.map(item => {
           const expanded = expandedId === item.id
           const rowPending = isPending && pendingId === item.id
@@ -137,7 +137,7 @@ export default function GrammarEditTable({ initialRows }: GrammarEditTableProps)
               </div>
 
               {expanded ? (
-                <div className='mt-3 rounded-lg bg-slate-50 p-3'>
+                <div className='mt-4 bg-slate-500/[0.025] p-3 sm:pl-8'>
                   <div className='grid gap-3 md:grid-cols-2'>
                     <label className='text-xs font-semibold text-slate-500'>
                       名称

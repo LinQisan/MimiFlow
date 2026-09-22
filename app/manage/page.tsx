@@ -69,15 +69,15 @@ export default async function ManageHomePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-6 md:px-8 md:py-8">
-      <div className="mx-auto max-w-7xl space-y-5">
-        <header className="border-b border-slate-200 pb-6">
+      <div className="mx-auto max-w-7xl space-y-8">
+        <header className="pb-6">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-950 md:text-4xl">
+              <h1 className="text-2xl font-semibold tracking-tight text-slate-950 md:text-3xl">
                 异常与待办
               </h1>
             </div>
-            <div className="min-w-28 border-l border-slate-300 pl-5 text-right">
+            <div className="min-w-28 pl-5 text-right">
               <p className="font-sans text-4xl font-semibold text-slate-900">
                 {totalTodo}
               </p>
@@ -98,12 +98,12 @@ export default async function ManageHomePage() {
               系统检查 →
             </Link>
           </div>
-          <div className="grid border-y border-slate-200 sm:grid-cols-2 lg:grid-cols-3 lg:divide-x lg:divide-slate-200">
+          <div className="grid gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             {todos.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}
-                className="group border-b border-slate-200 px-2 py-6 transition hover:bg-slate-50 lg:px-6"
+                className="group px-2 py-6 transition hover:bg-slate-50 lg:px-6"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -115,7 +115,7 @@ export default async function ManageHomePage() {
                     </p>
                   </div>
                   <span
-                    className={`text-3xl font-bold ${item.count ? 'text-rose-600' : 'text-emerald-600'}`}
+                    className={`text-3xl font-bold ${item.count ? 'text-rose-600' : 'text-slate-500'}`}
                   >
                     {item.count}
                   </span>
@@ -125,7 +125,7 @@ export default async function ManageHomePage() {
           </div>
         </section>
 
-        <section className="grid border-y border-slate-200 md:grid-cols-3 md:divide-x md:divide-slate-200">
+        <section className="grid md:grid-cols-3 gap-6">
           {[
             ['听力材料', listening.length, '/manage/listening'],
             ['跟读材料', shadowing.length, '/manage/shadowing'],
@@ -134,7 +134,7 @@ export default async function ManageHomePage() {
             <Link
               key={String(href)}
               href={String(href)}
-              className="border-b border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 last:border-b-0 md:border-b-0"
+              className="bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
             >
               <span>{label}</span>
               <span className="float-right text-slate-400">{count}</span>

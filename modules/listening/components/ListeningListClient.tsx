@@ -78,7 +78,7 @@ export default function ListeningListClient({
       <div className='mx-auto max-w-7xl'>
         <header className={isManageMode ? 'mb-6' : 'mb-5 border-b border-slate-200 py-4'}>
           {!isManageMode ? (
-            <div className='mb-5 border-b border-slate-200 py-4'>
+            <div className='mb-5 py-4'>
               <div className='flex flex-wrap items-end justify-between gap-3'>
                 <div>
                   <h1 className='text-2xl font-semibold tracking-tight text-slate-950'>
@@ -218,7 +218,7 @@ export default function ListeningListClient({
         {isShadowingWorkspace && selectedIds.length > 0 ? (
           <form
             action={batchAction}
-            className='mb-4 grid grid-cols-1 gap-2 border-y border-slate-200 py-3 md:grid-cols-[1.4fr_auto_auto]'>
+            className='mb-4 grid grid-cols-1 gap-2 py-3 md:grid-cols-[1.4fr_auto_auto]'>
             <input
               type='hidden'
               name='materialIds'
@@ -317,7 +317,7 @@ export default function ListeningListClient({
               <div
                 className={
                   isShadowingWorkspace || isListeningWorkspace
-                    ? 'divide-y divide-slate-200 border-y border-slate-200'
+                    ? 'space-y-3'
                     : 'space-y-2'
                 }>
                 {visibleManageRows.map(item => {
@@ -347,7 +347,7 @@ export default function ListeningListClient({
                       key={item.id}
                       className={
                         isShadowingWorkspace || isListeningWorkspace
-                          ? `py-4 ${item.needsQuestion ? 'bg-rose-50/40' : ''}`
+                          ? `py-3 ${item.needsQuestion ? 'bg-rose-50/40' : ''}`
                           : `rounded-xl bg-white p-3 shadow-sm md:p-4 ${
                               item.needsQuestion
                                 ? 'border border-rose-200 ring-1 ring-rose-50'
@@ -455,7 +455,7 @@ export default function ListeningListClient({
                       </div>
 
                       {isShadowingWorkspace && openAssignMaterialId === item.materialId ? (
-                        <div className='mt-3 border-t border-slate-100 pt-3'>
+                        <div className='mt-3 pt-3'>
                           <ListeningQuickClassifyForm
                             materialId={item.materialId}
                             currentChapterId={item.chapterId || ''}
@@ -488,7 +488,7 @@ export default function ListeningListClient({
                 return (
                   <div
                     key={book.id}
-                    className='mb-2 rounded-xl border border-slate-100 p-2'>
+                    className='mb-2 rounded-xl border border-slate-200 p-2'>
                     <button
                       type='button'
                       onClick={() => {
@@ -535,7 +535,7 @@ export default function ListeningListClient({
                 </div>
               ) : null}
 
-              <div className='divide-y divide-slate-200 border-y border-slate-200'>
+              <div className='space-y-4'>
                 {filteredRows.map(item => {
                   const statusText = item.isClassified ? '已归类' : '未归类'
                   const statusStyle = item.isClassified
@@ -623,7 +623,7 @@ export default function ListeningListClient({
 
                       {isEditMode &&
                       openAssignMaterialId === item.materialId ? (
-                        <div className='mt-3 border-t border-slate-100 pt-3'>
+                        <div className='mt-3 pt-3'>
                           <ListeningQuickClassifyForm
                             materialId={item.materialId}
                             currentChapterId={item.chapterId || ''}

@@ -71,7 +71,7 @@ export default function ManagePapersListClient({ levels }: Props) {
                 <span className='ui-meta'>{level.papers.length}</span>
               </div>
 
-              <div className='divide-y divide-slate-200 border-y border-slate-200'>
+              <div className='space-y-7'>
                 {level.papers.map(paper => {
                   const isExpanded = expandedPaperId === paper.id
                   const breakdown = getPaperQuestionBreakdown(paper)
@@ -127,7 +127,7 @@ export default function ManagePapersListClient({ levels }: Props) {
                       </div>
 
                       {isExpanded && (
-                        <div className='mt-3 border-t border-slate-100 pt-3'>
+                        <div className='mt-3 pt-3'>
                           <PaperAttributeForm
                             paperId={paper.id}
                             defaultTitle={paper.name}

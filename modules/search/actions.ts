@@ -24,6 +24,8 @@ import {
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { normalizeVocabularyWord } from '@/modules/knowledge/vocabulary/domain/normalized-word'
 import { listVocabularyMeanings } from '@/modules/knowledge/vocabulary/domain/meanings'
+import { searchAudioMaterials } from './audio-repository'
+import { audioSearchSnippet, getAudioSearchFields } from './audio-materials'
 
 export type GlobalSearchResult = {
   id: string
@@ -71,6 +73,7 @@ export async function searchGlobalContent(
     questionRows,
     audioDialogueRows,
     mediaDialogueRows,
+    audioMaterialRows,
   ] = await Promise.all([
     typeSet.has('vocabulary')
       ? prisma.vocabulary.findMany({
@@ -285,6 +288,7 @@ export async function searchGlobalContent(
           take: 60,
         })
       : Promise.resolve([]),
+    typeSet.has('dialogue') ? searchAudioMaterials(tokens) : Promise.resolve([]),
   ])
 
   const rankedVocabRows = sortByScore(
@@ -570,12 +574,27 @@ export async function searchGlobalContent(
     },
   )
 
+  const audioMaterialResults: GlobalSearchResult[] = audioMaterialRows.map(item => {
+    const type = item.type === MaterialType.LISTENING ? MaterialType.LISTENING : MaterialType.SPEAKING
+    return {
+      id: `dialogue-material:${item.id}`,
+      type: 'dialogue',
+      title: item.title,
+      snippet: audioSearchSnippet(getAudioSearchFields(type, item.contentPayload), tokens),
+      href: `/listening/${item.id}`,
+      targetHref: `/listening/${item.id}`,
+      meta: [type === MaterialType.LISTENING ? '听力' : '跟读', item.collectionMaterials[0]?.collection.title].filter(Boolean).join(' · '),
+      keyword: q,
+    }
+  })
+
   return [
     ...vocabularyResultsByWord.values(),
     ...passageResults,
     ...quizResults,
     ...questionResults,
+    ...audioMaterialResults,
     ...mediaDialogueResults,
     ...audioDialogueResults,
-  ].slice(0, 50)
+  ]
 }
