@@ -41,3 +41,5 @@ npm run lint
 npm test
 npm run build
 ```
+
+`npm test` builds the app and runs a two-account browser flow against a disposable local PostgreSQL database. It saves a screenshot and result in `outputs/e2e/`. See the [testing guide](docs/testing.md) for prerequisites.

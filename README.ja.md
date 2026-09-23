@@ -41,3 +41,5 @@ npm run lint
 npm test
 npm run build
 ```
+
+`npm test` はローカル PostgreSQL に一時的なテスト用データベースを作成し、アプリをビルドして Chrome で二つのアカウントの復習フローを検証します。スクリーンショットと結果は `outputs/e2e/` に保存されます。詳細は[テスト手順](docs/testing.md)を参照してください。

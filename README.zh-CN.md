@@ -42,3 +42,5 @@ npm run lint
 npm test
 npm run build
 ```
+
+`npm test` 会使用本地 PostgreSQL 创建并删除独立测试库、构建应用、在 Chrome 中运行双账户复习流程，并把截图和结果写入 `outputs/e2e/`。浏览器准备和运行说明见[测试说明](docs/testing.md)。

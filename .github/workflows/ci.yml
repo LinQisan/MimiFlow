@@ -54,23 +54,20 @@ jobs:
       - name: Audit production dependencies
         run: npm run audit:production
 
-      - name: Initialize CI database schema
-        run: npm run db:push
-
       - name: Typecheck
         run: npm run typecheck
 
       - name: Lint
         run: npm run lint
 
-      - name: Test
+      - name: End-to-end test
         run: npm test
 
-      - name: PostgreSQL pagination integration test
-        run: VOCABULARY_QUERY_DATABASE_TEST=1 node --test scripts/vocabulary-page-query.test.mjs
-
-      - name: Isolated PostgreSQL review and account integration test
-        run: REVIEW_PG_INTEGRATION=1 node --test scripts/review-postgres-integration.test.mjs
-
-      - name: Build
-        run: npm run build
+      - name: Upload end-to-end artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-results
+          path: outputs/e2e/
+          if-no-files-found: ignore
+          retention-days: 7

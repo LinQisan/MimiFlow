@@ -1,3 +1,11 @@
+# Testing principles
+
+* NEVER write unit tests after you write code.
+* Highly prefer E2E tests as the sole testing mechanism. Use them to verify complex features work. At the end of E2E tests, produce a verifiable and repeatable artifact.
+* If you must test a system in isolation, FIRST write all the ways it could fail, THEN write the code.
+* When writing E2E tests, choose a medium-to-hard scenario rather than the simplest possible scenario.
+* During development, do not run the full E2E suite; run it at the end.
+
 # MimiFlow constraints
 
 ## Architecture
@@ -26,7 +34,7 @@
 
 ## Verification
 
-* Add focused behavior tests for domain changes, following existing test conventions. Test observable behavior and invariants rather than private implementation details.
+* Prefer E2E tests as the sole testing mechanism, using medium-to-hard scenarios and producing a verifiable, repeatable artifact. If isolated testing is necessary, document all ways the system could fail before writing the code.
 * For route, schema, or shared UI changes, run:
 
   * `npm run typecheck`

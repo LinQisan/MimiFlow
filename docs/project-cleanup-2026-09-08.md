@@ -43,17 +43,6 @@
 
 最终 typecheck、lint（零警告）、生产 build 和 git diff --check 均通过；构建无宽泛文件追踪警告。默认跳过的数据库用例已另行启用并通过。
 
-复现命令：
-
-```sh
-npm run typecheck
-npm run lint
-npm test
-npm run build
-VOCABULARY_QUERY_DATABASE_TEST=1 node --test scripts/vocabulary-page-query.test.mjs
-.venv/bin/python scripts/sudachi-worker-ablation.py
-```
-
 原始与阶段日志位于 outputs/project-cleanup-2026-09-08/（本地输出，受现有忽略规则保护）。
 
 ## Sudachi 常驻进程性能消融
@@ -78,7 +67,7 @@ VOCABULARY_QUERY_DATABASE_TEST=1 node --test scripts/vocabulary-page-query.test.
 - Anki 旧格式、legacy 词表、旧义项及 source metadata 属于数据兼容逻辑；保留。未运行或删除本地迁移、修复、导入脚本及现有迁移目录。
 - updateVocabularyFromInspector 与 syncAnkiSentenceSourcesForWordbook 当前无静态调用，但属于历史写入入口；本次保留并标记为后续候选，未确认运行时兼容边界前不删除。
 - utils/language/partOfSpeech 与 utils/vocabulary/partOfSpeech 分别承担语言规范化与词汇过滤，不能机械合并。
-- 业务代码现统一归入 modules；scripts/module-boundaries.test.mjs 会阻止恢复 features 导入。跨领域依赖仍须通过明确的模块边界处理，不能以新目录层级规避。
+- 业务代码现统一归入 modules；跨领域依赖仍须通过明确的模块边界处理，不能以新目录层级规避。
 - modules/knowledge/vocabulary/components/data.ts 仍是实验页专用的数据适配，类型与显示筛选耦合；未仅为目录整齐搬进 modules 并制造反向 UI 依赖。
 - 保留本地 .agents、outputs、.venv、performance/latest.* 及用户音频；这些不是可凭文件名判定的垃圾。
 - 对应用源码扫描未发现 console.log、console.debug、debugger、TODO、FIXME 的直接命中；正常告警、错误处理与兼容代码未因此删除。

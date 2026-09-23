@@ -28,5 +28,4 @@ database. The repository does not contain its historical baseline migrations;
 this migration alone is not a fresh-database bootstrap. Do not reset existing data
 or recreate old migrations to apply it.
 
-Offline checks: `node --test scripts/nadeshiko-examples.test.mjs`, Prisma validate,
-typecheck, lint and build. No live Nadeshiko request or test API key is required.
+No live Nadeshiko request or test API key is required for the project build.

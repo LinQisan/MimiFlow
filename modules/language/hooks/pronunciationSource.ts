@@ -2,8 +2,7 @@ import type { PronunciationSource } from '@/components/ui/PronunciationSourceSel
 
 /**
  * Pure initial-state mapping for the sudachi|personal preference, shared by
- * reading / practice / listening / vocabulary. Zero runtime dependencies so
- * it can be unit tested directly.
+ * reading / practice / listening / vocabulary.
  *
  * NOTE: the stateful hook deliberately does NOT re-apply this mapping on
  * every `available` change — transient unavailability (refetch, remount)
