@@ -323,6 +323,30 @@ rt::selection {
   background: transparent;
 }
 
+/* Leave room above each transcript line for native ruby layout. Native ruby
+   gives each reading its own width; the margin separates adjacent readings. */
+.listening-transcript-text {
+  line-height: 2.75rem;
+}
+
+.listening-transcript-text ruby {
+  ruby-align: center;
+  ruby-position: over;
+  vertical-align: baseline;
+  margin-inline: 0.1em;
+}
+
+.listening-transcript-text rt {
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.listening-transcript-text .vocab-token.study-wordbook-underline {
+  display: inline;
+  line-height: inherit;
+  vertical-align: baseline;
+}
+
 /* 词汇例句的注音跟随正文缩放，避免固定小字号在卡片和移动端难以阅读。 */
 .vocab-sentence-text {
   line-height: 2.35;

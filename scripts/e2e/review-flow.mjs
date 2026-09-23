@@ -20,7 +20,7 @@ dotenv.config({ path: [path.join(root, '.env.local'), path.join(root, '.env')], 
 const runId = `${new Date().toISOString().replaceAll(/[:.]/g, '-')}-${randomBytes(3).toString('hex')}`
 const artifactDir = path.join(root, 'outputs', 'e2e', runId)
 const manifest = {
-  scenario: 'two-account memory review through the browser',
+  scenario: 'two-account memory review and listening pronunciation through the browser',
   command: 'npm test',
   runId,
   startedAt: new Date().toISOString(),
@@ -112,6 +112,65 @@ async function seedUser(db, label, email, passwordHash) {
   return { id: user.id, label, email, word, vocabularyId: vocabulary.id }
 }
 
+async function seedListeningPronunciation(db, accountA, accountB) {
+  const material = await db.material.create({
+    data: {
+      type: 'LISTENING',
+      title: 'E2E 建築士の相談',
+      contentPayload: {
+        audioFile: '',
+        dialogues: [
+          { id: 1, stableId: 'building', text: '建築士は建築の時期を相談し、家族と工事の予定を詳しく決めます。', start: 0, end: 4 },
+          { id: 2, stableId: 'timing', text: '建築の時期について説明します。', start: 4, end: 8 },
+          { id: 3, stableId: 'tatami', text: '畳独特の香りを建築士が詳しく説明します。', start: 8, end: 12 },
+        ],
+      },
+    },
+  })
+  const building = await db.vocabulary.create({
+    data: {
+      userId: accountA.id,
+      word: '建築',
+      normalizedWord: '建築',
+      pronunciations: '["けんちく"]',
+      sourceType: SourceType.QUIZ_QUESTION,
+      sourceId: `e2e-building-${runId}`,
+    },
+  })
+  await Promise.all([
+    db.vocabulary.create({
+      data: {
+        userId: accountA.id,
+        word: '時期',
+        normalizedWord: '時期',
+        pronunciations: '["とき"]',
+        sourceType: SourceType.QUIZ_QUESTION,
+        sourceId: `e2e-period-a-${runId}`,
+      },
+    }),
+    db.vocabulary.create({
+      data: {
+        userId: accountB.id,
+        word: '時期',
+        normalizedWord: '時期',
+        pronunciations: '["きかん"]',
+        sourceType: SourceType.QUIZ_QUESTION,
+        sourceId: `e2e-period-b-${runId}`,
+      },
+    }),
+  ])
+  const series = await db.wordbookSeries.create({
+    data: { userId: accountA.id, title: `e2e-pronunciation-${runId}` },
+  })
+  const wordbook = await db.wordbook.create({
+    data: { userId: accountA.id, seriesId: series.id, title: '建築語彙' },
+  })
+  await db.wordbookVocabulary.create({
+    data: { wordbookId: wordbook.id, vocabularyId: building.id },
+  })
+  return material.id
+}
+
 async function login(page, account, password) {
   await page.goto('/login')
   await page.getByRole('textbox', { name: '邮箱' }).fill(account.email)
@@ -163,6 +222,7 @@ async function run() {
     const suffix = runId.slice(-6)
     const accountA = await seedUser(db, 'A', `e2e-a-${suffix}@example.test`, passwordHash)
     const accountB = await seedUser(db, 'B', `e2e-b-${suffix}@example.test`, passwordHash)
+    const listeningMaterialId = await seedListeningPronunciation(db, accountA, accountB)
 
     await command('npm', ['run', 'build'], env)
     const port = await availablePort()
@@ -213,8 +273,116 @@ async function run() {
     manifest.checks.push('Account B still sees its own unrated card and no account A data')
 
     await page.screenshot({ path: path.join(artifactDir, 'account-b-review.png'), fullPage: true })
+
+    await page.goto(`/listening/${listeningMaterialId}`)
+    await page.getByRole('button', { name: '注音来源' }).click()
+    await page.getByRole('option', { name: '我的' }).click()
+    await page.locator('#sentence-1 [data-vocab-surface="時期"] rt').first().waitFor()
+    assert.equal((await page.locator('#sentence-1 [data-vocab-surface="時期"] rt').allTextContents()).join(''), 'きかん')
+    assert.equal(await page.locator('#sentence-1 [data-vocab-surface="建築"] ruby').count(), 0)
+    manifest.checks.push('Listening personal readings are scoped to account B')
+
+    await page.goto('/review')
+    await page.getByLabel(/^当前用户：e2e-B-/).click()
+    await page.getByRole('button', { name: '退出登录' }).click()
+    await login(page, accountA, password)
+    await page.goto(`/listening/${listeningMaterialId}`)
+    await page.getByRole('button', { name: '注音来源' }).click()
+    await page.getByRole('option', { name: '我的' }).click()
+    await page.locator('#sentence-1 [data-vocab-surface="建築"] ruby').first().waitFor()
+    assert.equal((await page.locator('#sentence-1 [data-vocab-surface="建築"]').first().locator('rt').allTextContents()).join(''), 'けんちく')
+    assert.equal((await page.locator('#sentence-1 [data-vocab-surface="時期"] rt').allTextContents()).join(''), 'とき')
+    manifest.checks.push('Account A sees its unlinked vocabulary readings, including 建築 inside 建築士')
+
+    await page.getByRole('button', { name: '注音来源' }).click()
+    await page.getByRole('option', { name: '默认' }).click()
+    const architect = page.locator('#sentence-1 [data-vocab-surface="建築士"] ruby')
+    await architect.locator('rt').filter({ hasText: 'けんちくし' }).waitFor()
+    assert.equal(await architect.locator('rt').textContent(), 'けんちくし')
+    assert.equal(await architect.locator('[data-wordbook-word="建築"]').count(), 1)
+    manifest.checks.push('Default reading covers 建築士 while the shorter 建築 wordbook highlight remains')
+
+    const pronunciationGeometry = async () => page.locator('#sentence-1 [data-context-sentence]').evaluate(host => {
+      const tokens = Array.from(host.querySelectorAll('[data-vocab-token]'))
+      const rubies = Array.from(host.querySelectorAll('ruby'))
+      return {
+        lineHeight: Number.parseFloat(getComputedStyle(host).lineHeight),
+        hostTop: host.getBoundingClientRect().top,
+        hostHeight: host.getBoundingClientRect().height,
+        tokenTops: tokens.map(token => token.getBoundingClientRect().top),
+        rubyPositions: rubies.map(ruby => ({
+          baseTop: ruby.getBoundingClientRect().top,
+          baseBottom: ruby.getBoundingClientRect().bottom,
+          annotationTop: ruby.querySelector('rt')?.getBoundingClientRect().top ?? Infinity,
+          annotationBottom: ruby.querySelector('rt')?.getBoundingClientRect().bottom ?? Infinity,
+        })),
+      }
+    })
+    const assertStableLines = geometry => {
+      assert.ok(geometry.tokenTops.length > 0)
+      const firstTop = Math.min(...geometry.tokenTops)
+      assert.ok(geometry.tokenTops.every(top =>
+        Math.abs((top - firstTop) / geometry.lineHeight - Math.round((top - firstTop) / geometry.lineHeight)) < 0.02,
+      ), 'Body tokens must share one baseline per line')
+      assert.ok(geometry.rubyPositions.every(position =>
+        position.annotationTop < position.baseTop &&
+        position.annotationBottom <= position.baseBottom - 10,
+      ), 'Furigana must remain above the body text')
+    }
+
+    const adjacentRubyGeometry = async () => page.locator('#sentence-3 [data-context-sentence]').evaluate(host => {
+      const rectFor = surface => {
+        const ruby = host.querySelector(`[data-vocab-surface="${surface}"] ruby`)
+        const rt = ruby?.querySelector('rt')
+        if (!ruby || !rt) return null
+        const base = ruby.getBoundingClientRect()
+        const reading = rt.getBoundingClientRect()
+        return {
+          text: rt.textContent,
+          readingLeft: reading.left,
+          readingRight: reading.right,
+          centerOffset: Math.abs((reading.left + reading.right - base.left - base.right) / 2),
+        }
+      }
+      return { tatami: rectFor('畳'), unique: rectFor('独特') }
+    })
+    const assertAdjacentRuby = geometry => {
+      assert.equal(geometry.tatami?.text, 'たたみ')
+      assert.equal(geometry.unique?.text, 'どくとく')
+      assert.ok(geometry.tatami.centerOffset <= 1.5 && geometry.unique.centerOffset <= 1.5, 'Each reading must center over its own ruby unit')
+      assert.ok(geometry.unique.readingLeft - geometry.tatami.readingRight >= 2, 'Adjacent readings must not touch or overlap')
+    }
+    const desktopOn = await pronunciationGeometry()
+    assertStableLines(desktopOn)
+    const desktopAdjacentRuby = await adjacentRubyGeometry()
+    assertAdjacentRuby(desktopAdjacentRuby)
+    await page.getByRole('button', { name: '注音', exact: true }).click()
+    await page.locator('#sentence-1 ruby').first().waitFor({ state: 'detached' })
+    const desktopOff = await pronunciationGeometry()
+    assert.ok(Math.abs(desktopOn.tokenTops[0] - desktopOff.tokenTops[0]) <= 0.5, `Toggling furigana must not move the body baseline: ${JSON.stringify({ on: desktopOn, off: desktopOff })}`)
+    await page.getByRole('button', { name: '注音', exact: true }).click()
+    await architect.locator('rt').filter({ hasText: 'けんちくし' }).waitFor()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const mobile = await pronunciationGeometry()
+    assertStableLines(mobile)
+    const mobileAdjacentRuby = await adjacentRubyGeometry()
+    assertAdjacentRuby(mobileAdjacentRuby)
+    assert.ok(Math.max(...mobile.tokenTops) - Math.min(...mobile.tokenTops) >= mobile.lineHeight - 0.5, 'Mobile transcript must exercise wrapped lines')
+    await page.screenshot({ path: path.join(artifactDir, 'listening-pronunciation-mobile.png'), fullPage: true })
+    await page.setViewportSize({ width: 1280, height: 900 })
+    manifest.checks.push('Desktop and wrapped mobile transcript keep one body baseline; adjacent 畳 and 独特 readings stay centered and separate')
+    manifest.layout = {
+      desktopBaselineShiftPx: Math.round((desktopOn.tokenTops[0] - desktopOff.tokenTops[0]) * 100) / 100,
+      mobileLineHeightPx: mobile.lineHeight,
+      desktopAdjacentReadingGapPx: Math.round((desktopAdjacentRuby.unique.readingLeft - desktopAdjacentRuby.tatami.readingRight) * 100) / 100,
+      mobileAdjacentReadingGapPx: Math.round((mobileAdjacentRuby.unique.readingLeft - mobileAdjacentRuby.tatami.readingRight) * 100) / 100,
+    }
+
+    await page.screenshot({ path: path.join(artifactDir, 'listening-pronunciation.png'), fullPage: true })
     manifest.status = 'passed'
     manifest.screenshot = 'account-b-review.png'
+    manifest.listeningScreenshot = 'listening-pronunciation.png'
+    manifest.listeningMobileScreenshot = 'listening-pronunciation-mobile.png'
     manifest.gitCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
   } catch (error) {
     failure = error

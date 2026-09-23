@@ -81,7 +81,7 @@ export default function ListeningSentenceRow({
             </span>
             <div
               data-context-sentence='true'
-              className={`min-w-0 transition-[filter,opacity] duration-300 ${blurClass}`}>
+              className={`listening-transcript-text min-w-0 transition-[filter,opacity] duration-300 ${blurClass}`}>
               {renderedText}
             </div>
           </div>

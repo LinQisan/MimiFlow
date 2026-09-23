@@ -2,6 +2,7 @@ import { StudyTimeKind, type CollectionType } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { buildSurfaceAliasMapForText } from '@/utils/vocabulary/japaneseInflection'
 
 export function listCollectionsByTypes(types: CollectionType[]) {
   return prisma.collection.findMany({
@@ -65,40 +66,56 @@ export async function getListeningStudySummary() {
 export async function getListeningDetailSupport(
   materialId: string,
   sourceIds: string[],
+  transcriptText: string,
 ) {
   const userId = await getCurrentUserId()
-  const [relatedVocab, playtimeStat] = await Promise.all([
+  const [pronunciationCandidates, playtimeStat] = await Promise.all([
     prisma.vocabulary.findMany({
-      where: {
-        userId,
-        sentenceLinks: {
-          some: {
-            sentence: {
-              sourceType: 'AUDIO_DIALOGUE',
-              sourceId: { in: sourceIds },
-            },
-          },
-        },
-      },
-      select: {
-        word: true,
-        pronunciations: true,
-        partsOfSpeech: true,
-        senses: {
-          orderBy: { order: 'asc' },
-          select: {
-            definitions: {
-              orderBy: { sortOrder: 'asc' },
-              select: { definition: true },
-            },
-          },
-        },
-      },
+      where: { userId, pronunciations: { not: null } },
+      select: { word: true },
     }),
     prisma.materialPlaytimeStat.findUnique({
       where: { profileId_materialId: { profileId: userId, materialId } },
       select: { totalSeconds: true, playedDays: true },
     }),
   ])
+  const matchedWords = Array.from(new Set(Object.values(
+    buildSurfaceAliasMapForText(
+      transcriptText,
+      pronunciationCandidates.map(candidate => candidate.word),
+    ),
+  )))
+  const relatedVocab = await prisma.vocabulary.findMany({
+    where: {
+      userId,
+      OR: [
+        {
+          sentenceLinks: {
+            some: {
+              sentence: {
+                sourceType: 'AUDIO_DIALOGUE',
+                sourceId: { in: sourceIds },
+              },
+            },
+          },
+        },
+        { word: { in: matchedWords } },
+      ],
+    },
+    select: {
+      word: true,
+      pronunciations: true,
+      partsOfSpeech: true,
+      senses: {
+        orderBy: { order: 'asc' },
+        select: {
+          definitions: {
+            orderBy: { sortOrder: 'asc' },
+            select: { definition: true },
+          },
+        },
+      },
+    },
+  })
   return { relatedVocab, playtimeStat }
 }

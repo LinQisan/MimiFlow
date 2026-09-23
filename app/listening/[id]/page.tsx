@@ -51,6 +51,7 @@ export default async function ListeningDetailPage({
   const { relatedVocab, playtimeStat } = await getListeningDetailSupport(
     currentMaterialId,
     dialogueSourceIds,
+    lesson.dialogue.map(item => item.text).join('\n'),
   )
 
   const vocabularyMetaMap = relatedVocab.reduce<Record<string, VocabularyMeta>>(

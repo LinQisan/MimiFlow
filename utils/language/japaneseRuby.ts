@@ -817,14 +817,22 @@ export const annotateJapaneseTextWithSudachi = (
   }
 
   const tokenClassName = options?.tokenClassName || 'vocab-token'
-  const renderLexemeContent = (lexeme: JapaneseRubyLexeme) => {
-    const pronunciation = options?.useSudachiReading
-      ? lexeme.reading
+  const rubyClass = options?.rubyClassName
+    ? ` class="${escapeHtml(options.rubyClassName)}"`
+    : ''
+  const rtClass = options?.rtClassName
+    ? ` class="${escapeHtml(options.rtClassName)}"`
+    : ''
+  const pronunciationFor = (lexeme: JapaneseRubyLexeme) =>
+    options?.useSudachiReading
+      ? lexeme.reading.trim()
       : (
           options?.pronunciationMap?.[lexeme.surface] ||
           options?.pronunciationMap?.[lexeme.dictionaryForm] ||
           ''
         ).trim()
+  const renderLexemeContent = (lexeme: JapaneseRubyLexeme) => {
+    const pronunciation = pronunciationFor(lexeme)
     return options?.rubyEnabled &&
       pronunciation &&
       (!options.useSudachiReading || shouldShowSudachiRuby(lexeme, pronunciation))
@@ -834,6 +842,48 @@ export const annotateJapaneseTextWithSudachi = (
           groupKanji: Boolean(options.useSudachiReading),
         })
       : escapeHtml(lexeme.surface)
+  }
+  const wrapSudachiToken = (
+    lexeme: JapaneseRubyLexeme,
+    start: number,
+    end: number,
+    content: string,
+  ) => {
+    const partOfSpeech = lexeme.partsOfSpeech?.[0] || ''
+    return `<span class="${escapeHtml(tokenClassName)}" data-vocab-token="true" data-vocab-surface="${escapeHtml(lexeme.surface)}" data-vocab-start="${start}" data-vocab-end="${end}" data-sudachi-token="true" data-sudachi-surface="${escapeHtml(lexeme.surface)}" data-sudachi-lemma="${escapeHtml(lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-normalized="${escapeHtml(lexeme.normalizedForm || lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-reading="${escapeHtml(lexeme.dictionaryReading || lexeme.reading || '')}" data-sudachi-pos="${escapeHtml(partOfSpeech)}">${content}</span>`
+  }
+  const renderOverlappingLexeme = (
+    lexeme: JapaneseRubyLexeme,
+    lexicalToken: JapaneseLexicalRange,
+    start: number,
+  ) => {
+    const offset = lexicalToken.start - start
+    const tokenEnd = offset + lexicalToken.surface.length
+    const before = escapeHtml(lexeme.surface.slice(0, offset))
+    const after = escapeHtml(lexeme.surface.slice(tokenEnd))
+    const pronunciation = pronunciationFor(lexeme)
+    const personalReading = options?.pronunciationMap?.[lexicalToken.surface]?.trim()
+    const tokenContent =
+      options?.rubyEnabled && !options.useSudachiReading && !pronunciation && personalReading
+        ? buildJapaneseRubyHtml(lexicalToken.surface, personalReading, options)
+        : escapeHtml(lexicalToken.surface)
+    const highlightedBase = `${before}${buildVocabularyTokenHtml(
+      lexicalToken.surface,
+      tokenContent,
+      tokenClassName,
+      {
+        'data-vocab-start': String(lexicalToken.start),
+        'data-vocab-end': String(lexicalToken.end),
+      },
+    )}${after}`
+    if (
+      options?.rubyEnabled &&
+      pronunciation &&
+      shouldShowSudachiRuby(lexeme, pronunciation)
+    ) {
+      return `<ruby${rubyClass}>${highlightedBase}<rt${rtClass} aria-hidden="true" data-context-ignore="true">${escapeHtml(pronunciation)}</rt></ruby>`
+    }
+    return highlightedBase
   }
   const renderRange = (start: number, end: number) => {
     let rangeCursor = start
@@ -857,6 +907,22 @@ export const annotateJapaneseTextWithSudachi = (
   let html = ''
   while (cursor < text.length) {
     const lexicalToken = lexicalTokenByStart.get(cursor)
+    const overlappingLexeme = bestByStart.get(cursor)
+    if (
+      lexicalToken &&
+      overlappingLexeme &&
+      lexicalToken.end < overlappingLexeme.end &&
+      /^[\p{Script=Han}々〆ヵヶ]+$/u.test(overlappingLexeme.lexeme.surface)
+    ) {
+      html += wrapSudachiToken(
+        overlappingLexeme.lexeme,
+        cursor,
+        overlappingLexeme.end,
+        renderOverlappingLexeme(overlappingLexeme.lexeme, lexicalToken, cursor),
+      )
+      cursor = overlappingLexeme.end
+      continue
+    }
     if (lexicalToken) {
       const tokenEnd = lexicalToken.end
       const renderedRange = renderRange(cursor, tokenEnd)
@@ -890,8 +956,7 @@ export const annotateJapaneseTextWithSudachi = (
 
     const { lexeme } = match
     const tokenHtml = renderLexemeContent(lexeme)
-    const partOfSpeech = lexeme.partsOfSpeech?.[0] || ''
-    html += `<span class="${escapeHtml(tokenClassName)}" data-vocab-token="true" data-vocab-surface="${escapeHtml(lexeme.surface)}" data-vocab-start="${match.start}" data-vocab-end="${match.end}" data-sudachi-token="true" data-sudachi-surface="${escapeHtml(lexeme.surface)}" data-sudachi-lemma="${escapeHtml(lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-normalized="${escapeHtml(lexeme.normalizedForm || lexeme.dictionaryForm || lexeme.surface)}" data-sudachi-reading="${escapeHtml(lexeme.dictionaryReading || lexeme.reading || '')}" data-sudachi-pos="${escapeHtml(partOfSpeech)}">${tokenHtml}</span>`
+    html += wrapSudachiToken(lexeme, match.start, match.end, tokenHtml)
     cursor += match.length
   }
 
