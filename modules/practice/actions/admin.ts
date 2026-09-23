@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { z } from 'zod'
@@ -96,6 +98,7 @@ async function resequenceMaterialQuestions(
 }
 
 export async function deletePaperQuestions(payload: unknown) {
+  await requireAdmin()
   try {
     const input = parseInput(paperQuestionSelectionSchema, payload)
     const questions = await prisma.question.findMany({
@@ -134,6 +137,7 @@ export async function deletePaperQuestions(payload: unknown) {
 }
 
 export async function movePaperQuestions(payload: unknown) {
+  await requireAdmin()
   try {
     const input = parseInput(movePaperQuestionsSchema, payload)
     if (input.paperId === input.targetPaperId) {
@@ -295,6 +299,7 @@ const toNullableJsonValue = (
 }
 
 export async function updatePaperQuestion(payload: UpdatePaperQuestionPayload) {
+  await requireAdmin()
   try {
   const input = parseInput(updatePaperQuestionSchema, payload)
   const questionId = input.questionId

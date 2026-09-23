@@ -17,6 +17,8 @@ npm run dev
 ```
 
 Open [localhost:3000](http://localhost:3000). Content management is at `/manage`.
+Email and password are required to sign in. Registration supports `REGISTRATION_MODE=disabled|invite|open`; see [account registration and SMTP setup](docs/registration.md). New accounts are non-admin by default and cannot enter `/manage`. Existing profiles can be linked by exact user ID with `npm run user:claim -- <user-id> <email>` and `MIMIFLOW_CLAIM_PASSWORD`.
+Wordbooks and their entries are shared learning content maintained by administrators. Words outside wordbooks, vocabulary review cards, and question attempts remain account-specific.
 `npm ci` generates the Prisma client; after schema edits run `npm run db:generate` and `npm run db:push`.
 Sudachi runs in-process through a Rust Node-API addon. `npm ci` builds it and installs the pinned full dictionary; see [native setup](modules/language/native/README.md).
 On macOS, development startup can start Homebrew PostgreSQL; set `POSTGRES_SERVICE` if multiple versions are installed.

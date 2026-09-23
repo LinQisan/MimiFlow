@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { MaterialType } from '@prisma/client'
 import { rmdir, unlink } from 'node:fs/promises'
 import path from 'node:path'
@@ -68,12 +70,16 @@ const deleteUnreferencedAudioFiles = async (audioPaths: string[]) => {
     return { deletedAudioFiles: 0, retainedAudioFiles: 0 }
   }
 
-  const [wordRefs, sentenceRefs, materials] = await Promise.all([
+  const [wordRefs, sentenceRefs, readingRefs, materials] = await Promise.all([
     prisma.vocabulary.findMany({
       where: { wordAudio: { in: candidates } },
       select: { wordAudio: true },
     }),
     prisma.vocabularySentence.findMany({
+      where: { audioFile: { in: candidates } },
+      select: { audioFile: true },
+    }),
+    prisma.vocabularyReadingAudio.findMany({
       where: { audioFile: { in: candidates } },
       select: { audioFile: true },
     }),
@@ -85,6 +91,7 @@ const deleteUnreferencedAudioFiles = async (audioPaths: string[]) => {
   const referencedPaths = new Set([
     ...wordRefs.flatMap(item => (item.wordAudio ? [item.wordAudio] : [])),
     ...sentenceRefs.flatMap(item => (item.audioFile ? [item.audioFile] : [])),
+    ...readingRefs.map(item => item.audioFile),
   ])
   materials.forEach(material => {
     const payload = decodeMaterialPayloadRecord(material.type, material.contentPayload)
@@ -117,6 +124,7 @@ const deleteUnreferencedAudioFiles = async (audioPaths: string[]) => {
 }
 
 export async function createWordbookSeries(title: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedTitle = title.trim()
@@ -138,6 +146,7 @@ export async function createWordbookSeries(title: string) {
 }
 
 export async function renameWordbookSeries(seriesId: string, title: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedSeriesId = seriesId.trim()
@@ -171,6 +180,7 @@ export async function createWordbook(
   title: string,
   seriesId: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedTitle = title.trim()
@@ -213,6 +223,7 @@ export async function createWordbook(
 }
 
 export async function renameWordbook(wordbookId: string, title: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
@@ -245,6 +256,7 @@ export async function moveWordbook(
   wordbookId: string,
   seriesId: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
@@ -279,6 +291,7 @@ export async function moveWordbook(
 }
 
 export async function deleteWordbook(wordbookId: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()
@@ -370,6 +383,7 @@ export async function removeVocabularyFromWordbook(
   vocabularyId: string,
   wordbookId: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedVocabularyId = vocabularyId.trim()
@@ -401,6 +415,7 @@ export async function moveVocabularyWithinWordbook(
   wordbookId: string,
   direction: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedVocabularyId = vocabularyId.trim()
@@ -449,6 +464,7 @@ export async function addPartsOfSpeechToWordbookVocabularies(
   wordbookId: string,
   partsOfSpeech: string[],
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const targetIds = normalizeStringList(vocabularyIds)
@@ -503,6 +519,7 @@ export async function addTagsToWordbookVocabularies(
   wordbookId: string,
   tagNames: string[],
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const targetIds = normalizeStringList(vocabularyIds)
@@ -558,6 +575,7 @@ export async function setJlptForWordbookVocabularies(
   wordbookId: string,
   jlpt: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const targetIds = normalizeStringList(vocabularyIds)
@@ -629,6 +647,7 @@ export async function listSelectableWordbookSeries() {
 }
 
 export async function addVocabulariesToWordbook(vocabularyIds: string[], wordbookId: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const trimmedWordbookId = wordbookId.trim()

@@ -8,6 +8,7 @@ import WordbookDetailClient from '@/modules/knowledge/vocabulary/components/Word
 import { listVocabularyPartOfSpeechHierarchyAdmin } from '@/modules/knowledge/vocabulary/admin-actions'
 import { normalizeWordbookQuery } from '@/modules/knowledge/wordbooks/entry-query'
 import { filterVocabularyTags } from '@/modules/knowledge/vocabulary/domain/jlpt'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 import {
   findWordbookDetail,
   listWordbookEntries,
@@ -23,6 +24,7 @@ export default async function WordbookDetailPage({
   params: Promise<{ id: string }>
   searchParams?: Promise<SearchParams>
 }) {
+  const currentUser = await getCurrentUser()
   const { id } = await params
   const resolvedSearchParams = (await Promise.resolve(
     searchParams || {},
@@ -42,7 +44,7 @@ export default async function WordbookDetailPage({
   const [wordbook, seriesOptions, partOfSpeechHierarchy] = await Promise.all([
     findWordbookDetail(id),
     listWordbookSeries(),
-    listVocabularyPartOfSpeechHierarchyAdmin(),
+    currentUser.isAdmin ? listVocabularyPartOfSpeechHierarchyAdmin() : Promise.resolve([]),
   ])
 
   if (!wordbook) notFound()
@@ -74,6 +76,7 @@ export default async function WordbookDetailPage({
         </header>
 
         <WordbookDetailClient
+          canManage={currentUser.isAdmin}
           key={`${id}:${query}:${normalizedPage}`}
           wordbookId={wordbook.id}
           wordbookTitle={wordbook.title}

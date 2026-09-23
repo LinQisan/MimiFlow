@@ -6,7 +6,7 @@ import { z } from 'zod'
 import prisma from '@/lib/prisma'
 import { executeAction } from '@/lib/actions/result'
 import { parseInput } from '@/lib/validation/schema'
-import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { getCurrentUserId, requireAdmin } from '@/modules/users/server/current-user'
 import {
   invalidatePracticeVocabularyAnalytics,
   precomputePracticeVocabularyMaterialAnalyses,
@@ -56,6 +56,7 @@ export async function updateSortOrder(
 ) {
   return executeAction(
     async () => {
+      await requireAdmin()
       const input = parseInput(sortOrderInputSchema, { model, orderedIds })
       const affectedMaterialIds = input.model === 'Question'
         ? Array.from(

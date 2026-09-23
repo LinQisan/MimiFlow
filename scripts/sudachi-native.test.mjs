@@ -61,8 +61,8 @@ test('public API keeps whitespace filtering, contextual readings, diagnostic sha
   assert.deepEqual(first.tokens.filter(t => t.surface === '便').map(t => t.reading), ['べん', 'びん'])
   assert.equal(first.tokens.find(t => t.surface === '猫').textIndex, 1)
   assert.equal(first.tokens.find(t => t.surface === '猫').begin, 1)
-  assert.deepEqual(Object.keys(first.timing).sort(), ['mode', 'inputSerializationMs', 'spawnMs', 'inputWriteMs', 'firstOutputMs', 'outputReadMs', 'processWallMs', 'jsonParseMs', 'workerQueueMs', 'workerReadyMs', 'python'].sort())
-  for (const key of ['inputSerializationMs', 'spawnMs', 'inputWriteMs', 'jsonParseMs']) assert.equal(first.timing[key], 0)
+  assert.deepEqual(Object.keys(first.timing).sort(), ['queueMs', 'analysisMs', 'totalMs', 'native'].sort())
+  assert.ok(first.timing.totalMs >= first.timing.queueMs)
 })
 
 test('failed analysis is not cached and does not poison subsequent requests', async () => {

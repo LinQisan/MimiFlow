@@ -43,7 +43,8 @@ test('oldest-first and authored entry ordering are applied before pagination', (
     groupFilter: '', posFilter: 'all', page: 2, pageSize: 30, focusId: '',
   }, [], { kana: 'ja', hangul: 'ko', han: 'zh', cyrillic: 'ru', other: 'en' })
   assert.match(query.text, /entry.sort_order/)
-  assert.match(query.text, /book.user_id = \$\d+/)
+  assert.match(query.text, /JOIN wordbooks book ON book.id = entry.wordbook_id/)
+  assert.doesNotMatch(query.text, /book.user_id = \$\d+/)
   assert.match(query.text, /v\."createdAt" ASC, v.id ASC/)
   assert.ok(query.text.indexOf('entry.sort_order') < query.text.indexOf('pagination AS'))
   assert.ok(query.values.includes('owner'))

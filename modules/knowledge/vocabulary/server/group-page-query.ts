@@ -57,7 +57,9 @@ export function vocabularyPageWhere(input: VocabularyPageScope): Prisma.Vocabula
 }
 
 function scopeSql(userId: string, input: VocabularyPageScope) {
-  const clauses = [Prisma.sql`v.user_id = ${userId}`]
+  const clauses = [Prisma.sql`(v.user_id = ${userId} OR EXISTS (
+    SELECT 1 FROM wordbook_vocabularies shared_entry WHERE shared_entry.vocabulary_id = v.id
+  ))`]
   if (input.wordbookFilter !== 'all') {
     const membership = Prisma.sql`
       SELECT wv.vocabulary_id FROM wordbook_vocabularies wv
@@ -133,13 +135,13 @@ export function vocabularyGroupPageSql(
     : Prisma.sql`SELECT DISTINCT unnest(d.options) AS value FROM dictionary d`
   return Prisma.sql`
     WITH book_order AS (
-      ${groupedBooks ? wordbookVocabularyOrderSql(userId, input.seriesFilter) : Prisma.sql`SELECT NULL::text AS vocabulary_id, NULL::bigint AS position WHERE false`}
+      ${groupedBooks ? wordbookVocabularyOrderSql(input.seriesFilter) : Prisma.sql`SELECT NULL::text AS vocabulary_id, NULL::bigint AS position WHERE false`}
     ), ordered AS MATERIALIZED (
       SELECT v.id, v.word, v.normalized_word, v."partsOfSpeech", row_number() OVER (ORDER BY ${rowOrder}) AS ordinal
       FROM "Vocabulary" v
       ${leafWordbook ? Prisma.sql`
         JOIN wordbook_vocabularies entry ON entry.vocabulary_id = v.id AND entry.wordbook_id = ${input.wordbookFilter}
-        JOIN wordbooks book ON book.id = entry.wordbook_id AND book.user_id = ${userId}
+        JOIN wordbooks book ON book.id = entry.wordbook_id
       ` : Prisma.empty}
       ${groupedBooks ? Prisma.sql`LEFT JOIN book_order ON book_order.vocabulary_id = v.id` : Prisma.empty}
       WHERE ${scopeSql(userId, input)}

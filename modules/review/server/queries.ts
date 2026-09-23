@@ -30,7 +30,7 @@ export async function getReviewOverview(now = new Date()) {
     await Promise.all([
       prisma.sentenceReview.count({ where: { userId, due: { lte: now } } }),
       prisma.vocabularyReview.count({
-        where: { vocabulary: { userId }, due: { lte: now } },
+        where: { userId, due: { lte: now } },
       }),
       prisma.questionRetry.count({ where: { userId, dueAt: { lte: now } } }),
       prisma.questionRetry.count({ where: { userId } }),
@@ -65,7 +65,7 @@ export async function getDueMemoryReviewItems(
       },
     }),
     prisma.vocabularyReview.findMany({
-      where: { vocabulary: { userId }, due: { lte: now } },
+      where: { userId, due: { lte: now } },
       orderBy: { due: 'asc' },
       take: safeLimit,
       select: {

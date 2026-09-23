@@ -3,6 +3,7 @@ import { PassThrough, Readable } from 'node:stream'
 
 import { getPaperExportData } from '@/modules/practice/export/paper-export-data'
 import { generatePaperExportPdfs } from '@/modules/practice/export/paper-export-pdf'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 
 export const dynamic = 'force-dynamic'
 
@@ -41,6 +42,7 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!(await getCurrentUser()).isAdmin) return Response.json({ message: '没有管理权限。' }, { status: 403 })
   const { id } = await params
   const data = await getPaperExportData(id)
   if (!data) {

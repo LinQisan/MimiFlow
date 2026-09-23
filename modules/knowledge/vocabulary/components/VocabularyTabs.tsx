@@ -207,6 +207,7 @@ function VocabularyRelationsSection({
 }
 
 export default function VocabularyTabs({
+  canEdit,
   groupedData,
   groupedTotals,
   folders,
@@ -224,6 +225,7 @@ export default function VocabularyTabs({
   currentPage,
   pageSize = 30,
 }: {
+  canEdit: boolean
   groupedData: Record<string, SerializedVocabulary[]>
   groupedTotals: Record<string, number>
   folders: FolderItem[]
@@ -890,7 +892,7 @@ export default function VocabularyTabs({
   const currentFlashVocabBase = flashList[currentIndex] || null
   const inlineEditor = useVocabularyInlineEditor({
     vocabulary: currentFlashVocabBase,
-    enabled: isEditMode && viewMode === 'flashcard',
+    enabled: canEdit && isEditMode && viewMode === 'flashcard',
     onSaved: savedVocabulary => {
       setLocalData(previous => ({
         ...previous,
@@ -913,7 +915,7 @@ export default function VocabularyTabs({
   const editFocusRequest =
     searchParams.get('edit') === '1' ? activeFocusParam : ''
   useEffect(() => {
-    if (!editFocusRequest) {
+    if (!editFocusRequest || !canEdit) {
       appliedEditFocusRef.current = null
       return
     }
@@ -927,6 +929,7 @@ export default function VocabularyTabs({
     appliedEditFocusRef.current = editFocusRequest
     setIsEditMode(true)
   }, [
+    canEdit,
     editFocusRequest,
     initialFocusId,
     currentFlashVocabBase?.id,
@@ -1766,6 +1769,7 @@ export default function VocabularyTabs({
     <div className='theme-page-vocab vocab-page-shell space-y-3'>
       <div className='vocab-toolbar-shell border-b border-slate-200'>
         <VocabularyPageToolbar
+          canEdit={canEdit}
           languages={allExistingGroups.map(name => ({
             name,
             label: LANGUAGE_NAMES[name] || name,

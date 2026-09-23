@@ -19,7 +19,7 @@ async function queryVocabularyPageGroups(userId: string, input: VocabularyGroupP
   // helpers as the UI. No vocabulary IDs/readings cross the boundary here.
   const values = await prisma.vocabulary.groupBy({
     by: ['partsOfSpeech'],
-    where: { AND: [{ userId }, vocabularyPageWhere(input)] },
+    where: { AND: [{ OR: [{ userId }, { wordbooks: { some: {} } }] }, vocabularyPageWhere(input)] },
   })
   const dictionary = values.map(row => ({
     raw: row.partsOfSpeech,

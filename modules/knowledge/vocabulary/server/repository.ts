@@ -4,9 +4,7 @@ import {
   Prisma,
   SourceType,
 } from '@prisma/client'
-import { revalidateTag, unstable_cache } from 'next/cache'
-import { wordbookVocabularyOrderSql } from '@/modules/knowledge/wordbooks/vocabulary-order-query'
-import { WORDBOOK_ENTRY_ORDER } from '@/modules/knowledge/wordbooks/entry-order'
+import { revalidateTag } from 'next/cache'
 
 import prisma from '@/lib/prisma'
 import { resolveListeningSentenceReferences } from './listening-source'
@@ -51,8 +49,9 @@ const VOCABULARY_DETAIL_SELECT = {
     select: { jlpt: true, wordbook: { select: { id: true, title: true } } },
   },
   tags: { select: { tag: { select: { name: true } } } },
-  review: {
+  reviews: {
     select: {
+      userId: true,
       id: true,
       due: true,
       state: true,
@@ -105,8 +104,9 @@ const VOCABULARY_LIST_DETAIL_SELECT = {
     select: { jlpt: true, wordbook: { select: { id: true, title: true } } },
   },
   tags: { select: { tag: { select: { name: true } } } },
-  review: {
+  reviews: {
     select: {
+      userId: true,
       id: true,
       due: true,
       state: true,
@@ -137,51 +137,20 @@ export type VocabularyListDetailRow = Prisma.VocabularyGetPayload<{
 
 export const VOCABULARY_GROUPS_CACHE_TAG = 'vocabulary-groups'
 
-const getCachedVocabularyGroups = unstable_cache(
-  async (userId: string, whereKey: string, wordbookId: string, seriesId: string) => {
-    const where = { AND: [{ userId }, JSON.parse(whereKey) as Prisma.VocabularyWhereInput] }
-    const select = {
-      id: true, word: true, etymologies: true, pronunciations: true,
-      partsOfSpeech: true, sourceType: true,
-    } as const
-    if (wordbookId) {
-      const entries = await prisma.wordbookVocabulary.findMany({
-        where: { wordbookId, wordbook: { userId }, vocabulary: where },
-        orderBy: WORDBOOK_ENTRY_ORDER,
-        select: { vocabulary: { select } },
-      })
-      return entries.map(entry => entry.vocabulary)
-    }
-    const [rows, ranks] = await Promise.all([prisma.vocabulary.findMany({
-      where, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select,
-    }), prisma.$queryRaw<Array<{ vocabulary_id: string; position: bigint }>>(wordbookVocabularyOrderSql(userId, seriesId))])
-    const rankById = new Map(ranks.map(row => [row.vocabulary_id, Number(row.position)]))
-    return rows.sort((a, b) => (rankById.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rankById.get(b.id) ?? Number.MAX_SAFE_INTEGER))
-  },
-  ['vocabulary-groups-v3-book-order'],
-  { tags: [VOCABULARY_GROUPS_CACHE_TAG], revalidate: 300 },
-)
-
 export function invalidateVocabularyGroupsCache() {
   revalidateTag(VOCABULARY_GROUPS_CACHE_TAG, 'max')
-}
-
-export async function listVocabularyGroups(where: Prisma.VocabularyWhereInput, wordbookId = '', seriesId = '') {
-  const userId = await getCurrentUserId()
-  return getCachedVocabularyGroups(userId, JSON.stringify(where), wordbookId, seriesId)
 }
 
 export async function listVocabularyTagOptions() {
   const userId = await getCurrentUserId()
   const rows = await prisma.vocabularyTag.findMany({
     where: {
-      userId,
-      vocabularies: { some: { vocabulary: { userId } } },
+      vocabularies: { some: { vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } } },
     },
     orderBy: { name: 'asc' },
     select: {
       name: true,
-      _count: { select: { vocabularies: true } },
+      _count: { select: { vocabularies: { where: { vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } } } } },
     },
   })
   return rows.filter(row => !isVocabularyStructureTag(row.name))
@@ -192,8 +161,11 @@ export async function listVocabularyDetailsByWords(words: string[]) {
   const userId = await getCurrentUserId()
   const normalizedWords = Array.from(new Set(words.map(normalizeVocabularyWord)))
   return prisma.vocabulary.findMany({
-    where: { userId, normalizedWord: { in: normalizedWords } },
-    select: VOCABULARY_DETAIL_SELECT,
+    where: { normalizedWord: { in: normalizedWords }, OR: [{ userId }, { wordbooks: { some: {} } }] },
+    select: {
+      ...VOCABULARY_DETAIL_SELECT,
+      reviews: { ...VOCABULARY_DETAIL_SELECT.reviews, where: { userId }, take: 1 },
+    },
   })
 }
 
@@ -202,8 +174,11 @@ export async function listVocabularyListDetailsByWords(words: string[]) {
   const userId = await getCurrentUserId()
   const normalizedWords = Array.from(new Set(words.map(normalizeVocabularyWord)))
   return prisma.vocabulary.findMany({
-    where: { userId, normalizedWord: { in: normalizedWords } },
-    select: VOCABULARY_LIST_DETAIL_SELECT,
+    where: { normalizedWord: { in: normalizedWords }, OR: [{ userId }, { wordbooks: { some: {} } }] },
+    select: {
+      ...VOCABULARY_LIST_DETAIL_SELECT,
+      reviews: { ...VOCABULARY_LIST_DETAIL_SELECT.reviews, where: { userId }, take: 1 },
+    },
   })
 }
 
@@ -211,7 +186,7 @@ export async function listVocabularySentenceLinks(vocabularyIds: string[]) {
   if (vocabularyIds.length === 0) return Promise.resolve([])
   const userId = await getCurrentUserId()
   const links = await prisma.vocabularySentenceLink.findMany({
-    where: { vocabularyId: { in: vocabularyIds }, vocabulary: { userId } },
+    where: { vocabularyId: { in: vocabularyIds }, vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } },
     select: {
       id: true, vocabularyId: true, senseId: true, posTags: true,
       sentence: { select: {

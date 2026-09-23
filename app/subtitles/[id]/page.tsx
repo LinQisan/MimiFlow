@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation'
 import MediaSubtitleEditor from '@/modules/media-subtitles/components/MediaSubtitleEditor'
 import { toVocabularyMeta, type VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 import {
   findMediaSubtitleById,
   listVocabularyBySentenceSourceIds,
@@ -97,6 +98,7 @@ export default async function MediaSubtitleDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  const user = await getCurrentUser()
   const { id } = await params
   const resolvedSearchParams = await searchParams
   const row = await findMediaSubtitleById(id)
@@ -189,9 +191,9 @@ export default async function MediaSubtitleDetailPage({
               <Link href='/subtitles' className='ui-btn'>
                 字幕库
               </Link>
-              <Link href='/manage/import?language=ja&scope=material&type=subtitles' className='ui-btn ui-btn-primary'>
+              {user.isAdmin && <Link href='/manage/import?language=ja&scope=material&type=subtitles' className='ui-btn ui-btn-primary'>
                 上传字幕
-              </Link>
+              </Link>}
             </div>
           </div>
 

@@ -4,7 +4,7 @@ import { I18nProvider } from '@/context/I18nContext'
 import { DialogProvider } from '@/context/DialogContext'
 import { UserProvider } from '@/context/UserContext'
 import StudyNavigation from '@/components/layout/StudyNavigation'
-import { getUserContext } from '@/modules/users/server/user-context-service'
+import { getOptionalCurrentUser } from '@/modules/users/server/current-user'
 
 export const metadata = {
   title: 'MimiFlow',
@@ -17,19 +17,21 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { currentUser, users } = await getUserContext()
+  const currentUser = await getOptionalCurrentUser()
 
   return (
     <html lang='zh' data-lang='zh'>
       <body className='editorial-ui'>
-        <UserProvider user={currentUser}>
-          <I18nProvider>
-            <DialogProvider>
-              <StudyNavigation currentUser={currentUser} users={users} />
-              {children}
-            </DialogProvider>
-          </I18nProvider>
-        </UserProvider>
+        {currentUser ? (
+          <UserProvider user={currentUser}>
+            <I18nProvider>
+              <DialogProvider>
+                <StudyNavigation currentUser={currentUser} />
+                {children}
+              </DialogProvider>
+            </I18nProvider>
+          </UserProvider>
+        ) : children}
       </body>
     </html>
   )

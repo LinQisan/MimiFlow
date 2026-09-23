@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 // Listening material actions.
 
 import { CollectionType, MaterialType } from '@prisma/client'
@@ -8,6 +10,7 @@ import { revalidatePath } from 'next/cache'
 import prisma from '@/lib/prisma'
 
 export async function createShadowingBook(formData: FormData) {
+  await requireAdmin()
   try {
     const rootIdInput = String(formData.get('rootId') || '').trim()
     const title = String(formData.get('bookTitle') || '').trim()
@@ -73,6 +76,7 @@ export async function createShadowingBook(formData: FormData) {
 }
 
 export async function createShadowingChapter(formData: FormData) {
+  await requireAdmin()
   try {
     const bookId = String(formData.get('bookId') || '').trim()
     const title = String(formData.get('chapterTitle') || '').trim()
@@ -112,6 +116,7 @@ export async function createShadowingChapter(formData: FormData) {
 }
 
 export async function assignShadowingMaterialToChapter(formData: FormData) {
+  await requireAdmin()
   try {
     const materialId = String(formData.get('materialId') || '').trim()
     const chapterId = String(formData.get('chapterId') || '').trim()
@@ -175,6 +180,7 @@ export async function assignShadowingMaterialToChapter(formData: FormData) {
 }
 
 export async function batchAssignShadowingMaterials(formData: FormData) {
+  await requireAdmin()
   try {
     const materialIdsRaw = String(formData.get('materialIds') || '').trim()
     const chapterId = String(formData.get('chapterId') || '').trim()

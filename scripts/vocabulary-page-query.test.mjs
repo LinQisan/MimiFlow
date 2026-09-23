@@ -111,7 +111,7 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
   await client.connect()
   try {
     await client.query('BEGIN')
-    for (const table of ['Vocabulary', 'wordbook_series', 'wordbooks', 'wordbook_vocabularies', 'VocabularyTag', 'VocabularyTagOnVocabulary']) {
+    for (const table of ['Vocabulary', 'vocabulary_definitions', 'wordbook_series', 'wordbooks', 'wordbook_vocabularies', 'VocabularyTag', 'VocabularyTagOnVocabulary']) {
       await client.query(`CREATE TEMP TABLE "${table}" (LIKE public."${table}" INCLUDING DEFAULTS) ON COMMIT DROP`)
     }
     const words = [
@@ -134,8 +134,12 @@ test('PostgreSQL pagination matches the original grouping and filtering semantic
     }))
     records.push({ ...records[0], id: 'other-user', userId: 'mine', word: 'PRIVATE' })
     for (const record of records) {
-      await client.query(`INSERT INTO "Vocabulary" (id, user_id, word, normalized_word, "sourceType", "sourceId", pronunciations, "partsOfSpeech", meanings, "createdAt", "updatedAt")
-        VALUES ($1,$2,$3,$4,$5,'fixture',$6,$7,$8,$9,$9)`, [record.id, record.userId, record.word, normalizeWord(record.word), record.sourceType, record.pronunciations, record.partsOfSpeech, record.meanings, record.createdAt])
+      await client.query(`INSERT INTO "Vocabulary" (id, user_id, word, normalized_word, "sourceType", "sourceId", pronunciations, "partsOfSpeech", "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,'fixture',$6,$7,$8,$8)`, [record.id, record.userId, record.word, normalizeWord(record.word), record.sourceType, record.pronunciations, record.partsOfSpeech, record.createdAt])
+      if (record.meanings) {
+        await client.query(`INSERT INTO vocabulary_definitions (id, vocabulary_id, sense_id, language, dictionary_name, definition, updated_at)
+          VALUES ($1,$2,$3,'zh','fixture',$4,now())`, [`definition-${record.id}`, record.id, `sense-${record.id}`, 'meaning'])
+      }
     }
     await client.query(`INSERT INTO wordbook_series (id,user_id,title,"updatedAt") VALUES ('series','default','Series',now())`)
     for (const id of ['book', 'book-next']) {

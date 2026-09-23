@@ -3,13 +3,11 @@ import { unstable_cache } from 'next/cache'
 import prisma from '@/lib/prisma'
 import { WORDBOOK_ENTRY_ORDER } from './entry-order'
 import { normalizeWordbookQuery, wordbookEntryWhere } from './entry-query'
-import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { VOCABULARY_GROUPS_CACHE_TAG } from '@/modules/knowledge/vocabulary/server/repository'
 
 const getCachedWordbookOptions = unstable_cache(
-  async (userId: string) =>
+  async () =>
     prisma.wordbook.findMany({
-      where: { userId },
       orderBy: [
         { series: { sortOrder: 'asc' } },
         { series: { createdAt: 'asc' } },
@@ -34,14 +32,12 @@ const getCachedWordbookOptions = unstable_cache(
 )
 
 export async function listWordbookOptions() {
-  const userId = await getCurrentUserId()
-  return getCachedWordbookOptions(userId)
+  return getCachedWordbookOptions()
 }
 
 export async function findWordbookDetail(id: string) {
-  const userId = await getCurrentUserId()
   return prisma.wordbook.findFirst({
-    where: { id, userId },
+    where: { id },
     select: {
       id: true,
       title: true,
@@ -52,9 +48,7 @@ export async function findWordbookDetail(id: string) {
 }
 
 export async function listWordbookSeries() {
-  const userId = await getCurrentUserId()
   return prisma.wordbookSeries.findMany({
-    where: { userId },
     orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
     select: {
       id: true,
@@ -70,11 +64,10 @@ export async function listWordbookEntries(input: {
   pageSize: number
   query?: string
 }) {
-  const userId = await getCurrentUserId()
   const query = normalizeWordbookQuery(input.query || '')
-  const where = wordbookEntryWhere(userId, input.wordbookId, query)
+  const where = wordbookEntryWhere(input.wordbookId, query)
   const countAll = Promise.resolve(prisma.wordbookVocabulary.count({
-    where: wordbookEntryWhere(userId, input.wordbookId),
+    where: wordbookEntryWhere(input.wordbookId),
   }))
   const [totalCount, filteredCount] = await Promise.all([
     countAll,

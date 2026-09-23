@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client'
 
 /** One batched rank per vocabulary; shared words belong to their first book. */
-export function wordbookVocabularyOrderSql(userId: string, seriesId = '') {
+export function wordbookVocabularyOrderSql(seriesId = '') {
   return Prisma.sql`
     SELECT vocabulary_id, min(position) AS position FROM (
       SELECT entry.vocabulary_id, row_number() OVER (ORDER BY
@@ -13,9 +13,7 @@ export function wordbookVocabularyOrderSql(userId: string, seriesId = '') {
       JOIN wordbooks book ON book.id = entry.wordbook_id
       JOIN wordbook_series series ON series.id = book.series_id
       JOIN "Vocabulary" vocabulary ON vocabulary.id = entry.vocabulary_id
-      WHERE book.user_id = ${userId} AND series.user_id = ${userId}
-        AND vocabulary.user_id = ${userId}
-        ${seriesId ? Prisma.sql`AND series.id = ${seriesId}` : Prisma.empty}
+      WHERE ${seriesId ? Prisma.sql`series.id = ${seriesId}` : Prisma.sql`TRUE`}
     ) ranked GROUP BY vocabulary_id
   `
 }

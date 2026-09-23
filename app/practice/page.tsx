@@ -5,8 +5,10 @@ import {
   findLevelsWithPapersAndCounts,
 } from '@/lib/repositories/exam'
 import PapersListClient from '@/modules/practice/components/PapersListClient'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 
 export default async function AllPapersPage() {
+  const user = await getCurrentUser()
   const levels = await findLevelsWithPapersAndCounts()
 
   if (levels.length === 0) {
@@ -19,9 +21,9 @@ export default async function AllPapersPage() {
             <Link href='/practice' className='ui-btn ui-btn-primary'>
               返回试卷库
             </Link>
-            <Link href='/manage/practice' className='ui-btn'>
+            {user.isAdmin && <Link href='/manage/practice' className='ui-btn'>
               管理试卷
-            </Link>
+            </Link>}
           </div>
         </div>
       </div>

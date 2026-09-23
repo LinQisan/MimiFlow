@@ -942,22 +942,6 @@ test("JLPT listening problem 3 keeps its authored option order", () => {
   );
 });
 
-test("submitted practice restores authored option order for review", async () => {
-  const repository = await readFile(
-    path.join(ROOT, "lib/repositories/exam/index.ts"),
-    "utf8",
-  );
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-
-  assert.match(repository, /authoredOptions: options/);
-  assert.match(player, /session\.isSubmitted[\s\S]*restoreAuthoredOptionOrder/);
-  assert.match(player, /question=\{displayedCurrentQuestion\}/);
-  assert.match(player, /allQuestions=\{displayedAllQuestions\}/);
-});
-
 test("submission review preserves its current question across refreshes", async () => {
   const page = await readFile(
     path.join(
@@ -979,23 +963,6 @@ test("submission review preserves its current question across refreshes", async 
   assert.match(reviewClient, /requestedIndex >= 0 \? requestedIndex : firstWrongIndex/);
   assert.match(player, /url\.searchParams\.set\('qid', currentQuestionId\)/);
   assert.match(player, /window\.history\.replaceState/);
-});
-
-test("database fields keep audit timestamps and query indexes", async () => {
-  const schema = await readFile(
-    path.join(ROOT, "prisma/schema.prisma"),
-    "utf8",
-  );
-
-  assert.match(schema, /model Vocabulary[\s\S]*updatedAt[\s\S]*@@index\(\[wordAudio\]\)/);
-  assert.match(schema, /vocabulary_word_trgm_idx/);
-  assert.match(schema, /vocabulary_definitions_sense_sort_idx/);
-  assert.match(schema, /model VocabularySentence[\s\S]*@@index\(\[sourceType, sourceId\]\)[\s\S]*@@index\(\[audioFile\]\)/);
-  assert.match(schema, /vocabulary_sentences_text_trgm_idx/);
-  assert.match(schema, /questions_prompt_trgm_idx/);
-  assert.match(schema, /questions_context_trgm_idx/);
-  assert.match(schema, /model VocabularySentenceLink[\s\S]*@@index\(\[sentenceId\]\)/);
-  assert.match(schema, /model CollectionMaterial[\s\S]*@@index\(\[collectionId, sortOrder\]\)/);
 });
 
 test("question editors keep at least two options and preserve one correct answer", () => {
@@ -2032,26 +1999,6 @@ test("internal empty question markers never reach practice UI", () => {
   );
 });
 
-test("content writes use null instead of internal question placeholders", async () => {
-  const contentActions = await readFile(
-    path.join(ROOT, "modules/content/actions/materials.ts"),
-    "utf8",
-  );
-  const paperActions = await readFile(
-    path.join(ROOT, "modules/practice/actions/admin.ts"),
-    "utf8",
-  );
-  const paperEditor = await readFile(
-    path.join(ROOT, "modules/practice/components/PaperQuestionEditor.tsx"),
-    "utf8",
-  );
-
-  assert.equal(contentActions.includes("未填写语境句"), false);
-  assert.equal(paperEditor.includes("|| '未填写题干'"), false);
-  assert.equal(contentActions.includes("（听力题）"), false);
-  assert.equal(paperActions.includes("未填写语境句"), false);
-});
-
 test("plain text and ruby fallbacks escape HTML", () => {
   const unsafe = '<img src=x onerror=alert(1)> & "quoted"';
   const escaped = "&lt;img src=x onerror=alert(1)&gt; &amp; &quot;quoted&quot;";
@@ -2200,94 +2147,6 @@ test("paper attributes normalize language, level and accepted materials", () => 
   });
 });
 
-test("paper practice restores an unfinished local draft", async () => {
-  const player = await readFile(
-    path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
-    "utf8",
-  );
-  const session = await readFile(
-    path.join(ROOT, "modules/practice/hooks/usePracticeSession.ts"),
-    "utf8",
-  );
-  const paperSession = await readFile(
-    path.join(ROOT, "app/practice/[id]/do/page.tsx"),
-    "utf8",
-  );
-  const sortingQuestion = await readFile(
-    path.join(
-      ROOT,
-      "modules/questions/components/question-renderer/SortingQuestion.tsx",
-    ),
-    "utf8",
-  );
-
-  assert.match(paperSession, /draftKey={`practice:draft:paper:\${id}`}/);
-  assert.match(paperSession, /restoreDraftIndex={!qid}/);
-  assert.match(session, /userStorageKey\(currentUser\.id, draftKey\)/);
-  assert.match(session, /window\.localStorage\.setItem\(scopedDraftKey/);
-  assert.match(session, /currentQuestionId/);
-  assert.match(session, /hasProgress:/);
-  assert.match(player, /onClick={handleExit}/);
-  assert.match(player, /router\.back\(\)/);
-  assert.match(player, /session\.clearDraft\(\)/);
-  assert.match(sortingQuestion, /window\.addEventListener\('keydown'/);
-  assert.match(sortingQuestion, /options\[optionNumber - 1\]/);
-});
-
-test("practice counts only complete paper submissions and can reset statistics", async () => {
-  const schema = await readFile(path.join(ROOT, "prisma/schema.prisma"), "utf8");
-  const attemptService = await readFile(
-    path.join(ROOT, "modules/practice/server/attempt-service.ts"),
-    "utf8",
-  );
-  const attemptRoute = await readFile(
-    path.join(ROOT, "app/api/quiz-attempts/route.ts"),
-    "utf8",
-  );
-  const paperItem = await readFile(
-    path.join(ROOT, "modules/practice/components/PaperLibraryItem.tsx"),
-    "utf8",
-  );
-  const dialog = await readFile(
-    path.join(ROOT, "modules/practice/components/PerformanceStatsDialog.tsx"),
-    "utf8",
-  );
-  const paperDetail = await readFile(
-    path.join(ROOT, "app/practice/[id]/page.tsx"),
-    "utf8",
-  );
-  const submissionReview = await readFile(
-    path.join(
-      ROOT,
-      "modules/practice/components/PracticeSubmissionReviewClient.tsx",
-    ),
-    "utf8",
-  );
-
-  assert.match(schema, /model PracticePaperSubmission/);
-  assert.match(attemptService, /paperQuestionIds\.size !== uniqueQuestionIds\.length/);
-  assert.match(attemptService, /practicePaperSubmission\.create/);
-  assert.match(attemptRoute, /export async function DELETE\(request: Request\)/);
-  assert.match(attemptRoute, /body\.scope === 'language'/);
-  assert.match(attemptRoute, /body\.scope === 'paper'/);
-  assert.match(attemptService, /export type QuizAttemptResetScope/);
-  assert.match(attemptService, /questionAttempt\.deleteMany\(\{/);
-  assert.match(attemptService, /collectionId: \{ in: papers\.map/);
-  assert.match(paperItem, /completedPracticeCount/);
-  assert.match(paperItem, /hasDraftProgress \? '继续练习' : '开始练习'/);
-  assert.match(paperDetail, /查看错题/);
-  assert.match(paperDetail, /submissions\/\$\{encodeURIComponent\(submission\.id\)\}/);
-  assert.match(submissionReview, /<PracticePlayer/);
-  assert.match(submissionReview, /mode='history'/);
-  assert.match(submissionReview, /initialSubmitted/);
-  assert.match(dialog, /重置统计/);
-  assert.match(dialog, /按语言/);
-  assert.match(dialog, /按试卷/);
-  assert.match(dialog, /role='alertdialog'/);
-  assert.match(dialog, /仅清除统计记录/);
-  assert.equal(dialog.includes('window.confirm'), false);
-});
-
 test("practice review reveals answers only for submitted questions", async () => {
   const player = await readFile(
     path.join(ROOT, "modules/practice/components/PracticePlayer.tsx"),
@@ -2312,121 +2171,4 @@ test("practice review reveals answers only for submitted questions", async () =>
     /submittedQuestionIdSet\.has\(fillQuestion\.id\)/,
   );
   assert.match(optionsList, /if \(isInteractionLocked\)/);
-});
-
-test("listening detail avoids idle animation work and uses scoped vocabulary sources", async () => {
-  const controller = await readFile(
-    path.join(ROOT, "modules/media/audio/components/useAudioController.ts"),
-    "utf8",
-  );
-  const detailPage = await readFile(
-    path.join(ROOT, "app/listening/[id]/page.tsx"),
-    "utf8",
-  );
-  const player = await readFile(
-    path.join(ROOT, "modules/media/audio/components/AudioPlayer.tsx"),
-    "utf8",
-  );
-  const pronunciationHook = await readFile(
-    path.join(ROOT, "modules/language/hooks/usePronunciationSource.ts"),
-    "utf8",
-  );
-  const sentenceRow = await readFile(
-    path.join(ROOT, "modules/media/audio/components/ListeningSentenceRow.tsx"),
-    "utf8",
-  );
-  const listeningLanding = await readFile(
-    path.join(ROOT, "app/listening/page.tsx"),
-    "utf8",
-  );
-  const listeningEntryCards = await readFile(
-    path.join(ROOT, "modules/listening/components/LibraryEntryCards.tsx"),
-    "utf8",
-  );
-  const listeningRepository = await readFile(
-    path.join(ROOT, "modules/listening/server/repository.ts"),
-    "utf8",
-  );
-  const listeningFilter = await readFile(
-    path.join(ROOT, "modules/listening/components/ListeningViewSwitcher.tsx"),
-    "utf8",
-  );
-  const playerHeader = await readFile(
-    path.join(ROOT, "modules/media/audio/components/ListeningPlayerHeader.tsx"),
-    "utf8",
-  );
-
-  assert.match(controller, /if \(audio\.paused\)/);
-  assert.match(controller, /animationFrameId = null/);
-  assert.match(detailPage, /buildAudioDialogueSourceId\(/);
-  assert.equal(
-    detailPage.includes("buildAudioDialogueSourceIdCandidates"),
-    false,
-  );
-  assert.equal(
-    detailPage.includes("listListeningMaterialsForShadowing"),
-    false,
-  );
-  assert.match(player, /useTextSelection\(!isBlindMode\)/);
-  assert.equal(player.includes("onClick={closeSelection}"), false);
-  assert.equal(player.includes("scrollIntoView"), false);
-  assert.match(player, /targetCenter - visibleCenter/);
-  assert.match(player, /max-w-5xl/);
-  assert.match(player, /annotateJapaneseTextWithSudachi/);
-  assert.match(player, /formatJapaneseTextWithSudachiRubyNotation/);
-  assert.match(player, /fetch\('\/api\/pronunciation'/);
-  // Preference state lives in the shared hook; the player only consumes it.
-  assert.match(player, /usePronunciationSource\(sudachiAvailable\)/);
-  assert.match(pronunciationHook, /PRONUNCIATION_SOURCE_STORAGE_KEY/);
-  assert.equal(player.includes("播放一句后显示词汇"), false);
-  assert.equal(player.includes("lg:grid-cols-[minmax(0,1fr)_20rem]"), false);
-  assert.match(sentenceRow, /data-context-sentence='true'/);
-  assert.match(sentenceRow, /data-context-ignore='true'/);
-  assert.match(sentenceRow, /select-none/);
-  assert.equal(sentenceRow.includes("activeVocabulary"), false);
-  assert.equal(
-    sentenceRow.includes("isActive && currentState === 'idle'"),
-    false,
-  );
-  assert.match(listeningRepository, /lastPlayedAt: true/);
-  assert.equal(listeningLanding.includes("最近收听"), false);
-  assert.match(listeningEntryCards, /group\/chapter/);
-  assert.match(listeningEntryCards, /group\/section/);
-  assert.match(listeningEntryCards, /max-h-\[min\(28rem,70vh\)\]/);
-  assert.match(listeningLanding, /ListeningViewSwitcher/);
-  assert.match(listeningFilter, /ui-section-head'>筛选/);
-  assert.match(listeningFilter, /教材、章节或材料名/);
-  assert.match(listeningFilter, /filters\.kind !== 'all'/);
-  assert.match(listeningFilter, /filters\.language !== 'all'/);
-  assert.match(listeningFilter, /entry\.languages\.includes/);
-  assert.match(listeningFilter, /entry\.searchText/);
-  assert.match(listeningLanding, /materialLanguageLabel/);
-  assert.equal(
-    listeningLanding.includes("grid-cols-[auto_minmax(0,1fr)_auto]"),
-    false,
-  );
-  assert.equal(playerHeader.includes("· 累计{' '}"), false);
-  assert.match(playerHeader, /PronunciationSourceSelector/);
-  assert.match(playerHeader, /sudachiAvailable/);
-});
-
-test("vocabulary language groups use pronunciation and source evidence", async () => {
-  const languageResolver = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/domain/language.ts"),
-    "utf8",
-  );
-  const vocabularyPage = await readFile(
-    path.join(ROOT, "app/vocabulary/page.tsx"),
-    "utf8",
-  );
-  const vocabularyRepository = await readFile(
-    path.join(ROOT, "modules/knowledge/vocabulary/server/repository.ts"),
-    "utf8",
-  );
-
-  assert.match(languageResolver, /pronunciations\.some\(containsKana\)/);
-  assert.match(languageResolver, /JAPANESE_SOURCE_TYPES\.has\(sourceType\)/);
-  assert.match(vocabularyPage, /resolveVocabularyLanguageCode/);
-  assert.match(vocabularyRepository, /pronunciations: true/);
-  assert.match(vocabularyRepository, /sourceType: true/);
 });

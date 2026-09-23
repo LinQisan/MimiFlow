@@ -1,48 +1,31 @@
 import 'server-only'
 
 import { cache } from 'react'
-import { cookies } from 'next/headers'
-
-import prisma from '@/lib/prisma'
-
-export const CURRENT_USER_COOKIE = 'mimiflow_user_id'
+import { redirect } from 'next/navigation'
+import { getSessionUser } from './auth'
 
 export type UserSummary = {
   id: string
   name: string
+  isAdmin: boolean
 }
 
-export const getCurrentUser = cache(async (): Promise<UserSummary> => {
-  const cookieStore = await cookies()
-  const selectedId = cookieStore.get(CURRENT_USER_COOKIE)?.value?.trim()
+export const getOptionalCurrentUser = cache(async (): Promise<UserSummary | null> =>
+  getSessionUser(),
+)
 
-  if (selectedId) {
-    const selected = await prisma.user.findUnique({
-      where: { id: selectedId },
-      select: { id: true, name: true },
-    })
-    if (selected) return selected
-  }
-
-  const fallback = await prisma.user.findFirst({
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-    select: { id: true, name: true },
-  })
-
-  if (!fallback) {
-    throw new Error('暂无可用用户，请先执行数据库迁移。')
-  }
-
-  return fallback
-})
+export async function getCurrentUser(): Promise<UserSummary> {
+  const user = await getOptionalCurrentUser()
+  if (!user) redirect('/login')
+  return user
+}
 
 export async function getCurrentUserId() {
   return (await getCurrentUser()).id
 }
 
-export async function listUsers(): Promise<UserSummary[]> {
-  return prisma.user.findMany({
-    orderBy: [{ createdAt: 'asc' }, { name: 'asc' }],
-    select: { id: true, name: true },
-  })
+export async function requireAdmin() {
+  const user = await getCurrentUser()
+  if (!user.isAdmin) throw new Error('没有管理权限。')
+  return user
 }

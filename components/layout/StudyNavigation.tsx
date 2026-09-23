@@ -25,10 +25,8 @@ const isFocusRoute = (pathname: string) =>
 
 export default function StudyNavigation({
   currentUser,
-  users,
 }: {
   currentUser: UserSummary
-  users: UserSummary[]
 }) {
   const pathname = usePathname()
 
@@ -64,7 +62,7 @@ export default function StudyNavigation({
           })}
         </nav>
         <div className='ml-auto flex shrink-0 items-center gap-1'>
-          <UserSwitcher currentUser={currentUser} users={users} />
+          <UserSwitcher currentUser={currentUser} />
           <Link
             href='/search'
             className='ui-btn ui-btn-sm shrink-0 !size-9 !p-0 md:!h-9 md:!w-auto md:!px-3'
@@ -81,16 +79,16 @@ export default function StudyNavigation({
             </svg>
             <span className='hidden md:inline'>搜索</span>
           </Link>
-          <Link
+          {currentUser.isAdmin && <Link
             href='/manage'
             className='inline-flex h-9 shrink-0 items-center border-b border-slate-400 px-2 text-[13px] font-medium tracking-wide text-slate-700 transition hover:border-slate-900 hover:text-slate-950 md:hidden'>
             管理
-          </Link>
-          <Link
+          </Link>}
+          {currentUser.isAdmin && <Link
             href='/manage'
             className='hidden h-9 items-center border-b border-transparent px-3 text-[13px] font-medium tracking-wide text-slate-500 hover:border-slate-400 hover:text-slate-950 md:inline-flex'>
             管理
-          </Link>
+          </Link>}
           <ResourceMenu />
         </div>
       </div>

@@ -3,6 +3,7 @@ type VocabularyPageToolbarProps = {
   activeLanguage: string
   viewMode: 'list' | 'flashcard'
   editing: boolean
+  canEdit: boolean
   onLanguageChange: (name: string) => void
   onViewChange: (mode: 'list' | 'flashcard') => void
   onEditingChange: () => void
@@ -13,6 +14,7 @@ export default function VocabularyPageToolbar({
   activeLanguage,
   viewMode,
   editing,
+  canEdit,
   onLanguageChange,
   onViewChange,
   onEditingChange,
@@ -68,7 +70,7 @@ export default function VocabularyPageToolbar({
             </button>
           ))}
         </div>
-        <button
+        {canEdit && <button
           type='button'
           aria-pressed={editing}
           onClick={onEditingChange}
@@ -78,7 +80,7 @@ export default function VocabularyPageToolbar({
               : 'text-slate-500 hover:text-slate-900'
           }`}>
           {viewMode === 'flashcard' ? '编辑' : '管理'}
-        </button>
+        </button>}
       </div>
     </div>
   )

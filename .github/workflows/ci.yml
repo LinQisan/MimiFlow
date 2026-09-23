@@ -66,5 +66,11 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: PostgreSQL pagination integration test
+        run: VOCABULARY_QUERY_DATABASE_TEST=1 node --test scripts/vocabulary-page-query.test.mjs
+
+      - name: Isolated PostgreSQL review and account integration test
+        run: REVIEW_PG_INTEGRATION=1 node --test scripts/review-postgres-integration.test.mjs
+
       - name: Build
         run: npm run build

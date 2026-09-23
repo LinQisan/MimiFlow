@@ -2,8 +2,10 @@ import {
   exportVocabularyCsvAdmin,
   importVocabularyCsvAdmin,
 } from '@/modules/knowledge/vocabulary/admin-actions'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 
 export async function GET(request: Request) {
+  if (!(await getCurrentUser()).isAdmin) return Response.json({ message: '没有管理权限。' }, { status: 403 })
   const wordbookId = new URL(request.url).searchParams.get('wordbook') || ''
   const result = await exportVocabularyCsvAdmin(wordbookId)
   if (!result.success) {
@@ -21,6 +23,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (!(await getCurrentUser()).isAdmin) return Response.json({ message: '没有管理权限。' }, { status: 403 })
   const formData = await request.formData()
   const wordbookId = String(formData.get('wordbookId') || '')
   const file = formData.get('file')

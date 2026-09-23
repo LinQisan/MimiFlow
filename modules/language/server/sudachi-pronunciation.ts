@@ -24,18 +24,10 @@ type SudachiAnalysisTiming = {
 }
 
 export type SudachiExecutionTiming = {
-  mode: 'one-shot' | 'persistent-worker'
-  inputSerializationMs: number
-  spawnMs: number
-  inputWriteMs: number
-  firstOutputMs: number | null
-  outputReadMs: number | null
-  processWallMs: number
-  jsonParseMs: number
-  workerQueueMs?: number | null
-  workerReadyMs?: number | null
-  /** Legacy diagnostic key retained for API compatibility; values now come from Rust. */
-  python?: SudachiAnalysisTiming
+  queueMs: number
+  analysisMs: number
+  totalMs: number
+  native?: SudachiAnalysisTiming
 }
 
 export type SudachiPronunciationResult = {
@@ -152,19 +144,10 @@ const runSudachi = (texts: string[]) => {
     const payload = await analyze(texts).catch(() => analyze(texts))
     const finishedAt = performance.now()
     const timing: SudachiExecutionTiming = {
-      // Legacy mode/field names describe the persistent analyzer contract.
-      // Removed transport stages report zero rather than invented timings.
-      mode: 'persistent-worker',
-      inputSerializationMs: 0,
-      spawnMs: 0,
-      inputWriteMs: 0,
-      firstOutputMs: finishedAt - requestedAt,
-      outputReadMs: finishedAt - startedAt,
-      processWallMs: finishedAt - requestedAt,
-      jsonParseMs: 0,
-      workerQueueMs: startedAt - requestedAt,
-      workerReadyMs: 0,
-      python: payload.timings as SudachiAnalysisTiming,
+      queueMs: startedAt - requestedAt,
+      analysisMs: finishedAt - startedAt,
+      totalMs: finishedAt - requestedAt,
+      native: payload.timings as SudachiAnalysisTiming,
     }
     return { ...parseAnalysisPayload(payload), timing }
   })

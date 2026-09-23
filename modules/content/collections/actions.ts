@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { CollectionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
@@ -31,6 +33,7 @@ async function isCollectionMoveValid(
 }
 
 export async function deleteCollection(collectionId: string) {
+  await requireAdmin()
   try {
     const collection = await prisma.collection.findUnique({
       where: { id: collectionId },
@@ -63,6 +66,7 @@ export async function deleteCollection(collectionId: string) {
 }
 
 export async function updateCollectionAttributes(formData: FormData) {
+  await requireAdmin()
   try {
     const collectionId = String(formData.get('collectionId') || '').trim()
     const title = String(formData.get('title') || '').trim()

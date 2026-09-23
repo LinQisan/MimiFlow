@@ -24,6 +24,6 @@ Build on the target OS/architecture. `.npmrc` uses `install-links=true` so the l
 - Resources/plugins and split mode C are unchanged. Resource files come from the same upstream release; see `LICENSE` and `resources/LEGAL`.
 - Token offsets remain Unicode codepoint offsets, including non-BMP characters. Surface trimming, hiragana conversion, first-occurrence maps, original ordering, and contextual corrections are preserved.
 - The TypeScript cache retains its 100-entry bound, duplicate in-flight requests share work, and failures fall back to personal pronunciation without being cached. Native requests retain the 15–60 second analysis budget and 20 MiB output bound.
-- Legacy `timing.mode`, `timing.python`, and transport timing field names remain for API compatibility. `persistent-worker` now denotes the resident in-process analyzer. Removed transport stages return zero; measured durations naturally differ. `SUDACHI_PYTHON` and `SUDACHI_WORKER_MODE` are no longer runtime configuration.
+- Diagnostics report queue, native analysis, and total durations directly. `SUDACHI_PYTHON` and `SUDACHI_WORKER_MODE` are no longer runtime configuration.
 
 `node --test scripts/sudachi-native.test.mjs` compares native output to frozen pre-migration Python results, tests non-blocking execution, caching, fallback, and Unicode offsets. Golden fixtures contain only synthetic/public test text; private corpus comparisons stay in ignored local outputs.

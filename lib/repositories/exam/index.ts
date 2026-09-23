@@ -32,6 +32,7 @@ import {
 import { getCurrentUserId } from "@/modules/users/server/current-user";
 import { buildExamAnnotationTexts } from "@/modules/practice/domain/exam-annotation-texts";
 import { buildRandomPracticeFilterOptions } from "@/modules/practice/domain/custom-session";
+import { getAttemptStatsByQuestionIds } from '@/modules/practice/server/attempt-stats';
 
 export type ExamHubPaperSummary = {
   id: string;
@@ -471,7 +472,8 @@ function buildQuestionView(
   return base;
 }
 
-async function buildVocabularyMaps(userId: string, relevantText = "") {
+async function buildVocabularyMaps(userId: string, relevantText: string) {
+  if (!relevantText) return { pronunciationMap: {}, vocabularyMetaMap: {} };
   const metadataFilter = {
     userId,
     OR: [
@@ -493,21 +495,19 @@ async function buildVocabularyMaps(userId: string, relevantText = "") {
       },
     },
   } as const;
-  const matchedWords = relevantText
-    ? Array.from(
-        new Set(
-          (
-            await prisma.vocabulary.findMany({
-              where: { userId },
-              select: { word: true },
-            })
-          )
-            .map(item => item.word)
-            .filter(word => word && relevantText.includes(word)),
-        ),
+  const matchedWords = Array.from(
+    new Set(
+      (
+        await prisma.vocabulary.findMany({
+          where: { userId },
+          select: { word: true },
+        })
       )
-    : [];
-  const relevantVocabularyRows = relevantText
+        .map(item => item.word)
+        .filter(word => word && relevantText.includes(word)),
+    ),
+  );
+  const relevantVocabularyRows = matchedWords.length
     ? await prisma.vocabulary.findMany({
         where: {
           ...metadataFilter,
@@ -515,10 +515,7 @@ async function buildVocabularyMaps(userId: string, relevantText = "") {
         },
         select: selectMetadata,
       })
-    : await prisma.vocabulary.findMany({
-        where: metadataFilter,
-        select: selectMetadata,
-      });
+    : [];
   const pronunciationMap: Record<string, string> = {};
   const vocabularyMetaMap = relevantVocabularyRows.reduce<
     Record<string, VocabularyMeta>
@@ -1450,29 +1447,13 @@ export async function getExamQuestionsByPaperId(paperId: string) {
           where: { userId, questionId: { in: questionIds } },
           select: { questionId: true, note: true },
         }),
-        prisma.questionAttempt.groupBy({
-          by: ["questionId", "isCorrect"],
-          where: { userId, questionId: { in: questionIds } },
-          _count: { _all: true },
-        }),
+        getAttemptStatsByQuestionIds(userId, questionIds),
       ])
-    : [[], []];
+    : [[], new Map<string, { total: number; correct: number }>()];
   const noteByQuestionId = new Map(
     noteRows.map(row => [row.questionId, row.note]),
   );
-  const attemptStatsByQuestionId = new Map<
-    string,
-    { total: number; correct: number }
-  >();
-  for (const group of attemptGroups) {
-    const current = attemptStatsByQuestionId.get(group.questionId) || {
-      total: 0,
-      correct: 0,
-    };
-    current.total += group._count._all;
-    if (group.isCorrect) current.correct += group._count._all;
-    attemptStatsByQuestionId.set(group.questionId, current);
-  }
+  const attemptStatsByQuestionId = attemptGroups;
 
   type OrderedExamQuestion = ReturnType<typeof buildQuestionView> & {
     sourceOrder: number;
@@ -1737,44 +1718,60 @@ export async function getRandomExamQuestionIdsBySelections(
       id: true,
       materialId: true,
       questionType: true,
-      content: true,
       sortOrder: true,
       createdAt: true,
-      attempts: {
-        where: { userId },
-        select: { id: true },
-      },
+      _count: { select: { attempts: { where: { userId } } } },
       material: {
-        select: {
-          id: true,
-          type: true,
-          chapterName: true,
-          contentPayload: true,
-          metadata: true,
-        },
+        select: { type: true },
       },
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
+  const materialRows = await prisma.material.findMany({
+    where: { id: { in: Array.from(new Set(candidateRows.map(row => row.materialId))) } },
+    select: { id: true, type: true, chapterName: true, contentPayload: true, metadata: true },
+  });
+  const materialById = new Map(materialRows.map(row => [row.id, row]));
+  const needsListeningContent = Array.from(selectedKeySet).some(key => key.startsWith("LISTENING:"))
+    && !selectedKeySet.has("MATERIAL:LISTENING");
+  const firstListeningQuestionByMaterial = new Map<string, string>();
+  if (needsListeningContent) {
+    for (const row of candidateRows) {
+      if (row.material.type === MaterialType.LISTENING && !firstListeningQuestionByMaterial.has(row.materialId)) {
+        firstListeningQuestionByMaterial.set(row.materialId, row.id);
+      }
+    }
+  }
+  const firstListeningQuestionIds = Array.from(firstListeningQuestionByMaterial.values());
+  const listeningContentRows = firstListeningQuestionIds.length
+    ? await prisma.question.findMany({
+        where: { id: { in: firstListeningQuestionIds } },
+        select: { id: true, content: true },
+      })
+    : [];
+  const listeningContentById = new Map(listeningContentRows.map(row => [row.id, row.content]));
+
   const groupsMap = new Map<
     string,
     {
       groupKey: string;
-      material: (typeof candidateRows)[0]["material"];
+      material: (typeof materialRows)[number];
       questions: typeof candidateRows;
     }
   >();
 
   for (const question of candidateRows) {
-    const groupKey = getQuestionGroupKey(question);
+    const material = materialById.get(question.materialId);
+    if (!material) continue;
+    const groupKey = getQuestionGroupKey({ ...question, material });
     const existing = groupsMap.get(groupKey);
     if (existing) {
       existing.questions.push(question);
     } else {
       groupsMap.set(groupKey, {
         groupKey,
-        material: question.material,
+        material,
         questions: [question],
       });
     }
@@ -1789,7 +1786,7 @@ export async function getRandomExamQuestionIdsBySelections(
       matchesSelection = true;
     } else if (materialType === MaterialType.LISTENING) {
       const section = resolveListeningSection({
-        content: decodeQuestionContent(firstQ.content),
+        content: decodeQuestionContent(listeningContentById.get(firstQ.id)),
         payload: decodeMaterialPayloadRecord(
           materialType,
           group.material.contentPayload,
@@ -1811,10 +1808,10 @@ export async function getRandomExamQuestionIdsBySelections(
     if (!matchesSelection) return false;
 
     if (scope === "unattempted") {
-      return group.questions.every((q) => q.attempts.length === 0);
+      return group.questions.every((q) => q._count.attempts === 0);
     }
     if (scope === "attempted") {
-      return group.questions.some((q) => q.attempts.length > 0);
+      return group.questions.some((q) => q._count.attempts > 0);
     }
     return true;
   });
@@ -1849,40 +1846,37 @@ export async function getExamQuestionsByIds(
     };
   }
 
-  const questionRows = await prisma.question.findMany({
-    where: { id: { in: questionIds } },
-    include: {
-      attempts: {
-        where: { userId },
-        select: {
-          isCorrect: true,
+  const [questionRows, attemptStatsByQuestionId] = await Promise.all([
+    prisma.question.findMany({
+      where: { id: { in: questionIds } },
+      include: {
+        userNotes: {
+          where: { userId },
+          take: 1,
+          select: { note: true },
         },
-      },
-      userNotes: {
-        where: { userId },
-        take: 1,
-        select: { note: true },
-      },
-      material: {
-        select: {
-          id: true,
-          type: true,
-          contentPayload: true,
-          collectionMaterials: {
-            orderBy: { sortOrder: "asc" },
-            take: 1,
-            select: {
-              collection: {
-                select: {
-                  title: true,
+        material: {
+          select: {
+            id: true,
+            type: true,
+            contentPayload: true,
+            collectionMaterials: {
+              orderBy: { sortOrder: "asc" },
+              take: 1,
+              select: {
+                collection: {
+                  select: {
+                    title: true,
+                  },
                 },
               },
             },
           },
         },
       },
-    },
-  });
+    }),
+    getAttemptStatsByQuestionIds(userId, questionIds),
+  ]);
 
   const byId = new Map(questionRows.map((row) => [row.id, row]));
   const questions = questionIds
@@ -1893,7 +1887,8 @@ export async function getExamQuestionsByIds(
         {
           id: row.id,
           note: row.userNotes[0]?.note || null,
-          attempts: row.attempts,
+          attemptCount: attemptStatsByQuestionId.get(row.id)?.total || 0,
+          correctAttemptCount: attemptStatsByQuestionId.get(row.id)?.correct || 0,
           questionType: row.questionType,
           content: row.content,
           prompt: row.prompt,
@@ -1921,7 +1916,10 @@ export async function getExamQuestionsByIds(
   );
 
   const { pronunciationMap, vocabularyMetaMap } =
-    await buildVocabularyMaps(userId);
+    await buildVocabularyMaps(
+      userId,
+      buildExamAnnotationTexts(questions).join("\n"),
+    );
 
   return {
     paperTitle: options?.paperTitle || "自定义练习",

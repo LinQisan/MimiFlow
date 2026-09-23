@@ -47,14 +47,14 @@ test('review writes fail closed on ownership', async () => {
   // Sentence cards: the write filter itself carries the owner.
   assert.match(
     memory,
-    /tx\.sentenceReview\.updateMany\(\{\s+where: \{ id: reviewId, userId \},/,
+    /tx\.sentenceReview\.updateMany\(\{\s+where: \{\s+id: reviewId,\s+userId,\s+reps: record\.reps,\s+updatedAt: record\.updatedAt,/,
   )
-  // Vocabulary cards have no userId column: ownership travels the relation.
+  // Vocabulary cards are user-scoped even when the word belongs to a shared book.
   assert.match(
     memory,
-    /tx\.vocabularyReview\.updateMany\(\{\s+where: \{ id: record\.id, vocabulary: \{ userId \} \},/,
+    /tx\.vocabularyReview\.updateMany\(\{\s+where: \{\s+id: record\.id,\s+userId,\s+reps: record\.reps,\s+updatedAt: record\.updatedAt,/,
   )
-  // The globally-addressed card lookup happens only after the ownership check.
+  // The card lookup happens only after verifying that the word is visible.
   const ensureBody = memory.slice(memory.indexOf('const ensureVocabularyReviewCard'))
   const ownershipCheck = ensureBody.indexOf('prisma.vocabulary.findFirst')
   const cardLookup = ensureBody.indexOf('prisma.vocabularyReview.findUnique')

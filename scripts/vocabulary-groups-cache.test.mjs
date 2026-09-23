@@ -13,19 +13,21 @@ const read = relative => readFile(path.join(ROOT, relative), 'utf8')
 const countOccurrences = (content, marker) =>
   content.split(marker).length - 1
 
-test('groups query is cached with a bounded TTL', async () => {
+test('active paged groups query is cached with a bounded TTL', async () => {
   const repository = await read(
     'modules/knowledge/vocabulary/server/repository.ts',
   )
-  assert.match(repository, /unstable_cache/)
+  const pageRepository = await read('modules/knowledge/vocabulary/server/page-repository.ts')
+  assert.match(pageRepository, /unstable_cache/)
   assert.match(repository, /VOCABULARY_GROUPS_CACHE_TAG = 'vocabulary-groups'/)
-  assert.match(repository, /revalidate: 300/)
+  assert.match(pageRepository, /revalidate: 300/)
   assert.match(
     repository,
     /export function invalidateVocabularyGroupsCache\(\)/,
   )
   // userId travels inside the cache key: no cross-user leaks.
-  assert.match(repository, /getCachedVocabularyGroups\(userId,/)
+  assert.match(pageRepository, /getCachedVocabularyPageGroups\(userId,/)
+  assert.doesNotMatch(repository, /export async function listVocabularyGroups\(/)
 })
 
 test('every vocabulary row writer busts the groups cache', async () => {
@@ -88,5 +90,5 @@ test('wordbook options reuse the same cache tag', async () => {
   )
   assert.match(repository, /unstable_cache/)
   assert.match(repository, /VOCABULARY_GROUPS_CACHE_TAG/)
-  assert.match(repository, /getCachedWordbookOptions\(userId\)/)
+  assert.match(repository, /getCachedWordbookOptions\(\)/)
 })

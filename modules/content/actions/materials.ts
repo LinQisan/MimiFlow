@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
@@ -133,6 +135,7 @@ const getErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : 'Unknown error'
 
 export async function createArticle(data: CreateArticlePayload) {
+  await requireAdmin()
   try {
     const articleTitle = (data.title || '').trim()
     const content = (data.content || '').trim()
@@ -309,6 +312,7 @@ export async function moveReadingMaterialToPaper(input: {
   sourcePaperId?: string | null
   targetPaperId?: string | null
 }) {
+  await requireAdmin()
   try {
     const materialId = (input.materialId || '').trim()
     const sourcePaperId = (input.sourcePaperId || '').trim()
@@ -411,6 +415,7 @@ export async function moveReadingMaterialToPaper(input: {
 }
 
 export async function createQuizQuestion(data: CreateQuizQuestionPayload) {
+  await requireAdmin()
   try {
     if (!data.paperId) return { success: false, message: '请选择所属集合！' }
 
@@ -591,6 +596,7 @@ type UpdateArticlePayload = {
 export async function updateArticleWithQuestions(
   payload: UpdateArticlePayload,
 ) {
+  await requireAdmin()
   try {
     const title = payload.title.trim()
     const content = payload.content.trim()
@@ -751,6 +757,7 @@ type UpdateQuizPayload = {
 }
 
 export async function updateQuizWithQuestions(payload: UpdateQuizPayload) {
+  await requireAdmin()
   try {
     const title = payload.title.trim()
     if (!payload.quizId) {
@@ -931,6 +938,7 @@ type UpdateLessonQuestionsPayload = {
 export async function updateLessonQuestions(
   payload: UpdateLessonQuestionsPayload,
 ) {
+  await requireAdmin()
   try {
     if (!payload.lessonId) {
       return { success: false, message: '听力 ID 缺失。' }
@@ -1126,6 +1134,7 @@ export async function createCategory(data: {
   materialType?: MaterialType
   language?: string
 }) {
+  await requireAdmin()
   try {
     const title = (data.name || '').trim()
     if (!title) {

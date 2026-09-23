@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 // Listening title actions.
 
 import { MaterialType } from '@prisma/client'
@@ -68,6 +70,7 @@ async function resolveLessonMaterialId(maybeId: string) {
 }
 
 export async function updateSpeakingTitle(formData: FormData) {
+  await requireAdmin()
   try {
     const { id: maybeId, title } = parseInput(
       speakingTitleSchema,
@@ -88,6 +91,7 @@ export async function updateSpeakingTitle(formData: FormData) {
 }
 
 export async function updateListeningDialogueText(formData: FormData) {
+  await requireAdmin()
   try {
     const { id, dialogueId, text } = parseInput(
       dialogueTextSchema,
@@ -136,6 +140,7 @@ export async function updateListeningDialogueText(formData: FormData) {
 }
 
 export async function updateListeningDialogueTimeline(formData: FormData) {
+  await requireAdmin()
   try {
     const { id, dialogueId, start, end, audioDuration } = parseInput(
       dialogueTimelineSchema,
@@ -192,6 +197,7 @@ export async function updateListeningDialogueTimeline(formData: FormData) {
 }
 
 export async function replaceListeningSubtitles(formData: FormData) {
+  await requireAdmin()
   try {
     const id = parseInput(materialIdSchema, formData.get('id'))
     const subtitleFile = formData.get('subtitleFile')
@@ -262,6 +268,7 @@ export async function replaceListeningSubtitles(formData: FormData) {
 }
 
 export async function deleteAudioMaterial(formData: FormData) {
+  await requireAdmin()
   try {
     const { id: maybeId } = parseInput(
       deleteAudioMaterialSchema,

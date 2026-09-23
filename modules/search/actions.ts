@@ -78,7 +78,7 @@ export async function searchGlobalContent(
     typeSet.has('vocabulary')
       ? prisma.vocabulary.findMany({
           where: {
-            userId,
+            AND: [{ OR: [{ userId }, { wordbooks: { some: {} } }] }],
             OR: [
               { word: { contains: primaryToken } },
               { pronunciations: { contains: primaryToken } },
@@ -126,7 +126,7 @@ export async function searchGlobalContent(
     typeSet.has('vocabulary')
       ? prisma.vocabularySentence.findMany({
           where: {
-            links: { some: { vocabulary: { userId } } },
+            links: { some: { vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } } },
             OR: [
               { text: { contains: primaryToken } },
               { source: { contains: primaryToken } },
@@ -136,7 +136,7 @@ export async function searchGlobalContent(
             text: true,
             source: true,
             links: {
-              where: { vocabulary: { userId } },
+              where: { vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } },
               include: {
                 vocabulary: {
                   select: {
@@ -253,7 +253,7 @@ export async function searchGlobalContent(
           where: {
             sourceType: 'AUDIO_DIALOGUE',
             text: { contains: primaryToken },
-            links: { some: { vocabulary: { userId } } },
+            links: { some: { vocabulary: { OR: [{ userId }, { wordbooks: { some: {} } }] } } },
           },
           select: {
             sourceId: true,

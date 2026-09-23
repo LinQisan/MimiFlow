@@ -1,12 +1,14 @@
 // app/upload/action.ts
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import {
   CollectionType,
   MaterialType,
   Prisma,
 } from '@prisma/client'
-import { mkdir, readdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readdir, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import {
@@ -19,6 +21,8 @@ import {
   PUBLIC_AUDIO_ROOT,
   PUBLIC_QUESTION_IMAGE_ROOT,
 } from '@/lib/server/public-paths'
+import { saveAudioUpload } from '@/modules/media/audio/server/upload'
+import { AUDIO_EXTENSIONS, getDatedAudioFolder, toSafeFilename } from '@/modules/media/audio/domain/storage'
 
 import prisma from '@/lib/prisma'
 import { replaceMediaSubtitleSearchIndex } from '@/lib/media-subtitles/search-index'
@@ -45,29 +49,8 @@ import {
   precomputePracticeVocabularyMaterialAnalyses,
 } from '@/modules/practice/server/vocabulary-analytics'
 
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.m4a',
-  '.wav',
-  '.ogg',
-  '.aac',
-  '.flac',
-  '.webm',
-])
-
 const PUBLIC_AUDIO_DIR = PUBLIC_AUDIO_ROOT
 const PUBLIC_QUESTION_IMAGE_DIR = PUBLIC_QUESTION_IMAGE_ROOT
-
-function toSafeFilename(name: string) {
-  return name
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\p{L}\p{N}._-]/gu, '')
-    .replace(/-+/g, '-')
-    .replace(/^[-.]+|[-.]+$/g, '')
-    .slice(0, 120)
-}
 
 function normalizeAudioFolderPath(folder: string) {
   return folder
@@ -79,24 +62,11 @@ function normalizeAudioFolderPath(folder: string) {
     .join('/')
 }
 
-function getDefaultAudioUploadFolder() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  const year = parts.find(part => part.type === 'year')?.value || 'unknown'
-  const month = parts.find(part => part.type === 'month')?.value || '00'
-  return `uploads/${year}-${month}`
-}
-
-async function fileExists(filePath: string) {
-  try {
-    await stat(filePath)
-    return true
-  } catch {
-    return false
-  }
+async function settleUploads<T>(uploads: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(uploads)
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+  if (failure) throw failure.reason
+  return results.map(result => (result as PromiseFulfilledResult<T>).value)
 }
 
 function toSafeFolderName(name: string) {
@@ -428,6 +398,7 @@ async function walkAudioFiles(dir: string, baseDir: string): Promise<string[]> {
 }
 
 export async function listPublicAudioFiles() {
+  await requireAdmin()
   try {
     const files = await walkAudioFiles(PUBLIC_AUDIO_DIR, PUBLIC_AUDIO_DIR)
     return {
@@ -458,22 +429,14 @@ async function saveUploadedAudio(
   }
 
   const safeFolderName =
-    normalizeAudioFolderPath(folderName) || getDefaultAudioUploadFolder()
+    normalizeAudioFolderPath(folderName) || getDatedAudioFolder('uploads')
   const targetDir = resolvePathInsideRoot(PUBLIC_AUDIO_DIR, safeFolderName)
   if (!targetDir) throw new Error('录音保存目录无效。')
   await mkdir(targetDir, { recursive: true })
 
   const base = path.basename(file.name, ext)
   const safeBase = toSafeFilename(base) || 'audio'
-  let finalName = `${safeBase}${ext}`
-  let suffix = 2
-  while (await fileExists(path.join(targetDir, finalName))) {
-    finalName = `${safeBase}-${suffix}${ext}`
-    suffix += 1
-  }
-  const finalPath = path.join(targetDir, finalName)
-  const bytes = Buffer.from(await file.arrayBuffer())
-  await writeFile(finalPath, bytes)
+  const finalName = await saveAudioUpload(file, targetDir, safeBase, ext)
 
   return `/audios/${safeFolderName}/${finalName}`
 }
@@ -506,20 +469,33 @@ async function saveUploadedQuestionImage(
   const indexedTitle =
     questionCount > 1 ? `${safeTitle}-${questionIndex + 1}` : safeTitle
   const imageTitle = `${indexedTitle}${nameSuffix}`
-  let fileName = `${imageTitle}${extension}`
-  let suffix = 2
-  while (await fileExists(path.join(PUBLIC_QUESTION_IMAGE_DIR, fileName))) {
-    fileName = `${imageTitle}-${suffix}${extension}`
-    suffix += 1
+  const bytes = Buffer.from(await file.arrayBuffer())
+  for (let suffix = 1; ; suffix += 1) {
+    const fileName = `${imageTitle}${suffix === 1 ? '' : `-${suffix}`}${extension}`
+    const destination = path.join(PUBLIC_QUESTION_IMAGE_DIR, fileName)
+    let handle
+    try {
+      handle = await open(destination, 'wx')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') continue
+      throw error
+    }
+    try {
+      await handle.writeFile(bytes)
+      await handle.close()
+      return `/images/questions/${fileName}`
+    } catch (error) {
+      await handle.close().catch(() => {})
+      await unlink(destination).catch(() => {})
+      throw error
+    }
   }
-  await writeFile(
-    path.join(PUBLIC_QUESTION_IMAGE_DIR, fileName),
-    Buffer.from(await file.arrayBuffer()),
-  )
-  return `/images/questions/${fileName}`
 }
 
 export async function uploadAssAndSaveData(formData: FormData) {
+  await requireAdmin()
+  const newlySavedPaths: string[] = []
+  let databaseCommitted = false
   try {
     const uploadMode = parseUploadMode(formData.get('uploadMode'))
     const isMediaUploadMode = uploadMode === 'media'
@@ -613,6 +589,15 @@ export async function uploadAssAndSaveData(formData: FormData) {
       throw new Error('电视剧字幕请填写季和集。')
     }
 
+    const parsedSubtitles = await Promise.all(uniqueFiles.map(async file => {
+      const rawSubs = parseAssToRawSubtitles(await file.text())
+      if (rawSubs.length === 0) {
+        throw new Error(`文件 ${file.name} 未解析到有效字幕行。`)
+      }
+      return applyAssTimelinePadding(rawSubs, 0.1, 0.3, 0.05)
+        .map(dialogue => ({ ...dialogue, stableId: randomUUID() }))
+    }))
+
     const isBatch = uniqueFiles.length > 1
     const listeningQuestionDrafts =
       matchedMaterialType === MaterialType.LISTENING
@@ -626,27 +611,29 @@ export async function uploadAssAndSaveData(formData: FormData) {
           }
     const questionImageTitle =
       title || getBaseNameWithoutExt(uniqueFiles[0]?.name || '')
-    const listeningQuestionImagePaths = await Promise.all(
+    const listeningQuestionImagePaths = await settleUploads(
       listeningQuestionDrafts.questions.map(async (question, questionIndex) => {
         if (question.questionType !== 'TOEIC_PHOTOGRAPH') return ''
         const image = formData.get(`listeningQuestionImage_${questionIndex}`)
         if (!(image instanceof File) || image.size === 0) {
           throw new Error(`请上传第 ${questionIndex + 1} 题的题目图片。`)
         }
-        return saveUploadedQuestionImage(
+        const savedPath = await saveUploadedQuestionImage(
           image,
           questionIndex,
           questionImageTitle,
           listeningQuestionDrafts.questions.length,
         )
+        newlySavedPaths.push(savedPath)
+        return savedPath
       }),
     )
-    const listeningOptionImagePaths = await Promise.all(
+    const listeningOptionImagePaths = await settleUploads(
       listeningQuestionDrafts.questions.map(async (question, questionIndex) => {
         if (question.optionKind !== 'image') {
           return question.options.map(option => option.imageUrl || '')
         }
-        return Promise.all(
+        return settleUploads(
           question.options.map(async (option, optionIndex) => {
             const image = formData.get(
               `listeningQuestionOptionImage_${questionIndex}_${optionIndex}`,
@@ -657,7 +644,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
                 `请上传第 ${questionIndex + 1} 题的第 ${optionIndex + 1} 个选项图片。`,
               )
             }
-            return saveUploadedQuestionImage(
+            const savedPath = await saveUploadedQuestionImage(
               image,
               questionIndex,
               questionImageTitle,
@@ -665,6 +652,8 @@ export async function uploadAssAndSaveData(formData: FormData) {
               `-option-${optionIndex + 1}`,
               `选项 ${optionIndex + 1} 图片`,
             )
+            newlySavedPaths.push(savedPath)
+            return savedPath
           }),
         )
       }),
@@ -683,6 +672,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
           audioFolderName,
           matchedMaterialType === MaterialType.LISTENING,
         )
+        newlySavedPaths.push(baseAudioFile)
       } else {
         for (const file of uniqueAudioUploadFiles) {
           const savedPath = await saveUploadedAudio(
@@ -690,6 +680,7 @@ export async function uploadAssAndSaveData(formData: FormData) {
             audioFolderName,
             matchedMaterialType === MaterialType.LISTENING,
           )
+          newlySavedPaths.push(savedPath)
           const stem = normalizeStem(getBaseNameWithoutExt(file.name))
           const bucket = uploadedAudioByStem.get(stem) || []
           bucket.push(savedPath)
@@ -738,152 +729,143 @@ export async function uploadAssAndSaveData(formData: FormData) {
     const scopedSiteAudioQueueByStem = cloneStemMap(scopedSiteAudioByStem)
     let createdCount = 0
 
-    for (let i = 0; i < uniqueFiles.length; i += 1) {
-      const file = uniqueFiles[i]
-      const materialQuestionEntries = selectListeningQuestionEntriesForFile(
-        listeningQuestionDrafts.questions,
-        file.name,
-        isBatch,
-      )
-      const fileContent = await file.text()
-      const rawSubs = parseAssToRawSubtitles(fileContent)
-      if (rawSubs.length === 0) {
-        throw new Error(`文件 ${file.name} 未解析到有效字幕行。`)
-      }
+    // Keep the database side of a batch atomic. A later invalid subtitle or
+    // question must not leave earlier materials committed as a partial import.
+    await prisma.$transaction(async tx => {
+      for (let i = 0; i < uniqueFiles.length; i += 1) {
+        const file = uniqueFiles[i]
+        const materialQuestionEntries = selectListeningQuestionEntriesForFile(
+          listeningQuestionDrafts.questions,
+          file.name,
+          isBatch,
+        )
+        const processedSubs = parsedSubtitles[i]
+        const fileBase = getBaseNameWithoutExt(file.name)
+        const draftTitle = isBatch ? (title ? `${title} · ${fileBase}` : fileBase) : title || fileBase
+        const stem = normalizeStem(fileBase)
+        let finalAudioFile = ''
+        const overrideKey = `${file.name}::${file.size}`
+        const overrideValue = (assAudioOverrides[overrideKey] || '').trim()
 
-      const processedSubs = applyAssTimelinePadding(
-        rawSubs,
-        0.1,
-        0.3,
-        0.05,
-      ).map(dialogue => ({ ...dialogue, stableId: randomUUID() }))
-      const fileBase = getBaseNameWithoutExt(file.name)
-      const draftTitle = isBatch ? (title ? `${title} · ${fileBase}` : fileBase) : title || fileBase
-      const stem = normalizeStem(fileBase)
-      let finalAudioFile = ''
-      const overrideKey = `${file.name}::${file.size}`
-      const overrideValue = (assAudioOverrides[overrideKey] || '').trim()
-
-      if (overrideValue) {
-        if (overrideValue.startsWith('upload://')) {
-          const overrideStem = normalizeStem(overrideValue.replace(/^upload:\/\//, ''))
-          const matchedUpload = shiftStemCandidate(
-            overrideStem,
-            uploadedAudioQueueByStem,
-          )
-          if (matchedUpload) {
-            finalAudioFile = matchedUpload
-            overrideApplied += 1
-          } else {
-            overrideInvalid += 1
-          }
-        } else {
-          const webPath = ensureAudioWebPath(overrideValue)
-          if (webPath.startsWith('/audios/')) {
-            finalAudioFile = webPath
-            overrideApplied += 1
-          } else {
-            overrideInvalid += 1
-          }
-        }
-      }
-
-      if (!finalAudioFile) {
-        if (!isBatch) {
-          finalAudioFile = baseAudioFile
-        } else {
-          const uploadMatched = shiftStemCandidate(stem, uploadedAudioQueueByStem)
-          if (uploadMatched) {
-            finalAudioFile = uploadMatched
-            matchedFromUpload.push(file.name)
-          } else {
-            const siteMatched = pickAudioByStem(
-              stem,
-              scopedSiteAudioQueueByStem,
-              siteAudioQueueByStem,
+        if (overrideValue) {
+          if (overrideValue.startsWith('upload://')) {
+            const overrideStem = normalizeStem(overrideValue.replace(/^upload:\/\//, ''))
+            const matchedUpload = shiftStemCandidate(
+              overrideStem,
+              uploadedAudioQueueByStem,
             )
-            if (siteMatched) {
-              finalAudioFile = siteMatched
-              matchedFromSite.push(file.name)
-            } else if (baseAudioFile) {
-              finalAudioFile = deriveAudioPathForBatch(baseAudioFile, file.name)
-              fallbackPaths.push(file.name)
+            if (matchedUpload) {
+              finalAudioFile = matchedUpload
+              overrideApplied += 1
+            } else {
+              overrideInvalid += 1
+            }
+          } else {
+            const webPath = ensureAudioWebPath(overrideValue)
+            if (webPath.startsWith('/audios/')) {
+              finalAudioFile = webPath
+              overrideApplied += 1
+            } else {
+              overrideInvalid += 1
             }
           }
         }
-      }
 
-      const jlptIdentity =
-        matchedMaterialType === MaterialType.LISTENING
-          ? parseJlptListeningIdentity(fileBase) ||
-            parseJlptListeningIdentity(finalAudioFile) ||
-            parseJlptListeningIdentity(draftTitle)
-          : null
-      const finalTitle = jlptIdentity
-        ? formatJlptListeningTitle(jlptIdentity)
-        : draftTitle
-
-      if (!finalAudioFile) {
-        if (subtitleNoAudio) {
-          finalAudioFile = ''
-        } else {
-          unmatchedAudio.push(file.name)
-          continue
+        if (!finalAudioFile) {
+          if (!isBatch) {
+            finalAudioFile = baseAudioFile
+          } else {
+            const uploadMatched = shiftStemCandidate(stem, uploadedAudioQueueByStem)
+            if (uploadMatched) {
+              finalAudioFile = uploadMatched
+              matchedFromUpload.push(file.name)
+            } else {
+              const siteMatched = pickAudioByStem(
+                stem,
+                scopedSiteAudioQueueByStem,
+                siteAudioQueueByStem,
+              )
+              if (siteMatched) {
+                finalAudioFile = siteMatched
+                matchedFromSite.push(file.name)
+              } else if (baseAudioFile) {
+                finalAudioFile = deriveAudioPathForBatch(baseAudioFile, file.name)
+                fallbackPaths.push(file.name)
+              }
+            }
+          }
         }
-      }
 
-      const materialId = randomUUID()
-      const listeningSectionNumber =
-        listeningQuestionDrafts.listeningSectionNumber ||
-        jlptIdentity?.sectionNumber ||
-        null
-      const toeicPart = getToeicPartByQuestionType(
-        listeningQuestionDrafts.questions[0]?.questionType || '',
-      )
-      const listeningSectionTitle =
-        listeningQuestionDrafts.listeningSectionTitle ||
-        jlptIdentity?.sectionLabel ||
-        (toeicPart
-          ? `Part ${toeicPart.part} · ${toeicPart.title}`
-          : '听力')
-      const contentPayload: Record<string, unknown> = { dialogues: processedSubs }
-      if (finalAudioFile) {
-        contentPayload.audioFile = finalAudioFile
-      }
-      if (isMediaUploadMode) contentPayload.subtitleNoAudio = true
-      if (isMediaUploadMode) {
-        contentPayload.subtitleSourceType = subtitleSourceType
-      }
-      if (subtitleWorkTitle) contentPayload.subtitleWorkTitle = subtitleWorkTitle
-      if (subtitleSeason) contentPayload.subtitleSeason = subtitleSeason
-      if (subtitleEpisode) contentPayload.subtitleEpisode = subtitleEpisode
-      if (materialLanguage) contentPayload.language = materialLanguage
-      if (matchedMaterialType === MaterialType.LISTENING) {
-        contentPayload.questionEntryRequired =
-          materialQuestionEntries.length === 0
-        if (listeningSectionNumber) {
-          contentPayload.listeningSectionNumber = listeningSectionNumber
-          contentPayload.listeningSectionTitle = listeningSectionTitle
+        const jlptIdentity =
+          matchedMaterialType === MaterialType.LISTENING
+            ? parseJlptListeningIdentity(fileBase) ||
+              parseJlptListeningIdentity(finalAudioFile) ||
+              parseJlptListeningIdentity(draftTitle)
+            : null
+        const finalTitle = jlptIdentity
+          ? formatJlptListeningTitle(jlptIdentity)
+          : draftTitle
+
+        if (!finalAudioFile) {
+          if (subtitleNoAudio) {
+            finalAudioFile = ''
+          } else {
+            unmatchedAudio.push(file.name)
+            continue
+          }
         }
-      }
-      if (jlptIdentity) {
-        contentPayload.questionNumber = jlptIdentity.questionNumber
-        contentPayload.jlptLevel = jlptIdentity.level
-        contentPayload.jlptSession = jlptIdentity.session
-      }
 
-      const metadata: Record<string, unknown> = {}
-      if (isMediaUploadMode) {
-        metadata.subtitle = {
-          noAudio: true,
-          sourceType: subtitleSourceType,
-          workTitle: subtitleWorkTitle || null,
-          season: subtitleSeason || null,
-          episode: subtitleEpisode || null,
+        const materialId = randomUUID()
+        const listeningSectionNumber =
+          listeningQuestionDrafts.listeningSectionNumber ||
+          jlptIdentity?.sectionNumber ||
+          null
+        const toeicPart = getToeicPartByQuestionType(
+          listeningQuestionDrafts.questions[0]?.questionType || '',
+        )
+        const listeningSectionTitle =
+          listeningQuestionDrafts.listeningSectionTitle ||
+          jlptIdentity?.sectionLabel ||
+          (toeicPart
+            ? `Part ${toeicPart.part} · ${toeicPart.title}`
+            : '听力')
+        const contentPayload: Record<string, unknown> = { dialogues: processedSubs }
+        if (finalAudioFile) {
+          contentPayload.audioFile = finalAudioFile
         }
-      }
+        if (isMediaUploadMode) contentPayload.subtitleNoAudio = true
+        if (isMediaUploadMode) {
+          contentPayload.subtitleSourceType = subtitleSourceType
+        }
+        if (subtitleWorkTitle) contentPayload.subtitleWorkTitle = subtitleWorkTitle
+        if (subtitleSeason) contentPayload.subtitleSeason = subtitleSeason
+        if (subtitleEpisode) contentPayload.subtitleEpisode = subtitleEpisode
+        if (materialLanguage) contentPayload.language = materialLanguage
+        if (matchedMaterialType === MaterialType.LISTENING) {
+          contentPayload.questionEntryRequired =
+            materialQuestionEntries.length === 0
+          if (listeningSectionNumber) {
+            contentPayload.listeningSectionNumber = listeningSectionNumber
+            contentPayload.listeningSectionTitle = listeningSectionTitle
+          }
+        }
+        if (jlptIdentity) {
+          contentPayload.questionNumber = jlptIdentity.questionNumber
+          contentPayload.jlptLevel = jlptIdentity.level
+          contentPayload.jlptSession = jlptIdentity.session
+        }
 
-      await prisma.$transaction(async tx => {
+        const metadata: Record<string, unknown> = {}
+        if (isMediaUploadMode) {
+          metadata.subtitle = {
+            noAudio: true,
+            sourceType: subtitleSourceType,
+            workTitle: subtitleWorkTitle || null,
+            season: subtitleSeason || null,
+            episode: subtitleEpisode || null,
+          }
+        }
+
         await tx.material.create({
           data: {
             id: materialId,
@@ -958,14 +940,14 @@ export async function uploadAssAndSaveData(formData: FormData) {
             contentPayload,
           })
         }
-      })
-      createdMaterials.push({
-        name: file.name,
-        id: materialId,
-        listeningSectionNumber,
-      })
-      createdCount += 1
-    }
+        createdMaterials.push({
+          name: file.name,
+          id: materialId,
+          listeningSectionNumber,
+        })
+        createdCount += 1
+      }
+    }, { timeout: 300_000 })
 
     if (createdMaterials.length === 0) {
       throw new Error(
@@ -974,12 +956,17 @@ export async function uploadAssAndSaveData(formData: FormData) {
           : '未成功导入任何字幕文件。',
       )
     }
+    databaseCommitted = true
 
-    await precomputePracticeVocabularyMaterialAnalyses(
-      createdMaterials.map(material => material.id),
-    )
-    invalidatePracticeVocabularyAnalytics()
-
+    let analysisWarning = ''
+    try {
+      await precomputePracticeVocabularyMaterialAnalyses(
+        createdMaterials.map(material => material.id),
+      )
+    } catch (error) {
+      console.error('导入成功，但词汇分析预计算失败:', error)
+      analysisWarning = '词汇分析暂未完成，可稍后重试。'
+    }
     const summary: string[] = []
     if (matchedFromUpload.length > 0) summary.push(`上传配对 ${matchedFromUpload.length}`)
     if (matchedFromSite.length > 0) summary.push(`站内配对 ${matchedFromSite.length}`)
@@ -987,15 +974,22 @@ export async function uploadAssAndSaveData(formData: FormData) {
     if (unmatchedAudio.length > 0) summary.push(`未匹配 ${unmatchedAudio.length}`)
     if (overrideApplied > 0) summary.push(`手动改配 ${overrideApplied}`)
     if (overrideInvalid > 0) summary.push(`无效改配 ${overrideInvalid}`)
+    if (analysisWarning) summary.push(analysisWarning)
 
-    revalidatePath('/')
-    revalidatePath('/manage/import')
-    if (matchedMaterialType === MaterialType.LISTENING) {
-      revalidatePath('/manage/listening')
-      revalidatePath('/practice')
+    try {
+      invalidatePracticeVocabularyAnalytics()
+      revalidatePath('/')
+      revalidatePath('/manage/import')
+      if (matchedMaterialType === MaterialType.LISTENING) {
+        revalidatePath('/manage/listening')
+        revalidatePath('/practice')
+      }
+      revalidatePath('/manage/shadowing')
+      if (isMediaUploadMode) revalidatePath('/subtitles')
+    } catch (error) {
+      console.error('导入成功，但页面缓存刷新失败:', error)
+      summary.push('页面数据可能需要刷新后显示')
     }
-    revalidatePath('/manage/shadowing')
-    if (isMediaUploadMode) revalidatePath('/subtitles')
 
     return {
       success: true,
@@ -1015,6 +1009,16 @@ export async function uploadAssAndSaveData(formData: FormData) {
           : null,
     }
   } catch (error: unknown) {
+    if (!databaseCommitted) {
+      await Promise.allSettled(newlySavedPaths.map(async webPath => {
+        const absolutePath = webPath.startsWith('/audios/')
+          ? resolvePathInsideRoot(PUBLIC_AUDIO_DIR, webPath.slice('/audios/'.length))
+          : webPath.startsWith('/images/questions/')
+            ? resolvePathInsideRoot(PUBLIC_QUESTION_IMAGE_DIR, webPath.slice('/images/questions/'.length))
+            : null
+        if (absolutePath) await unlink(absolutePath)
+      }))
+    }
     const message = error instanceof Error ? error.message : '未知错误'
     console.error('处理失败:', error)
     return { success: false, message: `导入失败: ${message}` }

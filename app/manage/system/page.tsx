@@ -1,6 +1,7 @@
 import Link from 'next/link'
 
 const tools = [
+  { href: '/manage/system/invites', title: '注册邀请码', description: '创建、查看和撤销一次性邀请码。' },
   {
     href: '/manage/system/audio',
     title: '录音文件',

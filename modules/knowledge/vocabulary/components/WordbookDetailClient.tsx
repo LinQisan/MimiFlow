@@ -35,6 +35,7 @@ type WordbookSeriesMeta = {
 
 
 type Props = {
+  canManage: boolean
   wordbookId: string
   wordbookTitle: string
   series: WordbookSeriesMeta
@@ -55,6 +56,7 @@ type Props = {
 }
 
 export default function WordbookDetailClient({
+  canManage,
   wordbookId,
   wordbookTitle,
   series,
@@ -498,7 +500,7 @@ export default function WordbookDetailClient({
               单词卡
             </button>
           </div>
-          <button
+          {canManage && <button
             type="button"
             aria-expanded={showManagement}
             aria-controls="wordbook-management-panel"
@@ -508,7 +510,7 @@ export default function WordbookDetailClient({
             }}
             className={`ui-btn ${showManagement ? 'ui-btn-primary' : ''}`}>
             {showManagement ? '收起管理' : '管理词表'}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -778,9 +780,9 @@ export default function WordbookDetailClient({
                       发音
                     </button>
                   ) : null}
-                  <Link href={buildWordbookEntryHref(wordbookId, currentFlash.id, true)} prefetch={false} className="ui-btn">
+                  {canManage && <Link href={buildWordbookEntryHref(wordbookId, currentFlash.id, true)} prefetch={false} className="ui-btn">
                     编辑
-                  </Link>
+                  </Link>}
                 </div>
 
                 <p className='mb-5 whitespace-pre-wrap text-center text-base leading-7 text-slate-700 dark:text-slate-300'>{currentFlash.meanings.join('；') || '暂无释义'}</p>

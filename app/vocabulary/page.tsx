@@ -29,7 +29,7 @@ import {
   normalizePronunciationData,
   type VocabularyPronunciationData,
 } from '@/modules/knowledge/vocabulary/domain/pronunciation'
-import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { getCurrentUser } from '@/modules/users/server/current-user'
 import { listVocabularyPageGroups } from '@/modules/knowledge/vocabulary/server/page-repository'
 import { normalizeVocabularyWord } from '@/modules/knowledge/vocabulary/domain/normalized-word'
 import { dedupeVocabularyReadingAudios } from '@/modules/knowledge/vocabulary/domain/reading-audio'
@@ -224,7 +224,8 @@ export default async function VocabularyRoute({
     ? Math.max(1, Math.floor(rawPage))
     : 1
 
-  await getCurrentUserId()
+  const currentUser = await getCurrentUser()
+  const userId = currentUser.id
 
   // Start page details as soon as the page words are known, independently of
   // wordbook and tag options. Only the current page's words are hydrated.
@@ -522,6 +523,7 @@ export default async function VocabularyRoute({
       pronunciations,
       sourceType: primary.sourceType,
     })
+    const review = orderedRecords.flatMap(record => record.reviews).find(item => item.userId === userId)
     if (!groupedData[finalGroupName]) groupedData[finalGroupName] = []
     groupedData[finalGroupName].push({
       id: primary.id,
@@ -562,13 +564,12 @@ export default async function VocabularyRoute({
         ...sense,
         exampleIds: examples.map(sentence => sentence.id),
       })),
-      ...(orderedRecords.find(record => record.review)?.review
-        ? { review: orderedRecords.find(record => record.review)!.review! }
-        : {}),
+      ...(review ? { review } : {}),
     })
   })
 
   const tabsProps = {
+      canEdit: currentUser.isAdmin || wordbookFilter === 'none',
       groupedData,
       groupedTotals,
       folders: folders as FolderItem[],

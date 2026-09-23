@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 // Practice actions.
 
 import { CollectionType } from '@prisma/client'
@@ -13,6 +15,7 @@ import {
 } from '@/modules/practice/server/vocabulary-analytics'
 
 export async function updatePaperAttributes(formData: FormData) {
+  await requireAdmin()
   try {
     const paperId = String(formData.get('paperId') || '').trim()
     const title = String(formData.get('title') || '').trim()

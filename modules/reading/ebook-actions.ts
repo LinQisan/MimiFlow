@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { MaterialType } from '@prisma/client'
@@ -37,6 +39,7 @@ export async function importEpubAction(
   _prevState: ImportEpubState,
   formData: FormData,
 ): Promise<ImportEpubState> {
+  await requireAdmin()
   const file = formData.get('epubFile')
   const collectionId = String(formData.get('collectionId') || '').trim()
   const titleOverride = String(formData.get('title') || '').trim()
@@ -100,6 +103,7 @@ export async function importPastedBookAction(
   _prevState: ImportEpubState,
   formData: FormData,
 ): Promise<ImportEpubState> {
+  await requireAdmin()
   const title = String(formData.get('title') || '').trim()
   const author = String(formData.get('author') || '').trim()
   const language = String(formData.get('language') || '').trim()
@@ -154,6 +158,7 @@ export async function importPastedBookAction(
 }
 
 export async function deleteEpubAction(id: string) {
+  await requireAdmin()
   const material = await prisma.material.findFirst({
     where: { type: MaterialType.READING, id: id.trim() },
     select: {

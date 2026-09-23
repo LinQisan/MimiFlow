@@ -8,6 +8,7 @@ import path from 'node:path'
 import vm from 'node:vm'
 import { createRequire } from 'node:module'
 import ts from 'typescript'
+import { AUDIO_EXTENSIONS } from '../modules/media/audio/domain/storage.ts'
 import { hasJapanese } from '../modules/language/domain/text.ts'
 
 const require = createRequire(import.meta.url)
@@ -52,6 +53,7 @@ async function harness(root, fail, rowOverride = {}) {
     toJsonStringList: value => JSON.stringify([...new Set(value)]),
   }
   const stubs = {
+    '@/modules/media/audio/domain/storage': { AUDIO_EXTENSIONS },
     '@/modules/knowledge/wordbooks/entry-order-writer': { persistImportedWordbookOrder },
     '@/modules/language/domain/etymology': { splitJapaneseEtymologies },
     '@/lib/prisma': { default: db, __esModule: true },
@@ -64,7 +66,7 @@ async function harness(root, fail, rowOverride = {}) {
         return reading && audioFile ? { vocabularyId, reading, audioFile } : null
       },
     },
-    '@/modules/users/server/current-user': { getCurrentUserId: async () => 'test-user' },
+    '@/modules/users/server/current-user': { getCurrentUserId: async () => 'test-user', requireAdmin: async () => ({ id: 'test-user', isAdmin: true }) },
     '@/modules/knowledge/vocabulary/server/repository': { VOCABULARY_GROUPS_CACHE_TAG: 'vocabulary-groups' },
     'next/cache': {
       updateTag: tag => {

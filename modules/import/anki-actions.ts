@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { persistImportedWordbookOrder } from '@/modules/knowledge/wordbooks/entry-order-writer'
 import { ensureAnkiVocabularySenses } from '@/modules/import/server/anki-vocabulary'
 import { changedAnkiFields, planAnkiReadingAudio } from '@/modules/import/domain/anki-reading-audio'
@@ -25,6 +27,7 @@ import {
 } from '@/modules/knowledge/vocabulary/domain/jlpt'
 import { resolvePathInsideRoot } from '@/utils/files/path'
 import { PUBLIC_AUDIO_ROOT } from '@/lib/server/public-paths'
+import { AUDIO_EXTENSIONS } from '@/modules/media/audio/domain/storage'
 import {
   batchComputeVocabularyPronunciations,
   batchComputeSentencePronunciations,
@@ -77,15 +80,6 @@ const MAX_PREVIEW_ROWS = 24
 const MAX_IMPORT_ROWS = 5000
 const TAG_BATCH_SIZE = 1_000
 const AUDIO_ROOT = PUBLIC_AUDIO_ROOT
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.m4a',
-  '.wav',
-  '.ogg',
-  '.aac',
-  '.flac',
-  '.webm',
-])
 
 const WORD_HEADERS = new Set(['word', '单词', '詞', '単語'])
 const ETYMOLOGY_HEADERS = new Set(['etymology', 'etymologies', 'origin', '词源', '語源'])
@@ -608,6 +602,7 @@ async function uploadAudioFiles(files: File[], folderInput: string, createdPaths
 }
 
 export async function previewAnkiImport(formData: FormData) {
+  await requireAdmin()
   const userId = await getCurrentUserId()
   const importFile = (formData.get('ankiFile') || formData.get('tsvFile')) as
     | File
@@ -748,6 +743,7 @@ export async function previewAnkiImport(formData: FormData) {
 }
 
 export async function runAnkiImport(formData: FormData) {
+  await requireAdmin()
   const userId = await getCurrentUserId()
   const rowsJson = String(formData.get('rowsJson') || '')
   const notebookName = String(formData.get('notebookName') || '').trim()
@@ -1275,6 +1271,7 @@ export async function runAnkiImport(formData: FormData) {
 }
 
 export async function syncWordbookSources() {
+  await requireAdmin()
   const userId = await getCurrentUserId()
   const entries = await prisma.wordbookVocabulary.findMany({
     where: { wordbook: { userId } },

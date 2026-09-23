@@ -102,8 +102,8 @@ test('multi-question materials are sampled as intact question groups without spl
   assert.match(repository, /existing\.questions\.push\(question\)/)
 
   // Scope is evaluated on the whole group: unattempted requires every child to be unattempted
-  assert.match(repository, /group\.questions\.every\(\(q\) => q\.attempts\.length === 0\)/)
-  assert.match(repository, /group\.questions\.some\(\(q\) => q\.attempts\.length > 0\)/)
+  assert.match(repository, /group\.questions\.every\(\(q\) => q\._count\.attempts === 0\)/)
+  assert.match(repository, /group\.questions\.some\(\(q\) => q\._count\.attempts > 0\)/)
 
   // Sampling is performed on question groups, taking requestedCount groups
   assert.match(repository, /const selectedGroups = shuffleList\(matchingGroups\)\.slice\(\s*0,\s*Math\.max\(0, Math\.floor\(requestedCount\)\),?\s*\)/)

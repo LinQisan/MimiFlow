@@ -1,27 +1,22 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { MaterialType } from '@prisma/client'
 import prisma from '@/lib/prisma'
 import { isPathInsideRoot, resolvePathInsideRoot } from '@/utils/files/path'
 import { readString } from '@/lib/validation/schema'
 import { PUBLIC_AUDIO_ROOT } from '@/lib/server/public-paths'
+import { MAX_AUDIO_UPLOAD_BYTES, saveAudioUpload } from '@/modules/media/audio/server/upload'
+import { AUDIO_EXTENSIONS, getDatedAudioFolder, toSafeFilename } from '@/modules/media/audio/domain/storage'
 import {
   decodeMaterialPayloadRecord,
   patchMaterialPayload,
 } from '@/lib/codecs/material-payload'
-import { copyFile, mkdir, readdir, stat, unlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, stat, unlink } from 'node:fs/promises'
+import { constants } from 'node:fs'
 import path from 'node:path'
 import { revalidatePath } from 'next/cache'
-
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.m4a',
-  '.wav',
-  '.ogg',
-  '.aac',
-  '.flac',
-  '.webm',
-])
 
 const PUBLIC_AUDIO_DIR = PUBLIC_AUDIO_ROOT
 
@@ -57,17 +52,6 @@ type RefUpdateResult = {
   vocabularyRefUpdated: number
 }
 
-function toSafeFilename(name: string) {
-  return name
-    .normalize('NFKC')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^\p{L}\p{N}._-]/gu, '')
-    .replace(/-+/g, '-')
-    .replace(/^[-.]+|[-.]+$/g, '')
-    .slice(0, 120)
-}
-
 function normalizeFolderInput(rawFolder: string) {
   const normalized = rawFolder
     .replace(/\\/g, '/')
@@ -82,17 +66,6 @@ function normalizeFolderInput(rawFolder: string) {
     .filter(segment => segment && segment !== '.' && segment !== '..')
     .slice(0, 12)
   return normalized.join('/')
-}
-
-function getDefaultUploadFolder() {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(new Date())
-  const year = parts.find(part => part.type === 'year')?.value || 'unknown'
-  const month = parts.find(part => part.type === 'month')?.value || '00'
-  return `staging/${year}-${month}`
 }
 
 async function pathExists(targetPath: string) {
@@ -178,11 +151,12 @@ async function replaceAudioReference(
     })
   })
 
-  const [sentenceRefCount, wordRefCount] = await Promise.all([
+  const [sentenceRefCount, wordRefCount, readingRefCount] = await Promise.all([
     prisma.vocabularySentence.count({ where: { audioFile: oldPath } }),
     prisma.vocabulary.count({ where: { wordAudio: oldPath } }),
+    prisma.vocabularyReadingAudio.count({ where: { audioFile: oldPath } }),
   ])
-  const vocabularyRefUpdated = sentenceRefCount + wordRefCount
+  const vocabularyRefUpdated = sentenceRefCount + wordRefCount + readingRefCount
   await prisma.$transaction([
     ...materialUpdates,
     prisma.vocabularySentence.updateMany({
@@ -192,6 +166,10 @@ async function replaceAudioReference(
     prisma.vocabulary.updateMany({
       where: { wordAudio: oldPath },
       data: { wordAudio: nextPath },
+    }),
+    prisma.vocabularyReadingAudio.updateMany({
+      where: { audioFile: oldPath },
+      data: { audioFile: nextPath },
     }),
   ])
 
@@ -221,12 +199,16 @@ async function relocateAudioFile(
   nextPath: string,
   nextAbsPath: string,
 ) {
-  await copyFile(oldAbsPath, nextAbsPath)
+  await copyFile(oldAbsPath, nextAbsPath, constants.COPYFILE_EXCL)
   let refUpdated: RefUpdateResult
   try {
     refUpdated = await replaceAudioReference(oldPath, nextPath)
   } catch (error) {
-    await unlink(nextAbsPath).catch(() => {})
+    try {
+      await unlink(nextAbsPath)
+    } catch (cleanupError) {
+      console.error('音频引用更新失败，新路径文件清理也失败:', cleanupError)
+    }
     throw error
   }
 
@@ -292,6 +274,7 @@ export async function listAudioFilesAdmin(
     usage?: 'all' | 'listening' | 'reading' | 'speaking' | 'vocabulary' | 'unlinked'
   },
 ) {
+  await requireAdmin()
   try {
     await mkdir(PUBLIC_AUDIO_DIR, { recursive: true })
     const safePageSize = Math.min(120, Math.max(10, Math.floor(params?.pageSize || 40)))
@@ -307,7 +290,7 @@ export async function listAudioFilesAdmin(
     const uniquePaths = Array.from(new Set(files.map(item => item.webPath)))
     const uniquePathSet = new Set(uniquePaths)
 
-    const [audioMaterials, vocabularySentences, vocabularyWords] = await Promise.all([
+    const [audioMaterials, vocabularySentences, vocabularyWords, readingAudios] = await Promise.all([
       prisma.material.findMany({
         where: {
           type: {
@@ -328,6 +311,10 @@ export async function listAudioFilesAdmin(
       prisma.vocabulary.findMany({
         where: { wordAudio: { not: null } },
         select: { wordAudio: true },
+      }),
+      prisma.vocabularyReadingAudio.findMany({
+        where: { audioFile: { in: uniquePaths } },
+        select: { audioFile: true },
       }),
     ])
     const listeningUsageMap = new Map<string, number>()
@@ -365,6 +352,12 @@ export async function listAudioFilesAdmin(
       vocabularyUsageMap.set(
         audioPath,
         (vocabularyUsageMap.get(audioPath) || 0) + 1,
+      )
+    })
+    readingAudios.forEach(audio => {
+      vocabularyUsageMap.set(
+        audio.audioFile,
+        (vocabularyUsageMap.get(audio.audioFile) || 0) + 1,
       )
     })
 
@@ -484,6 +477,7 @@ export async function listAudioFilesAdmin(
 }
 
 export async function uploadAudioFileAdmin(formData: FormData) {
+  await requireAdmin()
   try {
     const file = formData.get('audioFile') as File | null
     if (!file || file.size === 0) {
@@ -494,24 +488,19 @@ export async function uploadAudioFileAdmin(formData: FormData) {
     if (!AUDIO_EXTENSIONS.has(ext)) {
       return { success: false, message: '仅支持 mp3/m4a/wav/ogg/aac/flac/webm。' }
     }
+    if (file.size > MAX_AUDIO_UPLOAD_BYTES) {
+      return { success: false, message: '音频文件不能超过 80MB。' }
+    }
 
     const requestedFolder = readString(formData.get('folder'))
-    const folder = normalizeFolderInput(requestedFolder) || getDefaultUploadFolder()
+    const folder = normalizeFolderInput(requestedFolder) || getDatedAudioFolder('staging')
     const uploadDir = resolvePathInsideRoot(PUBLIC_AUDIO_DIR, folder)
     if (!uploadDir) {
       return { success: false, message: '上传目录无效。' }
     }
     await mkdir(uploadDir, { recursive: true })
     const safeBase = toSafeFilename(path.basename(file.name, ext)) || 'audio'
-    let fileName = `${safeBase}${ext}`
-    let suffix = 2
-    while (await pathExists(path.join(uploadDir, fileName))) {
-      fileName = `${safeBase}-${suffix}${ext}`
-      suffix += 1
-    }
-    const absPath = path.join(uploadDir, fileName)
-    const bytes = Buffer.from(await file.arrayBuffer())
-    await writeFile(absPath, bytes)
+    const fileName = await saveAudioUpload(file, uploadDir, safeBase, ext)
 
     revalidatePath('/manage/system/audio')
     revalidatePath('/manage/import')
@@ -523,18 +512,19 @@ export async function uploadAudioFileAdmin(formData: FormData) {
     }
   } catch (error) {
     console.error('上传录音失败:', error)
-    return { success: false, message: '上传失败，请重试。' }
+    return { success: false, message: error instanceof Error && error.message === '音频文件不能超过 80MB。' ? error.message : '上传失败，请重试。' }
   }
 }
 
 export async function deleteAudioFileAdmin(audioPath: string) {
+  await requireAdmin()
   try {
     const target = ensureAudioPath(audioPath)
     if (!target) {
       return { success: false, message: '非法路径。' }
     }
 
-    const [audioMaterials, vocabularySentenceCount, vocabularyWordCount] = await Promise.all([
+    const [audioMaterials, vocabularySentenceCount, vocabularyWordCount, vocabularyReadingCount] = await Promise.all([
       prisma.material.findMany({
         where: {
           type: {
@@ -550,8 +540,9 @@ export async function deleteAudioFileAdmin(audioPath: string) {
       }),
       prisma.vocabularySentence.count({ where: { audioFile: audioPath } }),
       prisma.vocabulary.count({ where: { wordAudio: audioPath } }),
+      prisma.vocabularyReadingAudio.count({ where: { audioFile: audioPath } }),
     ])
-    const vocabularyCount = vocabularySentenceCount + vocabularyWordCount
+    const vocabularyCount = vocabularySentenceCount + vocabularyWordCount + vocabularyReadingCount
     const linkedMaterials = audioMaterials.filter(material => {
       const payload = decodeMaterialPayloadRecord(
         material.type,
@@ -591,6 +582,7 @@ export async function deleteAudioFileAdmin(audioPath: string) {
 }
 
 export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
+  await requireAdmin()
   try {
     const oldTarget = ensureAudioPath(audioPath)
     if (!oldTarget) {
@@ -629,7 +621,9 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
 
     return {
       success: true,
-      message: `文件已移动至 ${targetFolder || '根目录'}。`,
+      message: refUpdated.sourceRemoved
+        ? `文件已移动至 ${targetFolder || '根目录'}。`
+        : '引用已更新，但旧文件未能删除，请手动清理旧文件。',
       path: nextWebPath,
       lessonRefUpdated: refUpdated.lessonRefUpdated,
       listeningRefUpdated: refUpdated.listeningRefUpdated,
@@ -646,6 +640,7 @@ export async function moveAudioFileAdmin(audioPath: string, rawFolder: string) {
 }
 
 export async function createAudioFolderAdmin(rawFolder: string) {
+  await requireAdmin()
   try {
     const folder = normalizeFolderInput(rawFolder)
     if (!folder) {
@@ -667,6 +662,7 @@ export async function createAudioFolderAdmin(rawFolder: string) {
 }
 
 export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
+  await requireAdmin()
   try {
     const target = ensureAudioPath(audioPath)
     if (!target) return { success: false, message: '非法路径。' }
@@ -709,7 +705,9 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
     revalidatePath('/manage/shadowing')
     return {
       success: true,
-      message: `文件已重命名为 ${nextName}。`,
+      message: refUpdated.sourceRemoved
+        ? `文件已重命名为 ${nextName}。`
+        : '引用已更新，但旧文件未能删除，请手动清理旧文件。',
       path: nextPath,
       lessonRefUpdated: refUpdated.lessonRefUpdated,
       listeningRefUpdated: refUpdated.listeningRefUpdated,
@@ -726,6 +724,7 @@ export async function renameAudioFileAdmin(audioPath: string, rawName: string) {
 }
 
 export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string) {
+  await requireAdmin()
   if (!Array.isArray(paths) || paths.length === 0) {
     return { success: false, message: '请先选择要移动的录音。' }
   }
@@ -769,6 +768,7 @@ export async function bulkMoveAudioFilesAdmin(paths: string[], rawFolder: string
 }
 
 export async function bulkDeleteAudioFilesAdmin(paths: string[]) {
+  await requireAdmin()
   if (!Array.isArray(paths) || paths.length === 0) {
     return { success: false, message: '请先选择要删除的录音。' }
   }

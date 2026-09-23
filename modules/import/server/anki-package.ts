@@ -9,6 +9,7 @@ import { zstdDecompress } from 'node:zlib'
 
 import JSZip from 'jszip'
 import { inferAnkiNotebookPath } from '@/modules/import/domain/anki-package'
+import { AUDIO_EXTENSIONS } from '@/modules/media/audio/domain/storage'
 
 export type AnkiPackageNote = {
   rowNo: number
@@ -37,15 +38,6 @@ const MAX_PACKAGE_NOTES = 5_000
 const MAX_AUDIO_BYTES = 256 * 1024 * 1024
 const FIELD_SEPARATOR = '\u001f'
 const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd])
-const AUDIO_EXTENSIONS = new Set([
-  '.mp3',
-  '.m4a',
-  '.wav',
-  '.ogg',
-  '.aac',
-  '.flac',
-  '.webm',
-])
 const decompressZstd = promisify(zstdDecompress)
 
 function isZstd(buffer: Buffer) {

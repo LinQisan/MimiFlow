@@ -462,9 +462,11 @@ export default function AudioPlayer({
     setSavingDialogueId(dialogueId)
     setDialogueSaveState('saving')
     try {
-      const res = await addSentenceToReview(dialogueId)
+      const res = await addSentenceToReview(
+        buildAudioDialogueSourceId(lesson.materialId, String(dialogueId)),
+      )
       if (res.success) setDialogueSaveState('success')
-      else setDialogueSaveState('already_exists')
+      else setDialogueSaveState(res.state === 'already_exists' ? 'already_exists' : 'error')
 
       setTimeout(() => {
         setSavingDialogueId(null)

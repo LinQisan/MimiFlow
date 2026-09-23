@@ -18,12 +18,22 @@ import {
   toStoredFsrsUpdate,
 } from '@/modules/review/domain/fsrs-card'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
+import { parseAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const FIT_INTERVAL_MS = 12 * 60 * 60 * 1000
 const FIT_LOOKBACK_DAYS = 180
 const FIT_MIN_EVENTS = 60
 const FIT_MIN_NEW_EVENTS = 24
+
+class StaleReviewCardError extends Error {
+  constructor() {
+    super('复习状态已更新，请重新评分')
+  }
+}
+
+const isUniqueConflict = (error: unknown) =>
+  error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002'
 
 type FsrsParamSet = {
   request_retention: number
@@ -43,63 +53,25 @@ type ReviewFitEvent = {
   difficultyAfter: number
 }
 
-type DialogueSnapshot = {
-  id: number
-  text: string
-  start: number
-  end: number
-  lesson: {
-    id: string
-    title: string
-    audioFile: string
-  }
-}
-
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
-async function getListeningDialoguesByIds(targetIds: number[]) {
-  const normalizedIds = Array.from(
-    new Set(targetIds.map(id => Number(id)).filter(Number.isFinite)),
-  )
-  if (normalizedIds.length === 0) return []
-
-  const materials = await prisma.material.findMany({
-    where: { type: MaterialType.LISTENING },
-    select: {
-      id: true,
-      title: true,
-      contentPayload: true,
-    },
+async function getListeningDialogueBySourceId(sourceId: string) {
+  const source = parseAudioDialogueSourceId(sourceId)
+  if (!source) return null
+  const material = await prisma.material.findFirst({
+    where: { id: source.materialId, type: MaterialType.LISTENING },
+    select: { contentPayload: true },
   })
-
-  const idSet = new Set(normalizedIds)
-  const snapshots: DialogueSnapshot[] = []
-  for (const material of materials) {
-    const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
-    const rawDialogues = Array.isArray(payload.dialogues)
-      ? (payload.dialogues as Record<string, unknown>[])
-      : []
-    const audioFile = readString(payload.audioFile)
-
-    for (const row of rawDialogues) {
-      const dialogueId = readFiniteNumber(row.id, readFiniteNumber(row.sequenceId))
-      if (!idSet.has(dialogueId)) continue
-      snapshots.push({
-        id: dialogueId,
-        text: readString(row.text),
-        start: readFiniteNumber(row.start),
-        end: readFiniteNumber(row.end),
-        lesson: {
-          id: material.id,
-          title: material.title,
-          audioFile,
-        },
-      })
-    }
-  }
-
-  return snapshots
+  if (!material) return null
+  const payload = decodeMaterialPayload(MaterialType.LISTENING, material.contentPayload)
+  const rawDialogues = Array.isArray(payload.dialogues)
+    ? (payload.dialogues as Record<string, unknown>[])
+    : []
+  const row = rawDialogues.find(item =>
+    String(readFiniteNumber(item.id, readFiniteNumber(item.sequenceId))) === source.stableId,
+  )
+  return row ? { text: readString(row.text) } : null
 }
 
 const parseWeights = (raw: string): number[] | null => {
@@ -390,10 +362,15 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
       // updateMany with the owner in the filter fails closed instead of
       // writing to a card that changed hands mid-request.
       const updated = await tx.sentenceReview.updateMany({
-        where: { id: reviewId, userId },
+        where: {
+          id: reviewId,
+          userId,
+          reps: record.reps,
+          updatedAt: record.updatedAt,
+        },
         data: toStoredFsrsUpdate(nextCard),
       })
-      if (updated.count === 0) throw new Error('找不到复习记录')
+      if (updated.count === 0) throw new StaleReviewCardError()
 
       await tx.reviewEvent.create({
         data: {
@@ -430,14 +407,16 @@ export async function rateSentenceFluency(reviewId: string, rating: Rating) {
     return { success: true, usingFallback }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '评分失败'
-    return { success: false, message }
+    return { success: false, message, retry: error instanceof StaleReviewCardError }
   }
 }
 
-export async function addSentenceToReview(dialogueId: number) {
+export async function addSentenceToReview(sourceId: string) {
   try {
     const userId = await getCurrentUserId()
-    const dialogue = (await getListeningDialoguesByIds([dialogueId]))[0]
+    const source = parseAudioDialogueSourceId(sourceId)
+    if (!source) return { success: false, message: '句子来源无效' }
+    const dialogue = await getListeningDialogueBySourceId(sourceId)
 
     if (!dialogue) {
       return { success: false, message: '找不到对应的听力句子' }
@@ -445,26 +424,10 @@ export async function addSentenceToReview(dialogueId: number) {
 
     const emptyCard = createEmptyCard()
 
-    const existing = await prisma.sentenceReview.findFirst({
-      where: {
-        userId,
-        sourceType: 'AUDIO_DIALOGUE',
-        sourceId: String(dialogueId),
-      },
-      select: { id: true },
-    })
-    if (existing) {
-      return {
-        success: false,
-        state: 'already_exists',
-        message: '已在复习库中',
-      }
-    }
-
     await prisma.sentenceReview.create({
       data: {
         userId,
-        sourceId: String(dialogueId),
+        sourceId,
         text: dialogue.text,
         sourceType: 'AUDIO_DIALOGUE',
         due: emptyCard.due,
@@ -485,12 +448,7 @@ export async function addSentenceToReview(dialogueId: number) {
 
     return { success: true, message: '已加入跟读复习库' }
   } catch (error: unknown) {
-    console.error('添加句子到复习库失败:', error)
-
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
+    if (isUniqueConflict(error)) {
       return {
         success: false,
         state: 'already_exists',
@@ -498,48 +456,55 @@ export async function addSentenceToReview(dialogueId: number) {
       }
     }
 
+    console.error('添加句子到复习库失败:', error)
     const message = error instanceof Error ? error.message : '加入复习库失败'
     return { success: false, message }
   }
 }
 
 const ensureVocabularyReviewCard = async (vocabularyId: string, userId: string) => {
-  // Ownership is verified before touching the globally-addressed review card,
-  // so one user can never read or extend another user's card by id.
+  // Shared wordbook entries may be reviewed by every user, but the card belongs
+  // to the current user.
   const vocabulary = await prisma.vocabulary.findFirst({
-    where: { id: vocabularyId, userId },
+    where: { id: vocabularyId, OR: [{ userId }, { wordbooks: { some: {} } }] },
     select: { id: true },
   })
   if (!vocabulary) throw new Error('找不到单词记录')
 
-  const existing = await prisma.vocabularyReview.findUnique({
-    where: { vocabularyId },
-  })
+  const existing = await prisma.vocabularyReview.findUnique({ where: { userId_vocabularyId: { userId, vocabularyId } } })
   if (existing) return existing
 
   const emptyCard = createEmptyCard()
-  return prisma.vocabularyReview.create({
-    data: {
-      vocabularyId,
-      due: emptyCard.due,
-      state: emptyCard.state,
-      stability: emptyCard.stability,
-      difficulty: emptyCard.difficulty,
-      elapsed_days: emptyCard.elapsed_days,
-      scheduled_days: emptyCard.scheduled_days,
-      reps: emptyCard.reps,
-      lapses: emptyCard.lapses,
-      learning_steps: 0,
-      last_review: emptyCard.last_review || null,
-    },
-  })
+  try {
+    return await prisma.vocabularyReview.create({
+      data: {
+        userId,
+        vocabularyId,
+        due: emptyCard.due,
+        state: emptyCard.state,
+        stability: emptyCard.stability,
+        difficulty: emptyCard.difficulty,
+        elapsed_days: emptyCard.elapsed_days,
+        scheduled_days: emptyCard.scheduled_days,
+        reps: emptyCard.reps,
+        lapses: emptyCard.lapses,
+        learning_steps: 0,
+        last_review: emptyCard.last_review || null,
+      },
+    })
+  } catch (error) {
+    if (!isUniqueConflict(error)) throw error
+    const existing = await prisma.vocabularyReview.findUnique({ where: { userId_vocabularyId: { userId, vocabularyId } } })
+    if (!existing) throw error
+    return existing
+  }
 }
 
 export async function rateVocabularyMemory(vocabularyId: string, rating: Rating) {
   try {
     const userId = await getCurrentUserId()
     const vocabulary = await prisma.vocabulary.findFirst({
-      where: { id: vocabularyId, userId },
+      where: { id: vocabularyId, OR: [{ userId }, { wordbooks: { some: {} } }] },
       select: { id: true, sourceType: true },
     })
     if (!vocabulary) throw new Error('找不到单词记录')
@@ -561,10 +526,15 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
 
     await prisma.$transaction(async tx => {
       const updated = await tx.vocabularyReview.updateMany({
-        where: { id: record.id, vocabulary: { userId } },
+        where: {
+          id: record.id,
+          userId,
+          reps: record.reps,
+          updatedAt: record.updatedAt,
+        },
         data: toStoredFsrsUpdate(nextCard),
       })
-      if (updated.count === 0) throw new Error('找不到单词记录')
+      if (updated.count === 0) throw new StaleReviewCardError()
 
       await tx.reviewEvent.create({
         data: {
@@ -616,7 +586,7 @@ export async function rateVocabularyMemory(vocabularyId: string, rating: Rating)
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : '评分失败'
-    return { success: false, message }
+    return { success: false, message, retry: error instanceof StaleReviewCardError }
   }
 }
 

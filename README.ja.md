@@ -17,6 +17,8 @@ npm run dev
 ```
 
 [localhost:3000](http://localhost:3000) を開きます。コンテンツ管理は `/manage` です。
+メールアドレスとパスワードでログインします。登録モードは `REGISTRATION_MODE=disabled|invite|open` で設定できます。現在のローカル設定は招待制です。メール設定と運用方法は[登録ガイド](docs/registration.md)を参照してください。新規アカウントは管理者ではなく、`/manage` に入れません。既存ユーザーは ID を確認してから `MIMIFLOW_CLAIM_PASSWORD` と `npm run user:claim -- <ユーザーID> <メール>` で紐付けできます。
+単語帳とその収録語は全アカウントで共有し、管理者が編集します。単語帳にない個人の単語、語彙復習カード、解答履歴はアカウントごとに分離します。
 `npm ci` は Prisma Client を生成します。スキーマ変更後は `npm run db:generate` と `npm run db:push` を実行します。
 日本語解析は Rust Node-API 拡張で実行します。`npm ci` がビルドと辞書の準備を行います。[詳細](modules/language/native/README.md)。
 macOS では開発起動時に Homebrew PostgreSQL を起動できます。複数バージョンがある場合は `POSTGRES_SERVICE` を指定します。

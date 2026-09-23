@@ -1,6 +1,8 @@
 // app/vocabulary/manage/searchActions.ts
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 import { splitJapaneseEtymologies } from '@/modules/language/domain/etymology'
 
 import type { Prisma } from '@prisma/client'
@@ -169,6 +171,7 @@ export async function createVocabularyPartOfSpeechAdmin(
   languageCode: string,
   parentName?: string,
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const normalizedName = name.trim()
@@ -226,6 +229,7 @@ export async function createVocabularyPartOfSpeechAdmin(
 }
 
 export async function deleteVocabularyPartOfSpeechAdmin(id: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const deleted = await prisma.vocabularyPartOfSpeech.deleteMany({
@@ -445,6 +449,7 @@ export async function getVocabulariesPagedAdmin(
   page: number
   pageSize: number
 }> {
+  await requireAdmin()
   const userId = await getCurrentUserId()
   const safePageSize = Math.min(120, Math.max(10, Math.floor(pageSize)))
   const safePage = Math.max(1, Math.floor(page))
@@ -611,6 +616,7 @@ export async function getVocabulariesPagedAdmin(
 // 3. 删除生词
 // ==========================================
 export async function deleteVocabularyAdmin(vocabId: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const deleted = await prisma.vocabulary.deleteMany({
@@ -629,6 +635,7 @@ export async function deleteVocabularyAdmin(vocabId: string) {
 }
 
 export async function getVocabularySentencesAdmin(vocabId: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const links = await prisma.vocabularySentenceLink.findMany({
@@ -679,6 +686,7 @@ export async function updateVocabularyAdmin(
     updateTags?: boolean
   },
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const word = payload.word.trim()
@@ -862,6 +870,7 @@ export async function batchUpdateVocabularyMetaAdmin(
   payload: Pick<VocabularyMetaPayload, 'pronunciations' | 'partsOfSpeech'>,
   mode: BatchMetaUpdateMode = 'append',
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const targetIds = Array.from(
@@ -934,6 +943,7 @@ export async function batchUpdateVocabularyMetaAdmin(
 }
 
 export async function exportVocabularyCsvAdmin(wordbookId: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const wordbook = await prisma.wordbook.findFirst({
@@ -1016,6 +1026,7 @@ export async function exportVocabularyCsvAdmin(wordbookId: string) {
 }
 
 export async function importVocabularyCsvAdmin(wordbookId: string, csv: string) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     if (csv.length > 8_000_000) {
@@ -1214,6 +1225,7 @@ export async function importVocabularyCsvAdmin(wordbookId: string, csv: string) 
 }
 
 export async function getVocabularyMergePreviewAdmin() {
+  await requireAdmin()
   const userId = await getCurrentUserId()
   const rows = await prisma.vocabulary.findMany({
     where: { userId },
@@ -1263,6 +1275,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
   keepId: string,
   mergeIds: string[],
 ) {
+  await requireAdmin()
   try {
     const userId = await getCurrentUserId()
     const uniqMergeIds = Array.from(
@@ -1397,6 +1410,7 @@ export async function mergeVocabularyDuplicateGroupAdmin(
 }
 
 export async function mergeAllVocabularyDuplicatesAdmin() {
+  await requireAdmin()
   try {
     const preview = await getVocabularyMergePreviewAdmin()
     let mergedCount = 0

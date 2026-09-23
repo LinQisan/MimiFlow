@@ -1,5 +1,7 @@
 'use server'
 
+import { requireAdmin } from '@/modules/users/server/current-user'
+
 // Grammar management actions.
 
 import { revalidatePath } from 'next/cache'
@@ -100,6 +102,7 @@ const normalizeConstructions = (
 }
 
 export async function createGrammar(payload: CreateGrammarPayload) {
+  await requireAdmin()
   const name = (payload.name || '').trim()
   const constructionsInput = (payload.constructionsInput || '').trim()
   const clusterTitle = (payload.clusterTitle || '').trim()
@@ -245,6 +248,7 @@ export async function createGrammar(payload: CreateGrammarPayload) {
 }
 
 export async function updateGrammar(payload: UpdateGrammarPayload) {
+  await requireAdmin()
   const grammarId = (payload.grammarId || '').trim()
   const name = (payload.name || '').trim()
   const constructionsInput = (payload.constructionsInput || '').trim()
@@ -366,6 +370,7 @@ export async function updateGrammar(payload: UpdateGrammarPayload) {
 }
 
 export async function removeGrammar(grammarId: string) {
+  await requireAdmin()
   const id = (grammarId || '').trim()
   if (!id) return { success: false, message: '语法 ID 缺失。' }
 

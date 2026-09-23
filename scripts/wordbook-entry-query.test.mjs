@@ -3,21 +3,20 @@ import test from 'node:test'
 import { normalizeWordbookQuery, wordbookEntryWhere } from '../modules/knowledge/wordbooks/entry-query.ts'
 import { buildWordbookEntryHref, buildVocabularyViewHref } from '../modules/knowledge/vocabulary/domain/navigation.ts'
 
-test('empty and full-book searches retain both wordbook and vocabulary ownership', () => {
+test('empty and full-book searches use shared wordbook entries', () => {
   for (const query of ['', '青春', 'せいしゅん', '名詞']) {
-    const where = wordbookEntryWhere('owner-a', 'book-a', query)
+    const where = wordbookEntryWhere('book-a', query)
     assert.equal(where.wordbookId, 'book-a')
-    assert.deepEqual(where.wordbook, { userId: 'owner-a' })
-    assert.equal(where.vocabulary.userId, 'owner-a')
+    assert.equal(where.wordbook, undefined)
+    assert.equal(where.vocabulary.userId, undefined)
   }
-  assert.equal(wordbookEntryWhere('owner-b', 'book-a').vocabulary.userId, 'owner-b')
 })
 
 test('search normalizes fullwidth input and includes readings, etymologies, meanings and parts of speech', () => {
   assert.equal(normalizeWordbookQuery('  ＡＢＣ　'), 'ABC')
   assert.equal(normalizeWordbookQuery('字'.repeat(120)).length, 100)
-  assert.equal(wordbookEntryWhere('u', 'b', '  ').vocabulary.OR, undefined)
-  const filters = wordbookEntryWhere('u', 'b', '　青春 ').vocabulary.OR
+  assert.equal(wordbookEntryWhere('b', '  ').vocabulary.OR, undefined)
+  const filters = wordbookEntryWhere('b', '　青春 ').vocabulary.OR
   assert.deepEqual(filters.slice(0, 4), ['word', 'pronunciations', 'etymologies', 'partsOfSpeech'].map(field => ({
     [field]: { contains: '青春', mode: 'insensitive' },
   })))
