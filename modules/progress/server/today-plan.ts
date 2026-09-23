@@ -1,5 +1,6 @@
 import { getTopMaterialSnapshots } from '@/lib/repositories/materials'
 import { getReviewOverview } from '@/modules/review/server/queries'
+import { formatTokyoDateKey } from '@/utils/time/format'
 
 type TodayTaskItem = {
   id: 'memory' | 'listening' | 'reading' | 'retry'
@@ -16,14 +17,6 @@ export type TodayStudyPlan = {
   tasks: TodayTaskItem[]
   startHref: string
 }
-
-const toDateKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
 
 const countParagraphs = (content: string) => {
   const lines = content
@@ -103,7 +96,7 @@ export async function getTodayStudyPlan(): Promise<TodayStudyPlan> {
 
   const tasks = [memoryTask, listeningTask, readingTask, retryTask]
   return {
-    dateKey: toDateKey(now),
+    dateKey: formatTokyoDateKey(now),
     tasks,
     startHref: tasks.find(task => !task.disabled)?.href || '/',
   }

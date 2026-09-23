@@ -14,6 +14,7 @@ import {
 import { z } from 'zod'
 
 import prisma from '@/lib/prisma'
+import { resolveMaterialId } from '@/modules/content/server/material-id'
 import { actionFailure, actionSuccess } from '@/lib/actions/result'
 import {
   decodeMaterialPayload,
@@ -55,20 +56,6 @@ const dialogueTimelineSchema = z.object({
 })
 const MAX_SUBTITLE_FILE_BYTES = 5 * 1024 * 1024
 
-async function resolveLessonMaterialId(maybeId: string) {
-  const material = await prisma.material.findUnique({
-    where: {
-      id: maybeId,
-    },
-    select: { id: true, type: true },
-  })
-  return material &&
-    (material.type === MaterialType.SPEAKING ||
-      material.type === MaterialType.LISTENING)
-    ? material.id
-    : null
-}
-
 export async function updateSpeakingTitle(formData: FormData) {
   await requireAdmin()
   try {
@@ -77,7 +64,10 @@ export async function updateSpeakingTitle(formData: FormData) {
       formDataObject(formData),
     )
 
-    const materialId = await resolveLessonMaterialId(maybeId)
+    const materialId = await resolveMaterialId(
+      [MaterialType.SPEAKING, MaterialType.LISTENING],
+      maybeId,
+    )
     if (!materialId) throw new DomainError('NOT_FOUND', '材料不存在。')
 
     await prisma.material.update({ where: { id: materialId }, data: { title } })
@@ -275,7 +265,10 @@ export async function deleteAudioMaterial(formData: FormData) {
       formDataObject(formData),
     )
 
-    const materialId = await resolveLessonMaterialId(maybeId)
+    const materialId = await resolveMaterialId(
+      [MaterialType.SPEAKING, MaterialType.LISTENING],
+      maybeId,
+    )
     if (!materialId) throw new DomainError('NOT_FOUND', '材料不存在。')
 
     const material = await prisma.material.findUnique({

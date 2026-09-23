@@ -21,6 +21,7 @@ import {
 import { useTextSelection } from '@/hooks/useTextSelection'
 import { formatTokyoDateTime } from '@/utils/time/format'
 import { getQuestionTypeLabel } from '@/utils/questions/typeLabels'
+import { copyText } from '@/modules/reading/components/copy-text'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { useStudyTextHighlights } from '@/modules/knowledge/learning-records/useStudyTextHighlights'
 import LearningPointHighlightPanel from '@/modules/knowledge/learning-records/components/LearningPointHighlightPanel'
@@ -273,26 +274,6 @@ export default function ReviewQuestionClient({
     return sections.join('\n\n').trim()
   }
 
-  const writeClipboard = async (text: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-      return
-    }
-    if (typeof document === 'undefined') {
-      throw new Error('clipboard api unavailable')
-    }
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', 'true')
-    textarea.style.position = 'fixed'
-    textarea.style.left = '-9999px'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const copied = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    if (!copied) throw new Error('copy fallback failed')
-  }
-
   const handleCopyCurrentQuestion = async () => {
     const payload = examQuestions
       .map((question, index) =>
@@ -301,7 +282,7 @@ export default function ReviewQuestionClient({
       .join('\n\n---\n\n')
     if (!payload) return
     try {
-      await writeClipboard(payload)
+      await copyText(payload)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1800)
     } catch {

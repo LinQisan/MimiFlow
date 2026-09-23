@@ -1,4 +1,4 @@
-import { MaterialType } from '@prisma/client'
+import { MaterialType, type Question } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getMaterialDisplayTitle } from '../materials/material-title'
@@ -55,20 +55,49 @@ function normalizeQuestionOptions(options: unknown, answer: unknown) {
   }))
 }
 
-async function resolveMaterialId(maybeId: string, type: MaterialType) {
-  const direct = await prisma.material.findUnique({
-    where: { id: maybeId },
-    select: { id: true, type: true },
-  })
-  if (direct?.type === type) return direct.id
-  return null
+function toQuestionEditorData(
+  question: Pick<
+    Question,
+    | 'id'
+    | 'questionType'
+    | 'context'
+    | 'content'
+    | 'prompt'
+    | 'analysis'
+    | 'options'
+    | 'answer'
+  >,
+) {
+  const content = decodeQuestionContent(question.content)
+  return {
+    id: question.id,
+    questionType: question.questionType,
+    contextSentence: question.context || '',
+    targetWord: readString(content.targetWord) || null,
+    sortingOrder: Array.isArray(content.sortingOrder)
+      ? content.sortingOrder
+      : [],
+    prompt: question.prompt,
+    explanation: question.analysis,
+    listeningSectionNumber: asPositiveIntegerString(
+      content.listeningSectionNumber,
+      content.listeningSectionTitle,
+    ),
+    optionLabelFormat: normalizeOptionLabelFormat(
+      content.optionLabelFormat,
+      'numeric',
+    ),
+    customOptionLabels: parseCustomOptionLabels(
+      content.customOptionLabels,
+    ).join('|'),
+    shuffleOptions: content.shuffleOptions !== false,
+    options: normalizeQuestionOptions(question.options, question.answer),
+  }
 }
 
 export async function getReadingEditData(maybeId: string) {
-  const materialId = await resolveMaterialId(maybeId, MaterialType.READING)
-  if (!materialId) return null
-  const material = await prisma.material.findUnique({
-    where: { id: materialId },
+  const material = await prisma.material.findFirst({
+    where: { id: maybeId, type: MaterialType.READING },
     include: {
       collectionMaterials: {
         take: 1,
@@ -149,13 +178,8 @@ export async function getReadingEditData(maybeId: string) {
 }
 
 export async function getQuizEditData(maybeId: string) {
-  const materialId = await resolveMaterialId(
-    maybeId,
-    MaterialType.VOCAB_GRAMMAR,
-  )
-  if (!materialId) return null
-  const material = await prisma.material.findUnique({
-    where: { id: materialId },
+  const material = await prisma.material.findFirst({
+    where: { id: maybeId, type: MaterialType.VOCAB_GRAMMAR },
     include: {
       collectionMaterials: {
         take: 1,
@@ -180,41 +204,13 @@ export async function getQuizEditData(maybeId: string) {
       collectionType:
         material.collectionMaterials[0]?.collection.collectionType || null,
     },
-    questions: material.questions.map((question) => {
-      const content = decodeQuestionContent(question.content)
-      return {
-        id: question.id,
-        questionType: question.questionType,
-        contextSentence: question.context || '',
-        targetWord: readString(content.targetWord) || null,
-        sortingOrder: Array.isArray(content.sortingOrder)
-          ? content.sortingOrder
-          : [],
-        prompt: question.prompt,
-        explanation: question.analysis,
-        listeningSectionNumber: asPositiveIntegerString(
-          content.listeningSectionNumber,
-          content.listeningSectionTitle,
-        ),
-        optionLabelFormat: normalizeOptionLabelFormat(
-          content.optionLabelFormat,
-          'numeric',
-        ),
-        customOptionLabels: parseCustomOptionLabels(
-          content.customOptionLabels,
-        ).join('|'),
-        shuffleOptions: content.shuffleOptions !== false,
-        options: normalizeQuestionOptions(question.options, question.answer),
-      }
-    }),
+    questions: material.questions.map(toQuestionEditorData)
   }
 }
 
 export async function getListeningEditData(maybeId: string) {
-  const materialId = await resolveMaterialId(maybeId, MaterialType.LISTENING)
-  if (!materialId) return null
-  const material = await prisma.material.findUnique({
-    where: { id: materialId },
+  const material = await prisma.material.findFirst({
+    where: { id: maybeId, type: MaterialType.LISTENING },
     select: {
       id: true,
       type: true,
@@ -307,33 +303,7 @@ export async function getListeningEditData(maybeId: string) {
       material.collectionMaterials[0]?.collection.collectionType || null,
     siblings,
     dialogues,
-    questions: material.questions.map((question) => {
-      const content = decodeQuestionContent(question.content)
-      return {
-        id: question.id,
-        questionType: question.questionType,
-        contextSentence: question.context || '',
-        targetWord: readString(content.targetWord) || null,
-        sortingOrder: Array.isArray(content.sortingOrder)
-          ? content.sortingOrder
-          : [],
-        prompt: question.prompt,
-        explanation: question.analysis,
-        listeningSectionNumber: asPositiveIntegerString(
-          content.listeningSectionNumber,
-          content.listeningSectionTitle,
-        ),
-        optionLabelFormat: normalizeOptionLabelFormat(
-          content.optionLabelFormat,
-          'numeric',
-        ),
-        customOptionLabels: parseCustomOptionLabels(
-          content.customOptionLabels,
-        ).join('|'),
-        shuffleOptions: content.shuffleOptions !== false,
-        options: normalizeQuestionOptions(question.options, question.answer),
-      }
-    }),
+    questions: material.questions.map(toQuestionEditorData)
   }
 }
 

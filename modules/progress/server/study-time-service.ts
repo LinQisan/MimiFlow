@@ -4,21 +4,14 @@ import { StudyTimeKind } from '@prisma/client'
 
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
-
-const toDateKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
+import { formatTokyoDateKey } from '@/utils/time/format'
 
 export async function recordStudyTime(
   kind: StudyTimeKind,
   seconds: number,
 ) {
   const recordedSeconds = Math.max(0, Math.min(180, Math.round(seconds)))
-  const dateKey = toDateKey(new Date())
+  const dateKey = formatTokyoDateKey(new Date())
   if (recordedSeconds <= 0) return { recordedSeconds, dateKey }
 
   const userId = await getCurrentUserId()

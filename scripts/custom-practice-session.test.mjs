@@ -7,6 +7,7 @@ import {
   buildPracticeTitle,
   buildRandomPracticeFilterOptions,
 } from '../modules/practice/domain/custom-session.ts'
+import { getQuestionGroupKey } from '../modules/practice/domain/random-selection.ts'
 
 const ROOT = process.cwd()
 const read = relative => readFile(path.join(ROOT, relative), 'utf8')
@@ -88,14 +89,20 @@ test('custom practice creates a session, redirects to ?session=, and never re-dr
 })
 
 test('multi-question materials are sampled as intact question groups without splitting subquestions', async () => {
-  const repository = await read('lib/repositories/exam/index.ts')
+  const repository = await read('modules/practice/server/random-question-selection.ts')
 
-  // Group key resolution uses material id for shared materials (listening, reading, shared payload)
-  assert.match(repository, /function getQuestionGroupKey/)
-  assert.match(repository, /question\.material\.type === MaterialType\.LISTENING/)
-  assert.match(repository, /question\.material\.type === MaterialType\.READING/)
-  assert.match(repository, /`material:\${question\.materialId}`/)
-  assert.match(repository, /`question:\${question\.id}`/)
+  assert.equal(
+    getQuestionGroupKey({ id: 'q1', materialId: 'm1', material: { type: 'LISTENING' } }),
+    'material:m1',
+  )
+  assert.equal(
+    getQuestionGroupKey({ id: 'q2', materialId: 'm1', material: { type: 'LISTENING' } }),
+    'material:m1',
+  )
+  assert.equal(
+    getQuestionGroupKey({ id: 'q3', materialId: 'm2', material: { type: 'VOCAB_GRAMMAR', contentPayload: {} } }),
+    'question:q3',
+  )
 
   // Groups map collects all sibling questions belonging to the parent material
   assert.match(repository, /const groupsMap = new Map/)

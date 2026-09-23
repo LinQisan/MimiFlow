@@ -19,6 +19,7 @@ import {
 } from '@/modules/review/domain/fsrs-card'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
 import { parseAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+import { formatTokyoDateKey } from '@/utils/time/format'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const FIT_INTERVAL_MS = 12 * 60 * 60 * 1000
@@ -608,14 +609,6 @@ async function getFsrsProfileSnapshot(profileId: string) {
   }
 }
 
-const toDateKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
-
 export async function getFsrsAdminDashboard() {
   const userId = await getCurrentUserId()
   const profile = await getFsrsProfileSnapshot(userId)
@@ -651,7 +644,7 @@ export async function getFsrsAdminDashboard() {
 
   const trendMap = new Map<string, { dateKey: string; total: number; success: number }>()
   in30d.forEach(item => {
-    const dateKey = toDateKey(item.reviewedAt)
+    const dateKey = formatTokyoDateKey(item.reviewedAt)
     const bucket = trendMap.get(dateKey) || { dateKey, total: 0, success: 0 }
     bucket.total += 1
     if (item.wasRecallSuccess) bucket.success += 1

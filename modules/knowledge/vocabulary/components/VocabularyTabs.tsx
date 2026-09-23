@@ -2,6 +2,7 @@
 'use client'
 
 import VocabularyJsonEditor from '@/modules/knowledge/vocabulary/components/VocabularyJsonEditor'
+import { SpeakerIcon, VocabularyReadingAudioButtons, VocabularyRelationsSection } from '@/modules/knowledge/vocabulary/components/VocabularyCardParts'
 import { buildVocabularySentenceGroups } from '@/modules/knowledge/vocabulary/domain/sentence-groups'
 import React, {
   useCallback,
@@ -53,7 +54,6 @@ import { listWordbooks } from '@/modules/knowledge/vocabulary/domain/wordbook-li
 import type {
   FolderItem,
   SentenceItem,
-  VocabularyRelationItem,
   VocabularyWordbookMembership,
   VocabItem,
 } from '@/modules/knowledge/vocabulary/types'
@@ -73,6 +73,7 @@ import { detectJapaneseInflection } from '@/utils/vocabulary/japaneseInflection'
 import { prefersAuthoredVocabularyPronunciation } from '@/utils/vocabulary/sourcePriority'
 import PronunciationSourceSelector from '@/components/ui/PronunciationSourceSelector'
 import { useVocabularyPronunciation } from '@/modules/knowledge/vocabulary/hooks/useVocabularyPronunciation'
+import { useVocabularyAudio } from '@/modules/knowledge/vocabulary/hooks/useVocabularyAudio'
 import {
   PRONUNCIATION_VERSION,
   type VocabularyPronunciationData,
@@ -86,7 +87,6 @@ import {
   reorderInlineItems,
   VocabularyInlineEditToolbar,
   VocabularyDefinitions,
-  VocabularyRelationDetails,
   VocabularySenseDetails,
   makeVocabularyClientId,
   useVocabularyInlineEditor,
@@ -105,106 +105,6 @@ const NadeshikoSearchPanel = dynamic(
   () =>
     import('@/modules/knowledge/vocabulary/nadeshiko/components/NadeshikoSearchPanel'),
 )
-
-function SpeakerIcon({ className = 'h-5 w-5' }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden='true'
-      className={className}
-      fill='none'
-      stroke='currentColor'
-      strokeLinecap='round'
-      strokeLinejoin='round'
-      strokeWidth={1.8}
-      viewBox='0 0 24 24'>
-      <path d='M11 5 6.5 8.5H3.75a.75.75 0 0 0-.75.75v5.5c0 .41.34.75.75.75H6.5L11 19V5Z' />
-      <path d='M15 9.25a4 4 0 0 1 0 5.5' />
-      <path d='M17.75 6.5a7.75 7.75 0 0 1 0 11' />
-    </svg>
-  )
-}
-
-function VocabularyReadingAudioButtons({
-  audios,
-  onPlay,
-  compact = false,
-}: {
-  audios?: Array<{ reading: string; audioFile: string }>
-  onPlay: (audioFile: string) => void
-  compact?: boolean
-}) {
-  if (!audios?.length) return null
-  const showReading = audios.length > 1
-
-  return (
-    <div
-      className={compact ? 'flex max-w-44 flex-wrap justify-end gap-1' : 'flex flex-wrap justify-center gap-2'}
-      aria-label={showReading ? '分别播放读音' : '播放发音'}
-    >
-      {audios.map(audio => (
-        <button
-          key={`${audio.reading}-${audio.audioFile}`}
-          type='button'
-          className={`inline-flex shrink-0 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-stone-100 hover:text-slate-950 active:bg-stone-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100 dark:active:bg-slate-700 ${
-            compact ? 'h-8' : 'h-10'
-          } ${showReading ? 'gap-1.5 px-3 text-sm font-medium font-word-ja' : compact ? 'w-8' : 'w-10'}`}
-          aria-label={`播放读音 ${audio.reading}`}
-          title={`播放读音 ${audio.reading}`}
-          onClick={event => {
-            event.stopPropagation()
-            onPlay(audio.audioFile)
-          }}
-        >
-          <SpeakerIcon className={compact ? 'h-4 w-4' : 'h-5 w-5'} />
-          {showReading ? <span lang='ja'>{audio.reading}</span> : null}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function VocabularyRelationsSection({
-  vocabulary,
-  showPronunciation,
-  className = '',
-  editing = false,
-  onChange,
-  onAdd,
-}: {
-  vocabulary: VocabItem
-  showPronunciation: boolean
-  className?: string
-  editing?: boolean
-  onChange?: (relations: VocabularyRelationItem[]) => void
-  onAdd?: (type: VocabularyRelationItem['type']) => void
-}) {
-  const seen = new Set<string>()
-  const relations = (vocabulary.senses || []).flatMap(sense => sense.relations).filter(relation => {
-    if (seen.has(relation.id)) return false
-    seen.add(relation.id)
-    return true
-  })
-
-  if (relations.length === 0 && !editing) return null
-
-  return (
-    <section
-      aria-label='関連語彙'
-      className={`vocab-flat-section ${className} border-t border-slate-200 pt-5`}>
-      <h4 className='mb-3 text-[11px] font-semibold tracking-[0.08em] text-slate-400'>
-        関連語彙
-      </h4>
-      <VocabularyRelationDetails
-        relations={relations}
-        sourceWord={vocabulary.word}
-        showPronunciation={showPronunciation}
-        editing={editing}
-        onChange={onChange}
-        onAdd={onAdd}
-      />
-    </section>
-  )
-}
 
 export default function VocabularyTabs({
   canEdit,
@@ -351,8 +251,6 @@ export default function VocabularyTabs({
 
   const lastAutoPlayedWordIdRef = useRef<string | null>(null)
 
-  const audioRef = useRef<HTMLAudioElement | null>(null)
-  const audioRequestIdRef = useRef(0)
   const previousActiveTabRef = useRef(activeTab)
   const isDataMountedRef = useRef(false)
   const previousGroupedDataRef = useRef(groupedData)
@@ -467,150 +365,7 @@ export default function VocabularyTabs({
     setViewMode(searchParams.get('view') === 'card' ? 'flashcard' : 'list')
   }, [searchParams, setViewMode])
 
-  const reportAudioPlaybackError = useCallback(
-    (error: unknown, userInitiated: boolean) => {
-      const errorName =
-        error && typeof error === 'object' && 'name' in error
-          ? String(error.name)
-          : ''
-
-      if (errorName === 'AbortError') return
-
-      if (errorName === 'NotAllowedError') {
-        if (userInitiated) {
-          dialog.toast('浏览器阻止了播放，请再次点击发音按钮', { tone: 'info' })
-        }
-        return
-      }
-
-      if (errorName === 'NotSupportedError') {
-        console.error('当前音频格式或来源不受支持:', error)
-        if (userInitiated) {
-          dialog.toast('当前音频无法播放，请检查音频文件', { tone: 'error' })
-        }
-        return
-      }
-
-      console.error('音频播放失败，请检查文件路径或浏览器权限:', error)
-      if (userInitiated) {
-        dialog.toast('音频播放失败，请稍后重试', { tone: 'error' })
-      }
-    },
-    [dialog],
-  )
-
-  const startAudioPlayback = useCallback(
-    (
-      audio: HTMLAudioElement,
-      requestId: number,
-      start = 0,
-      end = 0,
-      userInitiated = true,
-    ) => {
-      if (requestId !== audioRequestIdRef.current) return
-
-      const current = audioRef.current
-      if (current && current !== audio) {
-        current.ontimeupdate = null
-        current.pause()
-      }
-      if (requestId !== audioRequestIdRef.current) return
-
-      audioRef.current = audio
-      audio.preload = 'auto'
-      audio.setAttribute('playsinline', '')
-
-      if (start > 0) {
-        const setStartTime = () => {
-          try {
-            audio.currentTime = start
-          } catch (error) {
-            const errorName =
-              error && typeof error === 'object' && 'name' in error
-                ? String(error.name)
-                : ''
-            if (errorName !== 'InvalidStateError') {
-              reportAudioPlaybackError(error, false)
-            }
-          }
-        }
-        if (audio.readyState < HTMLMediaElement.HAVE_METADATA) {
-          audio.addEventListener(
-            'loadedmetadata',
-            () => {
-              if (requestId !== audioRequestIdRef.current) return
-              setStartTime()
-            },
-            { once: true },
-          )
-        } else {
-          setStartTime()
-        }
-      }
-
-      if (end > start) {
-        audio.ontimeupdate = () => {
-          if (audio.currentTime < end) return
-          audio.ontimeupdate = null
-          audio.pause()
-        }
-      } else {
-        audio.ontimeupdate = null
-      }
-
-      try {
-        // Keep play() in the original click call stack. Deferring it through a
-        // promise queue or loadedmetadata loses iOS Safari's user activation.
-        const playback = audio.play()
-        void playback.catch(error =>
-          reportAudioPlaybackError(error, userInitiated),
-        )
-      } catch (error) {
-        reportAudioPlaybackError(error, userInitiated)
-      }
-    },
-    [reportAudioPlaybackError],
-  )
-
-  const playAudio = (
-    audioData: {
-      audioFile: string
-      start: number
-      end: number
-    },
-    userInitiated = true,
-  ) => {
-    if (!audioData?.audioFile) return
-
-    try {
-      const requestId = ++audioRequestIdRef.current
-      const audio = new Audio(audioData.audioFile)
-      audio.preload = 'auto'
-      audio.setAttribute('playsinline', '')
-      const start = Math.max(0, audioData.start || 0)
-      const end = Math.max(start, audioData.end || 0)
-      startAudioPlayback(audio, requestId, start, end, userInitiated)
-    } catch (e) {
-      reportAudioPlaybackError(e, userInitiated)
-    }
-  }
-
-  const playAudioFile = useCallback(
-    (audioFile?: string | null, userInitiated = true) => {
-      if (!audioFile) return
-
-      try {
-        const requestId = ++audioRequestIdRef.current
-        const audio = new Audio(audioFile)
-        audio.preload = 'auto'
-        audio.setAttribute('playsinline', '')
-        startAudioPlayback(audio, requestId, 0, 0, userInitiated)
-      } catch (error) {
-        reportAudioPlaybackError(error, userInitiated)
-      }
-    },
-    [reportAudioPlaybackError, startAudioPlayback],
-  )
+  const { playAudio, playAudioFile, pauseAudio } = useVocabularyAudio()
 
   const handleSearchSentences = async (
     id: string,
@@ -1139,9 +894,9 @@ export default function VocabularyTabs({
       if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current)
       if (transitionRafRef.current)
         cancelAnimationFrame(transitionRafRef.current)
-      if (audioRef.current) audioRef.current.pause()
+      pauseAudio()
     }
-  }, [])
+  }, [pauseAudio])
 
   const pronunciationSourceForVocab = (vocab: VocabItem) => {
     // Card/list detail ("默认" mode): Materialized Sudachi data or runtime Sudachi wins whenever ready.

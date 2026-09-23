@@ -37,13 +37,11 @@ import { copyText } from '@/modules/reading/components/copy-text'
 import WordbookHighlightSelector from '@/modules/reading/components/WordbookHighlightSelector'
 import type { PaperWordbookDistribution } from '@/modules/practice/domain/paper-word-frequency'
 import {
-  groupWordbookDistributionBySource,
+  buildWordbookHighlightGroups,
   isJlptVisibleWithHiddenLevels,
 } from '@/modules/reading/domain/wordbook-highlight-groups'
 import { JLPT_LEVELS, type VocabularyJlptLevel } from '@/modules/knowledge/vocabulary/domain/jlpt'
 import {
-  buildSurfaceAliasMapForText,
-  buildSurfaceVariantMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import { applyVocabularyInspectorMetaUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
 
@@ -168,83 +166,10 @@ export default function AudioPlayer({
         .join('\n'),
     [lesson.dialogue],
   )
-  const wordbookHighlightGroups = useMemo(() => {
-    const sources = groupWordbookDistributionBySource(
-      wordbookDistribution?.wordbooks || [],
-    )
-    const jlptByCanonicalWord = new Map<string, Set<VocabularyJlptLevel>>()
-    sources.forEach(source => {
-      source.matchedWords.forEach(word => {
-        const levels = jlptByCanonicalWord.get(word) || new Set<VocabularyJlptLevel>()
-        ;(source.jlptByWord[word] || []).forEach(level => levels.add(level))
-        jlptByCanonicalWord.set(word, levels)
-      })
-    })
-    return sources
-      .map(source => {
-        const matchedHeadwords = Array.from(
-          new Set(Object.values(source.matchedHeadwords)),
-        )
-        const aliases = buildSurfaceAliasMapForText(
-          transcriptPlainText,
-          matchedHeadwords,
-        )
-        const variants = buildSurfaceVariantMapForText(
-          transcriptPlainText,
-          matchedHeadwords,
-        )
-        const metadataByHeadword = new Map<
-          string,
-          { jlpt: Set<VocabularyJlptLevel>; wordbookIds: Set<string> }
-        >()
-        source.matchedWords.forEach(word => {
-          const headword = source.matchedHeadwords[word] || word
-          const metadata = metadataByHeadword.get(headword) || {
-            jlpt: new Set<VocabularyJlptLevel>(),
-            wordbookIds: new Set<string>(),
-          }
-          ;(source.jlptByWord[word] || []).forEach(level =>
-            metadata.jlpt.add(level),
-          )
-          ;(jlptByCanonicalWord.get(word) || []).forEach(level =>
-            metadata.jlpt.add(level),
-          )
-          ;(source.wordbookIdsByWord[word] || []).forEach(wordbookId =>
-            metadata.wordbookIds.add(wordbookId),
-          )
-          metadataByHeadword.set(headword, metadata)
-        })
-        const jlptByWord: Record<string, string[]> = {}
-        const wordbookIdsByWord: Record<string, string[]> = {}
-        source.matchedWords.forEach(word => {
-          jlptByWord[word] = [...(jlptByCanonicalWord.get(word) || [])]
-          wordbookIdsByWord[word] = source.wordbookIdsByWord[word] || []
-        })
-        metadataByHeadword.forEach((metadata, headword) => {
-          jlptByWord[headword] = [...metadata.jlpt]
-          wordbookIdsByWord[headword] = [...metadata.wordbookIds]
-        })
-        Object.entries(aliases).forEach(([surface, headword]) => {
-          const metadata = metadataByHeadword.get(headword)
-          jlptByWord[surface] = metadata ? [...metadata.jlpt] : []
-          wordbookIdsByWord[surface] = metadata
-            ? [...metadata.wordbookIds]
-            : source.wordbookIds
-        })
-        return {
-          id: source.id,
-          label: source.label,
-          words: Object.keys(aliases),
-          canonicalWords: Array.from(new Set(Object.values(aliases))),
-          jlptByWord,
-          wordbookIdsByWord,
-          aliases,
-          variants,
-        }
-      })
-      .filter(group => group.words.length > 0)
-      .sort((left, right) => left.label.localeCompare(right.label, 'ja'))
-  }, [transcriptPlainText, wordbookDistribution])
+  const wordbookHighlightGroups = useMemo(
+    () => buildWordbookHighlightGroups(wordbookDistribution?.wordbooks || [], transcriptPlainText),
+    [transcriptPlainText, wordbookDistribution],
+  )
   const visibleWordbookSourceGroups = useMemo(
     () =>
       wordbookHighlightGroups.filter(group => !hiddenWordbookIds.has(group.id)),

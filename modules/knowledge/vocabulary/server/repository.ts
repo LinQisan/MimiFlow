@@ -7,6 +7,7 @@ import {
 import { revalidateTag } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { resolveMaterialId } from '@/modules/content/server/material-id'
 import { resolveListeningSentenceReferences } from './listening-source'
 import { parseJsonStringList, toJsonStringList } from '@/utils/text/jsonList'
 import { buildVocabularyCanonicalKeys } from '@/utils/vocabulary/vocabularyCanonical'
@@ -443,18 +444,6 @@ export type VocabularySentenceRecord = {
   sourceType?: SourceType | null
   senseId: string
   posTags?: string[] | null
-}
-
-const resolveMaterialId = async (
-  type: MaterialType,
-  id: string,
-) => {
-  const direct = await prisma.material.findUnique({
-    where: { id },
-    select: { id: true, type: true },
-  })
-  if (direct && direct.type === type) return direct.id
-  return null
 }
 
 const scoreVocabularyCandidate = (

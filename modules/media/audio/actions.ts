@@ -1,14 +1,7 @@
 'use server'
 import prisma from '@/lib/prisma'
 import { getCurrentUserId } from '@/modules/users/server/current-user'
-
-const toDateKey = (date: Date) =>
-  new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
+import { formatTokyoDateKey } from '@/utils/time/format'
 
 export async function logMaterialPlaytime(materialId: string, seconds: number) {
   try {
@@ -20,7 +13,7 @@ export async function logMaterialPlaytime(materialId: string, seconds: number) {
     const userId = await getCurrentUserId()
 
     const now = new Date()
-    const todayKey = toDateKey(now)
+    const todayKey = formatTokyoDateKey(now)
     const previous = await prisma.materialPlaytimeStat.findUnique({
       where: {
         profileId_materialId: {
@@ -32,7 +25,7 @@ export async function logMaterialPlaytime(materialId: string, seconds: number) {
     })
 
     const shouldIncreasePlayedDays =
-      !previous?.lastPlayedAt || toDateKey(previous.lastPlayedAt) !== todayKey
+      !previous?.lastPlayedAt || formatTokyoDateKey(previous.lastPlayedAt) !== todayKey
 
     const stat = await prisma.materialPlaytimeStat.upsert({
       where: {

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { readFile } from 'node:fs/promises'
 import ts from 'typescript'
 import { buildAudioDialogueSourceId, parseAudioDialogueSourceId } from '../utils/audioDialogue/sourceId.ts'
+import { formatTokyoDateKey } from '../utils/time/format.ts'
 
 const source = await readFile(new URL('../modules/review/actions/memory.ts', import.meta.url), 'utf8')
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText
@@ -42,6 +43,7 @@ function harness() {
     '@/modules/review/domain/fsrs-card': {},
     '@/modules/users/server/current-user': { getCurrentUserId: async () => 'user-a' },
     '@/utils/audioDialogue/sourceId': { parseAudioDialogueSourceId },
+    '@/utils/time/format': { formatTokyoDateKey },
   }
   const exports = {}
   const loadedModule = { exports }

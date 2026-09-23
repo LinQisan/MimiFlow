@@ -1,12 +1,4 @@
-import { buildJapaneseRubyHtml } from '../../../../utils/language/japaneseRuby.ts'
-
-const escapeHtml = (text?: string | null) =>
-  (text || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
+import { buildJapaneseRubyHtml, escapeHtml } from '../../../../utils/language/japaneseRuby.ts'
 
 const KANJI_SURFACE_PATTERN = /[\u3400-\u4dbf\u4e00-\u9fff々〆ヵヶ]/
 

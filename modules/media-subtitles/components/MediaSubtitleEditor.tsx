@@ -29,6 +29,7 @@ import { annotateJapaneseText } from '@/utils/language/japaneseRuby'
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { buildPronunciationMapForText } from '@/utils/vocabulary/japaneseInflection'
 import { buildAudioDialogueSourceId } from '@/utils/audioDialogue/sourceId'
+import { copyText } from '@/modules/reading/components/copy-text'
 import SubtitleReaderControls from '@/modules/media-subtitles/components/SubtitleReaderControls'
 import {
   remapKeyedState,
@@ -464,28 +465,6 @@ export default function MediaSubtitleEditor({
     return Math.min(maxRowId, Math.max(minRowId, Math.floor(value)))
   }
 
-  const writeClipboard = useCallback(async (text: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text)
-      return
-    }
-
-    if (typeof document === 'undefined') {
-      throw new Error('clipboard api unavailable')
-    }
-
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', 'true')
-    textarea.style.position = 'fixed'
-    textarea.style.left = '-9999px'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const copied = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    if (!copied) throw new Error('copy fallback failed')
-  }, [])
-
   const handleCopySelectedRows = useCallback(async () => {
     if (!selectedText) {
       setSelectedCopyState('error')
@@ -494,14 +473,14 @@ export default function MediaSubtitleEditor({
     }
 
     try {
-      await writeClipboard(selectedText)
+      await copyText(selectedText)
       setSelectedCopyState('copied')
       window.setTimeout(() => setSelectedCopyState('idle'), 1800)
     } catch {
       setSelectedCopyState('error')
       window.setTimeout(() => setSelectedCopyState('idle'), 1800)
     }
-  }, [selectedText, setSelectedCopyState, writeClipboard])
+  }, [selectedText, setSelectedCopyState])
 
   const handleCopySelectedRowsFromClipboardEvent = (
     event: ClipboardEvent<HTMLElement>,
@@ -536,7 +515,7 @@ export default function MediaSubtitleEditor({
     }
 
     try {
-      await writeClipboard(text)
+      await copyText(text)
       setCopyState('copied')
       window.setTimeout(() => setCopyState('idle'), 1800)
     } catch {

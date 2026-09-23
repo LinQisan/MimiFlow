@@ -14,10 +14,6 @@ import type { ExamQuestion } from '@/modules/questions/components/question-rende
 import type { VocabularyMeta } from '@/utils/vocabulary/vocabularyMeta'
 import { applyVocabularyInspectorMetaUpdate, applyVocabularyInspectorPronunciationUpdate } from '@/modules/knowledge/vocabulary/domain/inspector-meta'
 import {
-  formatOptionLabel,
-  normalizeOptionLabelFormat,
-} from '@/utils/questions/optionLabels'
-import {
   buildPracticeQuestionGroups,
   findPracticeQuestionGroupIndex,
 } from '@/modules/practice/domain/question-groups'
@@ -38,16 +34,16 @@ import {
 } from '@/utils/language/japaneseRuby'
 import {
   buildPronunciationMapForText,
-  buildSurfaceAliasMapForText,
-  buildSurfaceVariantMapForText,
 } from '@/utils/vocabulary/japaneseInflection'
 import type { SudachiLexeme } from '@/modules/language/domain/sudachi'
 import { buildExamAnnotationTexts } from '@/modules/practice/domain/exam-annotation-texts'
+import { buildPracticeCopyPayload } from '@/modules/practice/domain/copy-payload'
+import PracticeAnswerCard from '@/modules/practice/components/PracticeAnswerCard'
 import {
   useStudyTextHighlights,
 } from '@/modules/knowledge/learning-records/useStudyTextHighlights'
 import {
-  groupWordbookDistributionBySource,
+  buildWordbookHighlightGroups,
   isJlptVisibleWithHiddenLevels,
 } from '@/modules/reading/domain/wordbook-highlight-groups'
 import { JLPT_LEVELS, type VocabularyJlptLevel } from '@/modules/knowledge/vocabulary/domain/jlpt'
@@ -303,84 +299,10 @@ export function PracticePlayer({
     [currentExamAnnotationTexts],
   )
 
-  const wordbookHighlightGroups = React.useMemo(() => {
-    const sources = groupWordbookDistributionBySource(
-      wordbookDistribution?.wordbooks || [],
-    )
-    const jlptByCanonicalWord = new Map<string, Set<VocabularyJlptLevel>>()
-    sources.forEach(source => {
-      source.matchedWords.forEach(word => {
-        const levels = jlptByCanonicalWord.get(word) || new Set<VocabularyJlptLevel>()
-        ;(source.jlptByWord[word] || []).forEach(level => levels.add(level))
-        jlptByCanonicalWord.set(word, levels)
-      })
-    })
-
-    return sources
-      .map(source => {
-        const matchedHeadwords = Array.from(
-          new Set(Object.values(source.matchedHeadwords)),
-        )
-        const aliases = buildSurfaceAliasMapForText(
-          currentText,
-          matchedHeadwords,
-        )
-        const variants = buildSurfaceVariantMapForText(
-          currentText,
-          matchedHeadwords,
-        )
-        const metadataByHeadword = new Map<
-          string,
-          { jlpt: Set<VocabularyJlptLevel>; wordbookIds: Set<string> }
-        >()
-        source.matchedWords.forEach(word => {
-          const headword = source.matchedHeadwords[word] || word
-          const metadata = metadataByHeadword.get(headword) || {
-            jlpt: new Set<VocabularyJlptLevel>(),
-            wordbookIds: new Set<string>(),
-          }
-          ;(source.jlptByWord[word] || []).forEach(level =>
-            metadata.jlpt.add(level),
-          )
-          ;(jlptByCanonicalWord.get(word) || []).forEach(level =>
-            metadata.jlpt.add(level),
-          )
-          ;(source.wordbookIdsByWord[word] || []).forEach(wordbookId =>
-            metadata.wordbookIds.add(wordbookId),
-          )
-          metadataByHeadword.set(headword, metadata)
-        })
-        const jlptByWord: Record<string, string[]> = {}
-        const wordbookIdsByWord: Record<string, string[]> = {}
-        source.matchedWords.forEach(word => {
-          jlptByWord[word] = [...(jlptByCanonicalWord.get(word) || [])]
-          wordbookIdsByWord[word] = source.wordbookIdsByWord[word] || []
-        })
-        metadataByHeadword.forEach((metadata, headword) => {
-          jlptByWord[headword] = [...metadata.jlpt]
-          wordbookIdsByWord[headword] = [...metadata.wordbookIds]
-        })
-        Object.entries(aliases).forEach(([surface, headword]) => {
-          const metadata = metadataByHeadword.get(headword)
-          jlptByWord[surface] = metadata ? [...metadata.jlpt] : []
-          wordbookIdsByWord[surface] = metadata
-            ? [...metadata.wordbookIds]
-            : source.wordbookIds
-        })
-        return {
-          id: source.id,
-          label: source.label,
-          words: Object.keys(aliases),
-          canonicalWords: Array.from(new Set(Object.values(aliases))),
-          jlptByWord,
-          wordbookIdsByWord,
-          aliases,
-          variants,
-        }
-      })
-      .filter(group => group.words.length > 0)
-      .sort((left, right) => left.label.localeCompare(right.label, 'ja'))
-  }, [currentText, wordbookDistribution])
+  const wordbookHighlightGroups = React.useMemo(
+    () => buildWordbookHighlightGroups(wordbookDistribution?.wordbooks || [], currentText),
+    [currentText, wordbookDistribution],
+  )
   const wordbookSurfaceToBaseWord = React.useMemo(
     () =>
       Object.assign(
@@ -963,90 +885,11 @@ export function PracticePlayer({
     )
   }
 
-  const buildCopyPayload = (question: ExamQuestion) => {
-    const sections: string[] = []
-    if (question.lesson?.sectionTitle) {
-      sections.push(`听力部分：${formatCopyText(question.lesson.sectionTitle)}`)
-    }
-    if (question.lesson?.audioFile) {
-      sections.push(`音频：${question.lesson.audioFile}`)
-    }
-
-    if (question.passageId) {
-      const passage = (question.passage?.content || '').trim()
-      if (passage) sections.push(`阅读正文：\n${formatCopyText(passage)}`)
-    }
-
-    const context = (question.contextSentence || '').trim()
-    const prompt = (question.prompt || '').trim()
-    if (prompt) sections.push(`题目：${formatCopyText(prompt)}`)
-    else if (context) sections.push(`题目：${formatCopyText(context)}`)
-
-    const optionLabelFormat = normalizeOptionLabelFormat(
-      question.optionLabelFormat,
-      'numeric',
-    )
-    const optionLines = (question.options || [])
-      .map((option, index) => {
-        const marker = formatOptionLabel(
-          index,
-          optionLabelFormat,
-          question.customOptionLabels,
-        )
-        const text = (option.text || '').trim()
-        return text ? `${marker}. ${formatCopyText(text)}` : ''
-      })
-      .filter(Boolean)
-    if (optionLines.length > 0) {
-      sections.push(`选项：\n${optionLines.join('\n')}`)
-    }
-
-    return sections.join('\n\n').trim()
-  }
-
-  const buildListeningTranscriptCopyPayload = (copyQuestions: ExamQuestion[]) => {
-    const lessonQuestion = copyQuestions.find(
-      question => (question.lesson?.dialogues || []).length > 0,
-    )
-    if (!lessonQuestion?.lesson) return ''
-
-    const lessonId = lessonQuestion.lessonId || lessonQuestion.lesson.id
-    const lessonQuestions = copyQuestions.filter(
-      question => (question.lessonId || question.lesson?.id) === lessonId,
-    )
-    const transcriptText = [...(lessonQuestion.lesson.dialogues || [])]
-      .filter(line => (line.text || '').trim())
-      .sort(
-        (left, right) =>
-          left.start - right.start ||
-          (left.sequenceId || 0) - (right.sequenceId || 0),
-      )
-      .map(line => formatCopyText((line.text || '').trim()))
-      .join('\n')
-    const optionsText = lessonQuestions
-      .flatMap(question => question.options || [])
-      .map((option, index) => {
-        const text = (option.text || '').trim()
-        return text ? `${index + 1}. ${formatCopyText(text)}` : ''
-      })
-      .filter(Boolean)
-      .join('\n')
-    const sections = [
-      transcriptText,
-      optionsText ? `选项：\n${optionsText}` : '',
-    ].filter(Boolean)
-    return sections.join('\n\n').trim()
-  }
-
   const handleCopyCurrentQuestion = async () => {
     const copyQuestions = session.isSubmitted
       ? currentGroup.questions.map(restoreAuthoredOptionOrder)
       : currentGroup.questions
-    const listeningPayload = buildListeningTranscriptCopyPayload(copyQuestions)
-    const payload = listeningPayload ||
-      copyQuestions
-        .map(question => buildCopyPayload(question))
-        .join('\n\n---\n\n')
+    const payload = buildPracticeCopyPayload(copyQuestions, formatCopyText)
     if (!payload) return
     try {
       await copyText(payload)
@@ -1396,117 +1239,18 @@ export function PracticePlayer({
         </div>
       ) : null}
 
-      {session.showSheet && !isSingleMode && (
-        <>
-          <button
-            type='button'
-            aria-label='关闭答题卡'
-            onClick={() => session.setShowSheet(false)}
-            className='fixed inset-0 z-30 cursor-default bg-slate-900/10 backdrop-blur-[1px]'
-          />
-          <section
-            role='dialog'
-            aria-modal='true'
-            aria-label='答题卡'
-            className='fixed inset-x-3 top-[6.5rem] z-50 mx-auto max-h-[calc(100vh-7.5rem)] max-w-6xl overflow-hidden rounded-xl border border-slate-200 bg-[#f7f7f5] shadow-[0_24px_70px_-28px_rgba(15,23,42,0.55)] md:top-[4.25rem] md:max-h-[calc(100vh-5.25rem)]'>
-            <div className='flex items-center justify-between border-b border-slate-200 px-4 py-3 md:px-5'>
-              <div>
-                <h4 className='text-sm font-bold tracking-tight text-slate-900 md:text-base'>
-                  答题卡
-                </h4>
-                <p className='mt-0.5 text-[11px] text-slate-500'>
-                  {mode === 'history'
-                    ? `整套 ${questions.length} 题 · 答对 ${historyCorrectQuestionIds.length} · 答错 ${historyWrongQuestionIds.length}`
-                    : `已答 ${session.answeredCount}/${questions.length}`}
-                </p>
-              </div>
-              <button
-                type='button'
-                onClick={() => session.setShowSheet(false)}
-                className='inline-flex h-8 items-center rounded-md px-2 text-sm text-slate-500 hover:bg-slate-200 hover:text-slate-900'>
-                关闭
-              </button>
-            </div>
-
-            <div className='custom-scrollbar grid max-h-[calc(100vh-11.75rem)] gap-x-8 gap-y-5 overflow-y-auto p-4 md:max-h-[calc(100vh-9.5rem)] md:grid-cols-2 md:p-5'>
-              {answerCardSections.map((section, sectionIndex) => (
-                <React.Fragment key={section.key}>
-                  {(sectionIndex === 0 ||
-                    answerCardSections[sectionIndex - 1].materialKey !==
-                      section.materialKey) && (
-                    <h5 className='border-b border-slate-300 pb-2 text-xs font-bold tracking-[0.16em] text-slate-500 md:col-span-2'>
-                      {section.materialTitle}
-                    </h5>
-                  )}
-                  <section className='grid grid-cols-[minmax(7.5rem,auto)_1fr] items-start gap-3'>
-                    <div className='pt-1'>
-                      <p className='text-sm font-bold text-slate-800'>
-                        {isJapanesePaper
-                          ? `問題${section.sectionNumber}`
-                          : section.sectionTitle}
-                      </p>
-                      {isJapanesePaper ? (
-                        <p className='mt-0.5 text-xs text-slate-500'>
-                          {section.sectionTitle}
-                        </p>
-                      ) : null}
-                    </div>
-                    <div className='grid grid-cols-6 gap-1.5 sm:grid-cols-8'>
-                      {section.items.map(item => {
-                        const question = questions[item.questionIndex]
-                        const isCurrent =
-                          session.currentIndex === item.questionIndex
-                        const isAnswered =
-                          question.questionType === 'SORTING'
-                            ? (session.sortingDrafts[question.id] || []).every(Boolean) &&
-                              (session.sortingDrafts[question.id] || []).length ===
-                                (question.options || []).length
-                            : !!session.answers[question.id]
-                        const isHistoryCorrect =
-                          mode === 'history' &&
-                          historyCorrectQuestionIdSet.has(question.id)
-                        const isWrong =
-                          mode === 'history'
-                            ? historyWrongQuestionIdSet.has(question.id)
-                            : session.isQuestionSubmitted(question.id) &&
-                              session.wrongIndexes.includes(item.questionIndex)
-
-                        return (
-                          <button
-                            key={question.id}
-                            type='button'
-                            aria-label={
-                              isJapanesePaper
-                                ? `問題${section.sectionNumber} ${section.sectionTitle} 第${item.localNumber}题`
-                                : `${section.sectionTitle} 第${item.localNumber}题`
-                            }
-                            onClick={() => {
-                              session.setCurrentIndex(item.questionIndex)
-                              session.setShowSheet(false)
-                            }}
-                            className={`h-8 rounded-md border text-xs font-semibold transition-colors md:h-9 ${
-                              isCurrent
-                                ? 'border-slate-900 bg-slate-900 text-white'
-                                : isWrong
-                                  ? 'border-rose-300 bg-rose-50 text-rose-700'
-                                  : isHistoryCorrect
-                                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                                  : isAnswered
-                                    ? 'border-slate-400 bg-slate-200/70 text-slate-900'
-                                    : 'border-slate-300 bg-white text-slate-600 hover:border-slate-600 hover:text-slate-900'
-                            }`}>
-                            {item.localNumber}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </section>
-                </React.Fragment>
-              ))}
-            </div>
-          </section>
-        </>
-      )}
+      <PracticeAnswerCard
+        session={session}
+        answerCardSections={answerCardSections}
+        questions={questions}
+        isSingleMode={isSingleMode}
+        mode={mode}
+        isJapanesePaper={isJapanesePaper}
+        historyCorrectQuestionIds={historyCorrectQuestionIds}
+        historyWrongQuestionIds={historyWrongQuestionIds}
+        historyCorrectQuestionIdSet={historyCorrectQuestionIdSet}
+        historyWrongQuestionIdSet={historyWrongQuestionIdSet}
+      />
 
       <main
         onMouseDown={handleQuestionAreaMouseDown}

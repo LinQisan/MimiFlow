@@ -14,6 +14,7 @@ import { PrismaPg } from '@prisma/adapter-pg'
 import { Rating, checkParameters, createEmptyCard, default_w, fsrs } from 'ts-fsrs'
 import { buildAudioDialogueSourceId, parseAudioDialogueSourceId } from '../utils/audioDialogue/sourceId.ts'
 import { hashPassword, verifyPassword } from '../modules/users/domain/password.ts'
+import { formatTokyoDateKey } from '../utils/time/format.ts'
 import { hashSecret, newSecret, validSecret } from '../modules/users/domain/registration.ts'
 import { wordbookEntryWhere } from '../modules/knowledge/wordbooks/entry-query.ts'
 import { vocabularyGroupPageSql } from '../modules/knowledge/vocabulary/server/group-page-query.ts'
@@ -93,6 +94,7 @@ async function loadActions(db, userId, intercept = {}) {
     '@/modules/review/domain/fsrs-card': domainExports,
     '@/modules/users/server/current-user': { getCurrentUserId: async () => userId },
     '@/utils/audioDialogue/sourceId': { parseAudioDialogueSourceId },
+    '@/utils/time/format': { formatTokyoDateKey },
   }
   const exports = {}
   const loadedModule = { exports }

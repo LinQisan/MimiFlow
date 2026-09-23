@@ -4,6 +4,7 @@ import { resolveResumeActions } from '@/lib/home/resume-actions'
 import { MaterialType } from '@prisma/client'
 import { getTodayStudyPlan } from '@/modules/progress/server/today-plan'
 import { getHomeDashboardData } from '@/modules/home/server/repository'
+import { formatTokyoDateKey } from '@/utils/time/format'
 
 export const revalidate = 60
 
@@ -90,20 +91,11 @@ function formatLearningMeta(
   return [...new Set(labels)].join(' · ')
 }
 
-function toDateKeyInTokyo(date: Date): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Tokyo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
-}
-
 export default async function HomePage() {
   const now = new Date()
   const sixDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000)
-  const weekStartKey = toDateKeyInTokyo(sixDaysAgo)
-  const todayKey = toDateKeyInTokyo(now)
+  const weekStartKey = formatTokyoDateKey(sixDaysAgo)
+  const todayKey = formatTokyoDateKey(now)
 
   const [todayPlan, dashboard] = await Promise.all([
     getTodayStudyPlan(),

@@ -57,6 +57,17 @@ export function formatTokyoDateTime(value: Date | string | null | undefined) {
   }).format(date)
 }
 
+const tokyoDateKeyFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Tokyo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+export function formatTokyoDateKey(date: Date) {
+  return tokyoDateKeyFormatter.format(date)
+}
+
 export function formatBytes(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

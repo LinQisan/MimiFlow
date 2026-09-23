@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  buildWordbookHighlightGroups,
   groupWordbookDistributionBySource,
   groupWordbookHighlightChoices,
   jlptLevelsIntersect,
@@ -84,6 +85,31 @@ test('distribution rows merge into one source while preserving word metadata', (
   assert.deepEqual(redSource.jlptByWord['視線'], ['N1', 'N2'])
   assert.deepEqual(redSource.wordbookIdsByWord['視線'], ['red-n4-unit', 'red-n2-unit'])
   assert.deepEqual(n1Source.matchedWords, ['映画館', '視線'])
+})
+
+test('highlight groups preserve per-source and cross-source metadata', () => {
+  const groups = buildWordbookHighlightGroups([
+    {
+      id: 'first-book',
+      pathLabel: '第一册',
+      matchedWords: ['視線'],
+      matchedHeadwords: { 視線: '視線' },
+      matchedJlpt: { 視線: ['N2'] },
+    },
+    {
+      id: 'second-book',
+      pathLabel: '第二册',
+      matchedWords: ['視線'],
+      matchedHeadwords: { 視線: '視線' },
+      matchedJlpt: { 視線: ['N1'] },
+    },
+  ], '視線を感じる。')
+
+  assert.deepEqual(groups.map(group => group.id), ['first-book', 'second-book'])
+  assert.deepEqual(new Set(groups[0].jlptByWord['視線']), new Set(['N1', 'N2']))
+  assert.deepEqual(new Set(groups[1].jlptByWord['視線']), new Set(['N1', 'N2']))
+  assert.deepEqual(groups[0].wordbookIdsByWord['視線'], ['first-book'])
+  assert.deepEqual(groups[1].wordbookIdsByWord['視線'], ['second-book'])
 })
 
 test('JLPT filtering uses intersection semantics and a stable primary color', () => {

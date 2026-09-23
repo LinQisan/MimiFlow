@@ -6,6 +6,7 @@ import { CollectionType, MaterialType, QuestionType } from '@prisma/client'
 import { revalidatePath } from 'next/cache'
 
 import prisma from '@/lib/prisma'
+import { resolveMaterialId } from '@/modules/content/server/material-id'
 import {
   encodeMaterialPayload,
   patchMaterialPayload,
@@ -79,15 +80,6 @@ type CreateQuizQuestionPayload = {
   sortingOrder?: number[] | null
   explanation?: string | null
   options?: QuestionOptionInput[] | null
-}
-
-const resolveMaterialId = async (type: MaterialType, id: string) => {
-  const direct = await prisma.material.findUnique({
-    where: { id },
-    select: { id: true, type: true },
-  })
-  if (direct && direct.type === type) return direct.id
-  return null
 }
 
 const normalizeOptions = (
