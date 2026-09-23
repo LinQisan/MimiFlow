@@ -8,7 +8,7 @@
   },
   "scripts": {
     "predev": "node scripts/ensure-database.mjs",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "predev:webpack": "node scripts/ensure-database.mjs",
     "dev:webpack": "next dev --webpack",
     "build": "next build",
@@ -66,6 +66,9 @@
     "typescript": "^6.0.3"
   },
   "overrides": {
-    "deepmerge-ts": "8.0.2"
+    "deepmerge-ts": "8.0.2",
+    "prisma": {
+      "mysql2": "3.23.1"
+    }
   }
 }
